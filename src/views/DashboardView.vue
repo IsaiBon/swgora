@@ -176,35 +176,35 @@ const getStatusBadgeConfig = (status: Order['status']) => {
     <!-- ==========================================
          ENCABEZADO Y ACCIONES RÁPIDAS PRINCIPALES
          ========================================== -->
-    <header class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm relative overflow-hidden">
+    <header class="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-8 border border-slate-200/80 shadow-sm relative overflow-hidden">
       <!-- Decoración sutil de fondo -->
       <div class="absolute -right-16 -top-16 w-64 h-64 bg-[#05C7F2]/10 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 relative z-10">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 sm:gap-6 relative z-10">
         <div>
-          <div class="flex items-center gap-2.5">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#05C7F2]/15 text-[#038896] border border-[#05C7F2]/30">
               <Sparkles class="w-3.5 h-3.5" />
               JR Blanco Rectificadora
             </span>
-            <span class="text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
+            <span class="text-[11px] sm:text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 sm:py-1 rounded-full">
               Panel Operativo v2.0
             </span>
           </div>
 
-          <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-2.5">
+          <h1 class="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-2 sm:mt-2.5">
             Dashboard Operativo del Taller
           </h1>
-          <p class="text-sm sm:text-base text-slate-600 mt-1 max-w-2xl">
+          <p class="text-xs sm:text-base text-slate-600 mt-1 max-w-2xl">
             Control de flujo de trabajo, componentes en rectificación, órdenes activas y estado general del taller.
           </p>
         </div>
 
         <!-- Botones de Acción Rápida -->
-        <div class="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+        <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
           <router-link
             to="/ordenes"
-            class="inline-flex items-center justify-center px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold text-white bg-[#0D0D0D] hover:bg-neutral-900 active:scale-95 rounded-2xl shadow-md transition-all border border-neutral-800"
+            class="inline-flex items-center justify-center px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-white bg-[#0D0D0D] hover:bg-neutral-900 active:scale-95 rounded-xl sm:rounded-2xl shadow-md transition-all border border-neutral-800"
           >
             <Plus class="w-4 h-4 mr-1.5 text-[#05F2F2]" />
             + Nueva Orden
@@ -212,7 +212,7 @@ const getStatusBadgeConfig = (status: Order['status']) => {
 
           <router-link
             to="/clientes"
-            class="inline-flex items-center justify-center px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold text-slate-800 bg-white hover:bg-slate-50 active:scale-95 rounded-2xl shadow-sm transition-all border border-slate-300"
+            class="inline-flex items-center justify-center px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-800 bg-white hover:bg-slate-50 active:scale-95 rounded-xl sm:rounded-2xl shadow-sm transition-all border border-slate-300"
           >
             <Users class="w-4 h-4 mr-1.5 text-blue-600" />
             + Nuevo Cliente
@@ -220,7 +220,7 @@ const getStatusBadgeConfig = (status: Order['status']) => {
 
           <router-link
             to="/catalogo"
-            class="inline-flex items-center justify-center px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-2xl transition-all"
+            class="inline-flex items-center justify-center px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl sm:rounded-2xl transition-all"
           >
             <Package class="w-4 h-4 mr-1.5 text-slate-600" />
             Ver Catálogo
@@ -454,8 +454,8 @@ const getStatusBadgeConfig = (status: Order['status']) => {
           </div>
 
           <!-- Tabla responsiva de Órdenes -->
-          <div class="overflow-x-auto mt-4">
-            <table class="w-full text-left border-collapse">
+          <div class="overflow-x-auto mt-4 -mx-1 sm:mx-0">
+            <table class="w-full text-left border-collapse min-w-[620px]">
               <thead>
                 <tr class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider border-b border-slate-100">
                   <th class="py-3 px-2">Código / Fecha</th>

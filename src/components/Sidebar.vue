@@ -45,7 +45,7 @@ const isActive = (path: string) => {
 </script>
 
 <template>
-  <div>
+  <div class="lg:w-64 lg:shrink-0">
     <!-- Mobile Backdrop Overlay -->
     <div
       v-if="uiStore.isMobileSidebarOpen"
@@ -56,7 +56,7 @@ const isActive = (path: string) => {
     <!-- Sidebar Container -->
     <aside
       :class="[
-        'fixed top-0 bottom-0 left-0 z-50 w-64 bg-[#0D0D0D] text-slate-100 flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-0 border-r border-neutral-800',
+        'fixed inset-y-0 left-0 z-50 w-64 bg-[#0D0D0D] text-slate-100 flex flex-col transition-transform duration-300 ease-in-out border-r border-neutral-800 shadow-2xl lg:shadow-none lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen lg:z-40',
         uiStore.isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
       ]"
     >
