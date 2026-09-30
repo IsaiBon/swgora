@@ -14,7 +14,8 @@ import {
   Trash2,
   Wrench,
   CheckCircle2,
-  FileText
+  FileText,
+  Lock
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -192,13 +193,28 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
           </div>
         </div>
 
-        <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+        <div v-if="authStore.user?.role === 'Administrador'" class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Facturación Total</span>
             <div class="text-2xl font-black text-slate-900 mt-0.5">${{ totalBilled.toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}</div>
           </div>
-          <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+          <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 font-bold">
             $
+          </div>
+        </div>
+        <div v-else class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Control Operacional</span>
+            <div class="flex items-center gap-1.5 mt-1">
+              <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                <Lock class="w-3 h-3 text-slate-400" />
+                Montos Reservados
+              </span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-0.5">Acceso financiero exclusivo a Admin</p>
+          </div>
+          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
+            <Lock class="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -252,7 +268,8 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                 <th class="px-5 py-3">Fecha</th>
                 <th class="px-5 py-3 text-center">Tipo</th>
                 <th class="px-5 py-3">Estado</th>
-                <th class="px-5 py-3 text-right">Total ($)</th>
+                <th v-if="authStore.user?.role === 'Administrador'" class="px-5 py-3 text-right">Total ($)</th>
+                <th v-else class="px-5 py-3 text-center">Operación / Ítems</th>
                 <th class="px-5 py-3 text-center">Acciones</th>
               </tr>
             </thead>
@@ -299,8 +316,14 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                     {{ order.status }}
                   </span>
                 </td>
-                <td class="px-5 py-3.5 text-right font-black text-slate-900">
+                <td v-if="authStore.user?.role === 'Administrador'" class="px-5 py-3.5 text-right font-black text-slate-900">
                   ${{ order.total.toFixed(2) }}
+                </td>
+                <td v-else class="px-5 py-3.5 text-center">
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200" title="Montos financieros restringidos para administradores">
+                    <Wrench class="w-3.5 h-3.5 text-[#04c4d9]" />
+                    <span>{{ (order.parts?.length || 0) + (order.operations?.length || 0) }} ítems</span>
+                  </span>
                 </td>
                 <td class="px-5 py-3.5 text-center" @click.stop>
                   <div class="flex items-center justify-center gap-1.5">

@@ -1,173 +1,341 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { catalogService, type CatalogProduct } from '@/services/catalogService'
-import { Search, Plus, ShoppingCart, Tag, CheckCircle2, AlertTriangle, XCircle } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { 
+  catalogService, 
+  type Fabricante, 
+  type Modelo, 
+  type Motor, 
+  type RepuestoTecnico 
+} from '@/services/catalogService'
+import BrandSelector from '@/components/catalog/BrandSelector.vue'
+import EngineSpecsCard from '@/components/catalog/EngineSpecsCard.vue'
+import EquivalenceMatrix from '@/components/catalog/EquivalenceMatrix.vue'
+import DimensionalSearch from '@/components/catalog/DimensionalSearch.vue'
+import ReverseLookup from '@/components/catalog/ReverseLookup.vue'
+import { 
+  BookOpen, 
+  Car, 
+  Ruler, 
+  Hash, 
+  Search, 
+  CheckCircle2, 
+  FileText,
+  Layers
+} from 'lucide-vue-next'
 
-const products = ref<CatalogProduct[]>([])
-const searchQuery = ref('')
-const selectedCategory = ref('Todas')
+const router = useRouter()
 
-onMounted(async () => {
-  products.value = await catalogService.getProducts()
-})
+// Modo activo: 'vehicular' | 'dimensional' | 'inversa'
+type CatalogMode = 'vehicular' | 'dimensional' | 'inversa'
+const activeMode = ref<CatalogMode>('vehicular')
 
-const categories = computed(() => {
-  const cats = ['Todas', ...new Set(products.value.map(p => p.category))]
-  return cats
-})
+// Datos maestros
+const fabricantes = ref<Fabricante[]>([])
+const modelos = ref<Modelo[]>([])
+const motores = ref<Motor[]>([])
+const repuestos = ref<RepuestoTecnico[]>([])
 
-const filteredProducts = computed(() => {
-  return products.value.filter(p => {
-    const matchesSearch = 
-      p.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      p.code.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesCategory = 
-      selectedCategory.value === 'Todas' || p.category === selectedCategory.value
-    return matchesSearch && matchesCategory
-  })
-})
+// Selección activa en Búsqueda Vehicular
+const selectedFabricanteId = ref<string>('')
+const selectedModeloId = ref<string>('')
+const selectedMotorId = ref<string>('')
 
-const getStockBadge = (status: CatalogProduct['status']) => {
-  switch (status) {
-    case 'Disponible':
-      return { class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 }
-    case 'Bajo Stock':
-      return { class: 'bg-amber-50 text-amber-700 border-amber-200', icon: AlertTriangle }
-    case 'Agotado':
-      return { class: 'bg-rose-50 text-rose-700 border-rose-200', icon: XCircle }
+// Motor activo
+const activeMotor = ref<Motor | null>(null)
+const activeFabricante = computed(() => fabricantes.value.find(f => f.id === selectedFabricanteId.value) || null)
+const activeModelo = computed(() => modelos.value.find(m => m.id === selectedModeloId.value) || null)
+
+// Búsqueda rápida superior
+const globalSearch = ref('')
+
+// Mensaje de notificación Toast
+const toastMessage = ref<string | null>(null)
+let toastTimer: any = null
+
+const showToast = (msg: string) => {
+  if (toastTimer) clearTimeout(toastTimer)
+  toastMessage.value = msg
+  toastTimer = setTimeout(() => {
+    toastMessage.value = null
+  }, 2500)
+}
+
+// Carga inicial
+const loadData = async () => {
+  fabricantes.value = await catalogService.getFabricantes()
+  modelos.value = await catalogService.getModelos()
+  motores.value = await catalogService.getMotores()
+
+  // Seleccionar Toyota 3L por defecto para ofrecer una experiencia inmediata rica
+  const defaultFab = fabricantes.value.find(f => f.nombre === 'Toyota') || fabricantes.value[0]
+  if (defaultFab) {
+    selectedFabricanteId.value = defaultFab.id
+    const defaultModel = modelos.value.find(m => m.fabricante_id === defaultFab.id)
+    if (defaultModel) {
+      selectedModeloId.value = defaultModel.id
+      const defaultMotor = motores.value.find(m => m.codigo === '3L') || motores.value.find(m => m.fabricante_id === defaultFab.id)
+      if (defaultMotor) {
+        selectedMotorId.value = defaultMotor.id
+        activeMotor.value = defaultMotor
+        await loadRepuestos(defaultMotor.id)
+      }
+    }
   }
 }
+
+const loadRepuestos = async (motorId: string) => {
+  repuestos.value = await catalogService.getRepuestosByMotor(motorId)
+}
+
+const handleSelectMotor = async (motor: Motor) => {
+  activeMotor.value = motor
+  selectedMotorId.value = motor.id
+  await loadRepuestos(motor.id)
+}
+
+// Selección rápida de motores populares desde el header
+const quickSelectEngine = async (codigo: string) => {
+  const target = motores.value.find(m => m.codigo.toLowerCase().includes(codigo.toLowerCase()))
+  if (target) {
+    activeMode.value = 'vehicular'
+    selectedFabricanteId.value = target.fabricante_id
+    if (target.modelo_id) selectedModeloId.value = target.modelo_id
+    selectedMotorId.value = target.id
+    activeMotor.value = target
+    await loadRepuestos(target.id)
+    showToast(`Cargado catálogo de motor ${target.codigo}`)
+  }
+}
+
+// Agregar pieza a una orden de trabajo
+const handleAddToOrder = (repuesto: RepuestoTecnico) => {
+  showToast(`Pieza agregada a cotización/orden: ${repuesto.codigo_oem} (${repuesto.nombre})`)
+}
+
+// Búsqueda global (cambia a búsqueda inversa automáticamente si se ingresa texto)
+const handleGlobalSearch = () => {
+  if (globalSearch.value.trim()) {
+    activeMode.value = 'inversa'
+  }
+}
+
+onMounted(async () => {
+  await loadData()
+})
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  <div class="space-y-6 pb-12">
+    
+    <!-- Toast de Notificaciones Flotante -->
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="transform translate-y-4 opacity-0"
+      enter-to-class="transform translate-y-0 opacity-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="transform translate-y-0 opacity-100"
+      leave-to-class="transform translate-y-4 opacity-0"
+    >
+      <div 
+        v-if="toastMessage" 
+        class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-slate-700 flex items-center gap-2.5 text-xs font-bold"
+      >
+        <CheckCircle2 class="w-4 h-4 text-[#04c4d9]" />
+        <span>{{ toastMessage }}</span>
+      </div>
+    </Transition>
+
+    <!-- Header Principal del Catálogo Técnico -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Catálogo de Productos</h1>
-        <p class="text-sm text-slate-500 mt-1">
-          Inventario de artículos y productos disponibles para órdenes de compra.
+        <div class="flex items-center gap-2">
+          <h1 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <BookOpen class="w-6 h-6 text-[#04c4d9]" />
+            Catálogo Técnico y Matriz de Equivalencias
+          </h1>
+          <span class="text-xs font-black px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+            JR Blanco
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">
+          Búsqueda vehicular jerárquica, cruces multimarca (Dokuro, Rik, NPR, NDC, Ajusa, Pioneer) y adaptaciones dimensionales.
         </p>
       </div>
-      <div>
+
+      <!-- Acciones de Navegación Rápida -->
+      <div class="flex items-center gap-2.5">
         <button
           type="button"
-          class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition shadow-indigo-200"
+          @click="router.push('/ordenes')"
+          class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition"
         >
-          <Plus class="w-4 h-4 mr-1.5" />
-          Nuevo Producto
+          <FileText class="w-3.5 h-3.5 text-cyan-600" />
+          <span>Ir a Órdenes de Trabajo</span>
         </button>
       </div>
     </div>
 
-    <!-- Filters & Search -->
-    <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-      <div class="relative w-full md:w-96">
+    <!-- Barra de Selección de Modos y Búsqueda Superior -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row items-center justify-between gap-4">
+      
+      <!-- Pestañas de Modo (Táctiles, Min 44px) -->
+      <div class="flex items-center gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0">
+        <button
+          type="button"
+          @click="activeMode = 'vehicular'"
+          :class="[
+            'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black whitespace-nowrap transition min-h-[44px]',
+            activeMode === 'vehicular'
+              ? 'bg-[#04c4d9] text-white shadow-xs'
+              : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+          ]"
+        >
+          <Car class="w-4 h-4" />
+          <span>Búsqueda Vehicular</span>
+        </button>
+
+        <button
+          type="button"
+          @click="activeMode = 'dimensional'"
+          :class="[
+            'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black whitespace-nowrap transition min-h-[44px]',
+            activeMode === 'dimensional'
+              ? 'bg-[#04c4d9] text-white shadow-xs'
+              : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+          ]"
+        >
+          <Ruler class="w-4 h-4" />
+          <span>Búsqueda Dimensional (mm)</span>
+        </button>
+
+        <button
+          type="button"
+          @click="activeMode = 'inversa'"
+          :class="[
+            'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black whitespace-nowrap transition min-h-[44px]',
+            activeMode === 'inversa'
+              ? 'bg-[#04c4d9] text-white shadow-xs'
+              : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+          ]"
+        >
+          <Hash class="w-4 h-4" />
+          <span>Búsqueda Inversa por Código</span>
+        </button>
+      </div>
+
+      <!-- Buscador Rápido Global -->
+      <div class="relative w-full lg:w-80">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
           <Search class="w-4 h-4" />
         </div>
         <input
-          v-model="searchQuery"
+          v-model="globalSearch"
           type="text"
-          placeholder="Buscar producto o código..."
-          class="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
+          @keyup.enter="handleGlobalSearch"
+          placeholder="Código de parte, Dokuro, Rik, NDC..."
+          class="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] font-medium"
         />
       </div>
 
-      <!-- Categories Pills -->
-      <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-        <button
-          v-for="category in categories"
-          :key="category"
-          type="button"
-          @click="selectedCategory = category"
-          :class="[
-            'px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition',
-            selectedCategory === category
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-slate-600 bg-slate-100 hover:bg-slate-200/70',
-          ]"
-        >
-          {{ category }}
-        </button>
-      </div>
     </div>
 
-    <!-- Products Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div
-        v-for="product in filteredProducts"
-        :key="product.id"
-        class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow group"
+    <!-- Acceso Directo a Motores Más Frecuentes en el Taller -->
+    <div class="flex items-center gap-2 overflow-x-auto text-xs pb-1">
+      <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px] shrink-0">Motores habituales:</span>
+      <button 
+        type="button"
+        @click="quickSelectEngine('3L')"
+        class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-cyan-400 hover:text-cyan-700 font-bold text-slate-700 transition shrink-0"
       >
-        <!-- Product Image -->
-        <div class="h-48 w-full bg-slate-100 relative overflow-hidden">
-          <img
-            :src="product.imageUrl"
-            :alt="product.name"
-            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-slate-700 text-[11px] font-semibold px-2.5 py-1 rounded-md shadow-sm border border-slate-200/60">
-            {{ product.code }}
-          </span>
-          <span
-            :class="[
-              'absolute top-3 right-3 text-[11px] font-medium px-2.5 py-1 rounded-md shadow-sm border backdrop-blur-sm flex items-center gap-1',
-              getStockBadge(product.status).class
-            ]"
-          >
-            <component :is="getStockBadge(product.status).icon" class="w-3 h-3" />
-            {{ product.status }}
+        Toyota 3L (2.8D)
+      </button>
+      <button 
+        type="button"
+        @click="quickSelectEngine('1KD')"
+        class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-cyan-400 hover:text-cyan-700 font-bold text-slate-700 transition shrink-0"
+      >
+        Toyota 1KD-FTV (3.0 D-4D)
+      </button>
+      <button 
+        type="button"
+        @click="quickSelectEngine('Z24')"
+        class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-cyan-400 hover:text-cyan-700 font-bold text-slate-700 transition shrink-0"
+      >
+        Nissan Z24 (2.4L)
+      </button>
+      <button 
+        type="button"
+        @click="quickSelectEngine('4D56')"
+        class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-cyan-400 hover:text-cyan-700 font-bold text-slate-700 transition shrink-0"
+      >
+        Mitsubishi 4D56 (2.5D)
+      </button>
+      <button 
+        type="button"
+        @click="quickSelectEngine('4JB1')"
+        class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-cyan-400 hover:text-cyan-700 font-bold text-slate-700 transition shrink-0"
+      >
+        Isuzu 4JB1 (2.8D)
+      </button>
+    </div>
+
+    <!-- MODO 1: BÚSQUEDA VEHICULAR JERÁRQUICA -->
+    <div v-if="activeMode === 'vehicular'" class="space-y-5">
+      <!-- Selector de Fabricante, Modelo y Motor -->
+      <BrandSelector
+        :fabricantes="fabricantes"
+        :modelos="modelos"
+        :motores="motores"
+        v-model:selectedFabricanteId="selectedFabricanteId"
+        v-model:selectedModeloId="selectedModeloId"
+        v-model:selectedMotorId="selectedMotorId"
+        @select-motor="handleSelectMotor"
+      />
+
+      <!-- Ficha Técnica del Motor Seleccionado -->
+      <EngineSpecsCard
+        :motor="activeMotor"
+        :fabricante="activeFabricante"
+        :modelo="activeModelo"
+      />
+
+      <!-- Matriz de Equivalencias Multimarca -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+            <Layers class="w-3.5 h-3.5 text-[#04c4d9]" />
+            Matriz de Equivalencias Técnicas del Motor
+          </h3>
+          <span class="text-xs text-slate-400">
+            {{ repuestos.length }} componentes registrados para este motor
           </span>
         </div>
 
-        <!-- Product Info -->
-        <div class="p-5 flex-1 flex flex-col justify-between">
-          <div>
-            <div class="flex items-center gap-1 text-xs text-indigo-600 font-medium mb-1">
-              <Tag class="w-3 h-3" />
-              <span>{{ product.category }}</span>
-            </div>
-            <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition">
-              {{ product.name }}
-            </h3>
-            <p class="text-xs text-slate-500 mt-1">
-              Stock actual: <strong class="text-slate-700">{{ product.stock }} unidades</strong>
-            </p>
-          </div>
-
-          <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-            <div>
-              <span class="text-[10px] text-slate-400 block uppercase font-medium">Precio Unitario</span>
-              <span class="text-lg font-bold text-slate-900">
-                ${{ product.price.toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              :disabled="product.status === 'Agotado'"
-              :class="[
-                'inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition shadow-sm',
-                product.status === 'Agotado'
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'
-              ]"
-            >
-              <ShoppingCart class="w-3.5 h-3.5" />
-              Agregar
-            </button>
-          </div>
-        </div>
+        <EquivalenceMatrix
+          :repuestos="repuestos"
+          @add-to-order="handleAddToOrder"
+          @toast="showToast"
+        />
       </div>
     </div>
 
-    <!-- Empty state -->
-    <div
-      v-if="filteredProducts.length === 0"
-      class="bg-white rounded-2xl border border-slate-200/80 p-12 text-center text-slate-500 shadow-sm"
-    >
-      <p class="text-sm">No se encontraron productos coincidentes con tu búsqueda.</p>
+    <!-- MODO 2: BÚSQUEDA DIMENSIONAL / ADAPTADORES -->
+    <div v-else-if="activeMode === 'dimensional'">
+      <DimensionalSearch
+        @add-to-order="handleAddToOrder"
+        @toast="showToast"
+      />
     </div>
+
+    <!-- MODO 3: BÚSQUEDA INVERSA POR CÓDIGO -->
+    <div v-else-if="activeMode === 'inversa'">
+      <ReverseLookup
+        :initial-query="globalSearch"
+        @add-to-order="handleAddToOrder"
+        @toast="showToast"
+      />
+    </div>
+
   </div>
 </template>
