@@ -70,31 +70,176 @@ const isValveTypeOperation = (opName: string) => {
   return (lower.includes('guías') || lower.includes('guias')) && (lower.includes('adapte') || lower.includes('válvula') || lower.includes('valvula'))
 }
 
-// Clean print: filtrar únicamente lo facturado
-const billedOperations = computed(() => {
-  return props.order?.operations.filter(op => op.category !== 'Repuestos' && op.quantity > 0 && op.unitPrice >= 0) || []
+interface PrintableItem {
+  id: string
+  quantity: number
+  description: string
+  detail?: string
+  unitPrice: number
+  subtotal: number
+}
+
+interface PrintableSection {
+  title: string
+  items: PrintableItem[]
+  subtotal: number
+}
+
+// Orden canónico de secciones idéntico al Excel (ORDEN DE TRABAJO.xlsx)
+const SECTION_ORDER_MAP: Record<string, number> = {
+  'BIELAS': 1,
+  'BANCADA': 2,
+  'BANCADAS': 2,
+  'CIGÜEÑAL': 3,
+  'CULATA': 4,
+  'BLOCKS': 5,
+  'BLOCK': 5,
+  'REPUESTOS': 6,
+  'MATERIALES': 7,
+}
+
+const normalizeSectionTitle = (cat: string): string => {
+  const upper = (cat || '').trim().toUpperCase()
+  if (upper.includes('BIELA')) return 'BIELAS'
+  if (upper.includes('BANCADA')) return 'BANCADA'
+  if (upper.includes('CIGÜEÑAL') || upper.includes('CIGUENAL')) return 'CIGÜEÑAL'
+  if (upper.includes('CULATA')) return 'CULATA'
+  if (upper.includes('BLOCK')) return 'BLOCKS'
+  if (upper.includes('REPUESTO')) return 'REPUESTOS'
+  if (upper.includes('MATERIAL')) return 'MATERIALES'
+  return upper || 'OPERACIONES'
+}
+
+// Clean print: Agrupación por categoría/sección tal como en el Excel
+const groupedSections = computed<PrintableSection[]>(() => {
+  if (!props.order) return []
+
+  const sectionsMap = new Map<string, PrintableItem[]>()
+
+  // 1. Operaciones de rectificación (Mano de Obra agrupada por componente mecánico)
+  const operations = props.order.operations || []
+  for (const op of operations) {
+    if (op.quantity <= 0 || op.unitPrice < 0) continue
+
+    // Si la operación fue categorizada como 'Repuestos', pertenece a REPUESTOS
+    if (op.category === 'Repuestos') {
+      const items = sectionsMap.get('REPUESTOS') || []
+      items.push({
+        id: op.id,
+        quantity: op.quantity,
+        description: op.operation,
+        detail: op.measure ? `Medida: ${op.measure}` : undefined,
+        unitPrice: op.unitPrice,
+        subtotal: op.subtotal
+      })
+      sectionsMap.set('REPUESTOS', items)
+    } else {
+      const title = normalizeSectionTitle(op.category)
+      const items = sectionsMap.get(title) || []
+
+      let detail: string | undefined = undefined
+      if (op.measureBanco || op.measureBiela) {
+        const parts: string[] = []
+        if (op.measureBanco) parts.push(`Banco: ${op.measureBanco}`)
+        if (op.measureBiela) parts.push(`Biela: ${op.measureBiela}`)
+        detail = parts.join(' | ')
+      } else if (op.measure) {
+        detail = `${isValveTypeOperation(op.operation) ? 'Tipo: ' : 'Medida: '}${op.measure}`
+      }
+
+      items.push({
+        id: op.id,
+        quantity: op.quantity,
+        description: op.operation,
+        detail,
+        unitPrice: op.unitPrice,
+        subtotal: op.subtotal
+      })
+      sectionsMap.set(title, items)
+    }
+  }
+
+  // 2. Repuestos regulares facturados (Sección REPUESTOS)
+  const parts = props.order.parts || []
+  for (const part of parts) {
+    if (part.quantity <= 0 || part.unitPrice < 0) continue
+
+    const items = sectionsMap.get('REPUESTOS') || []
+    const detailParts: string[] = []
+    if (part.code) detailParts.push(part.code)
+    if (part.measure) detailParts.push(part.measure)
+
+    items.push({
+      id: part.id,
+      quantity: part.quantity,
+      description: part.name,
+      detail: detailParts.length > 0 ? detailParts.join(' • ') : undefined,
+      unitPrice: part.unitPrice,
+      subtotal: part.subtotal
+    })
+    sectionsMap.set('REPUESTOS', items)
+  }
+
+  // 3. Materiales e insumos facturados (Sección MATERIALES)
+  const materials = props.order.materials || []
+  for (const mat of materials) {
+    if (mat.quantity <= 0 || mat.unitPrice < 0) continue
+
+    const items = sectionsMap.get('MATERIALES') || []
+    items.push({
+      id: mat.id,
+      quantity: mat.quantity,
+      description: mat.name,
+      unitPrice: mat.unitPrice,
+      subtotal: mat.subtotal
+    })
+    sectionsMap.set('MATERIALES', items)
+  }
+
+  // Construir secciones consolidadas con subtotales
+  const result: PrintableSection[] = []
+  for (const [title, items] of sectionsMap.entries()) {
+    if (items.length > 0) {
+      const subtotal = items.reduce((sum, it) => sum + (it.subtotal || 0), 0)
+      result.push({
+        title,
+        items,
+        subtotal
+      })
+    }
+  }
+
+  // Ordenar según el orden estándar del Excel
+  result.sort((a, b) => {
+    const orderA = SECTION_ORDER_MAP[a.title] ?? 99
+    const orderB = SECTION_ORDER_MAP[b.title] ?? 99
+    return orderA - orderB
+  })
+
+  return result
 })
 
-const billedParts = computed(() => {
-  const opParts = (props.order?.operations || [])
-    .filter(op => op.category === 'Repuestos' && op.quantity > 0 && op.unitPrice >= 0)
-    .map(op => ({
-      id: op.id,
-      category: 'Repuestos',
-      name: op.operation,
-      code: undefined,
-      quantity: op.quantity,
-      unitPrice: op.unitPrice,
-      subtotal: op.subtotal,
-      measure: op.measure
-    }))
-
-  const regularParts = (props.order?.parts || []).filter(p => p.quantity > 0 && p.unitPrice >= 0)
-  return [...opParts, ...regularParts]
+const computedLaborTotal = computed(() => {
+  return groupedSections.value
+    .filter(s => s.title !== 'REPUESTOS' && s.title !== 'MATERIALES')
+    .reduce((sum, s) => sum + s.subtotal, 0)
 })
 
-const billedMaterials = computed(() => {
-  return props.order?.materials.filter(m => m.quantity > 0 && m.unitPrice >= 0) || []
+const computedPartsTotal = computed(() => {
+  return groupedSections.value
+    .filter(s => s.title === 'REPUESTOS')
+    .reduce((sum, s) => sum + s.subtotal, 0)
+})
+
+const computedMaterialsTotal = computed(() => {
+  return groupedSections.value
+    .filter(s => s.title === 'MATERIALES')
+    .reduce((sum, s) => sum + s.subtotal, 0)
+})
+
+const computedGrandTotal = computed(() => {
+  const sum = computedLaborTotal.value + computedPartsTotal.value + computedMaterialsTotal.value
+  return sum > 0 ? sum : (props.order?.total || 0)
 })
 </script>
 
@@ -271,104 +416,55 @@ const billedMaterials = computed(() => {
           </div>
         </div>
 
-        <!-- 3. TABLA DE OPERACIONES FACTURADAS (CLEAN PRINT) -->
-        <div class="flex-1 min-h-0 space-y-2">
-          <!-- Mano de Obra -->
-          <div v-if="billedOperations.length > 0">
-            <div class="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex justify-between items-center rounded-t">
-              <span>Operaciones de Rectificación (Mano de Obra)</span>
-              <span>Subtotal: ${{ order.laborTotal.toFixed(2) }}</span>
-            </div>
-            <table class="w-full text-[10.5px] border border-slate-900 border-t-0">
-              <thead class="bg-slate-100 border-b border-slate-300 font-bold uppercase text-slate-800 text-[9.5px]">
+        <!-- 3. TABLA DE OPERACIONES Y REPUESTOS FACTURADOS (FORMATO IDÉNTICO A EXCEL) -->
+        <div class="flex-1 min-h-0">
+          <div v-if="groupedSections.length > 0" class="border-2 border-slate-900 rounded overflow-hidden">
+            <table class="w-full text-[10.5px]">
+              <thead class="bg-slate-100 border-b-2 border-slate-900 font-bold uppercase text-slate-900 text-[9.5px]">
                 <tr>
-                  <th class="py-0.5 px-2 text-center w-12 border-r border-slate-300">CANT.</th>
-                  <th class="py-0.5 px-2 text-left w-24 border-r border-slate-300">COMPONENTE</th>
-                  <th class="py-0.5 px-2 text-left border-r border-slate-300">OPERACIÓN DEL TRABAJO</th>
-                  <th class="py-0.5 px-2 text-right w-20 border-r border-slate-300">PRECIO U.</th>
-                  <th class="py-0.5 px-2 text-right w-20">VALOR ($)</th>
+                  <th class="py-1 px-2 text-center w-12 border-r border-slate-400">CANT.</th>
+                  <th class="py-1 px-2 text-left border-r border-slate-400">OPERACIÓN DEL TRABAJO</th>
+                  <th class="py-1 px-2 text-right w-20 border-r border-slate-400">PRECIO U.</th>
+                  <th class="py-1 px-2 text-right w-20">VALOR ($)</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-slate-200">
-                <tr v-for="op in billedOperations" :key="op.id" class="leading-tight">
-                  <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ op.quantity }}</td>
-                  <td class="py-0.5 px-2 font-bold text-slate-800 border-r border-slate-200">{{ op.category }}</td>
-                  <td class="py-0.5 px-2 text-slate-900 border-r border-slate-200">
-                    <span class="font-medium">{{ op.operation }}</span>
-                    <span v-if="op.measureBanco || op.measureBiela" class="ml-1 text-[9.5px] font-bold text-slate-700">
-                      [<template v-if="op.measureBanco">Banco: {{ op.measureBanco }}</template><template v-if="op.measureBanco && op.measureBiela"> | </template><template v-if="op.measureBiela">Biela: {{ op.measureBiela }}</template>]
-                    </span>
-                    <span v-else-if="op.measure" class="ml-1 text-[9.5px] font-bold text-slate-700">
-                      [{{ isValveTypeOperation(op.operation) ? 'Tipo: ' : 'Medida: ' }}{{ op.measure }}]
-                    </span>
-                  </td>
-                  <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ op.unitPrice.toFixed(2) }}</td>
-                  <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ op.subtotal.toFixed(2) }}</td>
-                </tr>
+              <tbody>
+                <template v-for="section in groupedSections" :key="section.title">
+                  <!-- Encabezado de Sección idéntico al Excel: BIELAS, BANCADA, CIGÜEÑAL, CULATA, BLOCKS, REPUESTOS, MATERIALES -->
+                  <tr class="bg-slate-900 text-white font-black text-[10px] uppercase tracking-wider no-break">
+                    <td colspan="4" class="py-0.5 px-2.5">
+                      <div class="flex justify-between items-center">
+                        <span class="tracking-widest">{{ section.title }}</span>
+                        <span class="text-[9px] font-normal text-slate-300">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <!-- Filas de la sección (sin columna redundante de categoría/componente) -->
+                  <tr
+                    v-for="item in section.items"
+                    :key="item.id"
+                    class="leading-tight bg-white border-b border-slate-200"
+                  >
+                    <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ item.quantity }}</td>
+                    <td class="py-0.5 px-2 text-slate-900 border-r border-slate-200">
+                      <span class="font-medium">{{ item.description }}</span>
+                      <span v-if="item.detail" class="ml-1 text-[9.5px] font-bold text-slate-700">[{{ item.detail }}]</span>
+                    </td>
+                    <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ item.unitPrice.toFixed(2) }}</td>
+                    <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ item.subtotal.toFixed(2) }}</td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
 
-          <!-- Repuestos Facturados -->
-          <div v-if="billedParts.length > 0">
-            <div class="bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex justify-between items-center rounded-t">
-              <span>Repuestos y Componentes Facturados</span>
-              <span>Subtotal: ${{ order.partsTotal.toFixed(2) }}</span>
-            </div>
-            <table class="w-full text-[10.5px] border border-slate-800 border-t-0">
-              <thead class="bg-slate-100 border-b border-slate-300 font-bold uppercase text-slate-800 text-[9.5px]">
-                <tr>
-                  <th class="py-0.5 px-2 text-center w-12 border-r border-slate-300">CANT.</th>
-                  <th class="py-0.5 px-2 text-left w-24 border-r border-slate-300">CATEGORÍA</th>
-                  <th class="py-0.5 px-2 text-left border-r border-slate-300">DESCRIPCIÓN</th>
-                  <th class="py-0.5 px-2 text-right w-20 border-r border-slate-300">PRECIO U.</th>
-                  <th class="py-0.5 px-2 text-right w-20">VALOR ($)</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-200">
-                <tr v-for="part in billedParts" :key="part.id" class="leading-tight">
-                  <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ part.quantity }}</td>
-                  <td class="py-0.5 px-2 font-bold text-slate-700 border-r border-slate-200">{{ part.category }}</td>
-                  <td class="py-0.5 px-2 text-slate-900 border-r border-slate-200">
-                    <span class="font-medium">{{ part.name }}</span>
-                    <span v-if="part.code" class="text-slate-500 text-[9.5px] ml-1">({{ part.code }})</span>
-                    <span v-if="part.measure" class="text-[9.5px] font-bold text-slate-700 ml-1">[{{ part.measure }}]</span>
-                  </td>
-                  <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ part.unitPrice.toFixed(2) }}</td>
-                  <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ part.subtotal.toFixed(2) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Materiales e Insumos -->
-          <div v-if="billedMaterials.length > 0">
-            <div class="bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex justify-between items-center rounded-t">
-              <span>Materiales e Insumos de Taller</span>
-              <span>Subtotal: ${{ order.materialsTotal.toFixed(2) }}</span>
-            </div>
-            <table class="w-full text-[10.5px] border border-slate-800 border-t-0">
-              <thead class="bg-slate-100 border-b border-slate-300 font-bold uppercase text-slate-800 text-[9.5px]">
-                <tr>
-                  <th class="py-0.5 px-2 text-center w-12 border-r border-slate-300">CANT.</th>
-                  <th class="py-0.5 px-2 text-left border-r border-slate-300">DESCRIPCIÓN</th>
-                  <th class="py-0.5 px-2 text-right w-20 border-r border-slate-300">PRECIO U.</th>
-                  <th class="py-0.5 px-2 text-right w-20">VALOR ($)</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-200">
-                <tr v-for="mat in billedMaterials" :key="mat.id" class="leading-tight">
-                  <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ mat.quantity }}</td>
-                  <td class="py-0.5 px-2 text-slate-900 font-medium border-r border-slate-200">{{ mat.name }}</td>
-                  <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ mat.unitPrice.toFixed(2) }}</td>
-                  <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ mat.subtotal.toFixed(2) }}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-else class="py-8 text-center text-xs text-slate-500 italic border border-dashed border-slate-300 rounded-lg">
+            No hay operaciones ni repuestos facturados en este documento.
           </div>
         </div>
 
-        <!-- 4. PIE DE PÁGINA: MATERIALES / OBSERVACIONES + ESLOGAN + TOTAL -->
+        <!-- 4. PIE DE PÁGINA: FIRMA + ESLOGAN + RECUADRO DE TOTALES -->
         <div class="mt-2.5 pt-2 border-t-2 border-slate-900 flex justify-between items-end gap-3 no-break">
           <!-- Izquierda: Eslogan y Términos -->
           <div class="flex-1 space-y-1.5">
@@ -383,21 +479,21 @@ const billedMaterials = computed(() => {
 
           <!-- Derecha: Recuadro de Totales idéntico al Excel -->
           <div class="w-56 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
-            <div v-if="order.laborTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
+            <div v-if="computedLaborTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
               <span class="text-slate-600 font-medium">Mano de Obra:</span>
-              <span class="font-bold text-slate-900">${{ order.laborTotal.toFixed(2) }}</span>
+              <span class="font-bold text-slate-900">${{ computedLaborTotal.toFixed(2) }}</span>
             </div>
-            <div v-if="order.partsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
+            <div v-if="computedPartsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
               <span class="text-slate-600 font-medium">Repuestos:</span>
-              <span class="font-bold text-slate-900">${{ order.partsTotal.toFixed(2) }}</span>
+              <span class="font-bold text-slate-900">${{ computedPartsTotal.toFixed(2) }}</span>
             </div>
-            <div v-if="order.materialsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
+            <div v-if="computedMaterialsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
               <span class="text-slate-600 font-medium">Materiales:</span>
-              <span class="font-bold text-slate-900">${{ order.materialsTotal.toFixed(2) }}</span>
+              <span class="font-bold text-slate-900">${{ computedMaterialsTotal.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between items-center px-2.5 py-1 bg-slate-900 text-white font-black text-xs">
               <span class="uppercase tracking-wider">TOTAL $:</span>
-              <span class="text-sm text-cyan-300 font-mono font-bold">${{ order.total.toFixed(2) }}</span>
+              <span class="text-sm text-cyan-300 font-mono font-bold">${{ computedGrandTotal.toFixed(2) }}</span>
             </div>
           </div>
         </div>
