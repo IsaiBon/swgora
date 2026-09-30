@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, onUnmounted } from 'vue'
 import type { Order } from '@/services/ordersService'
 import { Printer, X, FileText } from 'lucide-vue-next'
 
@@ -11,6 +11,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+// Añadir / quitar clase al body para aislar completamente la impresión y ocultar #app
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (typeof document !== 'undefined') {
+      if (open) {
+        document.body.classList.add('printing-modal-active')
+      } else {
+        document.body.classList.remove('printing-modal-active')
+      }
+    }
+  },
+  { immediate: true }
+)
+
+onUnmounted(() => {
+  if (typeof document !== 'undefined') {
+    document.body.classList.remove('printing-modal-active')
+  }
+})
 
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 
@@ -68,9 +89,17 @@ const billedMaterials = computed(() => {
 </script>
 
 <template>
-  <div v-if="isOpen && order" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible">
-    <!-- Modal Card (En pantalla con sombra, en print ocupa exactamente 1 sola hoja) -->
-    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:rounded-none">
+  <Teleport to="body">
+    <div
+      v-if="isOpen && order"
+      id="work-order-print-container"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible"
+    >
+      <!-- Modal Card (En pantalla con sombra, en print ocupa exactamente 1 sola hoja) -->
+      <div
+        id="work-order-print-modal-card"
+        class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:rounded-none"
+      >
       
       <!-- Barra superior no imprimible -->
       <div class="px-5 py-3 bg-slate-800 text-white flex items-center justify-between print:hidden">
@@ -357,6 +386,7 @@ const billedMaterials = computed(() => {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -375,86 +405,5 @@ const billedMaterials = computed(() => {
   pointer-events: none;
   z-index: 0;
   letter-spacing: 0.18em;
-}
-
-@page {
-  size: letter portrait;
-  margin: 6mm 8mm;
-}
-
-@media print {
-  /* Reset global estricto para asegurar exactamente 1 sola página */
-  html, body {
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-    overflow: hidden !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  /* Ocultar barra superior del modal */
-  .print\:hidden {
-    display: none !important;
-  }
-
-  /* Eliminar capas fijas y scrolling */
-  .fixed.inset-0 {
-    position: static !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow: visible !important;
-    height: auto !important;
-    max-height: none !important;
-  }
-
-  .max-w-4xl {
-    max-width: 100% !important;
-    box-shadow: none !important;
-    border: none !important;
-    border-radius: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  #printable-work-order {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100% !important;
-    max-height: 268mm !important; /* Altura máxima exacta de 1 página carta */
-    box-sizing: border-box !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
-    overflow: hidden !important;
-  }
-
-  .no-break {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
-  table {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
-  tr {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
-  .watermark-text {
-    color: rgba(0, 0, 0, 0.05) !important;
-  }
 }
 </style>
