@@ -70,6 +70,9 @@ export interface Order {
   laborTotal: number
   partsTotal: number
   materialsTotal: number
+  hasIva?: boolean
+  subtotal?: number
+  iva?: number
   total: number
   itemsCount: number
   // Atributos de compatibilidad

@@ -173,6 +173,31 @@ const orderMaterials = computed(() => {
 const computedLaborTotal = computed(() => {
   return groupedSections.value.reduce((sum, s) => sum + s.subtotal, 0)
 })
+
+const hasIva = computed(() => {
+  return Boolean(props.order?.hasIva)
+})
+
+const orderSubtotal = computed(() => {
+  if (props.order?.subtotal !== undefined && props.order.subtotal > 0) {
+    return props.order.subtotal
+  }
+  return computedLaborTotal.value
+})
+
+const orderIva = computed(() => {
+  if (props.order?.iva !== undefined && props.order.iva > 0) {
+    return props.order.iva
+  }
+  return Number((orderSubtotal.value * 0.13).toFixed(2))
+})
+
+const orderGrandTotal = computed(() => {
+  if (hasIva.value) {
+    return Number((orderSubtotal.value + orderIva.value).toFixed(2))
+  }
+  return props.order?.total || computedLaborTotal.value
+})
 </script>
 
 <template>
@@ -425,10 +450,24 @@ const computedLaborTotal = computed(() => {
           </div>
 
           <!-- Derecha: Recuadro de Totales idéntico al Excel -->
-          <div class="w-52 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
+          <div v-if="hasIva" class="w-60 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
+            <div class="flex justify-between items-center px-3 py-1 border-b border-slate-200">
+              <span class="font-bold text-slate-800 uppercase tracking-wider text-[10px]">TOTAL $:</span>
+              <span class="font-bold text-slate-900 font-mono">${{ orderSubtotal.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between items-center px-3 py-1 border-b border-slate-200">
+              <span class="font-bold text-slate-800 uppercase tracking-wider text-[10px]">IVA $:</span>
+              <span class="font-bold text-slate-900 font-mono">${{ orderIva.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between items-center px-3 py-1.5 bg-slate-900 text-white font-black text-xs">
+              <span class="uppercase tracking-wider text-[10.5px]">TOTAL DEL TRABAJO $:</span>
+              <span class="text-sm font-mono font-bold text-cyan-300 print:text-white">${{ orderGrandTotal.toFixed(2) }}</span>
+            </div>
+          </div>
+          <div v-else class="w-52 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
             <div class="flex justify-between items-center px-3 py-1.5 bg-slate-900 text-white font-black text-xs">
               <span class="uppercase tracking-wider">TOTAL $:</span>
-              <span class="text-base text-cyan-300 font-mono font-bold">${{ (computedLaborTotal || order.total).toFixed(2) }}</span>
+              <span class="text-base text-cyan-300 print:text-white font-mono font-bold">${{ orderGrandTotal.toFixed(2) }}</span>
             </div>
           </div>
         </div>

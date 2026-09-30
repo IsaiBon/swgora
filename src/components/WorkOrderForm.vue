@@ -220,6 +220,9 @@ const customPartQuantity = ref(1)
 // Insumos rápidos (solo nombre, sin precio)
 const customMaterialName = ref('')
 
+// Impuesto IVA (13%)
+const applyIva = ref(false)
+
 // Modal de impresión
 const showPrintModal = ref(false)
 const orderForPrint = ref<Order | null>(null)
@@ -313,8 +316,16 @@ const partsTotal = computed(() => 0)
 
 const materialsTotal = computed(() => 0)
 
+const ivaAmount = computed(() => {
+  if (!applyIva.value) return 0
+  return Number((laborTotal.value * 0.13).toFixed(2))
+})
+
 const totalOrder = computed(() => {
-  return laborTotal.value
+  if (!applyIva.value) {
+    return laborTotal.value
+  }
+  return Number((laborTotal.value + ivaAmount.value).toFixed(2))
 })
 
 // Métodos de interacción en la lista unificada de operaciones
@@ -447,6 +458,7 @@ const loadExistingOrder = (order: Order) => {
   observations.value = order.observations || ''
   parts.value = order.parts ? JSON.parse(JSON.stringify(order.parts)) : []
   materials.value = order.materials ? JSON.parse(JSON.stringify(order.materials)) : []
+  applyIva.value = Boolean(order.hasIva)
 
   // Sincronizar las operaciones existentes en la lista unificada
   if (order.operations && order.operations.length > 0) {
@@ -668,6 +680,9 @@ const handleSaveOrder = async () => {
       laborTotal: laborTotal.value,
       partsTotal: partsTotal.value,
       materialsTotal: materialsTotal.value,
+      hasIva: applyIva.value,
+      subtotal: laborTotal.value,
+      iva: applyIva.value ? ivaAmount.value : 0,
       total: totalOrder.value,
       itemsCount: savedOperations.length + parts.value.length + materials.value.length,
       component: savedOperations[0]?.category || 'Culata',
@@ -1419,8 +1434,45 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </div>
           </div>
 
-          <div class="pt-4 border-t-2 border-slate-900 flex justify-between items-baseline">
-            <span class="text-base font-bold text-slate-900">Total General:</span>
+          <!-- Opción de IVA (13%) -->
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <label for="toggle-iva" class="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  id="toggle-iva"
+                  type="checkbox"
+                  v-model="applyIva"
+                  class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] focus:ring-2 cursor-pointer"
+                />
+                <span class="text-xs font-bold text-slate-800">
+                  Aplicar IVA (13%)
+                </span>
+              </label>
+              <span v-if="applyIva" class="text-xs font-extrabold text-[#04c4d9] font-mono">
+                +${{ ivaAmount.toFixed(2) }}
+              </span>
+            </div>
+            <p class="text-[10.5px] text-slate-500">
+              {{ applyIva ? 'Se calculará y mostrará el desglose de Sub-Total e IVA en la impresión.' : 'Sin IVA: no se reflejará desglose de impuesto en el documento impreso.' }}
+            </p>
+          </div>
+
+          <!-- Desglose si IVA está activo -->
+          <div v-if="applyIva" class="space-y-1.5 text-xs text-slate-700 pt-2 border-t border-slate-100">
+            <div class="flex justify-between items-center">
+              <span class="font-medium text-slate-600">Sub-Total (Mano de Obra):</span>
+              <span class="font-bold text-slate-900 font-mono">${{ laborTotal.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="font-medium text-slate-600">IVA (13%):</span>
+              <span class="font-bold text-slate-900 font-mono">${{ ivaAmount.toFixed(2) }}</span>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t-2 border-slate-900 flex justify-between items-baseline">
+            <span class="text-base font-bold text-slate-900">
+              {{ applyIva ? 'Total del Trabajo:' : 'Total General:' }}
+            </span>
             <span class="text-3xl font-black text-[#04c4d9]">
               ${{ totalOrder.toFixed(2) }}
             </span>
