@@ -94,8 +94,6 @@ const SECTION_ORDER_MAP: Record<string, number> = {
   'CULATA': 4,
   'BLOCKS': 5,
   'BLOCK': 5,
-  'REPUESTOS': 6,
-  'MATERIALES': 7,
 }
 
 const normalizeSectionTitle = (cat: string): string => {
@@ -105,95 +103,43 @@ const normalizeSectionTitle = (cat: string): string => {
   if (upper.includes('CIGÜEÑAL') || upper.includes('CIGUENAL')) return 'CIGÜEÑAL'
   if (upper.includes('CULATA')) return 'CULATA'
   if (upper.includes('BLOCK')) return 'BLOCKS'
-  if (upper.includes('REPUESTO')) return 'REPUESTOS'
-  if (upper.includes('MATERIAL')) return 'MATERIALES'
   return upper || 'OPERACIONES'
 }
 
-// Clean print: Agrupación por categoría/sección tal como en el Excel
+// Clean print: Agrupación exclusiva de operaciones mecánicas (sin sección de repuestos facturados)
 const groupedSections = computed<PrintableSection[]>(() => {
   if (!props.order) return []
 
   const sectionsMap = new Map<string, PrintableItem[]>()
 
-  // 1. Operaciones de rectificación (Mano de Obra agrupada por componente mecánico)
+  // Operaciones de rectificación (Mano de Obra agrupada por componente mecánico)
   const operations = props.order.operations || []
   for (const op of operations) {
     if (op.quantity <= 0 || op.unitPrice < 0) continue
+    if (op.category === 'Repuestos') continue // Se omite sección de repuestos facturados
 
-    // Si la operación fue categorizada como 'Repuestos', pertenece a REPUESTOS
-    if (op.category === 'Repuestos') {
-      const items = sectionsMap.get('REPUESTOS') || []
-      items.push({
-        id: op.id,
-        quantity: op.quantity,
-        description: op.operation,
-        detail: op.measure ? `Medida: ${op.measure}` : undefined,
-        unitPrice: op.unitPrice,
-        subtotal: op.subtotal
-      })
-      sectionsMap.set('REPUESTOS', items)
-    } else {
-      const title = normalizeSectionTitle(op.category)
-      const items = sectionsMap.get(title) || []
+    const title = normalizeSectionTitle(op.category)
+    const items = sectionsMap.get(title) || []
 
-      let detail: string | undefined = undefined
-      if (op.measureBanco || op.measureBiela) {
-        const parts: string[] = []
-        if (op.measureBanco) parts.push(`Banco: ${op.measureBanco}`)
-        if (op.measureBiela) parts.push(`Biela: ${op.measureBiela}`)
-        detail = parts.join(' | ')
-      } else if (op.measure) {
-        detail = `${isValveTypeOperation(op.operation) ? 'Tipo: ' : 'Medida: '}${op.measure}`
-      }
-
-      items.push({
-        id: op.id,
-        quantity: op.quantity,
-        description: op.operation,
-        detail,
-        unitPrice: op.unitPrice,
-        subtotal: op.subtotal
-      })
-      sectionsMap.set(title, items)
+    let detail: string | undefined = undefined
+    if (op.measureBanco || op.measureBiela) {
+      const parts: string[] = []
+      if (op.measureBanco) parts.push(`Banco: ${op.measureBanco}`)
+      if (op.measureBiela) parts.push(`Biela: ${op.measureBiela}`)
+      detail = parts.join(' | ')
+    } else if (op.measure) {
+      detail = `${isValveTypeOperation(op.operation) ? 'Tipo: ' : 'Medida: '}${op.measure}`
     }
-  }
-
-  // 2. Repuestos regulares facturados (Sección REPUESTOS)
-  const parts = props.order.parts || []
-  for (const part of parts) {
-    if (part.quantity <= 0 || part.unitPrice < 0) continue
-
-    const items = sectionsMap.get('REPUESTOS') || []
-    const detailParts: string[] = []
-    if (part.code) detailParts.push(part.code)
-    if (part.measure) detailParts.push(part.measure)
 
     items.push({
-      id: part.id,
-      quantity: part.quantity,
-      description: part.name,
-      detail: detailParts.length > 0 ? detailParts.join(' • ') : undefined,
-      unitPrice: part.unitPrice,
-      subtotal: part.subtotal
+      id: op.id,
+      quantity: op.quantity,
+      description: op.operation,
+      detail,
+      unitPrice: op.unitPrice,
+      subtotal: op.subtotal
     })
-    sectionsMap.set('REPUESTOS', items)
-  }
-
-  // 3. Materiales e insumos facturados (Sección MATERIALES)
-  const materials = props.order.materials || []
-  for (const mat of materials) {
-    if (mat.quantity <= 0 || mat.unitPrice < 0) continue
-
-    const items = sectionsMap.get('MATERIALES') || []
-    items.push({
-      id: mat.id,
-      quantity: mat.quantity,
-      description: mat.name,
-      unitPrice: mat.unitPrice,
-      subtotal: mat.subtotal
-    })
-    sectionsMap.set('MATERIALES', items)
+    sectionsMap.set(title, items)
   }
 
   // Construir secciones consolidadas con subtotales
@@ -219,27 +165,13 @@ const groupedSections = computed<PrintableSection[]>(() => {
   return result
 })
 
+// Materiales de taller registrados (solo nombres, sin cobro en $)
+const orderMaterials = computed(() => {
+  return (props.order?.materials || []).filter(m => m.name && m.name.trim().length > 0)
+})
+
 const computedLaborTotal = computed(() => {
-  return groupedSections.value
-    .filter(s => s.title !== 'REPUESTOS' && s.title !== 'MATERIALES')
-    .reduce((sum, s) => sum + s.subtotal, 0)
-})
-
-const computedPartsTotal = computed(() => {
-  return groupedSections.value
-    .filter(s => s.title === 'REPUESTOS')
-    .reduce((sum, s) => sum + s.subtotal, 0)
-})
-
-const computedMaterialsTotal = computed(() => {
-  return groupedSections.value
-    .filter(s => s.title === 'MATERIALES')
-    .reduce((sum, s) => sum + s.subtotal, 0)
-})
-
-const computedGrandTotal = computed(() => {
-  const sum = computedLaborTotal.value + computedPartsTotal.value + computedMaterialsTotal.value
-  return sum > 0 ? sum : (props.order?.total || 0)
+  return groupedSections.value.reduce((sum, s) => sum + s.subtotal, 0)
 })
 </script>
 
@@ -464,7 +396,22 @@ const computedGrandTotal = computed(() => {
           </div>
         </div>
 
-        <!-- 4. PIE DE PÁGINA: FIRMA + ESLOGAN + RECUADRO DE TOTALES -->
+        <!-- 4. SECCIÓN DE MATERIALES (Solo nombre del material, sin precio $) -->
+        <div v-if="orderMaterials.length > 0" class="mt-2 border border-slate-900 rounded overflow-hidden no-break bg-white">
+          <div class="bg-slate-900 text-white font-black text-[9.5px] uppercase tracking-wider px-2 py-0.5">
+            MATERIALES:
+          </div>
+          <div class="p-1.5 bg-white">
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+              <span v-for="mat in orderMaterials" :key="mat.id" class="inline-flex items-center gap-1 text-slate-800 font-semibold">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"></span>
+                {{ mat.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. PIE DE PÁGINA: FIRMA + ESLOGAN + RECUADRO DE TOTALES -->
         <div class="mt-2.5 pt-2 border-t-2 border-slate-900 flex justify-between items-end gap-3 no-break">
           <!-- Izquierda: Eslogan y Términos -->
           <div class="flex-1 space-y-1.5">
@@ -478,22 +425,10 @@ const computedGrandTotal = computed(() => {
           </div>
 
           <!-- Derecha: Recuadro de Totales idéntico al Excel -->
-          <div class="w-56 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
-            <div v-if="computedLaborTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
-              <span class="text-slate-600 font-medium">Mano de Obra:</span>
-              <span class="font-bold text-slate-900">${{ computedLaborTotal.toFixed(2) }}</span>
-            </div>
-            <div v-if="computedPartsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
-              <span class="text-slate-600 font-medium">Repuestos:</span>
-              <span class="font-bold text-slate-900">${{ computedPartsTotal.toFixed(2) }}</span>
-            </div>
-            <div v-if="computedMaterialsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
-              <span class="text-slate-600 font-medium">Materiales:</span>
-              <span class="font-bold text-slate-900">${{ computedMaterialsTotal.toFixed(2) }}</span>
-            </div>
-            <div class="flex justify-between items-center px-2.5 py-1 bg-slate-900 text-white font-black text-xs">
+          <div class="w-52 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
+            <div class="flex justify-between items-center px-3 py-1.5 bg-slate-900 text-white font-black text-xs">
               <span class="uppercase tracking-wider">TOTAL $:</span>
-              <span class="text-sm text-cyan-300 font-mono font-bold">${{ computedGrandTotal.toFixed(2) }}</span>
+              <span class="text-base text-cyan-300 font-mono font-bold">${{ (computedLaborTotal || order.total).toFixed(2) }}</span>
             </div>
           </div>
         </div>

@@ -23,7 +23,6 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle,
-  Package,
   Layers,
   UserCheck,
   Building,
@@ -218,10 +217,8 @@ const customPartName = ref('')
 const customPartPrice = ref<number | null>(null)
 const customPartQuantity = ref(1)
 
-// Insumos rápidos
+// Insumos rápidos (solo nombre, sin precio)
 const customMaterialName = ref('')
-const customMaterialPrice = ref<number | null>(null)
-const customMaterialQuantity = ref(1)
 
 // Modal de impresión
 const showPrintModal = ref(false)
@@ -288,11 +285,6 @@ const isPartWithMeasure = (partName: string) => {
   return lower.includes('casquete') || lower.includes('cojinete')
 }
 
-const isPartWithValveType = (partName: string) => {
-  const lower = partName.toLowerCase()
-  return (lower.includes('guía') || lower.includes('guia')) && (lower.includes('válvula') || lower.includes('valvula'))
-}
-
 // Operaciones activas (con datos ingresados) que se enviarán a la orden y al documento impreso
 const activeBilledOperations = computed(() => {
   return allOperations.value
@@ -310,27 +302,19 @@ const activeBilledOperations = computed(() => {
     }))
 })
 
-// Totales calculados en tiempo real
+// Totales calculados en tiempo real (Mano de obra)
 const laborTotal = computed(() => {
   return activeBilledOperations.value
     .filter(op => op.category !== 'Repuestos')
     .reduce((acc, curr) => acc + curr.subtotal, 0)
 })
 
-const partsTotal = computed(() => {
-  const fromRepuestosOperations = activeBilledOperations.value
-    .filter(op => op.category === 'Repuestos')
-    .reduce((acc, curr) => acc + curr.subtotal, 0)
-  const fromPartsList = parts.value.reduce((acc, curr) => acc + (Number(curr.subtotal) || 0), 0)
-  return fromRepuestosOperations + fromPartsList
-})
+const partsTotal = computed(() => 0)
 
-const materialsTotal = computed(() => {
-  return materials.value.reduce((acc, curr) => acc + (Number(curr.subtotal) || 0), 0)
-})
+const materialsTotal = computed(() => 0)
 
 const totalOrder = computed(() => {
-  return laborTotal.value + partsTotal.value + materialsTotal.value
+  return laborTotal.value
 })
 
 // Métodos de interacción en la lista unificada de operaciones
@@ -571,40 +555,20 @@ const addCustomPart = () => {
   showCatalogModal.value = false
 }
 
-const updatePartSubtotal = (part: OrderPartItem) => {
-  if (part.quantity < 1) part.quantity = 1
-  if (part.unitPrice < 0) part.unitPrice = 0
-  part.subtotal = Number((part.quantity * part.unitPrice).toFixed(2))
-}
-
-const removePart = (id: string) => {
-  parts.value = parts.value.filter(p => p.id !== id)
-}
-
-// Materiales
+// Materiales (solo nombre, sin precio)
 const addMaterial = () => {
   if (!customMaterialName.value.trim()) return
-  const price = customMaterialPrice.value && customMaterialPrice.value >= 0 ? customMaterialPrice.value : 0
-  const qty = customMaterialQuantity.value > 0 ? customMaterialQuantity.value : 1
 
   materials.value.push({
     id: `mat-${Date.now()}`,
     category: 'Materiales',
     name: customMaterialName.value.trim(),
-    quantity: qty,
-    unitPrice: price,
-    subtotal: Number((qty * price).toFixed(2))
+    quantity: 1,
+    unitPrice: 0,
+    subtotal: 0
   })
 
   customMaterialName.value = ''
-  customMaterialPrice.value = null
-  customMaterialQuantity.value = 1
-}
-
-const updateMaterialSubtotal = (mat: OrderMaterialItem) => {
-  if (mat.quantity < 1) mat.quantity = 1
-  if (mat.unitPrice < 0) mat.unitPrice = 0
-  mat.subtotal = Number((mat.quantity * mat.unitPrice).toFixed(2))
 }
 
 const removeMaterial = (id: string) => {
@@ -1381,169 +1345,59 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <!-- Columna Derecha (5 o 4 de 12 - idéntica a Diego/html/index.html) -->
       <div class="lg:col-span-5 xl:col-span-4 space-y-6">
 
-        <!-- 1. Card Repuestos Facturados -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
-          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-            <h2 class="text-sm font-bold text-[#131523] flex items-center gap-1.5">
-              <Package class="w-4 h-4 text-[#04c4d9]" />
-              Repuestos Facturados
-            </h2>
-            <button
-              type="button"
-              @click="showCatalogModal = true"
-              class="px-2.5 py-1 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-md shadow-xs flex items-center gap-1 transition"
-            >
-              <Plus class="w-3.5 h-3.5" /> Agregar
-            </button>
-          </div>
-
-          <div class="overflow-x-auto max-h-56">
-            <table class="w-full text-xs">
-              <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <tr>
-                  <th class="px-3 py-2 text-left">Repuesto</th>
-                  <th class="px-2 py-2 text-center w-12">Cant.</th>
-                  <th class="px-3 py-2 text-right w-16">P.U.</th>
-                  <th class="px-3 py-2 text-right w-16">Sub T.</th>
-                  <th class="px-1 py-2 w-8"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="p in parts" :key="p.id">
-                  <td class="px-3 py-2">
-                    <div class="font-bold text-slate-800 leading-tight">{{ p.name }}</div>
-                    <div class="flex items-center gap-2 mt-0.5">
-                      <span class="text-[10px] text-slate-400">{{ p.code || p.category }}</span>
-                      <!-- Selector de Tipo para Guías de Válvula -->
-                      <div v-if="isPartWithValveType(p.name)" class="inline-flex items-center gap-1">
-                        <span class="text-[9px] font-bold text-slate-500 uppercase">Tipo:</span>
-                        <select
-                          v-model="p.measure"
-                          class="bg-white border border-slate-300 text-[10px] font-semibold text-slate-800 rounded px-1 py-0.2 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
-                        >
-                          <option value="">-</option>
-                          <option v-for="t in VALVE_TYPE_OPTIONS" :key="t" :value="t">{{ t }}</option>
-                        </select>
-                      </div>
-                      <!-- Selector de Medida para Casquetes / Cojinetes -->
-                      <div v-else-if="isPartWithMeasure(p.name)" class="inline-flex items-center gap-1">
-                        <span class="text-[9px] font-bold text-slate-500 uppercase">Med:</span>
-                        <select
-                          v-model="p.measure"
-                          class="bg-white border border-slate-300 text-[10px] font-semibold text-slate-800 rounded px-1 py-0.2 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
-                        >
-                          <option value="">-</option>
-                          <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
-                        </select>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-2 py-2 text-center">
-                    <input
-                      v-model.number="p.quantity"
-                      @input="updatePartSubtotal(p)"
-                      type="number"
-                      min="1"
-                      class="w-10 text-center border border-slate-200 rounded py-0.5 text-xs font-bold"
-                    />
-                  </td>
-                  <td class="px-3 py-2 text-right font-medium text-slate-600">
-                    ${{ p.unitPrice.toFixed(2) }}
-                  </td>
-                  <td class="px-3 py-2 text-right font-bold text-slate-900">
-                    ${{ p.subtotal.toFixed(2) }}
-                  </td>
-                  <td class="px-1 py-2 text-center">
-                    <button
-                      type="button"
-                      @click="removePart(p.id)"
-                      class="text-slate-300 hover:text-rose-600 transition"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="parts.length === 0">
-                  <td colspan="5" class="px-3 py-6 text-center text-slate-400 text-xs">
-                    Sin repuestos asociados
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 3. Card Materiales / Insumos de Taller -->
+        <!-- Card Materiales / Insumos de Taller (Solo nombre del material, sin precio $) -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
           <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
             <h2 class="text-sm font-bold text-[#131523] flex items-center gap-1.5">
               <Layers class="w-4 h-4 text-[#04c4d9]" />
               Materiales e Insumos
             </h2>
+            <span class="text-xs text-slate-400 font-semibold">{{ materials.length }} registrado(s)</span>
           </div>
 
-          <!-- Input rápido para agregar material -->
+          <!-- Input rápido para agregar material (solo nombre) -->
           <div class="p-3 bg-slate-50 border-b border-slate-200 flex gap-2 items-center">
             <input
               v-model="customMaterialName"
               type="text"
-              placeholder="Ej. Desengrasante, sellador..."
-              class="flex-1 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
-              @keyup.enter="addMaterial"
-            />
-            <input
-              v-model.number="customMaterialPrice"
-              type="number"
-              step="0.5"
-              placeholder="$"
-              class="w-16 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+              placeholder="Nombre del material (ej. Desengrasante, sellador, lija...)"
+              class="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
               @keyup.enter="addMaterial"
             />
             <button
               type="button"
               @click="addMaterial"
-              class="px-2.5 py-1 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded shadow-xs"
+              class="px-3 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 transition cursor-pointer"
             >
-              <Plus class="w-3.5 h-3.5" />
+              <Plus class="w-3.5 h-3.5" /> Agregar
             </button>
           </div>
 
-          <div class="overflow-x-auto max-h-48">
-            <table class="w-full text-xs">
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="m in materials" :key="m.id">
-                  <td class="px-3 py-2 font-medium text-slate-800">{{ m.name }}</td>
-                  <td class="px-2 py-2 text-center w-12 font-bold">
-                    <input
-                      v-model.number="m.quantity"
-                      @input="updateMaterialSubtotal(m)"
-                      type="number"
-                      min="1"
-                      class="w-10 text-center border border-slate-200 rounded py-0.5 text-xs font-bold"
-                    />
-                  </td>
-                  <td class="px-3 py-2 text-right w-16 font-bold text-slate-900">${{ m.subtotal.toFixed(2) }}</td>
-                  <td class="px-1 py-2 text-center w-8">
-                    <button
-                      type="button"
-                      @click="removeMaterial(m.id)"
-                      class="text-slate-300 hover:text-rose-600 transition"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="materials.length === 0">
-                  <td colspan="4" class="px-3 py-4 text-center text-slate-400 text-xs">
-                    Sin materiales registrados
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="overflow-x-auto max-h-48 p-3">
+            <div v-if="materials.length > 0" class="flex flex-wrap gap-2">
+              <div
+                v-for="m in materials"
+                :key="m.id"
+                class="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 text-xs px-2.5 py-1 rounded-lg font-medium transition"
+              >
+                <span>{{ m.name }}</span>
+                <button
+                  type="button"
+                  @click="removeMaterial(m.id)"
+                  class="text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                  title="Eliminar material"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <div v-else class="py-4 text-center text-slate-400 text-xs italic">
+              Sin materiales registrados
+            </div>
           </div>
         </div>
 
-        <!-- 4. Card Resumen de la Orden (Idéntica a Diego/html/index.html) -->
+        <!-- Card Resumen de la Orden -->
         <div class="bg-white rounded-xl shadow-md border border-slate-200/80 p-6 space-y-4">
           <div class="flex items-center justify-between border-b pb-3 border-slate-100">
             <h2 class="text-base font-bold text-[#131523]">
@@ -1554,18 +1408,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </span>
           </div>
 
-          <div class="space-y-2.5 text-xs text-slate-700">
+          <div class="space-y-2 text-xs text-slate-700">
             <div class="flex justify-between items-center">
-              <span>Sub T. Servicios (Mano de Obra):</span>
+              <span>Mano de Obra (Rectificación):</span>
               <span class="font-bold text-slate-900">${{ laborTotal.toFixed(2) }}</span>
             </div>
-            <div class="flex justify-between items-center">
-              <span>Materiales e Insumos:</span>
-              <span class="font-bold text-slate-900">${{ materialsTotal.toFixed(2) }}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span>Repuestos Facturados:</span>
-              <span class="font-bold text-slate-900">${{ partsTotal.toFixed(2) }}</span>
+            <div v-if="materials.length > 0" class="flex justify-between items-center text-slate-500">
+              <span>Materiales Registrados:</span>
+              <span class="font-semibold text-slate-700">{{ materials.length }} ítem(s) (sin cobro)</span>
             </div>
           </div>
 
