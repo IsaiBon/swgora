@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { 
   ordersService, 
   type Order, 
@@ -46,10 +46,19 @@ const isEditing = computed(() => !!props.initialOrderId)
 const isSubmitting = ref(false)
 const notificationMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
+// Errores de validación reactivos para feedback visual destacado
+const formErrors = ref({
+  clientName: false,
+  vehicleBrand: false,
+  vehicleEngine: false,
+  noItems: false
+})
+const validationErrorMessage = ref<string | null>(null)
+
 // Campos Cabecera
 const orderNumber = ref('')
 const orderDate = ref(new Date().toISOString().split('T')[0])
-const orderStatus = ref<OrderStatus>('En Proceso')
+const orderStatus = ref<OrderStatus>('Pendiente')
 const docType = ref<DocumentType>('orden')
 
 // Campos Cliente
@@ -65,6 +74,7 @@ const clientWorkshop = ref('')
 
 // Campos Vehículo / Motor
 const vehicleBrand = ref('')
+const vehicleEngine = ref('')
 const vehicleModel = ref('')
 const vehicleYear = ref('')
 const engineNumber = ref('')
@@ -216,6 +226,14 @@ const customMaterialQuantity = ref(1)
 // Modal de impresión
 const showPrintModal = ref(false)
 const orderForPrint = ref<Order | null>(null)
+const lastSavedOrder = ref<Order | null>(null)
+
+const handleClosePrintModal = () => {
+  showPrintModal.value = false
+  if (lastSavedOrder.value) {
+    emit('saved', lastSavedOrder.value)
+  }
+}
 
 // Modal rápido nuevo cliente
 const showNewClientModal = ref(false)
@@ -227,19 +245,6 @@ const newClientForm = ref({
   cedula: ''
 })
 
-// Estados del timeline en orden cronológico
-const timelineSteps: Array<{ key: OrderStatus; label: string }> = [
-  { key: 'Recibido', label: 'Recibido' },
-  { key: 'Diagnóstico', label: 'Diagnóstico' },
-  { key: 'En Proceso', label: 'En Proceso' },
-  { key: 'Terminado', label: 'Terminado' },
-  { key: 'Entregado', label: 'Entregado' }
-]
-
-const currentStepIndex = computed(() => {
-  const index = timelineSteps.findIndex(s => s.key === orderStatus.value)
-  return index >= 0 ? index : 2 // default to En Proceso
-})
 
 // Operaciones filtradas para la visualización en la tabla
 const displayedOperations = computed(() => {
@@ -442,7 +447,7 @@ onMounted(async () => {
 const loadExistingOrder = (order: Order) => {
   orderNumber.value = order.orderNumber
   orderDate.value = order.date
-  orderStatus.value = order.status
+  orderStatus.value = order.status === 'En Proceso' ? 'En Proceso' : 'Pendiente'
   docType.value = order.type || 'orden'
   selectedCustomerId.value = order.customerId
   clientName.value = order.customer
@@ -450,6 +455,7 @@ const loadExistingOrder = (order: Order) => {
   clientAddress.value = order.customerAddress || ''
   clientWorkshop.value = order.workshop || ''
   vehicleBrand.value = order.vehicleBrand || ''
+  vehicleEngine.value = order.engine || order.vehicleModel || order.engineType || ''
   vehicleModel.value = order.vehicleModel || ''
   vehicleYear.value = order.vehicleYear || ''
   engineNumber.value = order.engineNumber || ''
@@ -630,11 +636,45 @@ const handleQuickCreateClient = async () => {
   }
 }
 
-// Guardar orden (Únicamente guarda las operaciones con datos)
+// Validación del formulario con alertas vistosas
+const validateForm = (): boolean => {
+  formErrors.value = {
+    clientName: !clientName.value.trim(),
+    vehicleBrand: !vehicleBrand.value.trim(),
+    vehicleEngine: !vehicleEngine.value.trim(),
+    noItems: (activeBilledOperations.value.length === 0 && parts.value.length === 0 && materials.value.length === 0)
+  }
+
+  const hasErrors = formErrors.value.clientName || 
+                    formErrors.value.vehicleBrand || 
+                    formErrors.value.vehicleEngine || 
+                    formErrors.value.noItems
+
+  if (hasErrors) {
+    if (formErrors.value.noItems) {
+      validationErrorMessage.value = 'Completa los campos obligatorios resaltados en rojo y registra al menos una operación de mano de obra o repuesto con cantidad y precio.'
+    } else {
+      validationErrorMessage.value = 'Por favor completa todos los campos requeridos marcados en rojo (Cliente, Marca y Motor).'
+    }
+
+    // Scroll suave hacia el primer campo con error
+    nextTick(() => {
+      const firstErrorEl = document.querySelector('.error-required-field')
+      if (firstErrorEl) {
+        firstErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    })
+
+    return false
+  }
+
+  validationErrorMessage.value = null
+  return true
+}
+
+// Acción unificada: Guardar Orden e inmediatamente mostrar el documento a Imprimir
 const handleSaveOrder = async () => {
-  if (!clientName.value.trim()) {
-    notificationMessage.value = { type: 'error', text: 'Por favor ingresa o selecciona un cliente para la orden.' }
-    setTimeout(() => { notificationMessage.value = null }, 3500)
+  if (!validateForm()) {
     return
   }
 
@@ -653,10 +693,10 @@ const handleSaveOrder = async () => {
       customerAddress: clientAddress.value.trim(),
       workshop: clientWorkshop.value.trim(),
       vehicleBrand: vehicleBrand.value.trim(),
-      vehicleModel: vehicleModel.value.trim(),
+      vehicleModel: vehicleEngine.value.trim(),
       vehicleYear: vehicleYear.value.trim(),
       engineNumber: engineNumber.value.trim(),
-      engineType: engineType.value.trim(),
+      engineType: vehicleEngine.value.trim(),
       observations: observations.value.trim(),
       operations: savedOperations,
       parts: parts.value.filter(p => p.quantity > 0 && p.unitPrice >= 0),
@@ -667,7 +707,9 @@ const handleSaveOrder = async () => {
       total: totalOrder.value,
       itemsCount: savedOperations.length + parts.value.length + materials.value.length,
       component: savedOperations[0]?.category || 'Culata',
-      engine: `${vehicleBrand.value} ${engineType.value}`.trim()
+      engine: vehicleEngine.value.trim() 
+        ? `${vehicleBrand.value.trim() ? vehicleBrand.value.trim() + ' ' : ''}${vehicleEngine.value.trim()}`.trim() 
+        : (vehicleBrand.value.trim() || 'General')
     }
 
     let saved: Order
@@ -678,15 +720,20 @@ const handleSaveOrder = async () => {
       saved = await ordersService.createOrder(orderPayload)
     }
 
+    lastSavedOrder.value = saved
+    orderForPrint.value = saved
+
     notificationMessage.value = { 
       type: 'success', 
-      text: `¡${docType.value === 'cotizacion' ? 'Cotización' : 'Orden'} ${saved.orderNumber} guardada con éxito (${savedOperations.length} operaciones facturadas)!` 
+      text: `¡${docType.value === 'cotizacion' ? 'Cotización' : 'Orden'} ${saved.orderNumber} guardada con éxito! Mostrando documento para impresión...` 
     }
-    emit('saved', saved)
+
+    // Unificación de acción: abrir automáticamente el modal de impresión limpia
+    showPrintModal.value = true
 
     setTimeout(() => {
       notificationMessage.value = null
-    }, 2500)
+    }, 3000)
   } catch (err) {
     console.error('Error al guardar orden:', err)
     notificationMessage.value = { type: 'error', text: 'Ocurrió un error al guardar la orden.' }
@@ -695,35 +742,7 @@ const handleSaveOrder = async () => {
   }
 }
 
-// Abrir modal de impresión limpia (Solo muestra las operaciones con datos)
-const openPrint = () => {
-  orderForPrint.value = {
-    id: props.initialOrderId || 'preview',
-    orderNumber: orderNumber.value,
-    date: orderDate.value,
-    status: orderStatus.value,
-    type: docType.value,
-    customer: clientName.value.trim(),
-    customerPhone: clientPhone.value.trim(),
-    customerAddress: clientAddress.value.trim(),
-    workshop: clientWorkshop.value.trim(),
-    vehicleBrand: vehicleBrand.value.trim(),
-    vehicleModel: vehicleModel.value.trim(),
-    vehicleYear: vehicleYear.value.trim(),
-    engineNumber: engineNumber.value.trim(),
-    engineType: engineType.value.trim(),
-    observations: observations.value.trim(),
-    operations: activeBilledOperations.value,
-    parts: parts.value.filter(p => p.quantity > 0 && p.unitPrice >= 0),
-    materials: materials.value.filter(m => m.quantity > 0 && m.unitPrice >= 0),
-    laborTotal: laborTotal.value,
-    partsTotal: partsTotal.value,
-    materialsTotal: materialsTotal.value,
-    total: totalOrder.value,
-    itemsCount: activeBilledOperations.value.length + parts.value.length + materials.value.length,
-  }
-  showPrintModal.value = true
-}
+
 
 // Helper para colores de categoría
 const getCategoryBadgeClass = (cat: RectificationBlock) => {
@@ -748,6 +767,29 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
 <template>
   <div class="space-y-6">
+    <!-- Alerta vistosa de errores de validación (Bordes rojos) -->
+    <div
+      v-if="validationErrorMessage"
+      class="p-4 rounded-xl flex items-start sm:items-center justify-between gap-3 text-sm font-semibold transition shadow-md bg-rose-50 text-rose-900 border-2 border-rose-500 animate-pulse"
+    >
+      <div class="flex items-center gap-3">
+        <div class="p-2 bg-rose-100 rounded-lg text-rose-600 shrink-0">
+          <AlertCircle class="w-5 h-5" />
+        </div>
+        <div>
+          <div class="font-bold text-rose-900 text-sm">Faltan campos obligatorios para guardar la orden</div>
+          <div class="text-xs text-rose-700 mt-0.5">{{ validationErrorMessage }}</div>
+        </div>
+      </div>
+      <button 
+        type="button" 
+        @click="validationErrorMessage = null" 
+        class="text-rose-400 hover:text-rose-700 p-1 text-sm font-bold"
+      >
+        ✕
+      </button>
+    </div>
+
     <!-- Notificaciones en vivo -->
     <div
       v-if="notificationMessage"
@@ -764,7 +806,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <button @click="notificationMessage = null" class="text-xs opacity-75 hover:opacity-100">✕</button>
     </div>
 
-    <!-- Barra de navegación y tipo de documento -->
+    <!-- Barra de cabecera y título -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <button
@@ -789,32 +831,6 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           </p>
         </div>
       </div>
-
-      <!-- Selector Tipo: Orden vs Cotización -->
-      <div class="flex items-center gap-2 bg-slate-200/80 p-1 rounded-xl">
-        <button
-          type="button"
-          @click="docType = 'orden'"
-          :class="[
-            'px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5',
-            docType === 'orden' ? 'bg-[#04c4d9] text-white shadow' : 'text-slate-700 hover:text-slate-900'
-          ]"
-        >
-          <Wrench class="w-3.5 h-3.5" />
-          Orden de Taller
-        </button>
-        <button
-          type="button"
-          @click="docType = 'cotizacion'"
-          :class="[
-            'px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5',
-            docType === 'cotizacion' ? 'bg-slate-800 text-white shadow' : 'text-slate-700 hover:text-slate-900'
-          ]"
-        >
-          <Clock class="w-3.5 h-3.5" />
-          Cotización (B/N)
-        </button>
-      </div>
     </div>
 
     <!-- Grid Principal (2 Columnas idéntico a Diego/html/index.html) -->
@@ -827,13 +843,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <div class="flex-1">
             <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">N° de Orden</span>
             <div class="flex items-center gap-2 mt-1">
-              <input
-                v-model="orderNumber"
-                type="text"
-                class="text-2xl font-black text-[#131523] bg-transparent border-b border-transparent hover:border-slate-300 focus:border-[#04c4d9] focus:outline-none w-36 transition"
-                placeholder="#00001"
-              />
-              <span class="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded font-mono">Auto</span>
+              <span class="text-2xl font-black font-mono tracking-tight text-[#131523] bg-slate-100/90 border border-slate-200 px-3 py-1 rounded-xl select-all shadow-2xs">
+                {{ orderNumber || 'Asignando...' }}
+              </span>
+              <span class="text-[10px] font-bold text-cyan-800 bg-cyan-100 border border-cyan-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Fijo (Auto)
+              </span>
             </div>
           </div>
 
@@ -858,15 +873,22 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <div class="relative inline-block w-full">
                 <select
                   v-model="orderStatus"
-                  class="w-full bg-[#f6c500]/20 border border-[#f6c500] text-amber-950 font-bold text-xs rounded-full px-3 py-1.5 appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  :class="[
+                    'w-full font-bold text-xs rounded-full px-3 py-1.5 appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2 transition',
+                    orderStatus === 'Pendiente'
+                      ? 'bg-amber-100/70 border border-amber-300 text-amber-900 focus:ring-amber-400'
+                      : 'bg-cyan-100/70 border border-[#04c4d9] text-[#038896] focus:ring-[#04c4d9]'
+                  ]"
                 >
-                  <option value="Recibido">Recibido</option>
-                  <option value="Diagnóstico">Diagnóstico</option>
+                  <option value="Pendiente">Pendiente</option>
                   <option value="En Proceso">En Proceso</option>
-                  <option value="Terminado">Terminado</option>
-                  <option value="Entregado">Entregado</option>
                 </select>
-                <ChevronDown class="w-3.5 h-3.5 text-amber-900 absolute right-2.5 top-2.5 pointer-events-none" />
+                <ChevronDown
+                  :class="[
+                    'w-3.5 h-3.5 absolute right-2.5 top-2.5 pointer-events-none transition',
+                    orderStatus === 'Pendiente' ? 'text-amber-800' : 'text-[#038896]'
+                  ]"
+                />
               </div>
             </div>
           </div>
@@ -933,13 +955,27 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <!-- Campos del cliente -->
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
             <div class="space-y-1">
-              <label class="text-[11px] font-semibold text-slate-500">Nombre Completo *</label>
+              <label class="text-[11px] font-semibold flex items-center justify-between" :class="formErrors.clientName ? 'text-rose-600 font-bold' : 'text-slate-500'">
+                <span>Nombre Completo *</span>
+                <span v-if="formErrors.clientName" class="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
+                  <AlertCircle class="w-3 h-3" /> Requerido
+                </span>
+              </label>
               <input
                 v-model="clientName"
+                @input="formErrors.clientName = false"
                 type="text"
                 placeholder="Ej. Juan Pérez"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                :class="[
+                  'w-full px-3 py-1.5 rounded-md text-xs font-medium transition',
+                  formErrors.clientName 
+                    ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600' 
+                    : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                ]"
               />
+              <p v-if="formErrors.clientName" class="text-[10px] text-rose-600 font-semibold mt-0.5">
+                El nombre del cliente o taller es obligatorio.
+              </p>
             </div>
             <div class="space-y-1">
               <label class="text-[11px] font-semibold text-slate-500">Taller / Empresa</label>
@@ -978,63 +1014,52 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             Información del Vehículo / Motor
           </h2>
 
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="space-y-1">
-              <label class="text-[11px] font-semibold text-slate-500">Marca</label>
+              <label class="text-[11px] font-semibold flex items-center justify-between" :class="formErrors.vehicleBrand ? 'text-rose-600 font-bold' : 'text-slate-500'">
+                <span>Marca *</span>
+                <span v-if="formErrors.vehicleBrand" class="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
+                  <AlertCircle class="w-3 h-3" /> Requerido
+                </span>
+              </label>
               <input
                 v-model="vehicleBrand"
+                @input="formErrors.vehicleBrand = false"
                 type="text"
-                placeholder="Ej. Toyota, Nissan"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                placeholder="Ej. Toyota, Nissan, Cummins"
+                :class="[
+                  'w-full px-3 py-1.5 rounded-md text-xs font-medium transition',
+                  formErrors.vehicleBrand
+                    ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
+                    : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                ]"
               />
+              <p v-if="formErrors.vehicleBrand" class="text-[10px] text-rose-600 font-semibold mt-0.5">
+                Ingresa la marca del vehículo o motor.
+              </p>
             </div>
             <div class="space-y-1">
-              <label class="text-[11px] font-semibold text-slate-500">Modelo</label>
+              <label class="text-[11px] font-semibold flex items-center justify-between" :class="formErrors.vehicleEngine ? 'text-rose-600 font-bold' : 'text-slate-500'">
+                <span>Motor *</span>
+                <span v-if="formErrors.vehicleEngine" class="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
+                  <AlertCircle class="w-3 h-3" /> Requerido
+                </span>
+              </label>
               <input
-                v-model="vehicleModel"
+                v-model="vehicleEngine"
+                @input="formErrors.vehicleEngine = false"
                 type="text"
-                placeholder="Ej. Hilux, Z24"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                placeholder="Ej. 3L, 22R, Z24, 1KD, ISX15"
+                :class="[
+                  'w-full px-3 py-1.5 rounded-md text-xs font-medium transition',
+                  formErrors.vehicleEngine
+                    ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
+                    : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                ]"
               />
-            </div>
-            <div class="space-y-1">
-              <label class="text-[11px] font-semibold text-slate-500">Año</label>
-              <input
-                v-model="vehicleYear"
-                type="text"
-                placeholder="Ej. 2021"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
-              />
-            </div>
-            <div class="space-y-1">
-              <label class="text-[11px] font-semibold text-slate-500">N° de Motor</label>
-              <input
-                v-model="engineNumber"
-                type="text"
-                placeholder="Ej. 1KD-94820"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
-              />
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="space-y-1 sm:col-span-1">
-              <label class="text-[11px] font-semibold text-slate-500">Tipo de Motor</label>
-              <input
-                v-model="engineType"
-                type="text"
-                placeholder="Ej. Diesel 4 Cil 3.0L"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
-              />
-            </div>
-            <div class="space-y-1 sm:col-span-2">
-              <label class="text-[11px] font-semibold text-slate-500">Observaciones Técnicas / Recepción</label>
-              <textarea
-                v-model="observations"
-                rows="2"
-                placeholder="Detalles de fallas reportadas, desgaste visible o pruebas solicitadas..."
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9] resize-none"
-              ></textarea>
+              <p v-if="formErrors.vehicleEngine" class="text-[10px] text-rose-600 font-semibold mt-0.5">
+                Ingresa el código o tipo de motor.
+              </p>
             </div>
           </div>
         </div>
@@ -1054,13 +1079,22 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 </span>
               </div>
               <p class="text-xs text-slate-500 mt-1">
-                Todas las operaciones disponibles están listadas. Ingresa cantidad y precio solo en las que se van a facturar; <strong>únicamente esas aparecerán en el documento</strong>.
+                Todas las operaciones listadas tienen <strong>ingreso de precios 100% manual</strong> (sin costos automáticos). Ingresa cantidad y precio únicamente en las que se van a facturar.
               </p>
             </div>
             <div class="text-right">
               <span class="text-xs text-slate-500">Subtotal Mano de Obra:</span>
               <span class="text-lg font-black text-[#04c4d9] ml-2">${{ laborTotal.toFixed(2) }}</span>
             </div>
+          </div>
+
+          <!-- Alerta si falta registrar operaciones facturadas -->
+          <div
+            v-if="formErrors.noItems"
+            class="error-required-field m-4 p-3.5 bg-rose-50 border-2 border-rose-500 rounded-xl text-xs font-bold text-rose-900 flex items-center gap-2.5 animate-pulse"
+          >
+            <AlertCircle class="w-5 h-5 text-rose-600 shrink-0" />
+            <span>Debes ingresar al menos una operación de rectificación o repuesto con su cantidad y precio manual para poder generar la orden.</span>
           </div>
 
           <!-- Barra de Filtros y Búsqueda Rápida en la lista -->
@@ -1108,7 +1142,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <th class="px-4 py-2.5 text-left w-24">Componente</th>
                   <th class="px-4 py-2.5 text-left">Operación de Rectificación</th>
                   <th class="px-3 py-2.5 text-center w-24">Cantidad</th>
-                  <th class="px-4 py-2.5 text-right w-28">Precio U. ($)</th>
+                  <th class="px-4 py-2.5 text-right w-28">
+                    Precio U. ($)
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">100% manual</span>
+                  </th>
                   <th class="px-4 py-2.5 text-right w-28">Sub Total</th>
                   <th class="px-2 py-2.5 text-center w-10"></th>
                 </tr>
@@ -1230,16 +1267,22 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     />
                   </td>
 
-                  <!-- Precio unitario editable flexible -->
+                  <!-- Precio unitario editable flexible (100% manual) -->
                   <td class="px-4 py-2.5 text-right">
                     <input
                       v-model.number="op.unitPrice"
-                      @input="handleRowDataChange(op)"
+                      @input="handleRowDataChange(op); formErrors.noItems = false"
                       type="number"
                       step="0.5"
                       min="0"
                       placeholder="$ 0.00"
-                      class="w-20 text-right border border-slate-300 rounded-md py-1 px-1.5 font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                      :class="[
+                        'w-24 text-right rounded-md py-1 px-2 font-bold text-xs transition focus:outline-none focus:ring-1 focus:ring-[#04c4d9]',
+                        op.selected && (!op.unitPrice || op.unitPrice <= 0)
+                          ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900 placeholder-amber-400 ring-1 ring-amber-200'
+                          : 'border border-slate-300 bg-white text-slate-900'
+                      ]"
+                      title="Ingreso 100% manual de precio (sin costos automáticos)"
                     />
                   </td>
 
@@ -1338,49 +1381,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <!-- Columna Derecha (5 o 4 de 12 - idéntica a Diego/html/index.html) -->
       <div class="lg:col-span-5 xl:col-span-4 space-y-6">
 
-        <!-- 1. Card Timeline de Estados -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 p-5 sm:p-6">
-          <h2 class="text-sm font-bold text-[#131523] mb-4">Línea de Estado de la Orden</h2>
-          
-          <div class="relative flex items-center justify-between py-2">
-            <!-- Barra de progreso fondo -->
-            <div class="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-1 bg-slate-200 z-0"></div>
-            <!-- Barra de progreso activa -->
-            <div
-              class="absolute left-4 top-1/2 -translate-y-1/2 h-1 bg-[#04c4d9] transition-all duration-300 z-0"
-              :style="{ width: `${(currentStepIndex / (timelineSteps.length - 1)) * 90}%` }"
-            ></div>
-
-            <!-- Pasos -->
-            <div
-              v-for="(step, idx) in timelineSteps"
-              :key="step.key"
-              @click="orderStatus = step.key"
-              class="relative z-10 flex flex-col items-center cursor-pointer group"
-            >
-              <div
-                :class="[
-                  'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition shadow-sm',
-                  idx <= currentStepIndex
-                    ? 'bg-[#04c4d9] text-white ring-4 ring-cyan-100'
-                    : 'bg-white text-slate-400 border-2 border-slate-300 group-hover:border-slate-400'
-                ]"
-              >
-                {{ idx + 1 }}
-              </div>
-              <span
-                :class="[
-                  'text-[10px] mt-1.5 font-semibold tracking-tight transition',
-                  orderStatus === step.key ? 'text-[#04c4d9] font-black' : 'text-slate-500'
-                ]"
-              >
-                {{ step.label }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. Card Repuestos Facturados -->
+        <!-- 1. Card Repuestos Facturados -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
           <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
             <h2 class="text-sm font-bold text-[#131523] flex items-center gap-1.5">
@@ -1575,25 +1576,48 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </span>
           </div>
 
-          <!-- Botones de Acción -->
-          <div class="pt-4 space-y-2.5">
+          <!-- Selector Tipo: Orden de Taller vs Cotización B/N (Ubicado debajo de Total General) -->
+          <div class="pt-3 border-t border-slate-200">
+            <label class="text-[11px] font-bold text-slate-600 block mb-1.5">
+              Tipo de Documento:
+            </label>
+            <div class="flex items-center gap-2 bg-slate-200/80 p-1 rounded-xl">
+              <button
+                type="button"
+                @click="docType = 'orden'"
+                :class="[
+                  'flex-1 px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5',
+                  docType === 'orden' ? 'bg-[#04c4d9] text-white shadow' : 'text-slate-700 hover:text-slate-900'
+                ]"
+              >
+                <Wrench class="w-3.5 h-3.5" />
+                Orden de Taller
+              </button>
+              <button
+                type="button"
+                @click="docType = 'cotizacion'"
+                :class="[
+                  'flex-1 px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5',
+                  docType === 'cotizacion' ? 'bg-slate-800 text-white shadow' : 'text-slate-700 hover:text-slate-900'
+                ]"
+              >
+                <Clock class="w-3.5 h-3.5" />
+                Cotización (B/N)
+              </button>
+            </div>
+          </div>
+
+          <!-- Botones de Acción (Acción Unificada: Guardar Orden e Imprimir) -->
+          <div class="pt-2 space-y-2.5">
             <button
               type="button"
               @click="handleSaveOrder"
               :disabled="isSubmitting"
-              class="w-full py-3 bg-[#04c4d9] hover:bg-[#03a9bc] text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
+              class="w-full py-3.5 bg-[#04c4d9] hover:bg-[#03a9bc] active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Save class="w-4 h-4" />
-              {{ isSubmitting ? 'Guardando...' : (isEditing ? 'Actualizar Orden' : 'Guardar Orden') }}
-            </button>
-
-            <button
-              type="button"
-              @click="openPrint"
-              class="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl shadow transition flex items-center justify-center gap-2"
-            >
               <Printer class="w-4 h-4" />
-              Vista Previa e Impresión Limpia
+              <span>{{ isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Guardar Orden') }}</span>
             </button>
 
             <button
@@ -1765,7 +1789,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
     <WorkOrderPrintModal
       :is-open="showPrintModal"
       :order="orderForPrint"
-      @close="showPrintModal = false"
+      @close="handleClosePrintModal"
     />
   </div>
 </template>

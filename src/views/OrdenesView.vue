@@ -53,7 +53,9 @@ const filteredOrders = computed(() => {
       order.orderNumber.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       order.customer.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       (order.workshop && order.workshop.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
-      (order.vehicleBrand && order.vehicleBrand.toLowerCase().includes(searchQuery.value.toLowerCase()))
+      (order.vehicleBrand && order.vehicleBrand.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
+      (order.vehicleModel && order.vehicleModel.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
+      (order.engine && order.engine.toLowerCase().includes(searchQuery.value.toLowerCase()))
 
     const matchesStatus = 
       selectedStatus.value === 'Todos' || order.status === selectedStatus.value
@@ -240,7 +242,7 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
             <Filter class="w-3.5 h-3.5" /> Estado:
           </span>
           <button
-            v-for="status in ['Todos', 'Recibido', 'Diagnóstico', 'En Proceso', 'Terminado', 'Entregado']"
+          v-for="status in ['Todos', 'En Proceso', 'Pendiente']"
             :key="status"
             type="button"
             @click="selectedStatus = status"
@@ -288,8 +290,8 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                   <div v-if="order.workshop" class="text-[10px] text-slate-400">{{ order.workshop }}</div>
                 </td>
                 <td class="px-5 py-3.5 text-slate-700">
-                  <div class="font-medium">{{ [order.vehicleBrand, order.vehicleModel].filter(Boolean).join(' ') || 'Motor de banco' }}</div>
-                  <div v-if="order.engineType" class="text-[10px] text-slate-400">{{ order.engineType }}</div>
+                  <div class="font-medium">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Motor de banco' }}</div>
+                  <div v-if="order.engineType && order.engineType !== (order.vehicleModel || order.engine)" class="text-[10px] text-slate-400">{{ order.engineType }}</div>
                 </td>
                 <td class="px-5 py-3.5 text-slate-500">
                   {{ order.date }}
