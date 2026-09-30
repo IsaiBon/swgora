@@ -318,12 +318,35 @@ export const mockRepuestos: RepuestoTecnico[] = [
     estado: 'Disponible',
     diametro_cilindro_mm: 96.000,
     espesor_anillo1_mm: 2.000,
-    espesor_anillo2_mm: 1.500,
+    espesor_anillo2_mm: 2.000,
     espesor_aceite_mm: 4.000,
-    dimensiones: { cilindros: 4, tipo_anillo1: 'Semi-Keystone' },
+    dimensiones: { cilindros: 4, tipo_anillo1: 'Semi-Keystone BF-IB' },
     equivalencias: [
       { id: 'eq-4', repuesto_id: 'rep-3l-3', marca_alterna: 'Rik', codigo_alterno: '28006', notas: 'Riken Japón 96.00mm STD' },
-      { id: 'eq-5', repuesto_id: 'rep-3l-3', marca_alterna: 'NPR', codigo_alterno: 'SDT10123ZZ', notas: 'NPR Premium Ring Set' }
+      { id: 'eq-5', repuesto_id: 'rep-3l-3', marca_alterna: 'NPR', codigo_alterno: 'SDT10124ZY', notas: 'NPR Japón OEM 2.0/2.0/4.0mm' }
+    ]
+  },
+  {
+    id: 'rep-3l-liner',
+    motor_id: 'mot-1',
+    codigo_oem: '11461-54100',
+    nombre: 'Camisa de Cilindro Semiterminada con Pestaña',
+    subsistema: 'Block',
+    categoria: 'Camisas',
+    precio: 450.00,
+    stock: 16,
+    estado: 'Disponible',
+    diametro_cilindro_mm: 96.000,
+    dimensiones: {
+      diametro_interior_a: 96.0,
+      diametro_exterior_b: 100.0,
+      longitud_c: 180.0,
+      pestana_d: 105.0,
+      altura_pestana_e: 3.5,
+      tipo: 'D02 Pestaña Acabado S'
+    },
+    equivalencias: [
+      { id: 'eq-3l-l1', repuesto_id: 'rep-3l-liner', marca_alterna: 'NPR', codigo_alterno: 'L55312-AA', notas: 'Camisa NPR Ø96 x 100 x 180mm' }
     ]
   },
   {
@@ -477,7 +500,7 @@ export const mockRepuestos: RepuestoTecnico[] = [
   {
     id: 'rep-z24-3',
     motor_id: 'mot-4',
-    codigo_oem: '12033-21W00',
+    codigo_oem: '12033-10W00',
     nombre: 'Juego de Anillos STD (89mm) Z24',
     subsistema: 'Block',
     categoria: 'Anillos',
@@ -487,11 +510,11 @@ export const mockRepuestos: RepuestoTecnico[] = [
     diametro_cilindro_mm: 89.000,
     espesor_anillo1_mm: 1.500,
     espesor_anillo2_mm: 1.500,
-    espesor_aceite_mm: 2.800,
-    dimensiones: { cilindros: 4 },
+    espesor_aceite_mm: 4.000,
+    dimensiones: { cilindros: 4, forma: 'BF-IB / T1 / NIFF-S' },
     equivalencias: [
-      { id: 'eq-19', repuesto_id: 'rep-z24-3', marca_alterna: 'Rik', codigo_alterno: '20025', notas: 'Riken Japón 89mm STD 1.5x1.5x2.8' },
-      { id: 'eq-20', repuesto_id: 'rep-z24-3', marca_alterna: 'NPR', codigo_alterno: 'SD10034ZZ', notas: 'NPR 89mm STD juego' }
+      { id: 'eq-19', repuesto_id: 'rep-z24-3', marca_alterna: 'Rik', codigo_alterno: '20025', notas: 'Riken Japón 89mm STD' },
+      { id: 'eq-20', repuesto_id: 'rep-z24-3', marca_alterna: 'NPR', codigo_alterno: 'SWN30059ZZ', notas: 'NPR Japón OEM 1.5/1.5/4.0mm' }
     ]
   },
   {
@@ -603,11 +626,11 @@ export const mockRepuestos: RepuestoTecnico[] = [
     diametro_cilindro_mm: 96.000,
     espesor_anillo1_mm: 2.000,
     espesor_anillo2_mm: 1.500,
-    espesor_aceite_mm: 2.000,
+    espesor_aceite_mm: 3.000,
     dimensiones: { cilindros: 4, nitrurado: true },
     equivalencias: [
-      { id: 'eq-28', repuesto_id: 'rep-1kd-3', marca_alterna: 'Rik', codigo_alterno: '28140', notas: '96mm STD 2.0x1.5x2.0' },
-      { id: 'eq-29', repuesto_id: 'rep-1kd-3', marca_alterna: 'NPR', codigo_alterno: 'SWT10178ZZ', notas: '96mm STD Common Rail' }
+      { id: 'eq-28', repuesto_id: 'rep-1kd-3', marca_alterna: 'Rik', codigo_alterno: '28140', notas: '96mm STD 2.0x1.5x3.0' },
+      { id: 'eq-29', repuesto_id: 'rep-1kd-3', marca_alterna: 'NPR', codigo_alterno: 'SDT10175ZY', notas: 'NPR Japón OEM 2.0/1.5/3.0mm' }
     ]
   },
   {
@@ -719,11 +742,11 @@ export const mockRepuestos: RepuestoTecnico[] = [
     diametro_cilindro_mm: 91.100,
     espesor_anillo1_mm: 2.500,
     espesor_anillo2_mm: 2.000,
-    espesor_aceite_mm: 3.000,
-    dimensiones: { cilindros: 4 },
+    espesor_aceite_mm: 4.000,
+    dimensiones: { cilindros: 4, forma: 'BF-K2 / T1-K2 / E-BC16' },
     equivalencias: [
-      { id: 'eq-37', repuesto_id: 'rep-4d56-3', marca_alterna: 'Rik', codigo_alterno: '28410', notas: '91.1mm STD 2.5x2.0x3.0' },
-      { id: 'eq-38', repuesto_id: 'rep-4d56-3', marca_alterna: 'NPR', codigo_alterno: 'SDM30016ZZ', notas: 'NPR 91.1mm STD Turbo' }
+      { id: 'eq-37', repuesto_id: 'rep-4d56-3', marca_alterna: 'Rik', codigo_alterno: '28410', notas: '91.1mm STD' },
+      { id: 'eq-38', repuesto_id: 'rep-4d56-3', marca_alterna: 'NPR', codigo_alterno: 'SDM31038ZX', notas: 'NPR Japón OEM 2.5/2.0/4.0mm' }
     ]
   },
   {
@@ -825,7 +848,7 @@ export const mockRepuestos: RepuestoTecnico[] = [
   {
     id: 'rep-4jb1-3',
     motor_id: 'mot-7',
-    codigo_oem: '8-94247861-0',
+    codigo_oem: '8-94247-867-0',
     nombre: 'Juego de Anillos STD (93mm) 4JB1',
     subsistema: 'Block',
     categoria: 'Anillos',
@@ -834,12 +857,28 @@ export const mockRepuestos: RepuestoTecnico[] = [
     estado: 'Disponible',
     diametro_cilindro_mm: 93.000,
     espesor_anillo1_mm: 2.000,
-    espesor_anillo2_mm: 1.500,
+    espesor_anillo2_mm: 2.000,
     espesor_aceite_mm: 4.000,
-    dimensiones: { cilindros: 4 },
+    dimensiones: { cilindros: 4, forma: 'BF-K1 / T1 / NIFF-S' },
     equivalencias: [
-      { id: 'eq-46', repuesto_id: 'rep-4jb1-3', marca_alterna: 'Rik', codigo_alterno: '22005', notas: '93mm STD 2.0x1.5x4.0' },
-      { id: 'eq-47', repuesto_id: 'rep-4jb1-3', marca_alterna: 'NPR', codigo_alterno: 'SDI30022ZZ', notas: 'NPR 93mm STD 4JB1' }
+      { id: 'eq-46', repuesto_id: 'rep-4jb1-3', marca_alterna: 'Rik', codigo_alterno: '22005', notas: '93mm STD' },
+      { id: 'eq-47', repuesto_id: 'rep-4jb1-3', marca_alterna: 'NPR', codigo_alterno: 'SDI10110ZX', notas: 'NPR Japón OEM 2.0/2.0/4.0mm' }
+    ]
+  },
+  {
+    id: 'rep-4jb1-liner',
+    motor_id: 'mot-7',
+    codigo_oem: '8-97176-683-0',
+    nombre: 'Camisa de Cilindro Semiterminada 4JB1',
+    subsistema: 'Block',
+    categoria: 'Camisas',
+    precio: 460.00,
+    stock: 16,
+    estado: 'Disponible',
+    diametro_cilindro_mm: 93.000,
+    dimensiones: { diametro_interior_a: 93.0, diametro_exterior_b: 95.0, longitud_c: 165.0, tipo: 'Cilíndrica seca' },
+    equivalencias: [
+      { id: 'eq-4jb1-l1', repuesto_id: 'rep-4jb1-liner', marca_alterna: 'NPR', codigo_alterno: 'L65005-DA', notas: 'Camisa NPR Ø93 x 95 x 165mm' }
     ]
   },
   {
@@ -896,6 +935,230 @@ export const mockRepuestos: RepuestoTecnico[] = [
     dimensiones: { espesor_mm: 1.50 },
     equivalencias: [
       { id: 'eq-52', repuesto_id: 'rep-4jb1-6', marca_alterna: 'Ajusa', codigo_alterno: '10091000', notas: 'Junta culata 4JB1 Isuzu' }
+    ]
+  },
+
+  // --- TOYOTA 5L / 5L-E ---
+  {
+    id: 'rep-5l-1',
+    motor_id: 'mot-3',
+    codigo_oem: '13711-54020',
+    nombre: 'Válvula de Admisión STD 5L',
+    subsistema: 'Culata',
+    categoria: 'Válvulas',
+    precio: 175.00,
+    stock: 24,
+    estado: 'Disponible',
+    diametro_cabeza_mm: 42.500,
+    diametro_vastago_mm: 8.000,
+    longitud_total_mm: 103.500,
+    angulo_asiento_grados: 45.00,
+    dimensiones: { ranuras: 1 },
+    equivalencias: [
+      { id: 'eq-5l-1', repuesto_id: 'rep-5l-1', marca_alterna: 'Dokuro', codigo_alterno: '21-2856', notas: 'Japón STD Cabeza 42.5mm' }
+    ]
+  },
+  {
+    id: 'rep-5l-2',
+    motor_id: 'mot-3',
+    codigo_oem: '13715-54020',
+    nombre: 'Válvula de Escape STD 5L',
+    subsistema: 'Culata',
+    categoria: 'Válvulas',
+    precio: 195.00,
+    stock: 24,
+    estado: 'Disponible',
+    diametro_cabeza_mm: 36.000,
+    diametro_vastago_mm: 8.000,
+    longitud_total_mm: 103.500,
+    angulo_asiento_grados: 45.00,
+    dimensiones: { ranuras: 1 },
+    equivalencias: [
+      { id: 'eq-5l-2', repuesto_id: 'rep-5l-2', marca_alterna: 'Dokuro', codigo_alterno: '22-2856', notas: 'Japón STD Stellite' }
+    ]
+  },
+  {
+    id: 'rep-5l-3',
+    motor_id: 'mot-3',
+    codigo_oem: '13011-54130',
+    nombre: 'Juego de Anillos STD (99.5mm) 5L',
+    subsistema: 'Block',
+    categoria: 'Anillos',
+    precio: 950.00,
+    stock: 12,
+    estado: 'Disponible',
+    diametro_cilindro_mm: 99.500,
+    espesor_anillo1_mm: 2.000,
+    espesor_anillo2_mm: 1.500,
+    espesor_aceite_mm: 4.000,
+    dimensiones: { cilindros: 4, forma: 'BF-IB / T1 / NIFF-S' },
+    equivalencias: [
+      { id: 'eq-5l-3a', repuesto_id: 'rep-5l-3', marca_alterna: 'Rik', codigo_alterno: '28020', notas: 'Riken Japón 99.5mm STD' },
+      { id: 'eq-5l-3b', repuesto_id: 'rep-5l-3', marca_alterna: 'NPR', codigo_alterno: 'SDT10167ZZ', notas: 'NPR Japón OEM 2.0/1.5/4.0mm' }
+    ]
+  },
+  {
+    id: 'rep-5l-4',
+    motor_id: 'mot-3',
+    codigo_oem: '11701-54030',
+    nombre: 'Juego de Cojinetes de Bancada STD 5L',
+    subsistema: 'Cigüeñal',
+    categoria: 'Casquetería',
+    precio: 690.00,
+    stock: 8,
+    estado: 'Disponible',
+    tipo_cojinete: 'MS',
+    diametro_munon_mm: 62.000,
+    diametro_alojamiento_mm: 67.000,
+    ancho_casquete_mm: 23.000,
+    equivalencias: [
+      { id: 'eq-5l-4', repuesto_id: 'rep-5l-4', marca_alterna: 'NDC', codigo_alterno: 'MS-1140A', notas: 'NDC Main Bearing STD' }
+    ]
+  },
+  {
+    id: 'rep-5l-5',
+    motor_id: 'mot-3',
+    codigo_oem: '13041-54030',
+    nombre: 'Juego de Cojinetes de Biela STD 5L',
+    subsistema: 'Bielas',
+    categoria: 'Casquetería',
+    precio: 510.00,
+    stock: 10,
+    estado: 'Disponible',
+    tipo_cojinete: 'CB',
+    diametro_munon_mm: 53.000,
+    diametro_alojamiento_mm: 56.000,
+    ancho_casquete_mm: 24.000,
+    equivalencias: [
+      { id: 'eq-5l-5', repuesto_id: 'rep-5l-5', marca_alterna: 'NDC', codigo_alterno: 'CB-1140A', notas: 'NDC Con-rod Bearing STD' }
+    ]
+  },
+  {
+    id: 'rep-5l-6',
+    motor_id: 'mot-3',
+    codigo_oem: '11115-54130',
+    nombre: 'Empaque de Culata Grafito 5L',
+    subsistema: 'Culata',
+    categoria: 'Empaques',
+    precio: 780.00,
+    stock: 7,
+    estado: 'Disponible',
+    diametro_cilindro_mm: 100.500,
+    dimensiones: { espesor_mm: 1.45 },
+    equivalencias: [
+      { id: 'eq-5l-6', repuesto_id: 'rep-5l-6', marca_alterna: 'Ajusa', codigo_alterno: '10111400', notas: 'Junta culata 5L grafito' }
+    ]
+  },
+
+  // --- NISSAN YD25DDTi ---
+  {
+    id: 'rep-yd25-1',
+    motor_id: 'mot-5',
+    codigo_oem: '13201-EB300',
+    nombre: 'Válvula de Admisión YD25 Common Rail (STD)',
+    subsistema: 'Culata',
+    categoria: 'Válvulas',
+    precio: 185.00,
+    stock: 32,
+    estado: 'Disponible',
+    diametro_cabeza_mm: 28.000,
+    diametro_vastago_mm: 6.000,
+    longitud_total_mm: 98.600,
+    angulo_asiento_grados: 45.00,
+    dimensiones: { ranuras: 1 },
+    equivalencias: [
+      { id: 'eq-yd25-1', repuesto_id: 'rep-yd25-1', marca_alterna: 'Dokuro', codigo_alterno: '21-4112', notas: 'Admisión YD25 16V' }
+    ]
+  },
+  {
+    id: 'rep-yd25-2',
+    motor_id: 'mot-5',
+    codigo_oem: '13202-EB300',
+    nombre: 'Válvula de Escape YD25 Common Rail (STD)',
+    subsistema: 'Culata',
+    categoria: 'Válvulas',
+    precio: 205.00,
+    stock: 32,
+    estado: 'Disponible',
+    diametro_cabeza_mm: 26.000,
+    diametro_vastago_mm: 6.000,
+    longitud_total_mm: 98.600,
+    angulo_asiento_grados: 45.00,
+    dimensiones: { ranuras: 1 },
+    equivalencias: [
+      { id: 'eq-yd25-2', repuesto_id: 'rep-yd25-2', marca_alterna: 'Dokuro', codigo_alterno: '22-4112', notas: 'Escape YD25 16V Stellite' }
+    ]
+  },
+  {
+    id: 'rep-yd25-3',
+    motor_id: 'mot-5',
+    codigo_oem: '12033-VK520',
+    nombre: 'Juego de Anillos STD (89mm) YD25DDTi',
+    subsistema: 'Block',
+    categoria: 'Anillos',
+    precio: 1180.00,
+    stock: 10,
+    estado: 'Disponible',
+    diametro_cilindro_mm: 89.000,
+    espesor_anillo1_mm: 2.000,
+    espesor_anillo2_mm: 2.000,
+    espesor_aceite_mm: 3.000,
+    dimensiones: { cilindros: 4, nitrurado: true },
+    equivalencias: [
+      { id: 'eq-yd25-3', repuesto_id: 'rep-yd25-3', marca_alterna: 'NPR', codigo_alterno: 'SDN30182ZZ', notas: 'NPR Japón OEM 2.0/2.0/3.0mm' },
+      { id: 'eq-yd25-3b', repuesto_id: 'rep-yd25-3', marca_alterna: 'Rik', codigo_alterno: '20185', notas: 'Riken Japón 89mm STD' }
+    ]
+  },
+  {
+    id: 'rep-yd25-4',
+    motor_id: 'mot-5',
+    codigo_oem: '12207-AD200',
+    nombre: 'Juego Cojinetes de Bancada STD YD25',
+    subsistema: 'Cigüeñal',
+    categoria: 'Casquetería',
+    precio: 720.00,
+    stock: 8,
+    estado: 'Disponible',
+    tipo_cojinete: 'MS',
+    diametro_munon_mm: 63.000,
+    diametro_alojamiento_mm: 67.000,
+    ancho_casquete_mm: 22.000,
+    equivalencias: [
+      { id: 'eq-yd25-4', repuesto_id: 'rep-yd25-4', marca_alterna: 'NDC', codigo_alterno: 'MS-1125A', notas: 'NDC Bancada MS YD25' }
+    ]
+  },
+  {
+    id: 'rep-yd25-5',
+    motor_id: 'mot-5',
+    codigo_oem: '12111-AD200',
+    nombre: 'Juego Cojinetes de Biela STD YD25',
+    subsistema: 'Bielas',
+    categoria: 'Casquetería',
+    precio: 540.00,
+    stock: 10,
+    estado: 'Disponible',
+    tipo_cojinete: 'CB',
+    diametro_munon_mm: 50.000,
+    diametro_alojamiento_mm: 53.000,
+    ancho_casquete_mm: 19.500,
+    equivalencias: [
+      { id: 'eq-yd25-5', repuesto_id: 'rep-yd25-5', marca_alterna: 'NDC', codigo_alterno: 'CB-1125A', notas: 'NDC Biela CB YD25' }
+    ]
+  },
+  {
+    id: 'rep-yd25-6',
+    motor_id: 'mot-5',
+    codigo_oem: '11044-VK505',
+    nombre: 'Empaque de Culata Multilámina MLS YD25',
+    subsistema: 'Culata',
+    categoria: 'Empaques',
+    precio: 1220.00,
+    stock: 6,
+    estado: 'Disponible',
+    diametro_cilindro_mm: 90.000,
+    dimensiones: { tipo: 'MLS Multilámina acero', espesor_mm: 1.15 },
+    equivalencias: [
+      { id: 'eq-yd25-6', repuesto_id: 'rep-yd25-6', marca_alterna: 'Ajusa', codigo_alterno: '10160800', notas: 'Junta culata MLS YD25DDTi' }
     ]
   }
 ]
