@@ -205,7 +205,7 @@ El sistema SWGORA implementa control de acceso basado en roles tanto en el enrut
 ## 7. Convenciones y Reglas de Desarrollo
 
 1. **Gestión de Git / GitHub**:
-   - **Regla mandatoria**: **NO hacer push a GitHub bajo ninguna circunstancia (`git push` prohibido)** por instrucción explícita del usuario. Cualquier commit o cambio debe mantenerse únicamente a nivel local en el entorno de desarrollo.
+   - **Regla mandatoria**: **NO hacer push a GitHub de forma automática**. Únicamente realizar `git push` cuando el usuario lo solicite explícitamente en su mensaje (ej. *"sube mis cambios al repositorio"*, *"haz push"*). En cualquier otro caso, los commits deben mantenerse a nivel local.
 2. **Sistema Operativo y Terminal**:
    - En entornos Windows PowerShell, usar `npm.cmd` en lugar de `npm` si aplican políticas de ejecución de scripts de PowerShell.
    - Usar `;` como separador de comandos en PowerShell en lugar de `&&`.

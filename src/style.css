@@ -69,12 +69,25 @@ html, body, #app {
   #work-order-print-modal-card {
     max-width: 100% !important;
     width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  #printable-work-order-scroll {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    display: block !important;
   }
 
   #printable-work-order {

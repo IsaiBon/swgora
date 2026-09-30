@@ -12,15 +12,24 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-// Añadir / quitar clase al body para aislar completamente la impresión y ocultar #app
+// Cerrar al presionar la tecla Escape
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && props.isOpen) {
+    emit('close')
+  }
+}
+
+// Añadir / quitar clase al body para aislar completamente la impresión y registrar tecla Escape
 watch(
   () => props.isOpen,
   (open) => {
     if (typeof document !== 'undefined') {
       if (open) {
         document.body.classList.add('printing-modal-active')
+        window.addEventListener('keydown', handleKeydown)
       } else {
         document.body.classList.remove('printing-modal-active')
+        window.removeEventListener('keydown', handleKeydown)
       }
     }
   },
@@ -30,6 +39,7 @@ watch(
 onUnmounted(() => {
   if (typeof document !== 'undefined') {
     document.body.classList.remove('printing-modal-active')
+    window.removeEventListener('keydown', handleKeydown)
   }
 })
 
@@ -93,50 +103,59 @@ const billedMaterials = computed(() => {
     <div
       v-if="isOpen && order"
       id="work-order-print-container"
-      class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible"
+      @click.self="emit('close')"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 print:p-0 print:bg-white print:static print:overflow-visible"
+      role="dialog"
+      aria-modal="true"
     >
-      <!-- Modal Card (En pantalla con sombra, en print ocupa exactamente 1 sola hoja) -->
+      <!-- Modal Card con scroll interno y barra superior fija -->
       <div
         id="work-order-print-modal-card"
-        class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full print:rounded-none"
+        class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-300 print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none my-auto"
       >
-      
-      <!-- Barra superior no imprimible -->
-      <div class="px-5 py-3 bg-slate-800 text-white flex items-center justify-between print:hidden">
-        <div class="flex items-center gap-2">
-          <FileText class="w-4 h-4 text-cyan-400" />
-          <span class="font-semibold text-xs sm:text-sm">
-            Vista Previa de Impresión - {{ isCotizacion ? 'Cotización' : 'Orden de Trabajo' }} {{ order.orderNumber }}
-          </span>
+        <!-- 1. Barra superior fija (Sticky / Siempre visible) -->
+        <div class="px-5 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0 z-20 shadow-sm print:hidden">
+          <div class="flex items-center gap-2">
+            <FileText class="w-4 h-4 text-cyan-400" />
+            <span class="font-bold text-xs sm:text-sm tracking-tight">
+              Vista Previa de Impresión - {{ isCotizacion ? 'Cotización' : 'Orden de Trabajo' }} {{ order.orderNumber }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              @click="handlePrint"
+              class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] active:scale-95 text-white text-xs font-bold rounded-lg shadow transition"
+              title="Imprimir o exportar en PDF"
+            >
+              <Printer class="w-3.5 h-3.5" />
+              Imprimir / PDF
+            </button>
+            <button
+              type="button"
+              @click="emit('close')"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 transition"
+              title="Cerrar vista previa (Esc)"
+            >
+              <X class="w-4 h-4" />
+              <span class="hidden sm:inline">Cerrar (Esc)</span>
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-2.5">
-          <button
-            type="button"
-            @click="handlePrint"
-            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg shadow transition"
-          >
-            <Printer class="w-3.5 h-3.5" />
-            Imprimir / Exportar PDF (1 Página)
-          </button>
-          <button
-            type="button"
-            @click="emit('close')"
-            class="text-slate-400 hover:text-white p-1 rounded-lg transition"
-            title="Cerrar vista previa"
-          >
-            <X class="w-5 h-5" />
-          </button>
-        </div>
-      </div>
 
-      <!-- Hoja de Impresión limpia (Diseño idéntico a Recursos Extras/ORDEN DE TRABAJO.xlsx) -->
-      <div
-        id="printable-work-order"
-        :class="[
-          'p-5 sm:p-6 text-slate-800 relative bg-white',
-          isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
-        ]"
-      >
+        <!-- 2. Contenedor scrollable interno para adaptar el documento -->
+        <div
+          id="printable-work-order-scroll"
+          class="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/70 print:p-0 print:bg-white print:overflow-visible"
+        >
+          <!-- Hoja física de la orden limpia -->
+          <div
+            id="printable-work-order"
+            :class="[
+              'p-5 sm:p-6 text-slate-800 relative bg-white mx-auto shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
+              isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
+            ]"
+          >
         <!-- Marca de agua para cotizaciones -->
         <div v-if="isCotizacion" class="watermark-text select-none">
           COTIZACIÓN
@@ -382,10 +401,32 @@ const billedMaterials = computed(() => {
             </div>
           </div>
         </div>
+        </div>
 
       </div>
+      <!-- Fin #printable-work-order-scroll -->
+
+      <!-- 3. Barra de pie informativa y salida rápida (oculta en impresión) -->
+      <div class="px-5 py-2.5 bg-slate-100 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center shrink-0 print:hidden">
+        <span class="flex items-center gap-1.5">
+          <span>Haz clic fuera del recuadro o presiona</span>
+          <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-slate-700 font-mono text-[10px] shadow-xs">Esc</kbd>
+          <span>para salir</span>
+        </span>
+        <button
+          type="button"
+          @click="emit('close')"
+          class="font-bold text-slate-700 hover:text-slate-900 transition text-xs"
+        >
+          Cerrar vista
+        </button>
+      </div>
+
     </div>
+    <!-- Fin #work-order-print-modal-card -->
+
   </div>
+  <!-- Fin #work-order-print-container -->
   </Teleport>
 </template>
 
