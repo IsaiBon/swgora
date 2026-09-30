@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { type Cliente, type ClientType, type ClientStatus } from '@/services/clientesService'
+import { ref, computed, watch } from 'vue'
+import { clientesService, type Cliente, type ClientType, type ClientStatus } from '@/services/clientesService'
 import {
   X,
   User,
@@ -35,6 +35,11 @@ const tipo = ref<ClientType>('Cliente')
 const estado = ref<ClientStatus>('Activo')
 const notas = ref('')
 
+const previewCode = computed(() => {
+  if (props.clientToEdit?.codigo) return props.clientToEdit.codigo
+  return clientesService.getNextClientCode(tipo.value)
+})
+
 // Validation states
 const errors = ref({
   nombre: '',
@@ -59,7 +64,7 @@ watch(
       telefono.value = ''
       direccion.value = ''
       tipo.value = 'Cliente'
-      estado.value = 'Activo'
+      estado.value = 'Activo' // Siempre Activo al crear
       notas.value = ''
     }
   },
@@ -97,11 +102,12 @@ const handleSubmit = async () => {
 
     emit('save', {
       id: props.clientToEdit ? props.clientToEdit.id : undefined,
+      codigo: props.clientToEdit ? props.clientToEdit.codigo : undefined,
       nombre: nombre.value.trim(),
       telefono: telefono.value.trim(),
       direccion: direccion.value.trim() || 'Dirección de taller pendiente',
       tipo: tipo.value,
-      estado: estado.value,
+      estado: props.clientToEdit ? estado.value : 'Activo',
       especificaciones_tecnicas: {
         ...(props.clientToEdit?.especificaciones_tecnicas || {}),
         notas: notas.value.trim() || undefined,
@@ -139,11 +145,19 @@ const handleToggleStatus = () => {
             <Wrench v-else class="w-6 h-6 text-slate-800" />
           </div>
           <div>
-            <h3 class="text-lg font-bold text-slate-900 leading-tight">
-              {{ clientToEdit ? 'Editar Información del Cliente' : 'Nuevo Cliente / Tallerista' }}
-            </h3>
-            <p class="text-xs text-slate-500">
-              Persistencia Supabase • Borrado lógico e historial de órdenes
+            <div class="flex items-center gap-2">
+              <h3 class="text-lg font-bold text-slate-900 leading-tight">
+                {{ clientToEdit ? 'Editar Información del Cliente' : 'Nuevo Cliente / Tallerista' }}
+              </h3>
+              <span
+                v-if="clientToEdit?.codigo"
+                class="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-[#0D0D0D] text-[#05F2F2] border border-slate-700"
+              >
+                {{ clientToEdit.codigo }}
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">
+              {{ clientToEdit ? 'Edición de información y estado' : 'Código generado automáticamente • Estado Activo por defecto' }}
             </p>
           </div>
         </div>
@@ -184,6 +198,19 @@ const handleToggleStatus = () => {
               <span>{{ t }}</span>
             </button>
           </div>
+        </div>
+
+        <!-- Código Único del Cliente (Automático) -->
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-700">Código Único:</span>
+            <span class="font-mono font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-xs">
+              {{ previewCode }}
+            </span>
+          </div>
+          <span class="text-[11px] text-slate-500 font-medium">
+            {{ clientToEdit ? 'Identificador permanente en sistema' : 'Generado automáticamente según el tipo' }}
+          </span>
         </div>
 
         <!-- Nombre Completo o Razón Social -->
@@ -263,8 +290,8 @@ const handleToggleStatus = () => {
           </div>
         </div>
 
-        <!-- Estado (Borrado Lógico) -->
-        <div>
+        <!-- Estado (Borrado Lógico) - Solo visible al EDITAR un cliente existente -->
+        <div v-if="clientToEdit">
           <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
             Estado del Cliente (Borrado Lógico)
           </label>

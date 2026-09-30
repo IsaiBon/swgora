@@ -33,7 +33,20 @@ const loadOrders = async () => {
   }
   loading.value = true
   try {
-    orders.value = await ordersService.getOrdersByCustomer(props.client.nombre)
+    const allOrders = await ordersService.getOrders()
+    const targetId = props.client.id?.toLowerCase().trim()
+    const targetCode = props.client.codigo?.toLowerCase().trim()
+    const targetName = props.client.nombre?.toLowerCase().trim()
+
+    orders.value = allOrders.filter(o => {
+      const matchId = Boolean(targetId && o.customerId?.toLowerCase().trim() === targetId)
+      const matchCode = Boolean(targetCode && (
+        (o.customerCode && o.customerCode.toLowerCase().trim() === targetCode) ||
+        (o.workshopCode && o.workshopCode.toLowerCase().trim() === targetCode)
+      ))
+      const matchName = Boolean(targetName && o.customer?.toLowerCase().includes(targetName))
+      return matchId || matchCode || matchName
+    })
   } catch (err) {
     console.error('Error fetching client orders:', err)
     orders.value = []
@@ -76,7 +89,12 @@ const goToNewOrder = () => {
   if (props.client) {
     router.push({
       path: '/ordenes',
-      query: { cliente: props.client.nombre, telefono: props.client.telefono }
+      query: {
+        clienteId: props.client.id,
+        codigo: props.client.codigo,
+        cliente: props.client.nombre,
+        telefono: props.client.telefono || undefined
+      }
     })
   } else {
     router.push('/ordenes')
@@ -121,6 +139,12 @@ const formatCurrency = (val: number) => {
                 ]"
               >
                 {{ client.tipo }}
+              </span>
+              <span
+                v-if="client?.codigo"
+                class="text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded-md bg-[#0D0D0D] text-[#05F2F2] border border-slate-700"
+              >
+                {{ client.codigo }}
               </span>
             </div>
             <p v-if="client" class="text-xs text-slate-500 mt-0.5 flex items-center gap-3">

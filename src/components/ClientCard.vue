@@ -88,6 +88,15 @@ const handleToggleStatus = () => {
               >
                 {{ client.tipo }}
               </span>
+
+              <!-- Código Único Badge -->
+              <span
+                v-if="client.codigo"
+                class="text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300"
+                title="Código único de cliente"
+              >
+                {{ client.codigo }}
+              </span>
             </div>
           </div>
         </div>

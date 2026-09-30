@@ -60,6 +60,7 @@ const filteredClients = computed(() => {
   return clients.value.filter((c) => {
     const matchesQuery =
       !query ||
+      (c.codigo && c.codigo.toLowerCase().includes(query)) ||
       c.nombre.toLowerCase().includes(query) ||
       (c.telefono && c.telefono.includes(query)) ||
       (c.direccion && c.direccion.toLowerCase().includes(query))
@@ -203,7 +204,7 @@ const showToast = (msg: string) => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Buscar por nombre, teléfono o dirección de taller..."
+            placeholder="Buscar por código (ej. CLI-001, TAL-001), nombre, teléfono o taller..."
             class="w-full min-h-[46px] pl-11 pr-4 rounded-full bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#05C7F2] transition shadow-inner"
           />
         </div>

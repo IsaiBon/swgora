@@ -48,9 +48,11 @@ export interface Order {
   orderNumber: string
   customer: string
   customerId?: string
+  customerCode?: string
   customerPhone?: string
   customerAddress?: string
   workshop?: string
+  workshopCode?: string
   date: string
   deliveryDate?: string
   status: OrderStatus
@@ -159,6 +161,7 @@ const initialMockOrders: Order[] = [
     orderNumber: '#00001',
     customer: 'Transportes Logísticos del Norte',
     customerId: 'cli-01',
+    customerCode: 'CLI-001',
     customerPhone: '+52 55 4920 1840',
     customerAddress: 'Av. de las Industrias 1420, Bodega 4, Monterrey',
     workshop: 'Transportes Logísticos',
@@ -198,9 +201,11 @@ const initialMockOrders: Order[] = [
     orderNumber: '#00002',
     customer: 'Taller Mecánico Especializado Ramos',
     customerId: 'cli-02',
+    customerCode: 'TAL-001',
+    workshop: 'Taller Mecánico Especializado Ramos',
+    workshopCode: 'TAL-001',
     customerPhone: '+52 81 8345 9912',
     customerAddress: 'Calzada Madero 2185 Poniente, Monterrey',
-    workshop: 'Taller Ramos',
     date: '2026-09-22',
     status: 'Diagnóstico',
     type: 'orden',
@@ -332,17 +337,25 @@ export const ordersService = {
     return Promise.resolve(orders[index])
   },
 
-  async getOrdersByClientId(clientId: string): Promise<Order[]> {
+  async getOrdersByClientId(clientIdOrCode: string): Promise<Order[]> {
     const orders = await this.getOrders()
-    return orders.filter(o => o.customerId === clientId)
+    const target = clientIdOrCode.toLowerCase().trim()
+    return orders.filter(o => 
+      (o.customerId && o.customerId.toLowerCase() === target) ||
+      (o.customerCode && o.customerCode.toLowerCase() === target) ||
+      (o.workshopCode && o.workshopCode.toLowerCase() === target)
+    )
   },
 
-  async getOrdersByCustomer(customerNameOrId: string): Promise<Order[]> {
+  async getOrdersByCustomer(targetCriteria: string): Promise<Order[]> {
     const orders = await this.getOrders()
-    const target = customerNameOrId.toLowerCase().trim()
+    const target = targetCriteria.toLowerCase().trim()
     return orders.filter(o => 
-      (o.customerId && o.customerId === customerNameOrId) ||
-      (o.customer && o.customer.toLowerCase().includes(target))
+      (o.customerId && o.customerId.toLowerCase() === target) ||
+      (o.customerCode && o.customerCode.toLowerCase() === target) ||
+      (o.workshopCode && o.workshopCode.toLowerCase() === target) ||
+      (o.customer && o.customer.toLowerCase().includes(target)) ||
+      (o.workshop && o.workshop.toLowerCase().includes(target))
     )
   },
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { 
   ordersService, 
   type Order, 
@@ -9,7 +10,7 @@ import {
   type OrderStatus,
   type DocumentType
 } from '@/services/ordersService'
-import { clientesService, type Cliente } from '@/services/clientesService'
+import { clientesService, type Cliente, type ClientType } from '@/services/clientesService'
 import { catalogService, type CatalogProduct } from '@/services/catalogService'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
 import { 
@@ -41,6 +42,8 @@ const emit = defineEmits<{
   (e: 'saved', order: Order): void
 }>()
 
+const route = useRoute()
+
 // Estado principal del formulario
 const isEditing = computed(() => !!props.initialOrderId)
 const isSubmitting = ref(false)
@@ -63,10 +66,12 @@ const docType = ref<DocumentType>('orden')
 
 // Campos Cliente
 const clientSearchQuery = ref('')
-const isSearchingClients = ref(false)
 const clientSearchResults = ref<Cliente[]>([])
+const allRegisteredClients = ref<Cliente[]>([])
 const showClientDropdown = ref(false)
 const selectedCustomerId = ref<string | undefined>()
+const selectedCustomerCode = ref<string | undefined>()
+const selectedCustomerType = ref<ClientType | undefined>()
 const clientName = ref('')
 const clientPhone = ref('')
 const clientAddress = ref('')
@@ -431,12 +436,31 @@ const addExcelPart = (partName: string) => {
 // Inicialización de la orden
 onMounted(async () => {
   catalogProducts.value = await catalogService.getProducts()
+  await loadAllClients()
 
   if (props.initialOrderId) {
     const existing = await ordersService.getOrderById(props.initialOrderId)
     if (existing) {
       loadExistingOrder(existing)
       return
+    }
+  }
+
+  // Pre-seleccionar cliente si viene en la query (desde historial o clientes)
+  const queryClienteId = (route.query.clienteId as string) || (route.query.id as string)
+  const queryCodigo = route.query.codigo as string
+  const queryCliente = route.query.cliente as string
+
+  if (queryClienteId || queryCodigo || queryCliente) {
+    const matched = allRegisteredClients.value.find(c => 
+      (queryClienteId && c.id === queryClienteId) ||
+      (queryCodigo && c.codigo?.toUpperCase() === queryCodigo.toUpperCase()) ||
+      (queryCliente && c.nombre.toLowerCase() === queryCliente.toLowerCase())
+    )
+    if (matched) {
+      selectCustomer(matched)
+    } else if (queryCliente) {
+      clientName.value = queryCliente
     }
   }
 
@@ -449,6 +473,14 @@ const loadExistingOrder = (order: Order) => {
   orderStatus.value = order.status === 'En Proceso' ? 'En Proceso' : 'Pendiente'
   docType.value = order.type || 'orden'
   selectedCustomerId.value = order.customerId
+  selectedCustomerCode.value = order.customerCode || order.workshopCode
+  if (!selectedCustomerCode.value && order.customerId) {
+    const matched = allRegisteredClients.value.find(c => c.id === order.customerId)
+    if (matched) {
+      selectedCustomerCode.value = matched.codigo
+      selectedCustomerType.value = matched.tipo
+    }
+  }
   clientName.value = order.customer
   clientPhone.value = order.customerPhone || ''
   clientAddress.value = order.customerAddress || ''
@@ -497,34 +529,76 @@ const loadExistingOrder = (order: Order) => {
   }
 }
 
-// Búsqueda rápida de clientes
-watch(clientSearchQuery, async (query) => {
-  if (!query || query.trim().length < 2) {
-    clientSearchResults.value = []
-    showClientDropdown.value = false
-    return
-  }
-
-  isSearchingClients.value = true
+// Cargar listado completo de clientes registrados
+const loadAllClients = async () => {
   try {
-    const results = await clientesService.getClientes({ search: query.trim() })
-    clientSearchResults.value = results
-    showClientDropdown.value = results.length > 0
+    const list = await clientesService.getClientes()
+    allRegisteredClients.value = list
   } catch (err) {
-    console.error('Error buscando clientes:', err)
-  } finally {
-    isSearchingClients.value = false
+    console.error('Error cargando clientes:', err)
   }
+}
+
+// Filtrar clientes registrados por código único, nombre, taller o teléfono
+const filterClientResults = () => {
+  const query = clientSearchQuery.value.trim().toLowerCase()
+  if (!query) {
+    clientSearchResults.value = [...allRegisteredClients.value]
+  } else {
+    clientSearchResults.value = allRegisteredClients.value.filter(c => {
+      const matchCode = c.codigo?.toLowerCase().includes(query)
+      const matchName = c.nombre?.toLowerCase().includes(query)
+      const matchPhone = c.telefono?.toLowerCase().includes(query)
+      const matchWorkshop = (c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa || '').toLowerCase().includes(query)
+      const matchType = c.tipo?.toLowerCase().includes(query)
+      return matchCode || matchName || matchPhone || matchWorkshop || matchType
+    })
+  }
+}
+
+// Búsqueda reactiva de clientes
+watch(clientSearchQuery, () => {
+  filterClientResults()
+  showClientDropdown.value = true
 })
+
+// Desplegar todo el listado al dar clic o foco en el buscador
+const handleClientSearchFocus = async () => {
+  if (allRegisteredClients.value.length === 0) {
+    await loadAllClients()
+  }
+  filterClientResults()
+  showClientDropdown.value = true
+}
+
+const handleClientSearchBlur = () => {
+  setTimeout(() => {
+    showClientDropdown.value = false
+  }, 250)
+}
 
 const selectCustomer = (client: Cliente) => {
   selectedCustomerId.value = client.id
+  selectedCustomerCode.value = client.codigo
+  selectedCustomerType.value = client.tipo
   clientName.value = client.nombre
   clientPhone.value = client.telefono || ''
   clientAddress.value = client.direccion || ''
   clientWorkshop.value = client.especificaciones_tecnicas?.taller || client.especificaciones_tecnicas?.empresa || ''
   clientSearchQuery.value = ''
   showClientDropdown.value = false
+  formErrors.value.clientName = false
+}
+
+const clearSelectedCustomer = () => {
+  selectedCustomerId.value = undefined
+  selectedCustomerCode.value = undefined
+  selectedCustomerType.value = undefined
+  clientName.value = ''
+  clientPhone.value = ''
+  clientAddress.value = ''
+  clientWorkshop.value = ''
+  clientSearchQuery.value = ''
 }
 
 // Repuestos
@@ -615,17 +689,23 @@ const handleQuickCreateClient = async () => {
   if (!newClientForm.value.nombre.trim()) return
 
   try {
+    const isTaller = !!newClientForm.value.taller.trim()
+    const tipo: ClientType = isTaller ? 'Tallerista' : 'Cliente'
+    const autoCode = clientesService.getNextClientCode(tipo)
+
     const created = await clientesService.createCliente({
+      codigo: autoCode,
       nombre: newClientForm.value.nombre.trim(),
       telefono: newClientForm.value.telefono.trim(),
       direccion: newClientForm.value.direccion.trim(),
-      tipo: newClientForm.value.taller.trim() ? 'Tallerista' : 'Cliente',
+      tipo,
       estado: 'Activo',
       especificaciones_tecnicas: {
         taller: newClientForm.value.taller.trim()
       }
     })
 
+    await loadAllClients()
     selectCustomer(created)
     showNewClientModal.value = false
     newClientForm.value = { nombre: '', taller: '', telefono: '', direccion: '' }
@@ -679,6 +759,7 @@ const handleSaveOrder = async () => {
   isSubmitting.value = true
   try {
     const savedOperations = activeBilledOperations.value
+    const isTallerista = selectedCustomerType.value === 'Tallerista' || !!clientWorkshop.value.trim()
 
     const orderPayload: Omit<Order, 'id'> = {
       orderNumber: orderNumber.value,
@@ -687,6 +768,8 @@ const handleSaveOrder = async () => {
       type: docType.value,
       customer: clientName.value.trim(),
       customerId: selectedCustomerId.value,
+      customerCode: selectedCustomerCode.value,
+      workshopCode: isTallerista ? (selectedCustomerCode.value || undefined) : undefined,
       customerPhone: clientPhone.value.trim(),
       customerAddress: clientAddress.value.trim(),
       workshop: clientWorkshop.value.trim(),
@@ -899,12 +982,23 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <UserCheck class="w-4 h-4 text-[#04c4d9]" />
               Información del Cliente / Taller
             </h2>
-            <span v-if="selectedCustomerId" class="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium border border-emerald-200">
-              Cliente Registrado
-            </span>
+            <div v-if="selectedCustomerId || selectedCustomerCode" class="flex items-center gap-2">
+              <span class="text-xs text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                Cliente Registrado: <span class="font-mono font-bold">{{ selectedCustomerCode }}</span>
+              </span>
+              <button 
+                type="button" 
+                @click="clearSelectedCustomer" 
+                class="text-[11px] text-slate-400 hover:text-rose-600 transition"
+                title="Desvincular cliente"
+              >
+                (Cambiar)
+              </button>
+            </div>
           </div>
 
-          <!-- Barra de Búsqueda Rápida de Clientes -->
+          <!-- Barra de Búsqueda Rápida de Clientes (Código o Nombre) -->
           <div class="flex flex-col sm:flex-row gap-3 relative">
             <div class="relative flex-1">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -913,29 +1007,65 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <input
                 v-model="clientSearchQuery"
                 type="text"
-                placeholder="Buscar cliente por nombre o taller..."
+                @focus="handleClientSearchFocus"
+                @click="handleClientSearchFocus"
+                @blur="handleClientSearchBlur"
+                placeholder="Buscar por código (ej. CLI-001, TAL-001), nombre o taller (clic para ver todos)..."
                 class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
               />
               <!-- Dropdown de resultados de búsqueda -->
               <div
                 v-if="showClientDropdown"
-                class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100"
+                class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100"
               >
+                <div v-if="clientSearchResults.length === 0" class="p-4 text-center text-xs text-slate-400">
+                  No se encontraron clientes ni talleristas registrados
+                </div>
                 <div
                   v-for="c in clientSearchResults"
                   :key="c.id"
-                  @click="selectCustomer(c)"
-                  class="p-3 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between"
+                  @mousedown.prevent="selectCustomer(c)"
+                  class="p-3 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between gap-3 group"
                 >
-                  <div>
-                    <div class="text-xs font-bold text-slate-900">{{ c.nombre }}</div>
-                    <div class="text-[11px] text-slate-500">
-                      {{ c.tipo }} • {{ c.especificaciones_tecnicas?.taller || c.telefono || 'Sin taller registrado' }}
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span 
+                      :class="[
+                        'px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0',
+                        c.tipo === 'Tallerista' 
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                          : 'bg-cyan-100 text-[#038896] border border-cyan-200'
+                      ]"
+                    >
+                      {{ c.codigo || (c.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
+                    </span>
+                    <div class="truncate">
+                      <div class="text-xs font-bold text-slate-900 group-hover:text-[#04c4d9] transition truncate">
+                        {{ c.nombre }}
+                      </div>
+                      <div class="text-[11px] text-slate-500 truncate">
+                        <span class="font-medium text-slate-600">{{ c.tipo }}</span>
+                        <span v-if="c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa">
+                          • Taller: {{ c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa }}
+                        </span>
+                        <span v-else-if="c.direccion">
+                          • {{ c.direccion }}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <span v-if="c.telefono" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">
-                    {{ c.telefono }}
-                  </span>
+                  <div class="text-right shrink-0 flex flex-col items-end gap-1">
+                    <span v-if="c.telefono" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">
+                      {{ c.telefono }}
+                    </span>
+                    <span 
+                      :class="[
+                        'text-[9px] px-1.5 py-0.2 rounded font-semibold',
+                        c.estado === 'Inactivo' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+                      ]"
+                    >
+                      {{ c.estado || 'Activo' }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

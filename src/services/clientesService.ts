@@ -1,10 +1,11 @@
-﻿import { supabase } from './supabase'
+import { supabase } from './supabase'
 
 export type ClientType = 'Cliente' | 'Tallerista'
 export type ClientStatus = 'Activo' | 'Inactivo'
 
 export interface Cliente {
   id: string
+  codigo: string
   nombre: string
   telefono?: string | null
   direccion?: string | null
@@ -15,8 +16,9 @@ export interface Cliente {
   updated_at?: string
 }
 
-export type ClienteInsert = Omit<Cliente, 'id' | 'created_at' | 'updated_at'> & {
+export type ClienteInsert = Omit<Cliente, 'id' | 'codigo' | 'created_at' | 'updated_at'> & {
   id?: string
+  codigo?: string
   created_at?: string
   updated_at?: string
 }
@@ -29,11 +31,12 @@ export interface ClienteFilters {
   estado?: string
 }
 
-const LOCAL_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v4'
+const LOCAL_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v5'
 
-const initialClientesDemo: Cliente[] = [
+export const initialClientesDemo: Cliente[] = [
   {
     id: 'cli-01',
+    codigo: 'CLI-001',
     nombre: 'Ing. Carlos Mendoza',
     telefono: '+52 55 4920 1840',
     direccion: 'Av. de las Industrias 1420, Bodega 4, Monterrey',
@@ -49,6 +52,7 @@ const initialClientesDemo: Cliente[] = [
   },
   {
     id: 'cli-02',
+    codigo: 'TAL-001',
     nombre: 'Maestro Jorge Ramos',
     telefono: '+52 81 8345 9912',
     direccion: 'Calzada Madero 2185 Poniente, Monterrey',
@@ -63,6 +67,7 @@ const initialClientesDemo: Cliente[] = [
   },
   {
     id: 'cli-03',
+    codigo: 'CLI-002',
     nombre: 'Lic. Mariana Garza',
     telefono: '+52 81 1234 5678',
     direccion: 'Parque Industrial Milenium, Nave 8, Apodaca',
@@ -77,6 +82,7 @@ const initialClientesDemo: Cliente[] = [
   },
   {
     id: 'cli-04',
+    codigo: 'TAL-002',
     nombre: 'Ing. Roberto Silva',
     telefono: '+52 55 7712 3490',
     direccion: 'Km 14.5 Carretera Nacional, Santiago',
@@ -91,6 +97,7 @@ const initialClientesDemo: Cliente[] = [
   },
   {
     id: 'cli-05',
+    codigo: 'CLI-003',
     nombre: 'Sr. Alejandro Treviño',
     telefono: '+52 81 9988 7766',
     direccion: 'Av. Eugenio Garza Sada 3450, Monterrey',
@@ -104,10 +111,42 @@ const initialClientesDemo: Cliente[] = [
   },
 ]
 
+export function generateClientCode(tipo: ClientType, currentList: Cliente[]): string {
+  const prefix = tipo === 'Tallerista' ? 'TAL' : 'CLI'
+  const regex = new RegExp(`^${prefix}-(\\d+)`, 'i')
+  let maxNum = 0
+  for (const c of currentList) {
+    if (c.codigo) {
+      const match = c.codigo.match(regex)
+      if (match) {
+        const num = parseInt(match[1], 10)
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num
+        }
+      }
+    }
+  }
+  const nextNum = maxNum + 1
+  return `${prefix}-${nextNum.toString().padStart(3, '0')}`
+}
+
 function getLocalCache(): Cliente[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const list = JSON.parse(raw) as Cliente[]
+      let updated = false
+      for (let i = 0; i < list.length; i++) {
+        if (!list[i].codigo) {
+          list[i].codigo = generateClientCode(list[i].tipo || 'Cliente', list.slice(0, i))
+          updated = true
+        }
+      }
+      if (updated) {
+        setLocalCache(list)
+      }
+      return list
+    }
   } catch (e) {
     console.error('Error leyendo caché de clientes:', e)
   }
@@ -124,6 +163,14 @@ function setLocalCache(list: Cliente[]) {
 }
 
 export const clientesService = {
+  /**
+   * Genera el próximo código sugerido según el tipo (CLI-### o TAL-###)
+   */
+  getNextClientCode(tipo: ClientType): string {
+    const current = getLocalCache()
+    return generateClientCode(tipo, current)
+  },
+
   /**
    * Obtiene todos los clientes aplicando filtros opcionales (búsqueda, tipo, estado).
    */
@@ -149,8 +196,9 @@ export const clientesService = {
       }
 
       if (data && data.length > 0) {
-        const normalized: Cliente[] = data.map((item: any) => ({
+        const normalized: Cliente[] = data.map((item: any, idx: number) => ({
           id: item.id,
+          codigo: item.codigo || generateClientCode(item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente', data.slice(0, idx)),
           nombre: item.nombre || '',
           telefono: item.telefono || '',
           direccion: item.direccion || '',
@@ -165,6 +213,7 @@ export const clientesService = {
         if (filters?.search && filters.search.trim()) {
           const s = filters.search.toLowerCase().trim()
           return normalized.filter((c: Cliente) =>
+            (c.codigo && c.codigo.toLowerCase().includes(s)) ||
             c.nombre.toLowerCase().includes(s) ||
             (c.telefono && c.telefono.includes(s)) ||
             (c.direccion && c.direccion.toLowerCase().includes(s))
@@ -191,6 +240,7 @@ export const clientesService = {
     if (filters?.search && filters.search.trim()) {
       const s = filters.search.toLowerCase().trim()
       cached = cached.filter(c =>
+        (c.codigo && c.codigo.toLowerCase().includes(s)) ||
         c.nombre.toLowerCase().includes(s) ||
         (c.telefono && c.telefono.includes(s)) ||
         (c.direccion && c.direccion.toLowerCase().includes(s))
@@ -201,14 +251,14 @@ export const clientesService = {
   },
 
   /**
-   * Obtiene un cliente por su ID
+   * Obtiene un cliente por su ID o por su código único
    */
-  async getClienteById(id: string): Promise<Cliente | null> {
+  async getClienteById(idOrCodigo: string): Promise<Cliente | null> {
     try {
       const { data, error } = await supabase
         .from('clientes')
         .select('*')
-        .eq('id', id)
+        .or(`id.eq.${idOrCodigo},codigo.eq.${idOrCodigo}`)
         .single()
 
       if (!error && data) {
@@ -218,21 +268,25 @@ export const clientesService = {
       console.warn('[ClientesService] Error al obtener por ID en Supabase:', err)
     }
 
-    const local = getLocalCache().find(c => c.id === id)
+    const local = getLocalCache().find(c => c.id === idOrCodigo || c.codigo === idOrCodigo)
     return local || null
   },
 
   /**
-   * Crea un nuevo cliente con estado 'Activo' por defecto
+   * Crea un nuevo cliente con estado 'Activo' por defecto y código generado automáticamente
    */
   async createCliente(cliente: ClienteInsert): Promise<Cliente> {
+    const cache = getLocalCache()
+    const autoCode = cliente.codigo || generateClientCode(cliente.tipo || 'Cliente', cache)
+
     const newRecord: Cliente = {
       id: cliente.id || 'cli-' + Date.now(),
+      codigo: autoCode,
       nombre: cliente.nombre.trim(),
       telefono: cliente.telefono ? cliente.telefono.trim() : null,
       direccion: cliente.direccion ? cliente.direccion.trim() : null,
       tipo: cliente.tipo || 'Cliente',
-      estado: cliente.estado || 'Activo',
+      estado: 'Activo', // Al crear cliente siempre es Activo
       especificaciones_tecnicas: cliente.especificaciones_tecnicas || {},
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -242,6 +296,7 @@ export const clientesService = {
       const { data, error } = await supabase
         .from('clientes')
         .insert([{
+          codigo: newRecord.codigo,
           nombre: newRecord.nombre,
           telefono: newRecord.telefono,
           direccion: newRecord.direccion,
@@ -254,12 +309,12 @@ export const clientesService = {
 
       if (!error && data) {
         newRecord.id = data.id
+        if (data.codigo) newRecord.codigo = data.codigo
       }
     } catch (err) {
       console.warn('[ClientesService] Inserción guardada en caché local:', err)
     }
 
-    const cache = getLocalCache()
     cache.unshift(newRecord)
     setLocalCache(cache)
 
@@ -284,27 +339,31 @@ export const clientesService = {
         .single()
 
       if (!error && data) {
-        const cache = getLocalCache().map(c => c.id === id ? { ...c, ...data } : c)
+        const cache = getLocalCache().map(c => (c.id === id ? { ...c, ...data } : c))
         setLocalCache(cache)
         return data as Cliente
       }
     } catch (err) {
-      console.warn('[ClientesService] Actualización aplicada en caché local:', err)
+      console.warn('[ClientesService] Error actualizando en Supabase:', err)
     }
 
     const cache = getLocalCache()
-    const idx = cache.findIndex(c => c.id === id)
-    if (idx !== -1) {
-      cache[idx] = { ...cache[idx], ...updates, updated_at: new Date().toISOString() }
-      setLocalCache(cache)
-      return cache[idx]
+    const index = cache.findIndex(c => c.id === id)
+    if (index === -1) {
+      throw new Error('Cliente no encontrado')
     }
 
-    throw new Error('Cliente no encontrado para actualizar')
+    cache[index] = {
+      ...cache[index],
+      ...updatedPayload,
+    }
+    setLocalCache(cache)
+
+    return cache[index]
   },
 
   /**
-   * Borrado lógico: inactiva al cliente para preservar el historial de órdenes
+   * Borrado Lógico: Inactiva al cliente para no romper integridad relacional
    */
   async deactivateCliente(id: string): Promise<Cliente> {
     return this.updateCliente(id, { estado: 'Inactivo' })
@@ -318,24 +377,7 @@ export const clientesService = {
   },
 
   /**
-   * Eliminación física (solo si se requiere purgar)
-   */
-  async deleteCliente(id: string): Promise<void> {
-    try {
-      await supabase
-        .from('clientes')
-        .delete()
-        .eq('id', id)
-    } catch (err) {
-      console.warn('[ClientesService] Eliminación local:', err)
-    }
-
-    const cache = getLocalCache().filter(c => c.id !== id)
-    setLocalCache(cache)
-  },
-
-  /**
-   * Restablece los clientes de demostración
+   * Restaura los clientes demo iniciales
    */
   resetDemo(): Cliente[] {
     setLocalCache(initialClientesDemo)
