@@ -6,7 +6,6 @@ export type ClientStatus = 'Activo' | 'Inactivo'
 export interface Cliente {
   id: string
   nombre: string
-  cedula: string
   telefono?: string | null
   direccion?: string | null
   tipo: ClientType
@@ -30,13 +29,12 @@ export interface ClienteFilters {
   estado?: string
 }
 
-const LOCAL_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v3'
+const LOCAL_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v4'
 
 const initialClientesDemo: Cliente[] = [
   {
     id: 'cli-01',
     nombre: 'Ing. Carlos Mendoza',
-    cedula: '05123456-7',
     telefono: '+52 55 4920 1840',
     direccion: 'Av. de las Industrias 1420, Bodega 4, Monterrey',
     tipo: 'Cliente',
@@ -52,7 +50,6 @@ const initialClientesDemo: Cliente[] = [
   {
     id: 'cli-02',
     nombre: 'Maestro Jorge Ramos',
-    cedula: '06849302-1',
     telefono: '+52 81 8345 9912',
     direccion: 'Calzada Madero 2185 Poniente, Monterrey',
     tipo: 'Tallerista',
@@ -67,7 +64,6 @@ const initialClientesDemo: Cliente[] = [
   {
     id: 'cli-03',
     nombre: 'Lic. Mariana Garza',
-    cedula: '07198234-9',
     telefono: '+52 81 1234 5678',
     direccion: 'Parque Industrial Milenium, Nave 8, Apodaca',
     tipo: 'Cliente',
@@ -82,7 +78,6 @@ const initialClientesDemo: Cliente[] = [
   {
     id: 'cli-04',
     nombre: 'Ing. Roberto Silva',
-    cedula: '04910283-4',
     telefono: '+52 55 7712 3490',
     direccion: 'Km 14.5 Carretera Nacional, Santiago',
     tipo: 'Tallerista',
@@ -97,7 +92,6 @@ const initialClientesDemo: Cliente[] = [
   {
     id: 'cli-05',
     nombre: 'Sr. Alejandro Treviño',
-    cedula: '08374829-0',
     telefono: '+52 81 9988 7766',
     direccion: 'Av. Eugenio Garza Sada 3450, Monterrey',
     tipo: 'Cliente',
@@ -155,11 +149,9 @@ export const clientesService = {
       }
 
       if (data && data.length > 0) {
-        // Normalizar registros que pudieran venir de migraciones previas
-        const normalized = data.map((item: any) => ({
+        const normalized: Cliente[] = data.map((item: any) => ({
           id: item.id,
           nombre: item.nombre || '',
-          cedula: item.cedula || 'N/A',
           telefono: item.telefono || '',
           direccion: item.direccion || '',
           tipo: (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType,
@@ -174,7 +166,6 @@ export const clientesService = {
           const s = filters.search.toLowerCase().trim()
           return normalized.filter((c: Cliente) =>
             c.nombre.toLowerCase().includes(s) ||
-            c.cedula.toLowerCase().includes(s) ||
             (c.telefono && c.telefono.includes(s)) ||
             (c.direccion && c.direccion.toLowerCase().includes(s))
           )
@@ -201,7 +192,6 @@ export const clientesService = {
       const s = filters.search.toLowerCase().trim()
       cached = cached.filter(c =>
         c.nombre.toLowerCase().includes(s) ||
-        c.cedula.toLowerCase().includes(s) ||
         (c.telefono && c.telefono.includes(s)) ||
         (c.direccion && c.direccion.toLowerCase().includes(s))
       )
@@ -233,43 +223,12 @@ export const clientesService = {
   },
 
   /**
-   * Verifica si una cédula ya está registrada para otro cliente (regla de unicidad)
-   */
-  async checkCedulaExists(cedula: string, excludeId?: string): Promise<boolean> {
-    const cleanCedula = cedula.trim()
-    if (!cleanCedula) return false
-
-    try {
-      let query = supabase
-        .from('clientes')
-        .select('id')
-        .eq('cedula', cleanCedula)
-
-      if (excludeId) {
-        query = query.neq('id', excludeId)
-      }
-
-      const { data, error } = await query
-
-      if (!error && data && data.length > 0) {
-        return true
-      }
-    } catch (err) {
-      console.warn('[ClientesService] Verificación de cédula en local:', err)
-    }
-
-    const local = getLocalCache()
-    return local.some(c => c.cedula.trim() === cleanCedula && c.id !== excludeId)
-  },
-
-  /**
    * Crea un nuevo cliente con estado 'Activo' por defecto
    */
   async createCliente(cliente: ClienteInsert): Promise<Cliente> {
     const newRecord: Cliente = {
       id: cliente.id || 'cli-' + Date.now(),
       nombre: cliente.nombre.trim(),
-      cedula: cliente.cedula.trim(),
       telefono: cliente.telefono ? cliente.telefono.trim() : null,
       direccion: cliente.direccion ? cliente.direccion.trim() : null,
       tipo: cliente.tipo || 'Cliente',
@@ -284,7 +243,6 @@ export const clientesService = {
         .from('clientes')
         .insert([{
           nombre: newRecord.nombre,
-          cedula: newRecord.cedula,
           telefono: newRecord.telefono,
           direccion: newRecord.direccion,
           tipo: newRecord.tipo,
@@ -326,7 +284,6 @@ export const clientesService = {
         .single()
 
       if (!error && data) {
-        // Actualizar en caché
         const cache = getLocalCache().map(c => c.id === id ? { ...c, ...data } : c)
         setLocalCache(cache)
         return data as Cliente
@@ -361,7 +318,7 @@ export const clientesService = {
   },
 
   /**
-   * Eliminación física (solo disponible si se requiere purgar registros)
+   * Eliminación física (solo si se requiere purgar)
    */
   async deleteCliente(id: string): Promise<void> {
     try {

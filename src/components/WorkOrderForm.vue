@@ -224,7 +224,6 @@ const newClientForm = ref({
   taller: '',
   telefono: '',
   direccion: '',
-  cedula: ''
 })
 
 // Estados del timeline en orden cronológico
@@ -612,7 +611,6 @@ const handleQuickCreateClient = async () => {
   try {
     const created = await clientesService.createCliente({
       nombre: newClientForm.value.nombre.trim(),
-      cedula: newClientForm.value.cedula.trim() || `CLI-${Date.now().toString().slice(-4)}`,
       telefono: newClientForm.value.telefono.trim(),
       direccion: newClientForm.value.direccion.trim(),
       tipo: newClientForm.value.taller.trim() ? 'Tallerista' : 'Cliente',
@@ -624,7 +622,7 @@ const handleQuickCreateClient = async () => {
 
     selectCustomer(created)
     showNewClientModal.value = false
-    newClientForm.value = { nombre: '', taller: '', telefono: '', direccion: '', cedula: '' }
+    newClientForm.value = { nombre: '', taller: '', telefono: '', direccion: '' }
   } catch (err) {
     console.error('Error creando cliente rápido:', err)
   }
@@ -913,8 +911,8 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       {{ c.tipo }} • {{ c.especificaciones_tecnicas?.taller || c.telefono || 'Sin taller registrado' }}
                     </div>
                   </div>
-                  <span class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">
-                    {{ c.cedula || 'ID' }}
+                  <span v-if="c.telefono" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">
+                    {{ c.telefono }}
                   </span>
                 </div>
               </div>
@@ -1719,15 +1717,6 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 type="text"
                 class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs mt-1"
                 placeholder="+52 81 8345 9912"
-              />
-            </div>
-            <div>
-              <label class="text-xs font-semibold text-slate-600">Cédula / RFC</label>
-              <input
-                v-model="newClientForm.cedula"
-                type="text"
-                class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs mt-1"
-                placeholder="CLI-1029"
               />
             </div>
           </div>

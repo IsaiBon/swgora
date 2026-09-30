@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { clientesService, type Cliente, type ClientType, type ClientStatus } from '@/services/clientesService'
+import { type Cliente, type ClientType, type ClientStatus } from '@/services/clientesService'
 import {
   X,
   User,
-  CreditCard,
   Phone,
   MapPin,
   Wrench,
@@ -30,7 +29,6 @@ const statusList: ClientStatus[] = ['Activo', 'Inactivo']
 
 // Form fields
 const nombre = ref('')
-const cedula = ref('')
 const telefono = ref('')
 const direccion = ref('')
 const tipo = ref<ClientType>('Cliente')
@@ -40,7 +38,6 @@ const notas = ref('')
 // Validation states
 const errors = ref({
   nombre: '',
-  cedula: '',
   telefono: '',
 })
 const isSubmitting = ref(false)
@@ -49,10 +46,9 @@ const isSubmitting = ref(false)
 watch(
   () => props.clientToEdit,
   (edit) => {
-    errors.value = { nombre: '', cedula: '', telefono: '' }
+    errors.value = { nombre: '', telefono: '' }
     if (edit) {
       nombre.value = edit.nombre || ''
-      cedula.value = edit.cedula || ''
       telefono.value = edit.telefono || ''
       direccion.value = edit.direccion || ''
       tipo.value = edit.tipo || 'Cliente'
@@ -60,7 +56,6 @@ watch(
       notas.value = edit.especificaciones_tecnicas?.notas || edit.especificaciones_tecnicas?.servicios || ''
     } else {
       nombre.value = ''
-      cedula.value = ''
       telefono.value = ''
       direccion.value = ''
       tipo.value = 'Cliente'
@@ -73,7 +68,7 @@ watch(
 
 // Reglas de validación de entrada
 const validateForm = async (): Promise<boolean> => {
-  errors.value = { nombre: '', cedula: '', telefono: '' }
+  errors.value = { nombre: '', telefono: '' }
   let isValid = true
 
   // 1. Nombre mínimo 3 caracteres
@@ -83,21 +78,7 @@ const validateForm = async (): Promise<boolean> => {
     isValid = false
   }
 
-  // 2. Cédula requerida, formato mínimo y verificación de unicidad
-  const cleanCedula = cedula.value.trim()
-  if (!cleanCedula || cleanCedula.length < 4) {
-    errors.value.cedula = 'La cédula / documento de identidad es obligatoria (mínimo 4 caracteres).'
-    isValid = false
-  } else {
-    // Validar unicidad de cédula
-    const isDuplicate = await clientesService.checkCedulaExists(cleanCedula, props.clientToEdit?.id)
-    if (isDuplicate) {
-      errors.value.cedula = 'Ya existe un cliente registrado con esta misma cédula.'
-      isValid = false
-    }
-  }
-
-  // 3. Teléfono con formato válido (mínimo 8 dígitos)
+  // 2. Teléfono con formato válido (mínimo 8 dígitos)
   const cleanPhone = telefono.value.trim()
   const digitsOnly = cleanPhone.replace(/\D/g, '')
   if (!cleanPhone || digitsOnly.length < 8) {
@@ -117,7 +98,6 @@ const handleSubmit = async () => {
     emit('save', {
       id: props.clientToEdit ? props.clientToEdit.id : undefined,
       nombre: nombre.value.trim(),
-      cedula: cedula.value.trim(),
       telefono: telefono.value.trim(),
       direccion: direccion.value.trim() || 'Dirección de taller pendiente',
       tipo: tipo.value,
@@ -163,7 +143,7 @@ const handleToggleStatus = () => {
               {{ clientToEdit ? 'Editar Información del Cliente' : 'Nuevo Cliente / Tallerista' }}
             </h3>
             <p class="text-xs text-slate-500">
-              Persistencia Supabase • Validación de cédula y borrado lógico
+              Persistencia Supabase • Borrado lógico e historial de órdenes
             </p>
           </div>
         </div>
@@ -206,63 +186,32 @@ const handleToggleStatus = () => {
           </div>
         </div>
 
-        <!-- Nombre y Cédula (con validación de unicidad) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <!-- Nombre Completo -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
-              Nombre Completo o Razón Social *
-            </label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                <User class="w-5 h-5" />
-              </div>
-              <input
-                v-model="nombre"
-                type="text"
-                required
-                placeholder="Ej. Ing. Carlos Mendoza"
-                :class="[
-                  'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
-                  errors.nombre
-                    ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                    : 'border-slate-200 focus:border-[#05C7F2] focus:ring-[#05C7F2]/30'
-                ]"
-              />
+        <!-- Nombre Completo o Razón Social -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
+            Nombre Completo o Razón Social *
+          </label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+              <User class="w-5 h-5" />
             </div>
-            <p v-if="errors.nombre" class="mt-1 pl-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
-              <AlertCircle class="w-3.5 h-3.5" />
-              <span>{{ errors.nombre }}</span>
-            </p>
+            <input
+              v-model="nombre"
+              type="text"
+              required
+              placeholder="Ej. Ing. Carlos Mendoza o Taller Mecánico Especializado"
+              :class="[
+                'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
+                errors.nombre
+                  ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
+                  : 'border-slate-200 focus:border-[#05C7F2] focus:ring-[#05C7F2]/30'
+              ]"
+            />
           </div>
-
-          <!-- Cédula / Documento de Identidad -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
-              Cédula / Documento de Identidad *
-            </label>
-            <div class="relative">
-              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                <CreditCard class="w-5 h-5" />
-              </div>
-              <input
-                v-model="cedula"
-                type="text"
-                required
-                placeholder="Ej. 05123456-7"
-                :class="[
-                  'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm font-mono text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
-                  errors.cedula
-                    ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                    : 'border-slate-200 focus:border-[#05C7F2] focus:ring-[#05C7F2]/30'
-                ]"
-              />
-            </div>
-            <p v-if="errors.cedula" class="mt-1 pl-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
-              <AlertCircle class="w-3.5 h-3.5" />
-              <span>{{ errors.cedula }}</span>
-            </p>
-          </div>
+          <p v-if="errors.nombre" class="mt-1 pl-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
+            <AlertCircle class="w-3.5 h-3.5" />
+            <span>{{ errors.nombre }}</span>
+          </p>
         </div>
 
         <!-- Teléfono y Dirección -->

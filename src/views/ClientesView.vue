@@ -5,29 +5,31 @@ import { useAuthStore } from '@/stores/auth'
 import { clientesService, type Cliente, type ClientStatus } from '@/services/clientesService'
 import ClientCard from '@/components/ClientCard.vue'
 import ClientModal from '@/components/ClientModal.vue'
+import ClientOrdersHistoryModal from '@/components/ClientOrdersHistoryModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import {
-  Users,
   Search,
   Plus,
   RotateCcw,
   CheckCircle,
-  Ban,
-  Wrench,
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-// State
+// State: Por defecto filtrar clientes activos (Sprint 4)
 const clients = ref<Cliente[]>([])
 const loading = ref(true)
 const searchQuery = ref('')
 const selectedType = ref<string>('Todos')
-const selectedStatus = ref<string>('Todos')
+const selectedStatus = ref<string>('Activo')
 const isModalOpen = ref(false)
 const clientToEdit = ref<Cliente | null>(null)
 const toastMessage = ref('')
+
+// Historial de Órdenes del Cliente (Sprint 4)
+const isOrdersModalOpen = ref(false)
+const selectedClientForOrders = ref<Cliente | null>(null)
 
 const typeCategories = ['Todos', 'Cliente', 'Tallerista']
 const statusCategories = ['Todos', 'Activo', 'Inactivo']
@@ -59,7 +61,6 @@ const filteredClients = computed(() => {
     const matchesQuery =
       !query ||
       c.nombre.toLowerCase().includes(query) ||
-      c.cedula.toLowerCase().includes(query) ||
       (c.telefono && c.telefono.includes(query)) ||
       (c.direccion && c.direccion.toLowerCase().includes(query))
 
@@ -68,14 +69,6 @@ const filteredClients = computed(() => {
 
     return matchesQuery && matchesType && matchesStatus
   })
-})
-
-const stats = computed(() => {
-  const total = clients.value.length
-  const activos = clients.value.filter((c) => c.estado === 'Activo').length
-  const talleristas = clients.value.filter((c) => c.tipo === 'Tallerista').length
-  const inactivos = clients.value.filter((c) => c.estado === 'Inactivo').length
-  return { total, activos, talleristas, inactivos }
 })
 
 // Modal handlers
@@ -87,6 +80,11 @@ const openCreateModal = () => {
 const openEditModal = (client: Cliente) => {
   clientToEdit.value = client
   isModalOpen.value = true
+}
+
+const openOrdersModal = (client: Cliente) => {
+  selectedClientForOrders.value = client
+  isOrdersModalOpen.value = true
 }
 
 const handleSaveClient = async (clientData: Partial<Cliente>) => {
@@ -126,7 +124,7 @@ const handleToggleStatus = async (id: string, newStatus: ClientStatus) => {
 const clearFilters = () => {
   searchQuery.value = ''
   selectedType.value = 'Todos'
-  selectedStatus.value = 'Todos'
+  selectedStatus.value = 'Activo'
 }
 
 const handleRestoreDemo = async () => {
@@ -159,14 +157,14 @@ const showToast = (msg: string) => {
       <div>
         <div class="flex items-center gap-2 mb-1">
           <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#05C7F2]/15 text-[#04C4D9] border border-[#05C7F2]/30 uppercase tracking-wider">
-            Sprint 3 • Supabase & PostgreSQL
+            Sprint 4 • Historial de Órdenes y Catálogo
           </span>
         </div>
         <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-          Gestión Integral de Clientes y Talleristas
+          Directorio de Clientes y Talleristas
         </h1>
         <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl">
-          CRUD persistente con cédula, diferenciación de talleristas, borrado lógico para historial de órdenes y filtros optimizados.
+          Historial de órdenes de rectificación vinculadas, llamadas y WhatsApp directos y filtro activo por defecto.
         </p>
       </div>
 
@@ -194,53 +192,6 @@ const showToast = (msg: string) => {
       </div>
     </div>
 
-    <!-- Quick Stats Cards (PostgreSQL Metrics) -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-      <!-- Total -->
-      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
-        <div>
-          <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Registros</div>
-          <div class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-0.5">{{ stats.total }}</div>
-        </div>
-        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-          <Users class="w-5 h-5" />
-        </div>
-      </div>
-
-      <!-- Activos -->
-      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
-        <div>
-          <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600">Activos</div>
-          <div class="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-0.5">{{ stats.activos }}</div>
-        </div>
-        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-          <CheckCircle class="w-5 h-5" />
-        </div>
-      </div>
-
-      <!-- Talleristas -->
-      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
-        <div>
-          <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-amber-600">Talleristas</div>
-          <div class="text-xl sm:text-2xl font-extrabold text-amber-600 mt-0.5">{{ stats.talleristas }}</div>
-        </div>
-        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-          <Wrench class="w-5 h-5" />
-        </div>
-      </div>
-
-      <!-- Inactivos (Borrado Lógico) -->
-      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
-        <div>
-          <div class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Inactivos</div>
-          <div class="text-xl sm:text-2xl font-extrabold text-slate-500 mt-0.5">{{ stats.inactivos }}</div>
-        </div>
-        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center">
-          <Ban class="w-5 h-5" />
-        </div>
-      </div>
-    </div>
-
     <!-- Filters & Search Bar (Conectados a Supabase y PostgreSQL) -->
     <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
       <!-- Search Input -->
@@ -252,7 +203,7 @@ const showToast = (msg: string) => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Buscar por nombre, cédula / documento, teléfono o dirección..."
+            placeholder="Buscar por nombre, teléfono o dirección de taller..."
             class="w-full min-h-[46px] pl-11 pr-4 rounded-full bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#05C7F2] transition shadow-inner"
           />
         </div>
@@ -320,6 +271,7 @@ const showToast = (msg: string) => {
         :client="client"
         @edit="openEditModal"
         @toggleStatus="handleToggleStatus"
+        @viewOrders="openOrdersModal"
       />
     </div>
 
@@ -352,6 +304,13 @@ const showToast = (msg: string) => {
       @close="isModalOpen = false"
       @save="handleSaveClient"
       @toggleStatus="handleToggleStatus"
+    />
+
+    <!-- Modal for Client Order History (Sprint 4) -->
+    <ClientOrdersHistoryModal
+      :isOpen="isOrdersModalOpen"
+      :client="selectedClientForOrders"
+      @close="isOrdersModalOpen = false"
     />
   </div>
 </template>

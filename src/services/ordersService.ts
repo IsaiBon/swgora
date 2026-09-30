@@ -332,6 +332,20 @@ export const ordersService = {
     return Promise.resolve(orders[index])
   },
 
+  async getOrdersByClientId(clientId: string): Promise<Order[]> {
+    const orders = await this.getOrders()
+    return orders.filter(o => o.customerId === clientId)
+  },
+
+  async getOrdersByCustomer(customerNameOrId: string): Promise<Order[]> {
+    const orders = await this.getOrders()
+    const target = customerNameOrId.toLowerCase().trim()
+    return orders.filter(o => 
+      (o.customerId && o.customerId === customerNameOrId) ||
+      (o.customer && o.customer.toLowerCase().includes(target))
+    )
+  },
+
   async deleteOrder(id: string): Promise<boolean> {
     let orders = getStoredOrders()
     const initialLen = orders.length
