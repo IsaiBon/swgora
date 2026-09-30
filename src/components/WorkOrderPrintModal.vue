@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, onUnmounted } from 'vue'
 import type { Order } from '@/services/ordersService'
 import { Printer, X, FileText } from 'lucide-vue-next'
 
@@ -12,18 +12,65 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+// Cerrar al presionar la tecla Escape
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && props.isOpen) {
+    emit('close')
+  }
+}
+
+// Añadir / quitar clase al body para aislar completamente la impresión y registrar tecla Escape
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (typeof document !== 'undefined') {
+      if (open) {
+        document.body.classList.add('printing-modal-active')
+        window.addEventListener('keydown', handleKeydown)
+      } else {
+        document.body.classList.remove('printing-modal-active')
+        window.removeEventListener('keydown', handleKeydown)
+      }
+    }
+  },
+  { immediate: true }
+)
+
+onUnmounted(() => {
+  if (typeof document !== 'undefined') {
+    document.body.classList.remove('printing-modal-active')
+    window.removeEventListener('keydown', handleKeydown)
+  }
+})
+
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 
 const handlePrint = () => {
   window.print()
 }
 
-// Clean print: separar Mano de Obra y Repuestos Facturados limpiamente
+// Extracción de partes de fecha para cuadrícula DÍA | MES | AÑO del Excel
+const dateParts = computed(() => {
+  if (!props.order?.date) return { day: '--', month: '--', year: '----' }
+  const raw = props.order.date.split('T')[0]
+  const parts = raw.split('-')
+  if (parts.length === 3) {
+    return { day: parts[2], month: parts[1], year: parts[0] }
+  }
+  return { day: '--', month: '--', year: '----' }
+})
+
+// Estados según orden de taller del Excel (Proceso / Pendiente)
+const isEnProceso = computed(() => props.order?.status === 'En Proceso')
+const isPendiente = computed(() => props.order?.status === 'Pendiente')
+
+// Helper para detectar operaciones con medidas de tipo de válvula
 const isValveTypeOperation = (opName: string) => {
   const lower = opName.toLowerCase()
   return (lower.includes('guías') || lower.includes('guias')) && (lower.includes('adapte') || lower.includes('válvula') || lower.includes('valvula'))
 }
 
+// Clean print: filtrar únicamente lo facturado
 const billedOperations = computed(() => {
   return props.order?.operations.filter(op => op.category !== 'Repuestos' && op.quantity > 0 && op.unitPrice >= 0) || []
 })
@@ -52,252 +99,335 @@ const billedMaterials = computed(() => {
 </script>
 
 <template>
-  <div v-if="isOpen && order" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 print:p-0 print:bg-white">
-    <!-- Modal Card (En pantalla con sombra, en print ocupa toda la hoja) -->
-    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 print:border-none print:shadow-none print:max-w-none print:w-full">
-      <!-- Barra superior no imprimible -->
-      <div class="px-6 py-4 bg-slate-800 text-white flex items-center justify-between print:hidden">
-        <div class="flex items-center gap-2">
-          <FileText class="w-5 h-5 text-cyan-400" />
-          <span class="font-semibold text-sm">
-            Vista Previa de Impresión - {{ isCotizacion ? 'Cotización' : 'Orden de Trabajo' }} {{ order.orderNumber }}
-          </span>
-        </div>
-        <div class="flex items-center gap-3">
-          <button
-            type="button"
-            @click="handlePrint"
-            class="inline-flex items-center gap-1.5 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white text-xs font-semibold rounded-lg shadow transition"
-          >
-            <Printer class="w-4 h-4" />
-            Imprimir / Exportar PDF
-          </button>
-          <button
-            type="button"
-            @click="emit('close')"
-            class="text-slate-400 hover:text-white p-1 rounded-lg transition"
-          >
-            <X class="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      <!-- Hoja de Impresión limpia -->
+  <Teleport to="body">
+    <div
+      v-if="isOpen && order"
+      id="work-order-print-container"
+      @click.self="emit('close')"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 print:p-0 print:bg-white print:static print:overflow-visible"
+      role="dialog"
+      aria-modal="true"
+    >
+      <!-- Modal Card con scroll interno y barra superior fija -->
       <div
-        id="printable-work-order"
-        :class="[
-          'p-8 print:p-6 relative text-slate-800',
-          isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
-        ]"
+        id="work-order-print-modal-card"
+        class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-300 print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none my-auto"
       >
+        <!-- 1. Barra superior fija (Sticky / Siempre visible) -->
+        <div class="px-5 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0 z-20 shadow-sm print:hidden">
+          <div class="flex items-center gap-2">
+            <FileText class="w-4 h-4 text-cyan-400" />
+            <span class="font-bold text-xs sm:text-sm tracking-tight">
+              Vista Previa de Impresión - {{ isCotizacion ? 'Cotización' : 'Orden de Trabajo' }} {{ order.orderNumber }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              @click="handlePrint"
+              class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] active:scale-95 text-white text-xs font-bold rounded-lg shadow transition"
+              title="Imprimir o exportar en PDF"
+            >
+              <Printer class="w-3.5 h-3.5" />
+              Imprimir / PDF
+            </button>
+            <button
+              type="button"
+              @click="emit('close')"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 transition"
+              title="Cerrar vista previa (Esc)"
+            >
+              <X class="w-4 h-4" />
+              <span class="hidden sm:inline">Cerrar (Esc)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Contenedor scrollable interno para adaptar el documento -->
+        <div
+          id="printable-work-order-scroll"
+          class="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/70 print:p-0 print:bg-white print:overflow-visible"
+        >
+          <!-- Hoja física de la orden limpia -->
+          <div
+            id="printable-work-order"
+            :class="[
+              'p-5 sm:p-6 text-slate-800 relative bg-white mx-auto shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
+              isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
+            ]"
+          >
         <!-- Marca de agua para cotizaciones -->
         <div v-if="isCotizacion" class="watermark-text select-none">
           COTIZACIÓN
         </div>
 
-        <!-- Encabezado de Documento -->
-        <div class="flex justify-between items-start border-b pb-6 mb-6 border-slate-200">
-          <div>
-            <div class="flex items-center gap-3 mb-2">
-              <div :class="['w-10 h-10 rounded-xl flex items-center justify-center text-white font-black', isCotizacion ? 'bg-slate-700' : 'bg-cyan-600']">
-                JR
+        <!-- 1. ENCABEZADO IDÉNTICO A ORDEN DE TRABAJO.XLSX -->
+        <div class="border-b-2 border-slate-900 pb-2.5 mb-2.5">
+          <div class="flex items-start justify-between gap-3">
+            
+            <!-- Logo + Información de la Empresa Rectificadora -->
+            <div class="flex items-center gap-3 flex-1">
+              <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
+                <img
+                  src="/logo-taller.png"
+                  alt="Logo Rectificadora"
+                  class="max-w-full max-h-full object-contain"
+                  @error="(e: any) => e.target.style.display = 'none'"
+                />
               </div>
+
               <div>
-                <h1 class="text-xl font-bold text-slate-900 tracking-tight">JR BLANCO RECTIFICADORA</h1>
-                <p class="text-xs text-slate-500">Precisión y Calidad en Reconstrucción de Motores</p>
+                <h1 class="text-sm sm:text-base font-black tracking-tight text-slate-900 uppercase font-sans leading-tight">
+                  TALLER INDUSTRIAL Y RECTIFICADO DE MOTORES
+                </h1>
+                <p class="text-[10.5px] font-medium text-slate-700 mt-0.5 leading-snug">
+                  Col. Milagro de la Paz, Av. San Luis y Calle Oriente #12 San Miguel, El Salvador
+                </p>
+                <div class="flex items-center gap-4 text-[10.5px] font-bold text-slate-800 mt-0.5">
+                  <span>Cel: 7831-2641</span>
+                  <span>Cel: 7142-0401</span>
+                </div>
               </div>
             </div>
-            <p class="text-xs text-slate-500">
-              Tel: +52 (81) 8345-9912 | Monterrey, N.L. México
-            </p>
-          </div>
 
-          <div class="text-right">
-            <span
-              :class="[
-                'inline-block px-3 py-1 rounded text-xs font-bold uppercase tracking-wider mb-1',
-                isCotizacion ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'bg-cyan-100 text-cyan-800 border border-cyan-300'
-              ]"
-            >
-              {{ isCotizacion ? 'DOCUMENTO DE COTIZACIÓN' : 'ORDEN DE TRABAJO TALLER' }}
-            </span>
-            <div class="text-2xl font-black text-slate-900">{{ order.orderNumber }}</div>
-            <div class="text-xs text-slate-500">Fecha de ingreso: {{ order.date }}</div>
-            <div v-if="order.deliveryDate" class="text-xs text-slate-500">Entrega estimada: {{ order.deliveryDate }}</div>
-            <div class="text-xs font-semibold text-slate-700 mt-1">Estado: {{ order.status }}</div>
-          </div>
-        </div>
+            <!-- Recuadro de Control: Orden de Trabajo / Cotización + Fecha + Estado -->
+            <div class="w-52 shrink-0 border-2 border-slate-900 rounded-md p-1.5 bg-white text-center">
+              <div class="text-[11px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
+                {{ isCotizacion ? 'COTIZACIÓN' : 'ORDEN DE TRABAJO' }}
+              </div>
+              
+              <div class="py-0.5 flex items-center justify-center gap-1">
+                <span class="text-[11px] font-bold text-slate-600">N°:</span>
+                <span class="text-base font-black font-mono text-rose-700 tracking-tight">{{ order.orderNumber }}</span>
+              </div>
 
-        <!-- Información de Cliente y Vehículo -->
-        <div class="grid grid-cols-2 gap-6 mb-6 p-4 rounded-xl bg-slate-50 print:bg-transparent border border-slate-200">
-          <div>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Datos del Cliente</h3>
-            <div class="text-sm font-bold text-slate-900">{{ order.customer || 'Cliente Mostrador' }}</div>
-            <div v-if="order.workshop" class="text-xs text-slate-600"><strong>Taller:</strong> {{ order.workshop }}</div>
-            <div v-if="order.customerPhone" class="text-xs text-slate-600"><strong>Teléfono:</strong> {{ order.customerPhone }}</div>
-            <div v-if="order.customerAddress" class="text-xs text-slate-600"><strong>Dirección:</strong> {{ order.customerAddress }}</div>
-          </div>
+              <!-- Mini Cuadrícula Fecha: DIA | MES | AÑO -->
+              <div class="grid grid-cols-3 border border-slate-400 text-[9.5px] my-0.5 rounded overflow-hidden">
+                <div class="border-r border-slate-400 bg-slate-100 font-bold py-0.5">DÍA</div>
+                <div class="border-r border-slate-400 bg-slate-100 font-bold py-0.5">MES</div>
+                <div class="bg-slate-100 font-bold py-0.5">AÑO</div>
+                <div class="border-r border-slate-400 font-mono font-bold py-0.5 text-slate-900">{{ dateParts.day }}</div>
+                <div class="border-r border-slate-400 font-mono font-bold py-0.5 text-slate-900">{{ dateParts.month }}</div>
+                <div class="font-mono font-bold py-0.5 text-slate-900">{{ dateParts.year }}</div>
+              </div>
 
-          <div>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Datos del Vehículo / Motor</h3>
-            <div class="text-sm font-bold text-slate-900">
-              {{ [order.vehicleBrand, order.vehicleModel, order.vehicleYear].filter(Boolean).join(' - ') || 'Datos no especificados' }}
-            </div>
-            <div v-if="order.engineNumber" class="text-xs text-slate-600"><strong>N° Motor:</strong> {{ order.engineNumber }}</div>
-            <div v-if="order.engineType" class="text-xs text-slate-600"><strong>Tipo Motor:</strong> {{ order.engineType }}</div>
-            <div v-if="order.observations" class="text-xs text-slate-500 mt-1 italic"><strong>Obs:</strong> {{ order.observations }}</div>
-          </div>
-        </div>
-
-        <!-- 1. Bloque de Operaciones de Rectificación (Mano de Obra) -->
-        <div v-if="billedOperations.length > 0" class="mb-6">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 pb-1 border-b border-slate-300">
-            1. Servicios de Rectificación (Mano de Obra)
-          </h3>
-          <table class="w-full text-xs">
-            <thead>
-              <tr class="border-b border-slate-300 text-slate-500 font-semibold text-left">
-                <th class="py-1.5 w-24">Componente</th>
-                <th class="py-1.5">Operación Realizada</th>
-                <th class="py-1.5 text-center w-16">Cant.</th>
-                <th class="py-1.5 text-right w-24">Precio Unit.</th>
-                <th class="py-1.5 text-right w-24">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="op in billedOperations" :key="op.id">
-                <td class="py-1.5 font-bold text-slate-700">{{ op.category }}</td>
-                <td class="py-1.5 text-slate-900">
-                  <div class="font-medium">{{ op.operation }}</div>
-                  <div v-if="op.measureBanco || op.measureBiela" class="text-[10px] text-cyan-900 font-semibold mt-0.5 flex flex-wrap items-center gap-1.5">
-                    <span v-if="op.measureBanco" class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.2">
-                      Banco: <strong>{{ op.measureBanco }}</strong>
-                    </span>
-                    <span v-if="op.measureBiela" class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.2">
-                      Biela: <strong>{{ op.measureBiela }}</strong>
-                    </span>
-                  </div>
-                  <div v-else-if="op.measure" class="text-[10px] text-cyan-900 font-semibold mt-0.5">
-                    <span class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.2">
-                      {{ isValveTypeOperation(op.operation) ? 'Tipo:' : 'Medida:' }} <strong>{{ op.measure }}</strong>
-                    </span>
-                  </div>
-                </td>
-                <td class="py-1.5 text-center">{{ op.quantity }}</td>
-                <td class="py-1.5 text-right">${{ op.unitPrice.toFixed(2) }}</td>
-                <td class="py-1.5 text-right font-semibold text-slate-900">${{ op.subtotal.toFixed(2) }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t border-slate-300">
-                <td colspan="4" class="py-1.5 text-right font-bold text-slate-700">Subtotal Mano de Obra:</td>
-                <td class="py-1.5 text-right font-bold text-slate-900">${{ order.laborTotal.toFixed(2) }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <!-- 2. Bloque de Repuestos Facturados (Si existen) -->
-        <div v-if="billedParts.length > 0" class="mb-6">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 pb-1 border-b border-slate-300">
-            2. Repuestos y Componentes Facturados
-          </h3>
-          <table class="w-full text-xs">
-            <thead>
-              <tr class="border-b border-slate-300 text-slate-500 font-semibold text-left">
-                <th class="py-1.5 w-24">Categoría</th>
-                <th class="py-1.5">Descripción / Código</th>
-                <th class="py-1.5 text-center w-16">Cant.</th>
-                <th class="py-1.5 text-right w-24">Precio Unit.</th>
-                <th class="py-1.5 text-right w-24">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="part in billedParts" :key="part.id">
-                <td class="py-1.5 text-slate-600">{{ part.category }}</td>
-                <td class="py-1.5 text-slate-900 font-medium">
-                  {{ part.name }} <span v-if="part.code" class="text-slate-400 text-[10px]">({{ part.code }})</span>
-                  <span v-if="part.measure" class="ml-1.5 inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.2 text-[10px] text-cyan-900 font-bold">
-                    {{ part.measure }}
+              <!-- Indicadores de Estado: Proceso / Pendiente -->
+              <div class="flex items-center justify-around text-[9.5px] font-bold text-slate-800 pt-0.5">
+                <span class="flex items-center gap-1">
+                  <span class="w-3 h-3 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
+                    {{ isEnProceso ? '✓' : '' }}
                   </span>
-                </td>
-                <td class="py-1.5 text-center">{{ part.quantity }}</td>
-                <td class="py-1.5 text-right">${{ part.unitPrice.toFixed(2) }}</td>
-                <td class="py-1.5 text-right font-semibold text-slate-900">${{ part.subtotal.toFixed(2) }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t border-slate-300">
-                <td colspan="4" class="py-1.5 text-right font-bold text-slate-700">Subtotal Repuestos:</td>
-                <td class="py-1.5 text-right font-bold text-slate-900">${{ order.partsTotal.toFixed(2) }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <!-- 3. Bloque de Materiales / Insumos (Si existen) -->
-        <div v-if="billedMaterials.length > 0" class="mb-6">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 pb-1 border-b border-slate-300">
-            3. Materiales e Insumos de Taller
-          </h3>
-          <table class="w-full text-xs">
-            <thead>
-              <tr class="border-b border-slate-300 text-slate-500 font-semibold text-left">
-                <th class="py-1.5">Descripción</th>
-                <th class="py-1.5 text-center w-16">Cant.</th>
-                <th class="py-1.5 text-right w-24">Precio Unit.</th>
-                <th class="py-1.5 text-right w-24">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="mat in billedMaterials" :key="mat.id">
-                <td class="py-1.5 text-slate-900">{{ mat.name }}</td>
-                <td class="py-1.5 text-center">{{ mat.quantity }}</td>
-                <td class="py-1.5 text-right">${{ mat.unitPrice.toFixed(2) }}</td>
-                <td class="py-1.5 text-right font-semibold text-slate-900">${{ mat.subtotal.toFixed(2) }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t border-slate-300">
-                <td colspan="3" class="py-1.5 text-right font-bold text-slate-700">Subtotal Materiales:</td>
-                <td class="py-1.5 text-right font-bold text-slate-900">${{ order.materialsTotal.toFixed(2) }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <!-- Resumen de Totales y Firmas -->
-        <div class="mt-8 pt-4 border-t-2 border-slate-900 flex justify-between items-end">
-          <div class="text-xs text-slate-500 max-w-sm">
-            <p class="font-semibold text-slate-700 mb-1">Términos y Condiciones:</p>
-            <p>Garantía de mano de obra de 90 días contra defectos de maquinado. No incluye piezas sometidas a sobrecalentamiento o falta de lubricación.</p>
-            <div class="mt-8 pt-6 border-t border-slate-300 w-48 text-center text-slate-600 font-medium">
-              Firma de Conformidad
+                  Proceso
+                </span>
+                <span class="flex items-center gap-1">
+                  <span class="w-3 h-3 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
+                    {{ isPendiente ? '✓' : '' }}
+                  </span>
+                  Pendiente
+                </span>
+              </div>
             </div>
+
           </div>
+        </div>
 
-          <div class="w-64 bg-slate-50 print:bg-transparent p-4 rounded-xl border border-slate-200">
-            <div class="flex justify-between text-xs py-1">
-              <span class="text-slate-600">Subtotal Mano de Obra:</span>
-              <span class="font-semibold">${{ order.laborTotal.toFixed(2) }}</span>
+        <!-- 2. BLOQUE DE INFORMACIÓN: CLIENTE Y VEHÍCULO (ESTILO CUADRÍCULA EXCEL) -->
+        <div class="border border-slate-900 rounded p-2 mb-2.5 text-[11px] leading-tight bg-slate-50/50 print:bg-transparent">
+          <div class="grid grid-cols-12 gap-x-3 gap-y-1">
+            <!-- Fila 1 -->
+            <div class="col-span-6 flex items-baseline gap-1">
+              <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Nombre:</span>
+              <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.customer }}</span>
             </div>
-            <div v-if="order.materialsTotal > 0" class="flex justify-between text-xs py-1">
-              <span class="text-slate-600">Subtotal Materiales:</span>
-              <span class="font-semibold">${{ order.materialsTotal.toFixed(2) }}</span>
+            <div class="col-span-6 flex items-baseline gap-1">
+              <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Taller:</span>
+              <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.workshop || 'Particular' }}</span>
             </div>
-            <div v-if="order.partsTotal > 0" class="flex justify-between text-xs py-1">
-              <span class="text-slate-600">Subtotal Repuestos:</span>
-              <span class="font-semibold">${{ order.partsTotal.toFixed(2) }}</span>
+
+            <!-- Fila 2 -->
+            <div class="col-span-8 flex items-baseline gap-1">
+              <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Dirección:</span>
+              <span class="text-slate-800 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.customerAddress || 'San Miguel, El Salvador' }}</span>
             </div>
-            <div class="flex justify-between text-base font-black py-2 mt-2 border-t-2 border-slate-900 text-slate-900">
-              <span>TOTAL GENERAL:</span>
-              <span :class="isCotizacion ? 'text-slate-900' : 'text-cyan-700'">${{ order.total.toFixed(2) }}</span>
+            <div class="col-span-4 flex items-baseline gap-1">
+              <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Tel:</span>
+              <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.customerPhone || 'N/A' }}</span>
+            </div>
+
+            <!-- Fila 3 -->
+            <div class="col-span-6 flex items-baseline gap-1">
+              <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Marca:</span>
+              <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.vehicleBrand || 'N/A' }}</span>
+            </div>
+            <div class="col-span-6 flex items-baseline gap-1">
+              <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Motor:</span>
+              <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.vehicleModel || order.engine || order.engineType || 'N/A' }}</span>
+            </div>
+
+            <div v-if="order.observations" class="col-span-12 flex items-baseline gap-1 pt-0.5">
+              <span class="font-bold text-slate-600 text-[9.5px] shrink-0 uppercase">Obs:</span>
+              <span class="text-[10px] italic text-slate-700 truncate flex-1">{{ order.observations }}</span>
             </div>
           </div>
         </div>
+
+        <!-- 3. TABLA DE OPERACIONES FACTURADAS (CLEAN PRINT) -->
+        <div class="flex-1 min-h-0 space-y-2">
+          <!-- Mano de Obra -->
+          <div v-if="billedOperations.length > 0">
+            <div class="bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex justify-between items-center rounded-t">
+              <span>Operaciones de Rectificación (Mano de Obra)</span>
+              <span>Subtotal: ${{ order.laborTotal.toFixed(2) }}</span>
+            </div>
+            <table class="w-full text-[10.5px] border border-slate-900 border-t-0">
+              <thead class="bg-slate-100 border-b border-slate-300 font-bold uppercase text-slate-800 text-[9.5px]">
+                <tr>
+                  <th class="py-0.5 px-2 text-center w-12 border-r border-slate-300">CANT.</th>
+                  <th class="py-0.5 px-2 text-left w-24 border-r border-slate-300">COMPONENTE</th>
+                  <th class="py-0.5 px-2 text-left border-r border-slate-300">OPERACIÓN DEL TRABAJO</th>
+                  <th class="py-0.5 px-2 text-right w-20 border-r border-slate-300">PRECIO U.</th>
+                  <th class="py-0.5 px-2 text-right w-20">VALOR ($)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                <tr v-for="op in billedOperations" :key="op.id" class="leading-tight">
+                  <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ op.quantity }}</td>
+                  <td class="py-0.5 px-2 font-bold text-slate-800 border-r border-slate-200">{{ op.category }}</td>
+                  <td class="py-0.5 px-2 text-slate-900 border-r border-slate-200">
+                    <span class="font-medium">{{ op.operation }}</span>
+                    <span v-if="op.measureBanco || op.measureBiela" class="ml-1 text-[9.5px] font-bold text-slate-700">
+                      [<template v-if="op.measureBanco">Banco: {{ op.measureBanco }}</template><template v-if="op.measureBanco && op.measureBiela"> | </template><template v-if="op.measureBiela">Biela: {{ op.measureBiela }}</template>]
+                    </span>
+                    <span v-else-if="op.measure" class="ml-1 text-[9.5px] font-bold text-slate-700">
+                      [{{ isValveTypeOperation(op.operation) ? 'Tipo: ' : 'Medida: ' }}{{ op.measure }}]
+                    </span>
+                  </td>
+                  <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ op.unitPrice.toFixed(2) }}</td>
+                  <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ op.subtotal.toFixed(2) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Repuestos Facturados -->
+          <div v-if="billedParts.length > 0">
+            <div class="bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex justify-between items-center rounded-t">
+              <span>Repuestos y Componentes Facturados</span>
+              <span>Subtotal: ${{ order.partsTotal.toFixed(2) }}</span>
+            </div>
+            <table class="w-full text-[10.5px] border border-slate-800 border-t-0">
+              <thead class="bg-slate-100 border-b border-slate-300 font-bold uppercase text-slate-800 text-[9.5px]">
+                <tr>
+                  <th class="py-0.5 px-2 text-center w-12 border-r border-slate-300">CANT.</th>
+                  <th class="py-0.5 px-2 text-left w-24 border-r border-slate-300">CATEGORÍA</th>
+                  <th class="py-0.5 px-2 text-left border-r border-slate-300">DESCRIPCIÓN</th>
+                  <th class="py-0.5 px-2 text-right w-20 border-r border-slate-300">PRECIO U.</th>
+                  <th class="py-0.5 px-2 text-right w-20">VALOR ($)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                <tr v-for="part in billedParts" :key="part.id" class="leading-tight">
+                  <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ part.quantity }}</td>
+                  <td class="py-0.5 px-2 font-bold text-slate-700 border-r border-slate-200">{{ part.category }}</td>
+                  <td class="py-0.5 px-2 text-slate-900 border-r border-slate-200">
+                    <span class="font-medium">{{ part.name }}</span>
+                    <span v-if="part.code" class="text-slate-500 text-[9.5px] ml-1">({{ part.code }})</span>
+                    <span v-if="part.measure" class="text-[9.5px] font-bold text-slate-700 ml-1">[{{ part.measure }}]</span>
+                  </td>
+                  <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ part.unitPrice.toFixed(2) }}</td>
+                  <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ part.subtotal.toFixed(2) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Materiales e Insumos -->
+          <div v-if="billedMaterials.length > 0">
+            <div class="bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 flex justify-between items-center rounded-t">
+              <span>Materiales e Insumos de Taller</span>
+              <span>Subtotal: ${{ order.materialsTotal.toFixed(2) }}</span>
+            </div>
+            <table class="w-full text-[10.5px] border border-slate-800 border-t-0">
+              <thead class="bg-slate-100 border-b border-slate-300 font-bold uppercase text-slate-800 text-[9.5px]">
+                <tr>
+                  <th class="py-0.5 px-2 text-center w-12 border-r border-slate-300">CANT.</th>
+                  <th class="py-0.5 px-2 text-left border-r border-slate-300">DESCRIPCIÓN</th>
+                  <th class="py-0.5 px-2 text-right w-20 border-r border-slate-300">PRECIO U.</th>
+                  <th class="py-0.5 px-2 text-right w-20">VALOR ($)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200">
+                <tr v-for="mat in billedMaterials" :key="mat.id" class="leading-tight">
+                  <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ mat.quantity }}</td>
+                  <td class="py-0.5 px-2 text-slate-900 font-medium border-r border-slate-200">{{ mat.name }}</td>
+                  <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ mat.unitPrice.toFixed(2) }}</td>
+                  <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ mat.subtotal.toFixed(2) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 4. PIE DE PÁGINA: MATERIALES / OBSERVACIONES + ESLOGAN + TOTAL -->
+        <div class="mt-2.5 pt-2 border-t-2 border-slate-900 flex justify-between items-end gap-3 no-break">
+          <!-- Izquierda: Eslogan y Términos -->
+          <div class="flex-1 space-y-1.5">
+            <div class="text-[11px] font-black italic text-slate-800 tracking-wide font-serif">
+              "APOYARTE ES NUESTRO COMPROMISO"
+            </div>
+            
+            <div class="pt-5 border-b border-slate-400 w-44 text-center">
+              <span class="text-[9.5px] font-bold text-slate-700 uppercase">Firma de Conformidad</span>
+            </div>
+          </div>
+
+          <!-- Derecha: Recuadro de Totales idéntico al Excel -->
+          <div class="w-56 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
+            <div v-if="order.laborTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
+              <span class="text-slate-600 font-medium">Mano de Obra:</span>
+              <span class="font-bold text-slate-900">${{ order.laborTotal.toFixed(2) }}</span>
+            </div>
+            <div v-if="order.partsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
+              <span class="text-slate-600 font-medium">Repuestos:</span>
+              <span class="font-bold text-slate-900">${{ order.partsTotal.toFixed(2) }}</span>
+            </div>
+            <div v-if="order.materialsTotal > 0" class="flex justify-between px-2 py-0.5 border-b border-slate-200">
+              <span class="text-slate-600 font-medium">Materiales:</span>
+              <span class="font-bold text-slate-900">${{ order.materialsTotal.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between items-center px-2.5 py-1 bg-slate-900 text-white font-black text-xs">
+              <span class="uppercase tracking-wider">TOTAL $:</span>
+              <span class="text-sm text-cyan-300 font-mono font-bold">${{ order.total.toFixed(2) }}</span>
+            </div>
+          </div>
+        </div>
+        </div>
+
       </div>
+      <!-- Fin #printable-work-order-scroll -->
+
+      <!-- 3. Barra de pie informativa y salida rápida (oculta en impresión) -->
+      <div class="px-5 py-2.5 bg-slate-100 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center shrink-0 print:hidden">
+        <span class="flex items-center gap-1.5">
+          <span>Haz clic fuera del recuadro o presiona</span>
+          <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-slate-700 font-mono text-[10px] shadow-xs">Esc</kbd>
+          <span>para salir</span>
+        </span>
+        <button
+          type="button"
+          @click="emit('close')"
+          class="font-bold text-slate-700 hover:text-slate-900 transition text-xs"
+        >
+          Cerrar vista
+        </button>
+      </div>
+
     </div>
+    <!-- Fin #work-order-print-modal-card -->
+
   </div>
+  <!-- Fin #work-order-print-container -->
+  </Teleport>
 </template>
 
 <style scoped>
@@ -307,7 +437,7 @@ const billedMaterials = computed(() => {
 }
 .watermark-text {
   position: absolute;
-  top: 40%;
+  top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotate(-30deg);
   font-size: 80px;
@@ -315,39 +445,6 @@ const billedMaterials = computed(() => {
   color: rgba(100, 116, 139, 0.08);
   pointer-events: none;
   z-index: 0;
-  letter-spacing: 0.15em;
-}
-
-@media print {
-  body {
-    background: white !important;
-  }
-  body * {
-    visibility: hidden;
-  }
-  #printable-work-order,
-  #printable-work-order * {
-    visibility: visible;
-  }
-  #printable-work-order {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 1.5rem !important;
-  }
-  .watermark-text {
-    color: rgba(0, 0, 0, 0.06) !important;
-  }
-  .print\:p-0 {
-    padding: 0 !important;
-  }
-  .print\:bg-white {
-    background-color: white !important;
-  }
-  .print\:hidden {
-    display: none !important;
-  }
+  letter-spacing: 0.18em;
 }
 </style>
