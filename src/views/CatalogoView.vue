@@ -1,36 +1,47 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { 
-  catalogService,
   type Motor, 
   type RepuestoTecnico, 
   type Fabricante,
-  mockFabricantes
+  type Modelo,
+  mockFabricantes,
+  mockModelos,
+  mockMotores,
+  mockRepuestos
 } from '@/services/catalogService'
 import { 
   Search, 
-  Car, 
-  Ruler, 
-  Hash, 
-  Copy, 
-  Check, 
-  Plus, 
-  Wrench, 
-  CheckCircle2, 
-  RotateCcw, 
+  X, 
+  ChevronDown, 
+  ChevronUp, 
+  ChevronLeft, 
   ChevronRight, 
-  Sparkles, 
-  X,
-  Package
+  Car, 
+  Truck, 
+  Wrench, 
+  Ruler, 
+  Star, 
+  Copy, 
+  CheckCircle2, 
+  Mic, 
+  Clock, 
+  FileText, 
+  Settings, 
+  Globe
 } from 'lucide-vue-next'
 
 // =============================================================================
-// ESTADO GLOBAL DE NAVEGACIÓN Y PESTAÑAS (RCT - 3 MODALIDADES)
+// ESTADO DE VISTAS (IMAGEN 1, IMAGEN 2, IMAGEN 3)
 // =============================================================================
-type TabMode = 'vehiculo' | 'medidas' | 'codigo'
-const activeTab = ref<TabMode>('vehiculo')
+// 'home': Imagen 3 (Menú de inicio / Búsqueda manual)
+// 'motor_groups': Imagen 1 (Vista de Motor y Grupos de Montaje)
+// 'parts_list': Imagen 2 (Tabla técnica al hacer clic en un grupo)
+// 'adaptaciones': Búsqueda dimensional para taller sin código
+type ViewMode = 'home' | 'motor_groups' | 'parts_list' | 'adaptaciones'
+const currentView = ref<ViewMode>('home')
 
-// Toast Feedback
+// Feedback / Toast flotante
 const toastMessage = ref<string | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 const showToast = (msg: string) => {
@@ -38,10 +49,10 @@ const showToast = (msg: string) => {
   toastMessage.value = msg
   toastTimer = setTimeout(() => {
     toastMessage.value = null
-  }, 2400)
+  }, 2200)
 }
 
-// Portapapeles
+// Copiar al portapapeles
 const copiedCode = ref<string | null>(null)
 const copyToClipboard = async (text: string, label?: string) => {
   try {
@@ -69,7 +80,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
       name: part.nombre,
       price: part.precio,
       category: part.subsistema,
-      motor: part.motor?.codigo || 'Adaptable',
+      motor: part.motor?.codigo || activeMotor.value?.codigo || 'Universal',
       timestamp: Date.now()
     })
     localStorage.setItem('swgora_cart_parts', JSON.stringify(cart))
@@ -82,300 +93,370 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   }, 1800)
 }
 
-// Badges de Catálogos de Procedencia
-const getBrandBadgeClass = (brand?: string) => {
-  const b = (brand || '').toLowerCase()
-  if (b.includes('dokuro')) return 'bg-rose-50 text-rose-700 border-rose-200'
-  if (b.includes('rik')) return 'bg-blue-50 text-blue-700 border-blue-200'
-  if (b.includes('npr')) return 'bg-cyan-50 text-cyan-800 border-cyan-200'
-  if (b.includes('ndc')) return 'bg-amber-50 text-amber-800 border-amber-200'
-  if (b.includes('ajusa')) return 'bg-emerald-50 text-emerald-800 border-emerald-200'
-  if (b.includes('pioneer')) return 'bg-purple-50 text-purple-700 border-purple-200'
-  if (b.includes('taiho')) return 'bg-orange-50 text-orange-700 border-orange-200'
-  return 'bg-slate-100 text-slate-800 border-slate-300'
-}
+// =============================================================================
+// MOTOR Y VEHÍCULO SELECCIONADO (SIDEBAR IZQUIERDO Y MATRIZ)
+// =============================================================================
+const activeMotor = ref<Motor | null>(mockMotores[0]) // Toyota 3L por defecto para demo
+const selectedBrandName = ref<string>('TOYOTA')
+const isDetailsCollapsed = ref<boolean>(false)
+
+// Categoría de vehículo superior
+const activeVehicleCategory = ref<'motores' | 'turismos' | 'comerciales' | 'industriales'>('motores')
 
 // =============================================================================
-// MODALIDAD 1: BÚSQUEDA PRINCIPAL (JERARQUÍA VEHICULAR Y PROGRESIVA)
-// Fabricante -> Código de Motor -> Grupo de Repuestos
+// MENÚS DE BÚSQUEDA INTERACTIVA (COMBOBOX DONDE SE ESCRIBE Y APARECEN OPCIONES)
 // =============================================================================
-const fabricantes = ref<Fabricante[]>(mockFabricantes)
-const selectedBrand = ref<string>('Toyota')
-const brandMotors = ref<Motor[]>([])
-const selectedMotor = ref<Motor | null>(null)
-const selectedSubsystem = ref<string>('Todos')
-const vehicleParts = ref<RepuestoTecnico[]>([])
-const vehicleFilterText = ref<string>('')
 
-const subsystemsList = [
-  'Todos',
-  'Culata',
-  'Block',
-  'Cigüeñal',
-  'Bielas',
-  'Sellos y Juntas'
-]
+// 1. Fabricante
+const fabricanteInput = ref<string>('')
+const isFabricanteOpen = ref<boolean>(false)
+const filteredFabricantes = computed(() => {
+  const q = fabricanteInput.value.toLowerCase().trim()
+  if (!q) return mockFabricantes
+  return mockFabricantes.filter(f => f.nombre.toLowerCase().includes(q))
+})
 
-// Cargar motores según la marca seleccionada
-const loadMotorsForBrand = async (brandName: string) => {
-  const motors = await catalogService.getMotorsByBrand(brandName)
-  brandMotors.value = motors
-  if (motors.length > 0) {
-    selectedMotor.value = motors[0]
-  } else {
-    selectedMotor.value = null
-  }
+const selectFabricante = (fab: Fabricante) => {
+  fabricanteInput.value = fab.nombre.toUpperCase()
+  selectedBrandName.value = fab.nombre.toUpperCase()
+  isFabricanteOpen.value = false
+  // Reset modelo y motor
+  modeloInput.value = ''
+  motorInput.value = ''
 }
 
-// Cargar repuestos según motor y subsistema
-const loadPartsForVehicle = async () => {
-  if (!selectedMotor.value) {
-    vehicleParts.value = []
-    return
-  }
-  const parts = await catalogService.searchByVehicle(
-    selectedBrand.value,
-    selectedMotor.value.id,
-    selectedSubsystem.value
+// 2. Modelo
+const modeloInput = ref<string>('')
+const isModeloOpen = ref<boolean>(false)
+const availableModelos = computed(() => {
+  const currentFab = mockFabricantes.find(f => f.nombre.toUpperCase() === selectedBrandName.value.toUpperCase())
+  if (!currentFab) return mockModelos
+  return mockModelos.filter(m => m.fabricante_id === currentFab.id)
+})
+const filteredModelos = computed(() => {
+  const q = modeloInput.value.toLowerCase().trim()
+  if (!q) return availableModelos.value
+  return availableModelos.value.filter(m => m.nombre.toLowerCase().includes(q))
+})
+
+const selectModelo = (mod: Modelo) => {
+  modeloInput.value = mod.nombre
+  isModeloOpen.value = false
+}
+
+// 3. Código de Motor
+const motorInput = ref<string>('')
+const isMotorOpen = ref<boolean>(false)
+const availableMotores = computed(() => {
+  const currentFab = mockFabricantes.find(f => f.nombre.toUpperCase() === selectedBrandName.value.toUpperCase())
+  if (!currentFab) return mockMotores
+  return mockMotores.filter(m => m.fabricante_id === currentFab.id)
+})
+const filteredMotores = computed(() => {
+  const q = motorInput.value.toLowerCase().trim()
+  if (!q) return availableMotores.value
+  return availableMotores.value.filter(m => 
+    m.codigo.toLowerCase().includes(q) || 
+    (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q))
   )
-  vehicleParts.value = parts
-}
-
-// Al cambiar marca
-const selectBrand = (brandName: string) => {
-  selectedBrand.value = brandName
-  selectedSubsystem.value = 'Todos'
-  loadMotorsForBrand(brandName)
-}
-
-// Al cambiar motor
-const selectMotor = (motor: Motor) => {
-  selectedMotor.value = motor
-  selectedSubsystem.value = 'Todos'
-  loadPartsForVehicle()
-}
-
-// Al cambiar subsistema
-const selectSubsystem = (sub: string) => {
-  selectedSubsystem.value = sub
-  loadPartsForVehicle()
-}
-
-watch(selectedBrand, () => {
-  loadMotorsForBrand(selectedBrand.value)
 })
 
-watch(selectedMotor, () => {
-  loadPartsForVehicle()
-})
-
-const filteredVehicleParts = computed(() => {
-  if (!vehicleFilterText.value.trim()) return vehicleParts.value
-  const q = vehicleFilterText.value.toLowerCase().trim().replace(/[-\s]/g, '')
-  return vehicleParts.value.filter(p => {
-    const matchOem = p.codigo_oem.toLowerCase().replace(/[-\s]/g, '').includes(q)
-    const matchName = p.nombre.toLowerCase().includes(vehicleFilterText.value.toLowerCase())
-    const matchCat = p.categoria.toLowerCase().includes(vehicleFilterText.value.toLowerCase())
-    const matchEquiv = p.equivalencias?.some(eq =>
-      eq.codigo_alterno.toLowerCase().replace(/[-\s]/g, '').includes(q) ||
-      eq.marca_alterna.toLowerCase().includes(q)
-    )
-    return matchOem || matchName || matchCat || matchEquiv
-  })
-})
-
-// =============================================================================
-// MODALIDAD 2: BÚSQUEDA DIMENSIONAL / POR MEDIDAS (ADAPTACIONES)
-// =============================================================================
-type ComponentCategory = 'Sellos' | 'Válvulas' | 'Anillos' | 'Pernos' | 'Casquetería'
-const selectedComponent = ref<ComponentCategory>('Sellos')
-const toleranciaMm = ref<number>(0.25)
-
-// Formularios reactivos por tipo de componente
-const dimSellos = ref({
-  diametro_interior: '',
-  diametro_exterior: '',
-  altura: ''
-})
-
-const dimValvulas = ref({
-  diametro_cabeza: '',
-  diametro_vastago: '',
-  longitud_total: ''
-})
-
-const dimAnillos = ref({
-  diametro_cilindro: '',
-  espesor_anillo1: '',
-  espesor_anillo2: '',
-  espesor_aceite: ''
-})
-
-const dimPernos = ref({
-  medida_rosca: '',
-  paso_rosca: '',
-  longitud_perno: '',
-  cantidad_piezas: '',
-  paso_rosca1: '',
-  longitud1: '',
-  longitud2: ''
-})
-
-const dimCasqueteria = ref({
-  tipo_cojinete: 'MS',
-  diametro_munon: '',
-  ancho_casquete: ''
-})
-
-const dimensionalResults = ref<RepuestoTecnico[]>([])
-const hasSearchedDimensions = ref<boolean>(false)
-
-// Ejecutar búsqueda dimensional
-const executeDimensionalSearch = async () => {
-  hasSearchedDimensions.value = true
-  let dims: Record<string, number | string> = {
-    tolerancia_mm: toleranciaMm.value
+const selectMotor = (mot: Motor) => {
+  activeMotor.value = mot
+  motorInput.value = mot.codigo
+  isMotorOpen.value = false
+  const fab = mockFabricantes.find(f => f.id === mot.fabricante_id)
+  if (fab) {
+    selectedBrandName.value = fab.nombre.toUpperCase()
+    fabricanteInput.value = fab.nombre.toUpperCase()
   }
+  // Ir directamente a la vista de grupos del motor (Imagen 1)
+  currentView.value = 'motor_groups'
+  showToast(`Motor seleccionado: ${selectedBrandName.value} - ${mot.codigo}`)
+}
 
-  if (selectedComponent.value === 'Sellos') {
-    dims = {
-      ...dims,
-      diametro_interior: Number(dimSellos.value.diametro_interior) || 0,
-      diametro_exterior: Number(dimSellos.value.diametro_exterior) || 0,
-      altura: Number(dimSellos.value.altura) || 0
-    }
-  } else if (selectedComponent.value === 'Válvulas') {
-    dims = {
-      ...dims,
-      diametro_cabeza: Number(dimValvulas.value.diametro_cabeza) || 0,
-      diametro_vastago: Number(dimValvulas.value.diametro_vastago) || 0,
-      longitud_total: Number(dimValvulas.value.longitud_total) || 0
-    }
-  } else if (selectedComponent.value === 'Anillos') {
-    dims = {
-      ...dims,
-      diametro_cilindro: Number(dimAnillos.value.diametro_cilindro) || 0,
-      espesor_anillo1: Number(dimAnillos.value.espesor_anillo1) || 0,
-      espesor_anillo2: Number(dimAnillos.value.espesor_anillo2) || 0,
-      espesor_aceite: Number(dimAnillos.value.espesor_aceite) || 0
-    }
-  } else if (selectedComponent.value === 'Pernos') {
-    dims = {
-      ...dims,
-      medida_rosca: dimPernos.value.medida_rosca,
-      paso_rosca: Number(dimPernos.value.paso_rosca) || 0,
-      longitud_perno: Number(dimPernos.value.longitud_perno) || 0,
-      cantidad_piezas: Number(dimPernos.value.cantidad_piezas) || 0,
-      paso_rosca1: Number(dimPernos.value.paso_rosca1) || 0,
-      longitud1: Number(dimPernos.value.longitud1) || 0,
-      longitud2: Number(dimPernos.value.longitud2) || 0
-    }
-  } else if (selectedComponent.value === 'Casquetería') {
-    dims = {
-      ...dims,
-      tipo_cojinete: dimCasqueteria.value.tipo_cojinete,
-      diametro_munon: Number(dimCasqueteria.value.diametro_munon) || 0,
-      ancho_casquete: Number(dimCasqueteria.value.ancho_casquete) || 0
+// 4. Filtros secundarios de Inicio
+const selectedYear = ref<string>('')
+const selectedFuel = ref<string>('Todos los combustibles')
+const inputCc = ref<string>('')
+const inputPotencia = ref<string>('')
+const potenciaUnit = ref<'CV' | 'kW'>('CV')
+
+// 5. Búsqueda inferior de Marcas y Grupos de Productos
+const brandProductInput = ref<string>('AJUSA')
+const isBrandProductOpen = ref<boolean>(false)
+const productBrandsList = ['AJUSA', 'DOKURO', 'RIK', 'NPR', 'NDC', 'PIONEER', 'TAIHO']
+const filteredProductBrands = computed(() => {
+  const q = brandProductInput.value.toLowerCase().trim()
+  if (!q) return productBrandsList
+  return productBrandsList.filter(b => b.toLowerCase().includes(q))
+})
+
+const groupProductInput = ref<string>('')
+const isGroupProductOpen = ref<boolean>(false)
+const productGroupsList = [
+  'Junta de culata',
+  'Junta/guía/ajuste de válvulas (Sellos)',
+  'Válvula de motor',
+  'Juego de anillos de pistón',
+  'Tornillos de culata',
+  'Cojinetes de bancada MS',
+  'Cojinetes de biela CB',
+  'Juego completo de juntas'
+]
+const filteredProductGroups = computed(() => {
+  const q = groupProductInput.value.toLowerCase().trim()
+  if (!q) return productGroupsList
+  return productGroupsList.filter(g => g.toLowerCase().includes(q))
+})
+
+// 6. Barra Superior de Búsqueda Global (Ajusa Top Bar)
+const topSearchType = ref<'grupos' | 'articulo'>('grupos')
+const topSearchQuery = ref<string>('')
+const isTopSearchOpen = ref<boolean>(false)
+
+const topSuggestions = computed(() => {
+  const q = topSearchQuery.value.trim().toLowerCase().replace(/[-\s]/g, '')
+  if (!q || q.length < 2) return { motors: [], parts: [] }
+
+  const motors = mockMotores.filter(m => 
+    m.codigo.toLowerCase().replace(/[-\s]/g, '').includes(q) ||
+    m.nombre_comercial?.toLowerCase().includes(q)
+  )
+
+  const parts = mockRepuestos.filter(r => 
+    r.codigo_oem.toLowerCase().replace(/[-\s]/g, '').includes(q) ||
+    r.nombre.toLowerCase().includes(q) ||
+    r.equivalencias?.some(eq => eq.codigo_alterno.toLowerCase().replace(/[-\s]/g, '').includes(q))
+  )
+
+  return { motors: motors.slice(0, 4), parts: parts.slice(0, 6) }
+})
+
+const selectTopSuggestionMotor = (mot: Motor) => {
+  selectMotor(mot)
+  topSearchQuery.value = ''
+  isTopSearchOpen.value = false
+}
+
+const selectTopSuggestionPart = (part: RepuestoTecnico) => {
+  const mot = mockMotores.find(m => m.id === part.motor_id)
+  if (mot) {
+    activeMotor.value = mot
+    const fab = mockFabricantes.find(f => f.id === mot.fabricante_id)
+    if (fab) selectedBrandName.value = fab.nombre.toUpperCase()
+  }
+  selectedGroupTitle.value = part.subsistema
+  currentView.value = 'parts_list'
+  topSearchQuery.value = ''
+  isTopSearchOpen.value = false
+}
+
+// Botón Buscar manual de la pantalla de inicio
+const handleSearchManual = () => {
+  if (motorInput.value) {
+    const found = mockMotores.find(m => m.codigo.toLowerCase() === motorInput.value.toLowerCase())
+    if (found) {
+      selectMotor(found)
+      return
     }
   }
-
-  const results = await catalogService.searchByDimensions(selectedComponent.value, dims)
-  dimensionalResults.value = results
-}
-
-// Botones de Muestras Rápidas de Taller
-const loadSampleSello = () => {
-  selectedComponent.value = 'Sellos'
-  dimSellos.value.diametro_interior = '4.8'
-  dimSellos.value.diametro_exterior = '10.8'
-  dimSellos.value.altura = '10'
-  executeDimensionalSearch()
-  showToast('Muestra cargada: Sello Vitón 4.8 x 10.8 x 10 mm')
-}
-
-const loadSampleValvula = () => {
-  selectedComponent.value = 'Válvulas'
-  dimValvulas.value.diametro_cabeza = '42.5'
-  dimValvulas.value.diametro_vastago = '8.0'
-  dimValvulas.value.longitud_total = '103.5'
-  executeDimensionalSearch()
-  showToast('Muestra cargada: Válvula Admisión 42.5 x 8.0 x 103.5 mm')
-}
-
-const loadSampleAnillos = () => {
-  selectedComponent.value = 'Anillos'
-  dimAnillos.value.diametro_cilindro = '96'
-  dimAnillos.value.espesor_anillo1 = '2.0'
-  dimAnillos.value.espesor_anillo2 = '2.0'
-  dimAnillos.value.espesor_aceite = '4.0'
-  executeDimensionalSearch()
-  showToast('Muestra cargada: Anillos Ø96mm (2.0 / 2.0 / 4.0 mm)')
-}
-
-const loadSamplePernos = () => {
-  selectedComponent.value = 'Pernos'
-  dimPernos.value.medida_rosca = 'M12'
-  dimPernos.value.paso_rosca = '1.25'
-  dimPernos.value.longitud_perno = '120'
-  dimPernos.value.cantidad_piezas = '18'
-  dimPernos.value.paso_rosca1 = '1.25'
-  dimPernos.value.longitud1 = '120'
-  dimPernos.value.longitud2 = '120'
-  executeDimensionalSearch()
-  showToast('Muestra cargada: Pernos Culata M12 x 1.25 x 120 mm (18 pcs)')
-}
-
-const resetDimensionalForm = () => {
-  dimSellos.value = { diametro_interior: '', diametro_exterior: '', altura: '' }
-  dimValvulas.value = { diametro_cabeza: '', diametro_vastago: '', longitud_total: '' }
-  dimAnillos.value = { diametro_cilindro: '', espesor_anillo1: '', espesor_anillo2: '', espesor_aceite: '' }
-  dimPernos.value = { medida_rosca: '', paso_rosca: '', longitud_perno: '', cantidad_piezas: '', paso_rosca1: '', longitud1: '', longitud2: '' }
-  dimCasqueteria.value = { tipo_cojinete: 'MS', diametro_munon: '', ancho_casquete: '' }
-  dimensionalResults.value = []
-  hasSearchedDimensions.value = false
-}
-
-// =============================================================================
-// MODALIDAD 3: BÚSQUEDA INVERSA POR CÓDIGO ORIGINAL O REFERENCIA
-// =============================================================================
-const codeSearchQuery = ref<string>('')
-const codeSearchResults = ref<RepuestoTecnico[]>([])
-const hasSearchedCode = ref<boolean>(false)
-
-const executeCodeSearch = async (term?: string) => {
-  const q = term !== undefined ? term : codeSearchQuery.value
-  if (!q || !q.trim()) {
-    codeSearchResults.value = []
-    hasSearchedCode.value = false
-    return
+  // Si hay fabricante pero no motor específico, tomar el primero de la marca
+  if (availableMotores.value.length > 0) {
+    selectMotor(availableMotores.value[0])
+  } else {
+    selectMotor(mockMotores[0])
   }
-  codeSearchQuery.value = q
-  hasSearchedCode.value = true
-  const results = await catalogService.searchByCode(q)
-  codeSearchResults.value = results
 }
 
-const quickCodeChips = [
-  { label: 'Sello 4.8mm', code: '90913-02090' },
-  { label: 'Dokuro SV-108', code: 'SV-108' },
-  { label: 'Anillos RIK 3L', code: '28006' },
-  { label: 'Cojinetes NDC Bancada', code: 'MS-1140A' },
-  { label: 'Pernos Ajusa M12', code: '81014300' },
-  { label: 'Válvula Adm 3L', code: '13711-54020' },
-  { label: 'Pernos M10 Z24', code: '11056-21W00' },
-  { label: 'Ajusa 1KD MLS', code: '10156900' }
+// Limpiar filtros de inicio
+const handleResetManualFilters = () => {
+  fabricanteInput.value = ''
+  selectedBrandName.value = 'TOYOTA'
+  modeloInput.value = ''
+  motorInput.value = ''
+  selectedYear.value = ''
+  selectedFuel.value = 'Todos los combustibles'
+  inputCc.value = ''
+  inputPotencia.value = ''
+  showToast('Filtros restablecidos')
+}
+
+// =============================================================================
+// GRUPOS DE MONTAJE (IMAGEN 1: 6 TARJETAS TÉCNICAS)
+// =============================================================================
+interface AssemblyGroup {
+  id: string
+  title: string
+  subitems: { name: string; filterKey: string }[]
+}
+
+const assemblyGroups: AssemblyGroup[] = [
+  {
+    id: 'ciguenal',
+    title: 'Accionamiento de cigüeñal',
+    subitems: [
+      { name: 'Cigüeñal / piezas', filterKey: 'Cigüeñal' },
+      { name: 'Retenes radiales/kit', filterKey: 'Sellos' },
+      { name: 'Cojinetes de bancada MS', filterKey: 'Casquetería' },
+      { name: 'Arandelas axiales TW', filterKey: 'Casquetería' }
+    ]
+  },
+  {
+    id: 'bloque',
+    title: 'Bloque motor',
+    subitems: [
+      { name: 'Bloque motor', filterKey: 'Block' },
+      { name: 'Camisas de cilindro', filterKey: 'Camisas' },
+      { name: 'Anillos de pistón STD', filterKey: 'Anillos' }
+    ]
+  },
+  {
+    id: 'culata',
+    title: 'Culata / Piezas de montaje',
+    subitems: [
+      { name: 'Junta de culata', filterKey: 'Empaques' },
+      { name: 'Junta/guía/ajuste de válvulas', filterKey: 'Sellos' },
+      { name: 'Junta/junta tórica del colector de admisión/esc...', filterKey: 'Empaques' },
+      { name: 'Tapa de válvulas/junta', filterKey: 'Empaques' },
+      { name: 'Tornillos de culata', filterKey: 'Pernos' },
+      { name: 'Válvula de motor', filterKey: 'Válvulas' }
+    ]
+  },
+  {
+    id: 'distribucion',
+    title: 'Distribución del motor',
+    subitems: [
+      { name: 'Árbol de levas/juego', filterKey: 'Culata' },
+      { name: 'Cojinetes de leva SH', filterKey: 'Casquetería' }
+    ]
+  },
+  {
+    id: 'juntas',
+    title: 'Juntas',
+    subitems: [
+      { name: 'Juego completo de juntas', filterKey: 'Empaques' },
+      { name: 'Junta de bloque motor', filterKey: 'Empaques' },
+      { name: 'Junta de colector de admisión', filterKey: 'Empaques' },
+      { name: 'Junta de culata', filterKey: 'Empaques' },
+      { name: 'Junta de cárter de aceite', filterKey: 'Empaques' },
+      { name: 'Junta del sistema de aceite', filterKey: 'Empaques' }
+    ]
+  },
+  {
+    id: 'lubricacion',
+    title: 'Lubricación',
+    subitems: [
+      { name: 'Cárter de aceite / piezas adicionales', filterKey: 'Culata' },
+      { name: 'Cojinetes de biela CB', filterKey: 'Casquetería' },
+      { name: 'Bocinas de biela PB', filterKey: 'Casquetería' }
+    ]
+  }
 ]
 
-// Ciclo de vida inicial
-onMounted(async () => {
-  await loadMotorsForBrand(selectedBrand.value)
+// Navegación hacia la lista de piezas (Imagen 2)
+const selectedGroupTitle = ref<string>('Junta de culata')
+const selectedSubitemFilter = ref<string>('')
+
+const openGroupParts = (groupTitle: string, subitemName?: string, filterKey?: string) => {
+  selectedGroupTitle.value = subitemName || groupTitle
+  selectedSubitemFilter.value = filterKey || ''
+  currentView.value = 'parts_list'
+}
+
+// =============================================================================
+// LISTA DE PIEZAS DETALLADA (IMAGEN 2)
+// =============================================================================
+const selectedBrandFilterInTable = ref<string>('Todas las marcas')
+const partsTableList = computed(() => {
+  if (!activeMotor.value) return mockRepuestos
+
+  let list = mockRepuestos.filter(r => r.motor_id === activeMotor.value?.id)
+
+  // Filtrado según el sub-ítem seleccionado o grupo
+  if (selectedSubitemFilter.value) {
+    const k = selectedSubitemFilter.value.toLowerCase()
+    list = list.filter(r => 
+      r.categoria.toLowerCase() === k || 
+      r.subsistema.toLowerCase().includes(k) ||
+      r.nombre.toLowerCase().includes(k)
+    )
+  }
+
+  // Filtrado por marca de catálogo si se seleccionó en el dropdown superior
+  if (selectedBrandFilterInTable.value !== 'Todas las marcas') {
+    const b = selectedBrandFilterInTable.value.toLowerCase()
+    list = list.filter(r => 
+      (r.catalogo_origen && r.catalogo_origen.toLowerCase() === b) ||
+      r.equivalencias?.some(eq => eq.marca_alterna.toLowerCase() === b)
+    )
+  }
+
+  // Si no hay resultados específicos, mostrar los componentes del motor para no dejar vacía la tabla
+  if (list.length === 0) {
+    list = mockRepuestos.filter(r => r.motor_id === activeMotor.value?.id)
+  }
+
+  return list
+})
+
+// Deseleccionar motor y volver al inicio
+const clearActiveMotor = () => {
+  activeMotor.value = null
+  currentView.value = 'home'
+}
+
+// Banner Slider de Inicio (Sellos, Juntas, etc.)
+const currentSlide = ref<number>(0)
+const bannerSlides = [
+  {
+    title: 'Sellos de Válvula Vitón & Retenes Radiales',
+    subtitle: 'Dokuro • Ajusa • Máxima resistencia térmica y sellado estanco',
+    badge: 'Gama Estanqueidad 2026'
+  },
+  {
+    title: 'Juntas de Culata Multilámina (MLS) y Grafito',
+    subtitle: 'Espesores calibrados con tolerancias micrométricas para rectificación',
+    badge: 'Calidad Equipo Original'
+  },
+  {
+    title: 'Casquetería Japonesa NDC & Anillos RIK / NPR',
+    subtitle: 'Bancadas MS, Bielas CB, Axiales TW y juegos de aros STD y sobremedida',
+    badge: 'Rectificación de Precisión'
+  }
+]
+let slideInterval: ReturnType<typeof setInterval> | null = null
+
+// Cerrar comboboxes al hacer click fuera
+const handleClickOutside = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (!target.closest('.combobox-container')) {
+    isFabricanteOpen.value = false
+    isModeloOpen.value = false
+    isMotorOpen.value = false
+    isBrandProductOpen.value = false
+    isGroupProductOpen.value = false
+    isTopSearchOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  slideInterval = setInterval(() => {
+    currentSlide.value = (currentSlide.value + 1) % bannerSlides.length
+  }, 5000)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  if (slideInterval) clearInterval(slideInterval)
 })
 </script>
 
 <template>
-  <div class="bg-[#f8fafc] min-h-screen text-slate-800 flex flex-col font-sans select-none">
+  <div class="bg-[#f0f4f8] min-h-screen text-slate-800 flex flex-col font-sans select-none">
     
-    <!-- Toast Flotante de Confirmación -->
+    <!-- Toast Flotante -->
     <Transition
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="transform translate-y-3 opacity-0"
@@ -386,7 +467,7 @@ onMounted(async () => {
     >
       <div 
         v-if="toastMessage" 
-        class="fixed bottom-5 right-5 z-50 bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-2.5 text-xs font-bold"
+        class="fixed bottom-5 right-5 z-50 bg-[#001d47] text-white px-4 py-2.5 rounded-lg shadow-2xl border border-blue-400/40 flex items-center gap-2 text-xs font-bold"
       >
         <CheckCircle2 class="w-4 h-4 text-[#04c4d9]" />
         <span>{{ toastMessage }}</span>
@@ -394,1232 +475,1129 @@ onMounted(async () => {
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- ENCABEZADO TÉCNICO Y TABS MAESTROS DE NAVEGACIÓN (RCT)                     -->
+    <!-- 1. BARRA SUPERIOR AJUSA (AZUL CORPORATIVO #002b66)                        -->
     <!-- ========================================================================= -->
-    <header class="bg-white border-b border-slate-200 shadow-2xs sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          
-          <!-- Título del Panel de Catálogo Técnico -->
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-slate-900 text-[#04c4d9] flex items-center justify-center shadow-xs">
-              <Wrench class="w-5 h-5" />
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <h1 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Catálogo Técnico & Motor de Adaptaciones</h1>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-[#04c4d9] border border-cyan-200">
-                  JR Blanco • Rectificadora
-                </span>
-              </div>
-              <p class="text-xs text-slate-500">
-                Consulta multimarca (Dokuro, Rik, NPR, NDC, Ajusa) y cálculo dimensional en milímetros
-              </p>
-            </div>
+    <header class="bg-[#002b66] text-white sticky top-0 z-40 shadow-md">
+      
+      <!-- Fila Superior: Logo + Buscador Central + Iconos de Utilidad -->
+      <div class="max-w-[1440px] mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+        
+        <!-- Logo / Marca Ajusa / SWGORA -->
+        <div class="flex items-center gap-3 cursor-pointer" @click="currentView = 'home'">
+          <div class="bg-white text-[#002b66] px-3 py-1 rounded font-black italic tracking-tighter text-lg shadow-xs flex items-center gap-1">
+            <span>ajusa</span>
+          </div>
+          <span class="text-xs font-bold text-blue-200 tracking-wider hidden md:inline">
+            SWGORA • JR BLANCO
+          </span>
+        </div>
+
+        <!-- Buscador Central: [Búsqueda por grupos v] [Input] [Mic] [Lupa] -->
+        <div class="flex-1 max-w-2xl relative combobox-container">
+          <div class="flex items-center bg-white rounded overflow-hidden shadow-inner text-slate-800 border border-transparent focus-within:border-[#04c4d9]">
+            
+            <!-- Selector de tipo de búsqueda -->
+            <button
+              type="button"
+              @click="topSearchType = topSearchType === 'grupos' ? 'articulo' : 'grupos'"
+              class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 text-xs font-bold flex items-center gap-1.5 border-r border-slate-200 shrink-0"
+            >
+              <span>{{ topSearchType === 'grupos' ? 'Búsqueda por grupos' : 'Búsqueda por artículo' }}</span>
+              <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            <!-- Input de Texto con Autocompletado mientras se escribe -->
+            <input
+              v-model="topSearchQuery"
+              @focus="isTopSearchOpen = true"
+              @input="isTopSearchOpen = true"
+              type="text"
+              placeholder="Escribe código de motor, OEM o número de pieza (ej. 3L, 10115000, SV-108)..."
+              class="w-full px-3 py-2 text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none"
+            />
+
+            <!-- Botón Limpiar si hay texto -->
+            <button
+              v-if="topSearchQuery"
+              @click="topSearchQuery = ''"
+              type="button"
+              class="px-2 text-slate-400 hover:text-slate-600"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+
+            <!-- Micrófono -->
+            <button
+              type="button"
+              class="px-2.5 text-slate-400 hover:text-slate-600 hidden sm:block"
+              title="Búsqueda por voz"
+            >
+              <Mic class="w-4 h-4" />
+            </button>
+
+            <!-- Botón Lupa Azul Oficial -->
+            <button
+              type="button"
+              @click="isTopSearchOpen = true"
+              class="bg-[#003882] hover:bg-[#002b66] text-white px-4 py-2.5 flex items-center justify-center shrink-0 transition"
+              title="Buscar"
+            >
+              <Search class="w-4 h-4" />
+            </button>
           </div>
 
-          <!-- Badges de Marcas Integradas -->
-          <div class="flex items-center gap-1.5 flex-wrap">
-            <span class="text-[11px] font-semibold text-slate-400 mr-1 hidden lg:inline">Catálogos:</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-50 text-rose-700 border-rose-200">Dokuro</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-blue-50 text-blue-700 border-blue-200">Rik</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-cyan-50 text-cyan-800 border-cyan-200">NPR</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-amber-50 text-amber-800 border-amber-200">NDC</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-emerald-50 text-emerald-800 border-emerald-200">Ajusa</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">Pioneer</span>
+          <!-- DROPDOWN DE AUTOCOMPLETADO MIENTRAS SE ESCRIBE -->
+          <div
+            v-if="isTopSearchOpen && (topSuggestions.motors.length > 0 || topSuggestions.parts.length > 0)"
+            class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-2xl border border-slate-200 z-50 max-h-80 overflow-y-auto text-slate-800"
+          >
+            <!-- Coincidencias de Motores -->
+            <div v-if="topSuggestions.motors.length > 0" class="p-2 border-b border-slate-100">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2 mb-1">
+                Motores coincidentes
+              </span>
+              <div
+                v-for="mot in topSuggestions.motors"
+                :key="mot.id"
+                @click="selectTopSuggestionMotor(mot)"
+                class="px-3 py-1.5 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-between text-xs"
+              >
+                <div>
+                  <strong class="text-[#002b66] font-mono">{{ mot.codigo }}</strong>
+                  <span class="text-slate-500 ml-1.5">{{ mot.nombre_comercial }}</span>
+                </div>
+                <span class="text-[10px] font-bold text-slate-400">{{ mot.combustible }}</span>
+              </div>
+            </div>
+
+            <!-- Coincidencias de Repuestos -->
+            <div v-if="topSuggestions.parts.length > 0" class="p-2">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2 mb-1">
+                Artículos & Repuestos coincidentes
+              </span>
+              <div
+                v-for="part in topSuggestions.parts"
+                :key="part.id"
+                @click="selectTopSuggestionPart(part)"
+                class="px-3 py-1.5 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-between text-xs"
+              >
+                <div>
+                  <strong class="font-mono text-slate-900">{{ part.codigo_oem }}</strong>
+                  <span class="text-slate-600 ml-2">{{ part.nombre }}</span>
+                </div>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                  {{ part.catalogo_origen || 'Catálogo' }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Barra de Pestañas Principales (3 Modalidades) -->
-        <div class="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100 overflow-x-auto">
-          <!-- Tab 1 -->
+        <!-- Iconos de Utilidad Derecha -->
+        <div class="flex items-center gap-3 text-blue-200 shrink-0">
+          <button type="button" @click="currentView = 'home'" class="hover:text-white p-1" title="Inicio">
+            <Clock class="w-4 h-4" />
+          </button>
+          <button type="button" @click="currentView = 'parts_list'" class="hover:text-white p-1" title="Catálogo">
+            <FileText class="w-4 h-4" />
+          </button>
+          <button type="button" class="hover:text-white p-1" title="Idioma">
+            <Globe class="w-4 h-4" />
+          </button>
+          <button type="button" class="hover:text-white p-1" title="Configuración">
+            <Settings class="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Fila Inferior: Pestañas de Categoría Vehicular (Iconos: Turismos, Vehículos industriales, Motores...) -->
+      <div class="bg-[#002252] border-t border-blue-900/50">
+        <div class="max-w-[1440px] mx-auto px-3 sm:px-6 flex items-center gap-1 overflow-x-auto text-xs font-semibold py-1">
+          
           <button
             type="button"
-            @click="activeTab = 'vehiculo'"
-            :class="[
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap min-h-[44px]',
-              activeTab === 'vehiculo'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
-            ]"
+            @click="currentView = 'home'"
+            class="px-2.5 py-1.5 rounded text-blue-200 hover:text-white flex items-center gap-1.5 transition"
           >
-            <Car class="w-4 h-4 text-[#04c4d9]" />
-            <span>Por Vehículo / Motor</span>
-            <span v-if="selectedMotor" class="ml-1 text-[11px] px-1.5 py-0.2 bg-white/20 rounded font-mono">
-              {{ selectedMotor.codigo }}
-            </span>
+            <span>⌂</span>
           </button>
 
-          <!-- Tab 2 -->
           <button
             type="button"
-            @click="activeTab = 'medidas'"
+            @click="activeVehicleCategory = 'turismos'; currentView = 'home'"
             :class="[
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap min-h-[44px]',
-              activeTab === 'medidas'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition',
+              activeVehicleCategory === 'turismos' ? 'bg-[#001736] text-white shadow-xs' : 'text-blue-200 hover:text-white'
             ]"
           >
-            <Ruler class="w-4 h-4 text-[#04c4d9]" />
-            <span>Búsqueda por Medidas (Adaptaciones)</span>
-            <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-[#04c4d9]/20 text-[#04c4d9] font-black uppercase">
-              Taller
-            </span>
+            <Car class="w-3.5 h-3.5" />
+            <span>Turismos</span>
           </button>
 
-          <!-- Tab 3 -->
           <button
             type="button"
-            @click="activeTab = 'codigo'"
+            @click="activeVehicleCategory = 'industriales'; currentView = 'home'"
             :class="[
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap min-h-[44px]',
-              activeTab === 'codigo'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition',
+              activeVehicleCategory === 'industriales' ? 'bg-[#001736] text-white shadow-xs' : 'text-blue-200 hover:text-white'
             ]"
           >
-            <Hash class="w-4 h-4 text-[#04c4d9]" />
-            <span>Por Código OEM / Referencia</span>
+            <Truck class="w-3.5 h-3.5" />
+            <span>Vehículos industriales</span>
+          </button>
+
+          <button
+            type="button"
+            @click="activeVehicleCategory = 'comerciales'; currentView = 'home'"
+            :class="[
+              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition',
+              activeVehicleCategory === 'comerciales' ? 'bg-[#001736] text-white shadow-xs' : 'text-blue-200 hover:text-white'
+            ]"
+          >
+            <span>Vehículos comerciales ligeros</span>
+          </button>
+
+          <!-- PESTAÑA MOTORES (ACTIVA EN LAS FOTOS DEL USUARIO) -->
+          <button
+            type="button"
+            @click="activeVehicleCategory = 'motores'; if (activeMotor) currentView = 'motor_groups'; else currentView = 'home'"
+            :class="[
+              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition font-bold',
+              activeVehicleCategory === 'motores' ? 'bg-[#001430] text-white border border-blue-400/40 shadow-xs' : 'text-blue-200 hover:text-white'
+            ]"
+          >
+            <Wrench class="w-3.5 h-3.5 text-[#04c4d9]" />
+            <span>Motores</span>
+          </button>
+
+          <button
+            type="button"
+            @click="currentView = 'adaptaciones'"
+            :class="[
+              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition ml-auto font-bold',
+              currentView === 'adaptaciones' ? 'bg-[#001430] text-[#04c4d9] border border-[#04c4d9]/40' : 'text-[#04c4d9] hover:text-white'
+            ]"
+          >
+            <Ruler class="w-3.5 h-3.5" />
+            <span>Por Medidas (Adaptaciones)</span>
           </button>
         </div>
       </div>
     </header>
 
     <!-- ========================================================================= -->
-    <!-- CONTENIDO PRINCIPAL POR MODALIDAD                                         -->
+    <!-- 2. BARRAS DE SUB-NAVEGACIÓN / BREADCRUMBS (IMAGEN 1 & IMAGEN 2)             -->
     <!-- ========================================================================= -->
-    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
-
-      <!-- ======================================================================= -->
-      <!-- TAB 1: POR VEHÍCULO / MOTOR (JERARQUÍA PROGRESIVA)                      -->
-      <!-- ======================================================================= -->
-      <section v-if="activeTab === 'vehiculo'" class="space-y-6">
+    <div v-if="currentView === 'motor_groups' || currentView === 'parts_list'" class="bg-white border-b border-slate-200 shadow-2xs">
+      <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-2 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs">
         
-        <!-- 1. Cuadrícula Táctil de Fabricantes / Marcas -->
-        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-[#04c4d9]"></span>
-              <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Paso 1: Selecciona la Marca / Fabricante
-              </h2>
-            </div>
-            <span class="text-xs text-slate-500 font-medium">
-              Marca activa: <strong class="text-slate-900">{{ selectedBrand }}</strong>
-            </span>
-          </div>
+        <!-- Breadcrumbs: <- Motores > TOYOTA > 3L > Junta de culata -->
+        <div class="flex items-center gap-2 text-slate-600 font-medium overflow-x-auto">
+          <button
+            type="button"
+            @click="currentView === 'parts_list' ? (currentView = 'motor_groups') : (currentView = 'home')"
+            class="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100"
+            title="Volver"
+          >
+            <ChevronLeft class="w-4 h-4" />
+          </button>
 
-          <!-- Selector de Marcas Táctiles (Mínimo 44px de altura) -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
-            <button
-              v-for="fab in fabricantes"
-              :key="fab.id"
-              type="button"
-              @click="selectBrand(fab.nombre)"
-              :class="[
-                'flex flex-col items-center justify-center p-3 rounded-xl border text-center transition min-h-[58px]',
-                selectedBrand.toLowerCase() === fab.nombre.toLowerCase()
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-[#04c4d9]/40'
-                  : 'bg-slate-50 hover:bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-              ]"
-            >
-              <span class="font-extrabold text-sm tracking-tight">{{ fab.nombre }}</span>
-              <span 
-                :class="[
-                  'text-[10px] mt-0.5',
-                  selectedBrand.toLowerCase() === fab.nombre.toLowerCase() ? 'text-[#04c4d9]' : 'text-slate-400'
-                ]"
-              >
-                {{ fab.engines_count ? `${fab.engines_count} motores` : 'Ver motores' }}
-              </span>
-            </button>
-          </div>
+          <span class="cursor-pointer hover:text-[#002b66]" @click="currentView = 'home'">Motores</span>
+          <span class="text-slate-300">/</span>
+          <span class="cursor-pointer hover:text-[#002b66] font-bold text-slate-800" @click="currentView = 'motor_groups'">
+            {{ selectedBrandName }}
+          </span>
+          <span class="text-slate-300">/</span>
+          <span class="font-bold text-[#002b66] font-mono cursor-pointer" @click="currentView = 'motor_groups'">
+            {{ activeMotor?.codigo }}
+          </span>
+          <template v-if="currentView === 'parts_list'">
+            <span class="text-slate-300">/</span>
+            <span class="font-bold text-slate-900">{{ selectedGroupTitle }}</span>
+          </template>
         </div>
 
-        <!-- 2. Lista de Motores Vinculados a la Marca (Comportamiento progresivo) -->
-        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-cyan-500"></span>
-              <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Paso 2: Motores Vinculados a {{ selectedBrand }} (Selección directa)
-              </h2>
+        <!-- Filtros Rápidos de la Barra Superior -->
+        <div class="flex items-center gap-2 text-xs shrink-0">
+          <select
+            v-if="currentView === 'parts_list'"
+            v-model="selectedGroupTitle"
+            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#002b66]"
+          >
+            <option value="Junta de culata">Junta de culata [Culata / Piezas de montaje]</option>
+            <option value="Válvula de motor">Válvula de motor</option>
+            <option value="Tornillos de culata">Tornillos de culata</option>
+            <option value="Anillos de pistón STD">Anillos de pistón STD</option>
+            <option value="Cojinetes de bancada MS">Cojinetes de bancada MS</option>
+            <option value="Cojinetes de biela CB">Cojinetes de biela CB</option>
+          </select>
+
+          <select
+            v-model="selectedBrandFilterInTable"
+            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-700 text-xs focus:outline-none"
+          >
+            <option value="Todas las marcas">Todas las marcas</option>
+            <option value="Ajusa">Ajusa</option>
+            <option value="Dokuro">Dokuro</option>
+            <option value="Rik">Rik</option>
+            <option value="NPR">NPR</option>
+            <option value="NDC">NDC</option>
+            <option value="Pioneer">Pioneer</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 3. CUERPO PRINCIPAL (DISPOSICIÓN TIPO TECDOC / AJUSA)                      -->
+    <!-- ========================================================================= -->
+    <main class="flex-1 max-w-[1440px] mx-auto w-full px-3 sm:px-6 py-4">
+
+      <!-- ======================================================================= -->
+      <!-- CASO A: IMAGEN 3 - MENÚ DE INICIO / BÚSQUEDA MANUAL                       -->
+      <!-- ======================================================================= -->
+      <div v-if="currentView === 'home'" class="space-y-4">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          
+          <!-- Bloque Izquierdo: Formulario de Búsqueda Manual con Comboboxes -->
+          <div class="lg:col-span-7 bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+            
+            <!-- Pestañas Superiores de Búsqueda -->
+            <div class="flex items-center border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
+              <button
+                type="button"
+                class="px-4 py-2.5 border-b-2 border-[#002b66] bg-white text-[#002b66] flex items-center gap-1.5"
+              >
+                <span>Búsqueda manual</span>
+              </button>
+              <button
+                type="button"
+                @click="showToast('Identificación por Bastidor / Matrícula')"
+                class="px-4 py-2.5 text-slate-500 hover:text-slate-800 flex items-center gap-1.5"
+              >
+                <span>Identificación del vehículo</span>
+              </button>
+              <button
+                type="button"
+                @click="currentView = 'adaptaciones'"
+                class="px-4 py-2.5 text-[#04c4d9] hover:text-cyan-800 ml-auto flex items-center gap-1"
+              >
+                <Ruler class="w-3.5 h-3.5" />
+                <span>Por Medidas (Adaptaciones)</span>
+              </button>
             </div>
-            <span class="text-xs text-slate-400">
-              {{ brandMotors.length }} modelos registrados
-            </span>
-          </div>
 
-          <!-- Cuadrícula de motores de la marca -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div
-              v-for="motor in brandMotors"
-              :key="motor.id"
-              @click="selectMotor(motor)"
-              :class="[
-                'p-4 rounded-xl border cursor-pointer transition flex items-center justify-between',
-                selectedMotor?.id === motor.id
-                  ? 'bg-cyan-50/60 border-[#04c4d9] ring-2 ring-[#04c4d9]/20 shadow-xs'
-                  : 'bg-slate-50/60 hover:bg-white border-slate-200 hover:border-slate-300'
-              ]"
-            >
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="font-black text-base text-slate-900 font-mono tracking-tight">
-                    {{ motor.codigo }}
-                  </span>
-                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-700">
-                    {{ motor.combustible }}
-                  </span>
-                </div>
-                <div class="text-xs text-slate-600 font-medium mt-1">
-                  {{ motor.nombre_comercial }}
-                </div>
-                <div class="text-[11px] text-slate-400 mt-0.5">
-                  {{ motor.configuracion }} • Ø {{ motor.diametro_cilindro_std_mm || '--' }}mm
-                </div>
-              </div>
+            <!-- Fila de Iconos de Tipo de Vehículo -->
+            <div class="grid grid-cols-4 border-b border-slate-200 text-center bg-white">
+              <button type="button" class="py-2.5 border-r border-slate-200 bg-[#001736] text-white flex justify-center">
+                <Car class="w-5 h-5" />
+              </button>
+              <button type="button" class="py-2.5 border-r border-slate-200 text-slate-600 hover:bg-slate-50 flex justify-center">
+                <Truck class="w-5 h-5" />
+              </button>
+              <button type="button" class="py-2.5 border-r border-slate-200 text-slate-600 hover:bg-slate-50 flex justify-center">
+                <Wrench class="w-5 h-5" />
+              </button>
+              <button type="button" class="py-2.5 text-slate-600 hover:bg-slate-50 flex justify-center">
+                <Globe class="w-5 h-5" />
+              </button>
+            </div>
 
-              <div class="text-right">
-                <span 
-                  :class="[
-                    'inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold',
-                    selectedMotor?.id === motor.id
-                      ? 'bg-[#04c4d9] text-white shadow-xs'
-                      : 'bg-slate-200 text-slate-500'
-                  ]"
+            <!-- FORMULARIO CON MENÚS DESPLEGABLES DONDE SE ESCRIBE Y APARECEN OPCIONES -->
+            <div class="p-4 sm:p-5 space-y-3">
+              
+              <!-- 1. Menú Fabricante (Searchable Combobox) -->
+              <div class="relative combobox-container">
+                <div class="flex items-center">
+                  <div class="relative flex-1">
+                    <input
+                      v-model="fabricanteInput"
+                      @focus="isFabricanteOpen = true"
+                      @input="isFabricanteOpen = true"
+                      type="text"
+                      placeholder="Fabricante (ej. TOYOTA, NISSAN, MITSUBISHI...)"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
+                    />
+                    <ChevronDown
+                      @click="isFabricanteOpen = !isFabricanteOpen"
+                      class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
+                    />
+                  </div>
+                  <!-- Botón Lupa Fabricante -->
+                  <button
+                    type="button"
+                    @click="isFabricanteOpen = !isFabricanteOpen"
+                    class="bg-[#8ca8cb] hover:bg-[#7292bb] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center"
+                  >
+                    <Search class="w-4 h-4" />
+                  </button>
+                </div>
+
+                <!-- Dropdown de Opciones Fabricante -->
+                <div
+                  v-if="isFabricanteOpen"
+                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
                 >
-                  <ChevronRight class="w-4 h-4" />
-                </span>
+                  <div
+                    v-for="fab in filteredFabricantes"
+                    :key="fab.id"
+                    @click="selectFabricante(fab)"
+                    class="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between"
+                  >
+                    <span>{{ fab.nombre.toUpperCase() }}</span>
+                    <span class="text-[10px] text-slate-400 font-normal">{{ fab.engines_count }} motores</span>
+                  </div>
+                  <div v-if="filteredFabricantes.length === 0" class="p-2 text-center text-xs text-slate-400">
+                    No se encontró fabricante
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- 3. Componentes del Motor Seleccionado con Selector de Grupos -->
-        <div v-if="selectedMotor" class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          
-          <!-- Encabezado del motor y selector de subsistemas -->
-          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Paso 3: Componentes del Motor</span>
-                <span class="font-mono font-black text-sm text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-                  {{ selectedBrand }} • {{ selectedMotor.codigo }}
-                </span>
+              <!-- 2. Menú Modelos (Searchable Combobox) -->
+              <div class="relative combobox-container">
+                <div class="flex items-center">
+                  <div class="relative flex-1">
+                    <input
+                      v-model="modeloInput"
+                      @focus="isModeloOpen = true"
+                      @input="isModeloOpen = true"
+                      type="text"
+                      placeholder="Modelos (ej. Hilux, Hiace, Land Cruiser...)"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-medium bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
+                    />
+                    <ChevronDown
+                      @click="isModeloOpen = !isModeloOpen"
+                      class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
+                    />
+                  </div>
+                  <!-- Botón X / Limpiar -->
+                  <button
+                    type="button"
+                    @click="modeloInput = ''; motorInput = ''"
+                    class="bg-[#5984c3] hover:bg-[#4873b2] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center"
+                    title="Limpiar"
+                  >
+                    <X class="w-4 h-4" />
+                  </button>
+                </div>
+
+                <!-- Dropdown Modelos -->
+                <div
+                  v-if="isModeloOpen"
+                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                >
+                  <div
+                    v-for="mod in filteredModelos"
+                    :key="mod.id"
+                    @click="selectModelo(mod)"
+                    class="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs font-semibold text-slate-800"
+                  >
+                    {{ mod.nombre }}
+                  </div>
+                  <div v-if="filteredModelos.length === 0" class="p-2 text-center text-xs text-slate-400">
+                    No hay modelos disponibles
+                  </div>
+                </div>
               </div>
-              <p class="text-xs text-slate-500 mt-1">
-                Filtra por subsistema o busca componentes compatibles y equivalencias cruzadas
-              </p>
-            </div>
 
-            <!-- Buscador en tiempo real dentro del motor -->
-            <div class="relative w-full lg:w-72">
-              <Search class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3 pointer-events-none" />
-              <input
-                v-model="vehicleFilterText"
-                type="text"
-                placeholder="Filtrar por código o nombre..."
-                class="w-full pl-8 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
-              />
-            </div>
-          </div>
+              <!-- 3. Menú Código de Motor (Searchable Combobox) -->
+              <div class="relative combobox-container">
+                <div class="relative">
+                  <input
+                    v-model="motorInput"
+                    @focus="isMotorOpen = true"
+                    @input="isMotorOpen = true"
+                    type="text"
+                    placeholder="Código de motor (ej. 3L, 1KD-FTV, Z24, 4D56...)"
+                    class="w-full px-3 py-2 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded focus:outline-none focus:border-[#002b66]"
+                  />
+                  <ChevronDown
+                    @click="isMotorOpen = !isMotorOpen"
+                    class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
+                  />
+                </div>
 
-          <!-- Chips de Subsistemas (Mínimo 44px de altura táctil) -->
-          <div class="flex items-center gap-2 overflow-x-auto pb-1">
-            <button
-              v-for="sub in subsystemsList"
-              :key="sub"
-              type="button"
-              @click="selectSubsystem(sub)"
-              :class="[
-                'px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap min-h-[40px] flex items-center gap-1.5',
-                selectedSubsystem === sub
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
-              ]"
-            >
-              <span>{{ sub }}</span>
-              <span v-if="selectedSubsystem === sub" class="w-1.5 h-1.5 rounded-full bg-[#04c4d9]"></span>
-            </button>
-          </div>
-
-          <!-- Matriz de Repuestos Técnicos -->
-          <div v-if="filteredVehicleParts.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
-            <div
-              v-for="part in filteredVehicleParts"
-              :key="part.id"
-              class="p-4 rounded-xl border border-slate-200/90 bg-white hover:border-[#04c4d9]/60 hover:shadow-md transition flex flex-col justify-between"
-            >
-              <div>
-                <!-- Cabecera de la Tarjeta: OEM y Catálogo Origen -->
-                <div class="flex items-start justify-between gap-2">
-                  <div>
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Código OEM</span>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-                      <span class="font-mono font-black text-sm text-slate-900">{{ part.codigo_oem }}</span>
-                      <button
-                        type="button"
-                        @click="copyToClipboard(part.codigo_oem, 'OEM')"
-                        class="p-1 text-slate-400 hover:text-slate-800 transition"
-                        title="Copiar OEM"
-                      >
-                        <Copy v-if="copiedCode !== part.codigo_oem" class="w-3.5 h-3.5" />
-                        <Check v-else class="w-3.5 h-3.5 text-emerald-600" />
-                      </button>
+                <!-- Dropdown Motores -->
+                <div
+                  v-if="isMotorOpen"
+                  class="absolute left-0 right-0 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                >
+                  <div
+                    v-for="mot in filteredMotores"
+                    :key="mot.id"
+                    @click="selectMotor(mot)"
+                    class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0"
+                  >
+                    <div>
+                      <strong class="text-[#002b66] font-mono text-sm">{{ mot.codigo }}</strong>
+                      <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
                     </div>
-                  </div>
-
-                  <!-- Badge de catálogo fuente principal -->
-                  <span 
-                    :class="[
-                      'text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase',
-                      getBrandBadgeClass(part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna)
-                    ]"
-                  >
-                    {{ part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna || 'Catálogo' }}
-                  </span>
-                </div>
-
-                <!-- Nombre y Subsistema -->
-                <div class="mt-2.5">
-                  <h3 class="font-bold text-slate-900 text-xs sm:text-sm leading-snug">
-                    {{ part.nombre }}
-                  </h3>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                      {{ part.subsistema }}
-                    </span>
-                    <span class="text-[10px] text-slate-400 font-medium">
-                      {{ part.categoria }}
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                      {{ mot.combustible }}
                     </span>
                   </div>
-                </div>
-
-                <!-- Ficha Técnica de Medidas -->
-                <div class="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-[11px] space-y-1">
-                  <!-- Válvulas -->
-                  <div v-if="part.diametro_cabeza_mm || part.diametro_vastago_mm" class="font-mono text-slate-700">
-                    <span class="text-slate-400">Medidas:</span> 
-                    Hongo: <strong>{{ part.diametro_cabeza_mm }}mm</strong> • Vástago: <strong>{{ part.diametro_vastago_mm }}mm</strong> • L: <strong>{{ part.longitud_total_mm }}mm</strong>
-                  </div>
-
-                  <!-- Sellos de Válvula -->
-                  <div v-if="part.diametro_interior_mm || part.diametro_exterior_mm" class="font-mono text-slate-700">
-                    <span class="text-slate-400">Sellos:</span>
-                    D.Int: <strong>{{ part.diametro_interior_mm }}mm</strong> • D.Ext: <strong>{{ part.diametro_exterior_mm }}mm</strong> • Alt: <strong>{{ part.altura_mm }}mm</strong>
-                  </div>
-
-                  <!-- Anillos de Pistón -->
-                  <div v-if="part.diametro_cilindro_mm" class="font-mono text-slate-700">
-                    <span class="text-slate-400">Anillos:</span>
-                    Ø <strong>{{ part.diametro_cilindro_mm }}mm</strong> (1°: {{ part.espesor_anillo1_mm }}mm | 2°: {{ part.espesor_anillo2_mm }}mm | Aceite: {{ part.espesor_aceite_mm }}mm)
-                  </div>
-
-                  <!-- Pernos de Culata -->
-                  <div v-if="part.medida_rosca || part.longitud_perno_mm" class="font-mono text-slate-700">
-                    <span class="text-slate-400">Pernos:</span>
-                    Rosca: <strong>{{ part.medida_rosca }} x {{ part.paso_rosca_mm }}</strong> • L: <strong>{{ part.longitud_perno_mm }}mm</strong> ({{ part.cantidad_piezas }} pcs)
-                  </div>
-
-                  <!-- Cojinetes NDC -->
-                  <div v-if="part.tipo_cojinete" class="font-mono text-slate-700">
-                    <span class="text-slate-400">Cojinete NDC ({{ part.tipo_cojinete }}):</span>
-                    Muñón: <strong>{{ part.diametro_munon_mm }}mm</strong> • Ancho: <strong>{{ part.ancho_casquete_mm }}mm</strong>
-                  </div>
-                </div>
-
-                <!-- Equivalencias Alternas (Dokuro, Rik, NPR, NDC, Ajusa) -->
-                <div v-if="part.equivalencias && part.equivalencias.length > 0" class="mt-2.5 space-y-1">
-                  <span class="text-[10px] font-semibold text-slate-400 block">Equivalencias multimarca:</span>
-                  <div class="flex flex-wrap gap-1">
-                    <span
-                      v-for="eq in part.equivalencias"
-                      :key="eq.id"
-                      @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
-                      :class="[
-                        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border cursor-pointer hover:shadow-2xs transition',
-                        getBrandBadgeClass(eq.marca_alterna)
-                      ]"
-                      :title="`Click para copiar código de ${eq.marca_alterna}`"
-                    >
-                      <span>{{ eq.marca_alterna }}:</span>
-                      <span>{{ eq.codigo_alterno }}</span>
-                      <Copy class="w-2.5 h-2.5 opacity-60" />
-                    </span>
+                  <div v-if="filteredMotores.length === 0" class="p-2 text-center text-xs text-slate-400">
+                    No coincide ningún código de motor
                   </div>
                 </div>
               </div>
 
-              <!-- Botones de Acción Rápida -->
-              <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <div class="text-xs font-bold text-slate-900">
-                  ${{ part.precio.toFixed(2) }}
-                  <span class="text-[10px] font-normal text-slate-400">({{ part.stock }} disponibles)</span>
-                </div>
-
-                <div class="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    @click="copyToClipboard(part.codigo_oem, 'OEM')"
-                    class="px-2 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-[11px] font-bold flex items-center gap-1 transition"
-                  >
-                    <Copy class="w-3 h-3" />
-                    <span>Copiar</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    @click="addToWorkOrder(part)"
-                    :class="[
-                      'px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition shadow-2xs',
-                      addedPartId === part.id
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-[#04c4d9] hover:bg-[#03a9bc] text-white'
-                    ]"
-                  >
-                    <Check v-if="addedPartId === part.id" class="w-3 h-3" />
-                    <Plus v-else class="w-3 h-3" />
-                    <span>{{ addedPartId === part.id ? 'Agregado' : 'A Orden' }}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Estado vacío -->
-          <div v-else class="text-center py-10 px-4 text-slate-400">
-            <Package class="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p class="text-xs font-semibold">No se encontraron componentes en este grupo para el motor seleccionado.</p>
-            <p class="text-[11px] mt-1">Prueba seleccionando el grupo "Todos" o ajustando el término de filtro.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ======================================================================= -->
-      <!-- TAB 2: BÚSQUEDA POR MEDIDAS (ADAPTACIONES DE TALLER SIN CÓDIGO)           -->
-      <!-- ======================================================================= -->
-      <section v-if="activeTab === 'medidas'" class="space-y-6">
-        
-        <!-- Tarjeta de Control y Selección de Componente Dimensional -->
-        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
-            <div>
-              <div class="flex items-center gap-2">
-                <Ruler class="w-4 h-4 text-[#04c4d9]" />
-                <h2 class="text-sm font-bold text-slate-900">
-                  Motor de Adaptaciones Dimensionales (Piezas desgastadas / Sin código)
-                </h2>
-              </div>
-              <p class="text-xs text-slate-500 mt-0.5">
-                Ingresa las cotas físicas exactas en milímetros (mm). El motor localizará coincidencias directas y adaptables.
-              </p>
-            </div>
-
-            <!-- Tolerancia escalonada -->
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-semibold text-slate-400">Tolerancia:</span>
-              <select
-                v-model="toleranciaMm"
-                @change="executeDimensionalSearch"
-                class="text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-              >
-                <option :value="0.10">Estricta (±0.10 mm)</option>
-                <option :value="0.25">Estándar (±0.25 mm)</option>
-                <option :value="0.50">Amplia (±0.50 mm)</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Selector de Categoría de Componente Dimensional (Mínimo 44px) -->
-          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <button
-              v-for="cat in (['Sellos', 'Válvulas', 'Anillos', 'Pernos', 'Casquetería'] as ComponentCategory[])"
-              :key="cat"
-              type="button"
-              @click="selectedComponent = cat; executeDimensionalSearch()"
-              :class="[
-                'p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition min-h-[46px] flex items-center justify-center gap-2',
-                selectedComponent === cat
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                  : 'bg-slate-50 hover:bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-              ]"
-            >
-              <span>{{ cat === 'Sellos' ? 'Sellos de Válvula' : cat === 'Pernos' ? 'Pernos de Culata' : cat }}</span>
-              <span v-if="selectedComponent === cat" class="w-1.5 h-1.5 rounded-full bg-[#04c4d9]"></span>
-            </button>
-          </div>
-
-          <!-- Botones de Muestras Rápidas de Taller -->
-          <div class="flex items-center gap-2 flex-wrap pt-1 text-xs">
-            <span class="text-[11px] font-semibold text-slate-400">Muestras de prueba rápida:</span>
-            
-            <button
-              type="button"
-              @click="loadSampleSello"
-              class="px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#04c4d9] border border-cyan-200 font-bold transition text-[11px] flex items-center gap-1"
-            >
-              <Sparkles class="w-3 h-3" />
-              <span>Probar muestra: Sello 4.8 x 10.8 x 10 mm</span>
-            </button>
-
-            <button
-              type="button"
-              @click="loadSampleValvula"
-              class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium transition text-[11px]"
-            >
-              Válvula 42.5 x 8 x 103.5 mm
-            </button>
-
-            <button
-              type="button"
-              @click="loadSampleAnillos"
-              class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium transition text-[11px]"
-            >
-              Anillos 96mm (2/2/4 mm)
-            </button>
-
-            <button
-              type="button"
-              @click="loadSamplePernos"
-              class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium transition text-[11px]"
-            >
-              Pernos M12x1.25 L=120 (18 pcs)
-            </button>
-
-            <button
-              type="button"
-              @click="resetDimensionalForm"
-              class="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-600 transition text-[11px] ml-auto flex items-center gap-1"
-              title="Limpiar formulario"
-            >
-              <RotateCcw class="w-3 h-3" />
-              <span>Limpiar</span>
-            </button>
-          </div>
-
-          <!-- FORMULARIO REACTIVO SEGÚN COMPONENTE -->
-          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-            
-            <!-- 1. Formulario: Sellos de Válvula / Ajuste -->
-            <div v-if="selectedComponent === 'Sellos'" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Diámetro Interior (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimSellos.diametro_interior"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 4.8"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Ajuste de vástago (4.8, 5.5, 8.0...)</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Diámetro Exterior (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimSellos.diametro_exterior"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 10.8"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Alojamiento de guía (10.8, 11.2, 12.0...)</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Altura / Longitud (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimSellos.altura"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 10.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Altura total del sello (10.0, 10.2...)</span>
-              </div>
-            </div>
-
-            <!-- 2. Formulario: Válvulas de Motor -->
-            <div v-if="selectedComponent === 'Válvulas'" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Diámetro de Hongo / Cabeza (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimValvulas.diametro_cabeza"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 42.5"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Cabeza admisión o escape</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Diámetro de Vástago (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimValvulas.diametro_vastago"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 8.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Grosor de caña (6.0, 7.0, 8.0...)</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Altura Total / Longitud (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimValvulas.longitud_total"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 103.5"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Largo total punta a hongo</span>
-              </div>
-            </div>
-
-            <!-- 3. Formulario: Anillos de Pistón -->
-            <div v-if="selectedComponent === 'Anillos'" class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Diámetro Cilindro / Anillo (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimAnillos.diametro_cilindro"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 96.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">STD (89, 91.1, 96, 99.5...)</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Grosor 1er Anillo (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimAnillos.espesor_anillo1"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 2.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Ranura superior de compresión</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Grosor 2do Anillo (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimAnillos.espesor_anillo2"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 2.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Ranura rascador compresión</span>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Grosor Anillo Aceite (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimAnillos.espesor_aceite"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 4.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-                <span class="text-[10px] text-slate-400 mt-1 block">Ranura de lubricación / aceite</span>
-              </div>
-            </div>
-
-            <!-- 4. Formulario: Juego de Tornillos / Pernos de Culata -->
-            <div v-if="selectedComponent === 'Pernos'" class="space-y-4">
-              <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <!-- Fila de Filtros Secundarios: Año, Combustible, CC -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                 <div>
-                  <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Medida de Rosca
-                  </label>
                   <select
-                    v-model="dimPernos.medida_rosca"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
+                    v-model="selectedYear"
+                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none"
                   >
-                    <option value="">Todas las roscas</option>
-                    <option value="M10">M10 (Nissan Z24, etc.)</option>
-                    <option value="M11">M11 (Nissan YD25, etc.)</option>
-                    <option value="M12">M12 (Toyota 3L, 1KD, etc.)</option>
+                    <option value="">Año de construcción</option>
+                    <option value="2024">2024</option>
+                    <option value="2020">2020</option>
+                    <option value="2015">2015</option>
+                    <option value="2010">2010</option>
+                    <option value="2005">2005</option>
+                    <option value="2000">2000</option>
+                    <option value="1995">1995</option>
                   </select>
                 </div>
 
                 <div>
-                  <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Paso de Rosca (mm)
-                  </label>
-                  <div class="relative">
-                    <input
-                      v-model="dimPernos.paso_rosca"
-                      type="number"
-                      step="0.05"
-                      placeholder="Ej. 1.25"
-                      @keyup.enter="executeDimensionalSearch"
-                      class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                    />
-                    <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                  </div>
+                  <select
+                    v-model="selectedFuel"
+                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none"
+                  >
+                    <option value="Todos los combustibles">Todos los combustibles</option>
+                    <option value="Diésel">Gasóleo / Diésel</option>
+                    <option value="Gasolina">Gasolina</option>
+                  </select>
                 </div>
 
                 <div>
-                  <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Longitud (mm)
-                  </label>
-                  <div class="relative">
-                    <input
-                      v-model="dimPernos.longitud_perno"
-                      type="number"
-                      step="1"
-                      placeholder="Ej. 120"
-                      @keyup.enter="executeDimensionalSearch"
-                      class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                    />
-                    <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Cantidad de Piezas
-                  </label>
                   <input
-                    v-model="dimPernos.cantidad_piezas"
-                    type="number"
-                    placeholder="Ej. 18"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
+                    v-model="inputCc"
+                    type="text"
+                    placeholder="cc (ej. 2779)"
+                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none font-mono"
                   />
                 </div>
               </div>
 
-              <!-- Tolerancias escalonadas para pernos -->
-              <div class="p-3 bg-white rounded-lg border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span class="font-bold text-slate-600 block">Paso de rosca 1:</span>
+              <!-- Fila: Potencia CV/kW + Botón Buscar -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div class="flex items-center border border-slate-300 rounded overflow-hidden">
                   <input
-                    v-model="dimPernos.paso_rosca1"
-                    type="number"
-                    step="0.05"
-                    placeholder="Ej. 1.25"
-                    class="w-full mt-1 px-2 py-1 font-mono text-xs bg-slate-50 border border-slate-200 rounded"
+                    v-model="inputPotencia"
+                    type="text"
+                    placeholder="Potencia"
+                    class="w-full px-2.5 py-1.5 text-slate-700 focus:outline-none font-mono"
                   />
-                </div>
-                <div>
-                  <span class="font-bold text-slate-600 block">Longitud 1 (mm):</span>
-                  <input
-                    v-model="dimPernos.longitud1"
-                    type="number"
-                    placeholder="Ej. 115"
-                    class="w-full mt-1 px-2 py-1 font-mono text-xs bg-slate-50 border border-slate-200 rounded"
-                  />
-                </div>
-                <div>
-                  <span class="font-bold text-slate-600 block">Longitud 2 (mm):</span>
-                  <input
-                    v-model="dimPernos.longitud2"
-                    type="number"
-                    placeholder="Ej. 120"
-                    class="w-full mt-1 px-2 py-1 font-mono text-xs bg-slate-50 border border-slate-200 rounded"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- 5. Formulario: Casquetes / Cojinetes NDC -->
-            <div v-if="selectedComponent === 'Casquetería'" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Tipo de Cojinete NDC
-                </label>
-                <select
-                  v-model="dimCasqueteria.tipo_cojinete"
-                  class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                >
-                  <option value="MS">MS - Casquete Bancada (Main Bearing)</option>
-                  <option value="CB">CB - Casquete Biela (Con-rod Bearing)</option>
-                  <option value="TW">TW - Arandela Axial (Thrust Washer)</option>
-                  <option value="SH">SH - Casquete Leva (Camshaft Bearing)</option>
-                  <option value="PB">PB - Bocina / Buje (Pin Bushing)</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Diámetro de Muñón (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimCasqueteria.diametro_munon"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 62.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Ancho de Casquete (mm)
-                </label>
-                <div class="relative">
-                  <input
-                    v-model="dimCasqueteria.ancho_casquete"
-                    type="number"
-                    step="0.01"
-                    placeholder="Ej. 23.0"
-                    @keyup.enter="executeDimensionalSearch"
-                    class="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
-                  />
-                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">mm</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Botón Buscar Medidas -->
-            <div class="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-end">
-              <button
-                type="button"
-                @click="executeDimensionalSearch"
-                class="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition shadow-sm min-h-[44px]"
-              >
-                <Search class="w-4 h-4 text-[#04c4d9]" />
-                <span>Buscar Piezas Compatibles y Adaptaciones</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Resultados de la Búsqueda Dimensional -->
-        <div v-if="hasSearchedDimensions" class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Resultados de Adaptación encontrados ({{ dimensionalResults.length }})
-            </h3>
-            <span class="text-xs text-slate-500">
-              Tolerancia activa: ±{{ toleranciaMm }} mm
-            </span>
-          </div>
-
-          <div v-if="dimensionalResults.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div
-              v-for="part in dimensionalResults"
-              :key="part.id"
-              class="p-4 rounded-xl border border-slate-200 bg-white hover:border-[#04c4d9] hover:shadow-md transition flex flex-col justify-between"
-            >
-              <div>
-                <!-- Encabezado Tarjeta -->
-                <div class="flex items-start justify-between gap-2">
-                  <div>
-                    <span class="text-[10px] font-bold text-slate-400 uppercase block">Código OEM</span>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-                      <span class="font-mono font-black text-sm text-slate-900">{{ part.codigo_oem }}</span>
-                      <button
-                        type="button"
-                        @click="copyToClipboard(part.codigo_oem, 'OEM')"
-                        class="p-1 text-slate-400 hover:text-slate-800 transition"
-                      >
-                        <Copy v-if="copiedCode !== part.codigo_oem" class="w-3.5 h-3.5" />
-                        <Check v-else class="w-3.5 h-3.5 text-emerald-600" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <span 
-                    :class="[
-                      'text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase',
-                      getBrandBadgeClass(part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna)
-                    ]"
-                  >
-                    {{ part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna || 'Catálogo' }}
-                  </span>
-                </div>
-
-                <!-- Nombre y Motor compatible -->
-                <div class="mt-2.5">
-                  <h4 class="font-bold text-slate-900 text-xs sm:text-sm">
-                    {{ part.nombre }}
-                  </h4>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-cyan-50 text-[#04c4d9] border border-cyan-200">
-                      Motor: {{ part.motor?.codigo || 'Adaptable Universal' }}
-                    </span>
-                    <span v-if="part.motor?.fabricante?.nombre" class="text-[10px] text-slate-400">
-                      {{ part.motor.fabricante.nombre }}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Desglose Dimensional Exhaustivo -->
-                <div class="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5 text-xs">
-                  <!-- Sellos -->
-                  <div v-if="part.categoria === 'Sellos'" class="space-y-0.5">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase">Cotas del Sello:</div>
-                    <div class="font-mono text-slate-800 grid grid-cols-3 gap-1 text-center bg-white p-1.5 rounded border border-slate-200/60">
-                      <div><span class="text-[10px] text-slate-400 block">D. Int</span><strong>{{ part.diametro_interior_mm }}mm</strong></div>
-                      <div><span class="text-[10px] text-slate-400 block">D. Ext</span><strong>{{ part.diametro_exterior_mm }}mm</strong></div>
-                      <div><span class="text-[10px] text-slate-400 block">Altura</span><strong>{{ part.altura_mm }}mm</strong></div>
-                    </div>
-                  </div>
-
-                  <!-- Anillos con Desglose de cada Ranura -->
-                  <div v-if="part.categoria === 'Anillos'" class="space-y-0.5">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase">Desglose de Ranuras (Pistón):</div>
-                    <div class="font-mono text-slate-800 grid grid-cols-3 gap-1 text-center bg-white p-1.5 rounded border border-slate-200/60">
-                      <div><span class="text-[10px] text-slate-400 block">1er Anillo</span><strong>{{ part.espesor_anillo1_mm }}mm</strong></div>
-                      <div><span class="text-[10px] text-slate-400 block">2do Anillo</span><strong>{{ part.espesor_anillo2_mm }}mm</strong></div>
-                      <div><span class="text-[10px] text-slate-400 block">Aceite</span><strong>{{ part.espesor_aceite_mm }}mm</strong></div>
-                    </div>
-                    <div class="text-[11px] font-mono text-slate-600 mt-1">
-                      Diámetro de cilindro STD: <strong>{{ part.diametro_cilindro_mm }} mm</strong>
-                    </div>
-                  </div>
-
-                  <!-- Válvulas -->
-                  <div v-if="part.categoria === 'Válvulas'" class="space-y-0.5">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase">Especificaciones Válvula:</div>
-                    <div class="font-mono text-slate-800 grid grid-cols-3 gap-1 text-center bg-white p-1.5 rounded border border-slate-200/60">
-                      <div><span class="text-[10px] text-slate-400 block">Hongo</span><strong>{{ part.diametro_cabeza_mm }}mm</strong></div>
-                      <div><span class="text-[10px] text-slate-400 block">Vástago</span><strong>{{ part.diametro_vastago_mm }}mm</strong></div>
-                      <div><span class="text-[10px] text-slate-400 block">Largo</span><strong>{{ part.longitud_total_mm }}mm</strong></div>
-                    </div>
-                  </div>
-
-                  <!-- Pernos -->
-                  <div v-if="part.categoria === 'Pernos'" class="space-y-0.5">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase">Cotas de Rosca & Pernos:</div>
-                    <div class="font-mono text-slate-800 bg-white p-1.5 rounded border border-slate-200/60">
-                      Rosca: <strong>{{ part.medida_rosca }} x {{ part.paso_rosca_mm }}</strong> • L: <strong>{{ part.longitud_perno_mm }}mm</strong> • Piezas: <strong>{{ part.cantidad_piezas }}</strong>
-                    </div>
-                  </div>
-
-                  <!-- Casquetería -->
-                  <div v-if="part.categoria === 'Casquetería'" class="space-y-0.5">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase">Cojinete NDC ({{ part.tipo_cojinete }}):</div>
-                    <div class="font-mono text-slate-800 bg-white p-1.5 rounded border border-slate-200/60">
-                      Muñón: <strong>{{ part.diametro_munon_mm }}mm</strong> • Alojamiento: <strong>{{ part.diametro_alojamiento_mm }}mm</strong> • Ancho: <strong>{{ part.ancho_casquete_mm }}mm</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Equivalencias alternas -->
-                <div v-if="part.equivalencias && part.equivalencias.length > 0" class="mt-2.5 flex flex-wrap gap-1">
-                  <span
-                    v-for="eq in part.equivalencias"
-                    :key="eq.id"
-                    @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
-                    :class="[
-                      'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border cursor-pointer hover:shadow-2xs',
-                      getBrandBadgeClass(eq.marca_alterna)
-                    ]"
-                  >
-                    <span>{{ eq.marca_alterna }}: {{ eq.codigo_alterno }}</span>
-                    <Copy class="w-2.5 h-2.5 opacity-60" />
-                  </span>
-                </div>
-              </div>
-
-              <!-- Footer Tarjeta -->
-              <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <span class="text-xs font-black text-slate-900">${{ part.precio.toFixed(2) }}</span>
-                <div class="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    @click="copyToClipboard(part.codigo_oem, 'OEM')"
-                    class="px-2 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 text-[11px] font-bold"
-                  >
-                    Copiar
-                  </button>
-                  <button
-                    type="button"
-                    @click="addToWorkOrder(part)"
-                    class="px-2.5 py-1.5 rounded-lg bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-[11px] font-bold flex items-center gap-1"
-                  >
-                    <Plus class="w-3 h-3" />
-                    <span>A Orden</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else class="text-center py-10 px-4 bg-white rounded-2xl border border-slate-200 text-slate-400">
-            <Ruler class="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
-            <p class="text-xs font-bold text-slate-600">No se encontraron piezas que coincidan con estas dimensiones exactas.</p>
-            <p class="text-[11px] mt-1 text-slate-400">Prueba aumentando la tolerancia a ±0.50 mm o verificando las cotas medidas con el vernier/calibrador.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ======================================================================= -->
-      <!-- TAB 3: BÚSQUEDA INVERSA POR CÓDIGO OEM / REFERENCIA (CRUCE MULTIMARCA)     -->
-      <!-- ======================================================================= -->
-      <section v-if="activeTab === 'codigo'" class="space-y-6">
-        
-        <!-- Barra de Búsqueda Principal por Código -->
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <div>
-            <div class="flex items-center gap-2">
-              <Hash class="w-4 h-4 text-[#04c4d9]" />
-              <h2 class="text-sm font-bold text-slate-900">
-                Búsqueda Inversa y Cruce Multimarca de Repuestos
-              </h2>
-            </div>
-            <p class="text-xs text-slate-500 mt-0.5">
-              Ingresa cualquier número de parte: Código OEM, Dokuro, Rik, NPR, NDC, Ajusa o Pioneer.
-            </p>
-          </div>
-
-          <!-- Input con Botón de Búsqueda -->
-          <div class="flex flex-col sm:flex-row items-center gap-2">
-            <div class="relative flex-1 w-full">
-              <Search class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
-              <input
-                v-model="codeSearchQuery"
-                type="text"
-                placeholder="Ejemplo: 90913-02090, SV-108, 28006, MS-1140A, 81014300..."
-                @keyup.enter="executeCodeSearch()"
-                class="w-full pl-10 pr-10 py-3 text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
-              />
-              <button
-                v-if="codeSearchQuery"
-                type="button"
-                @click="codeSearchQuery = ''; codeSearchResults = []; hasSearchedCode = false"
-                class="absolute right-3 top-3 text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X class="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              @click="executeCodeSearch()"
-              class="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm min-h-[46px]"
-            >
-              <Search class="w-4 h-4 text-[#04c4d9]" />
-              <span>Consultar Cruce</span>
-            </button>
-          </div>
-
-          <!-- Chips de Búsqueda Rápida para Taller -->
-          <div class="flex items-center gap-1.5 flex-wrap pt-1">
-            <span class="text-[11px] font-semibold text-slate-400 mr-1">Sugerencias rápidas:</span>
-            <button
-              v-for="chip in quickCodeChips"
-              :key="chip.code"
-              type="button"
-              @click="executeCodeSearch(chip.code)"
-              class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1"
-            >
-              <span>{{ chip.label }}:</span>
-              <strong class="text-slate-900">{{ chip.code }}</strong>
-            </button>
-          </div>
-        </div>
-
-        <!-- Resultados del Cruce de Códigos -->
-        <div v-if="hasSearchedCode" class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Coincidencias Cruzadas para "{{ codeSearchQuery }}" ({{ codeSearchResults.length }})
-            </h3>
-          </div>
-
-          <div v-if="codeSearchResults.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div
-              v-for="part in codeSearchResults"
-              :key="part.id"
-              class="p-4 rounded-xl border border-slate-200 bg-white hover:border-[#04c4d9] hover:shadow-md transition flex flex-col justify-between"
-            >
-              <div>
-                <!-- Header con OEM -->
-                <div class="flex items-start justify-between gap-2">
-                  <div>
-                    <span class="text-[10px] font-bold text-slate-400 uppercase">Código OEM Principal</span>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-                      <span class="font-mono font-black text-sm text-slate-900">{{ part.codigo_oem }}</span>
-                      <button
-                        type="button"
-                        @click="copyToClipboard(part.codigo_oem, 'OEM')"
-                        class="p-1 text-slate-400 hover:text-slate-800"
-                      >
-                        <Copy v-if="copiedCode !== part.codigo_oem" class="w-3.5 h-3.5" />
-                        <Check v-else class="w-3.5 h-3.5 text-emerald-600" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <span 
-                    :class="[
-                      'text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase',
-                      getBrandBadgeClass(part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna)
-                    ]"
-                  >
-                    {{ part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna || 'Catálogo' }}
-                  </span>
-                </div>
-
-                <!-- Título y Motor -->
-                <div class="mt-2.5">
-                  <h4 class="font-bold text-slate-900 text-xs sm:text-sm">
-                    {{ part.nombre }}
-                  </h4>
-                  <div class="flex items-center gap-1.5 mt-1">
-                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-cyan-50 text-[#04c4d9] border border-cyan-200">
-                      Motor: {{ part.motor?.codigo || 'Multi-aplicación' }}
-                    </span>
-                    <span v-if="part.motor?.fabricante?.nombre" class="text-[10px] text-slate-500 font-medium">
-                      {{ part.motor.fabricante.nombre }}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Matriz de Equivalencias con Badges Destacados -->
-                <div class="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-100 space-y-2">
-                  <span class="text-[10px] font-bold text-slate-400 uppercase block">Cruce en Catálogos Alternos:</span>
-                  <div class="space-y-1.5">
-                    <div
-                      v-for="eq in part.equivalencias"
-                      :key="eq.id"
-                      class="flex items-center justify-between text-xs font-mono p-1.5 bg-white rounded border border-slate-200/80"
+                  <div class="flex bg-slate-100 text-[11px] font-bold border-l border-slate-300">
+                    <button
+                      type="button"
+                      @click="potenciaUnit = 'CV'"
+                      :class="['px-2 py-1', potenciaUnit === 'CV' ? 'bg-[#5984c3] text-white' : 'text-slate-600']"
                     >
-                      <span 
-                        :class="[
-                          'px-2 py-0.5 rounded text-[10px] font-bold border uppercase',
-                          getBrandBadgeClass(eq.marca_alterna)
-                        ]"
+                      CV
+                    </button>
+                    <button
+                      type="button"
+                      @click="potenciaUnit = 'kW'"
+                      :class="['px-2 py-1', potenciaUnit === 'kW' ? 'bg-[#5984c3] text-white' : 'text-slate-600']"
+                    >
+                      kW
+                    </button>
+                  </div>
+                </div>
+
+                <div class="sm:col-span-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    @click="handleResetManualFilters"
+                    class="px-3 py-1.5 rounded border border-slate-200 text-slate-500 hover:text-slate-800 text-xs font-bold"
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    type="button"
+                    @click="handleSearchManual"
+                    class="px-5 py-2 rounded bg-[#003882] hover:bg-[#002b66] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Search class="w-3.5 h-3.5" />
+                    <span>Buscar Motor</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Bloque Inferior: Búsqueda de Marcas y Grupos de Productos -->
+              <div class="pt-3 border-t border-slate-200 space-y-2">
+                <span class="text-[11px] font-bold text-[#002b66] block">
+                  Búsqueda de marcas y grupos de productos
+                </span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  
+                  <!-- Marca de Producto -->
+                  <div class="relative combobox-container">
+                    <input
+                      v-model="brandProductInput"
+                      @focus="isBrandProductOpen = true"
+                      @input="isBrandProductOpen = true"
+                      type="text"
+                      placeholder="Marca de producto..."
+                      class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded focus:outline-none"
+                    />
+                    <div
+                      v-if="isBrandProductOpen"
+                      class="absolute left-0 right-0 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-20 max-h-40 overflow-y-auto"
+                    >
+                      <div
+                        v-for="b in filteredProductBrands"
+                        :key="b"
+                        @click="brandProductInput = b; isBrandProductOpen = false"
+                        class="px-2.5 py-1 text-xs hover:bg-blue-50 cursor-pointer font-bold"
                       >
-                        {{ eq.marca_alterna }}
-                      </span>
-                      <div class="flex items-center gap-1.5">
-                        <strong class="text-slate-900">{{ eq.codigo_alterno }}</strong>
-                        <button
-                          type="button"
-                          @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
-                          class="text-slate-400 hover:text-slate-700"
-                        >
-                          <Copy class="w-3 h-3" />
-                        </button>
+                        {{ b }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Grupo de Productos -->
+                  <div class="relative combobox-container flex items-center">
+                    <input
+                      v-model="groupProductInput"
+                      @focus="isGroupProductOpen = true"
+                      @input="isGroupProductOpen = true"
+                      type="text"
+                      placeholder="Grupo de productos..."
+                      class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-l focus:outline-none font-medium"
+                    />
+                    <button
+                      type="button"
+                      @click="openGroupParts('Catálogo de Productos', groupProductInput || 'Junta de culata')"
+                      class="bg-[#003882] hover:bg-[#002b66] text-white px-3 py-2 rounded-r flex items-center justify-center shrink-0"
+                    >
+                      <Search class="w-3.5 h-3.5" />
+                    </button>
+
+                    <div
+                      v-if="isGroupProductOpen"
+                      class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-20 max-h-40 overflow-y-auto"
+                    >
+                      <div
+                        v-for="g in filteredProductGroups"
+                        :key="g"
+                        @click="groupProductInput = g; isGroupProductOpen = false; openGroupParts('Grupo de Productos', g)"
+                        class="px-2.5 py-1.5 text-xs hover:bg-blue-50 cursor-pointer"
+                      >
+                        {{ g }}
                       </div>
                     </div>
                   </div>
                 </div>
-
-                <!-- Medidas Técnicas Rápidas -->
-                <div class="mt-2.5 text-[11px] font-mono text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
-                  <div v-if="part.diametro_interior_mm">
-                    D.Int: <strong>{{ part.diametro_interior_mm }}mm</strong> • D.Ext: <strong>{{ part.diametro_exterior_mm }}mm</strong> • Alt: <strong>{{ part.altura_mm }}mm</strong>
-                  </div>
-                  <div v-else-if="part.diametro_cilindro_mm">
-                    Ø <strong>{{ part.diametro_cilindro_mm }}mm</strong> (1°: {{ part.espesor_anillo1_mm }}mm / 2°: {{ part.espesor_anillo2_mm }}mm / Aceite: {{ part.espesor_aceite_mm }}mm)
-                  </div>
-                  <div v-else-if="part.diametro_cabeza_mm">
-                    Hongo: <strong>{{ part.diametro_cabeza_mm }}mm</strong> • Vástago: <strong>{{ part.diametro_vastago_mm }}mm</strong> • L: <strong>{{ part.longitud_total_mm }}mm</strong>
-                  </div>
-                  <div v-else-if="part.medida_rosca">
-                    {{ part.medida_rosca }} x {{ part.paso_rosca_mm }} L={{ part.longitud_perno_mm }}mm ({{ part.cantidad_piezas }} pcs)
-                  </div>
-                  <div v-else-if="part.tipo_cojinete">
-                    NDC {{ part.tipo_cojinete }}: Muñón {{ part.diametro_munon_mm }}mm • Ancho {{ part.ancho_casquete_mm }}mm
-                  </div>
-                  <div v-else class="text-slate-400">
-                    Repuesto estándar de rectificación
-                  </div>
-                </div>
               </div>
 
-              <!-- Footer -->
-              <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                <span class="text-xs font-black text-slate-900">${{ part.precio.toFixed(2) }}</span>
-                <button
-                  type="button"
-                  @click="addToWorkOrder(part)"
-                  class="px-3 py-1.5 rounded-lg bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-[11px] font-bold flex items-center gap-1 shadow-2xs"
-                >
-                  <Plus class="w-3 h-3" />
-                  <span>Agregar a Orden</span>
+              <!-- Pestañas Finales -->
+              <div class="pt-2 flex items-center gap-2 border-t border-slate-100 text-xs">
+                <button type="button" class="px-3 py-1 bg-[#001736] text-white font-bold rounded flex items-center gap-1">
+                  <span>Todos</span>
+                </button>
+                <button type="button" class="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded">
+                  Artículo universal
+                </button>
+                <button type="button" class="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded">
+                  Listas de verificación
                 </button>
               </div>
             </div>
           </div>
 
-          <div v-else class="text-center py-10 px-4 bg-white rounded-2xl border border-slate-200 text-slate-400">
-            <Search class="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
-            <p class="text-xs font-bold text-slate-600">No se encontraron piezas registradas con el código "{{ codeSearchQuery }}".</p>
-            <p class="text-[11px] mt-1 text-slate-400">Verifica la numeración o intenta buscando en la pestaña "Búsqueda por Medidas".</p>
+          <!-- Bloque Derecho: Banner / Slider Técnico (Imagen 3) -->
+          <div class="lg:col-span-5 bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between p-6 relative">
+            
+            <!-- Contenido del Banner -->
+            <div class="space-y-3 z-10">
+              <span class="inline-block px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-100 text-[#002b66]">
+                {{ bannerSlides[currentSlide].badge }}
+              </span>
+
+              <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">
+                {{ bannerSlides[currentSlide].title }}
+              </h2>
+
+              <p class="text-xs text-slate-600 leading-relaxed">
+                {{ bannerSlides[currentSlide].subtitle }}
+              </p>
+            </div>
+
+            <!-- Gráfico / Ilustración Técnica de Retenes y Juntas (Vector Limpio) -->
+            <div class="my-6 flex items-center justify-center relative py-4">
+              <!-- Círculos concéntricos de retén radial / junta -->
+              <div class="w-48 h-48 rounded-full border-8 border-rose-500/80 bg-rose-50 flex items-center justify-center shadow-lg relative">
+                <div class="w-36 h-36 rounded-full border-4 border-slate-700 bg-slate-900 flex items-center justify-center">
+                  <div class="w-24 h-24 rounded-full border-2 border-dashed border-[#04c4d9] flex items-center justify-center text-center p-2">
+                    <span class="text-[10px] font-mono text-cyan-300 font-bold leading-tight">
+                      AJUSA DOKURO RIK
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Controles del Slider -->
+            <div class="flex items-center justify-between z-10 pt-2 border-t border-slate-100">
+              <div class="flex items-center gap-1.5">
+                <span
+                  v-for="(_, idx) in bannerSlides"
+                  :key="idx"
+                  @click="currentSlide = idx"
+                  :class="[
+                    'h-1.5 rounded-full transition-all cursor-pointer',
+                    currentSlide === idx ? 'w-6 bg-[#002b66]' : 'w-2 bg-slate-300'
+                  ]"
+                ></span>
+              </div>
+
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  @click="currentSlide = (currentSlide - 1 + bannerSlides.length) % bannerSlides.length"
+                  class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700"
+                >
+                  <ChevronLeft class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  @click="currentSlide = (currentSlide + 1) % bannerSlides.length"
+                  class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700"
+                >
+                  <ChevronRight class="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+
+      <!-- ======================================================================= -->
+      <!-- CASO B: IMAGEN 1 & 2 - PANELES CON SIDEBAR IZQUIERDO Y MATRIZ           -->
+      <!-- ======================================================================= -->
+      <div v-else-if="currentView === 'motor_groups' || currentView === 'parts_list'" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        <!-- ===================================================================== -->
+        <!-- SIDEBAR IZQUIERDO: SELECCIÓN ACTUAL & DETALLES DEL MOTOR              -->
+        <!-- ===================================================================== -->
+        <aside class="lg:col-span-3 space-y-4">
+          
+          <!-- Tarjeta 1: Selección actual (Logo + TOYOTA - 3L con botón X) -->
+          <div class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+            <div class="bg-[#f1f5f9] px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-[#002b66]">
+              Selección actual
+            </div>
+
+            <div class="p-4 text-center space-y-3">
+              <!-- Emblema de la Marca -->
+              <div class="w-16 h-16 mx-auto rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center p-2 shadow-2xs">
+                <div class="w-12 h-12 rounded-full border-2 border-slate-800 flex items-center justify-center font-black text-xs tracking-tighter">
+                  {{ selectedBrandName.substring(0, 3) }}
+                </div>
+              </div>
+
+              <!-- Badge con Botón de Cierre [ TOYOTA - 3L | X ] -->
+              <div class="flex items-center rounded overflow-hidden shadow-2xs border border-[#002b66]">
+                <div class="bg-[#002b66] text-white flex-1 py-1.5 px-3 text-xs font-mono font-black tracking-wide text-left">
+                  {{ selectedBrandName }} - {{ activeMotor?.codigo }}
+                </div>
+                <button
+                  type="button"
+                  @click="clearActiveMotor"
+                  class="bg-[#001f4d] hover:bg-rose-600 text-white px-2.5 py-1.5 flex items-center justify-center transition"
+                  title="Eliminar selección y volver"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tarjeta 2: Detalles del motor (Tabla de Parámetros Técnicos) -->
+          <div class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+            <div
+              @click="isDetailsCollapsed = !isDetailsCollapsed"
+              class="bg-[#f1f5f9] px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-[#002b66] flex items-center justify-between cursor-pointer"
+            >
+              <span>Detalles del motor</span>
+              <ChevronUp v-if="!isDetailsCollapsed" class="w-4 h-4 text-slate-500" />
+              <ChevronDown v-else class="w-4 h-4 text-slate-500" />
+            </div>
+
+            <div v-if="!isDetailsCollapsed" class="p-3 text-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                Datos técnicos
+              </span>
+
+              <table class="w-full text-[11px] divide-y divide-slate-100">
+                <tbody>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Fabricante</td>
+                    <td class="py-1 text-slate-900 font-bold text-right">{{ selectedBrandName }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Código de motor</td>
+                    <td class="py-1 text-[#002b66] font-mono font-bold text-right">{{ activeMotor?.codigo }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Potencia</td>
+                    <td class="py-1 text-slate-900 text-right">57 kW / 77 CV</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Cilindrada</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.cilindrada_cc || '2779' }} cc / 2.8 l</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Cilindros</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.cilindros || 4 }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Válvulas</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.valvulas || 8 }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Control de válvulas</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.configuracion || 'SOHC' }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Tipo de motor</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.combustible === 'Diésel' ? 'Gasóleo' : 'Gasolina' }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Tipo de combustible</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.combustible === 'Diésel' ? 'Gasóleo' : 'Gasolina' }}</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Procesamiento</td>
+                    <td class="py-1 text-slate-900 text-right">Motor con cámara auxiliar</td>
+                  </tr>
+                  <tr>
+                    <td class="py-1 text-slate-500 font-bold">Carga</td>
+                    <td class="py-1 text-slate-900 text-right">{{ activeMotor?.aspiracion || 'Aspirado' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </aside>
+
+        <!-- ===================================================================== -->
+        <!-- CONTENIDO PRINCIPAL: IMAGEN 1 (GRUPOS) O IMAGEN 2 (TABLA DETALLADA)   -->
+        <!-- ===================================================================== -->
+        <section class="lg:col-span-9 space-y-4">
+          
+          <!-- CASO B.1: IMAGEN 1 - VISTA DE GRUPOS DE MONTAJE (6 TARJETAS TÉCNICAS) -->
+          <div v-if="currentView === 'motor_groups'" class="space-y-3">
+            
+            <!-- Barra Superior de Pestañas: [Panel de información (Grid/List)] [Aplicaciones del vehículo] -->
+            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="px-4 py-2 bg-white border border-slate-300 rounded font-bold text-xs text-[#002b66] shadow-2xs flex items-center gap-2"
+                >
+                  <span>Panel de información</span>
+                  <div class="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded">
+                    <span class="w-3.5 h-3.5 bg-[#002b66] text-white rounded-xs flex items-center justify-center text-[9px]">■</span>
+                    <span class="w-3.5 h-3.5 text-slate-400 flex items-center justify-center text-[9px]">≡</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  class="px-4 py-2 bg-white border border-slate-200 rounded font-medium text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  Aplicaciones del vehículo
+                </button>
+              </div>
+            </div>
+
+            <!-- CUADRÍCULA DE 6 GRUPOS DE MONTAJE (IMAGEN 1 EXACTA) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div
+                v-for="grp in assemblyGroups"
+                :key="grp.id"
+                class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs hover:border-[#003882] hover:shadow-md transition flex flex-col justify-between min-h-[170px] relative overflow-hidden"
+              >
+                <div>
+                  <!-- Encabezado de la Tarjeta con Título Azul y Estrella Favorito -->
+                  <div class="flex items-start justify-between gap-2">
+                    <div
+                      @click="openGroupParts(grp.title)"
+                      class="flex items-center gap-1.5 font-bold text-sm text-[#002b66] cursor-pointer hover:underline"
+                    >
+                      <Wrench class="w-4 h-4 text-[#003882]" />
+                      <span>{{ grp.title }}</span>
+                    </div>
+                    <button type="button" class="text-slate-300 hover:text-amber-500">
+                      <Star class="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <!-- Sub-lista de Componentes con Flecha Pequeña '▸' -->
+                  <ul class="mt-3 space-y-1.5 text-xs">
+                    <li
+                      v-for="sub in grp.subitems"
+                      :key="sub.name"
+                      @click="openGroupParts(grp.title, sub.name, sub.filterKey)"
+                      class="text-slate-700 hover:text-[#002b66] cursor-pointer flex items-center gap-1.5 transition group"
+                    >
+                      <span class="text-[#003882] font-black text-[10px] group-hover:translate-x-0.5 transition">▸</span>
+                      <span class="group-hover:underline">{{ sub.name }}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <!-- Marca de agua técnica sutil en fondo -->
+                <div class="absolute right-2 bottom-1 text-slate-100 pointer-events-none -z-0">
+                  <div class="w-16 h-16 rounded-full border-4 border-slate-100 flex items-center justify-center font-black text-xs">
+                    JR
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CASO B.2: IMAGEN 2 - TABLA DETALLADA DE PIEZAS (AL CLIC EN UN GRUPO) -->
+          <div v-else-if="currentView === 'parts_list'" class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+            
+            <!-- Barra Superior Azul de la Tabla: Grupo + Resultados -->
+            <div class="bg-[#002b66] text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
+              <span>{{ selectedGroupTitle }}</span>
+              <div class="flex items-center gap-3">
+                <span class="font-normal text-blue-200">
+                  Resultado 1 - {{ partsTableList.length }} desde {{ partsTableList.length }}
+                </span>
+                <div class="flex items-center gap-1">
+                  <span class="px-1 bg-[#001736] rounded text-[10px]">≡</span>
+                  <span class="px-1 text-blue-300 text-[10px]">v</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabla de Artículos (Columnas: Checkbox | Número de artículo | Foto | Denominación | Estado) -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-[#f8fafc] text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="py-2.5 px-3 w-8">
+                      <input type="checkbox" class="rounded" />
+                    </th>
+                    <th class="py-2.5 px-4 w-44">Número de artículo</th>
+                    <th class="py-2.5 px-4 w-36 text-center">Foto</th>
+                    <th class="py-2.5 px-4">Denominación</th>
+                    <th class="py-2.5 px-4 w-32 text-right">Estado del artículo</th>
+                  </tr>
+                </thead>
+
+                <tbody class="divide-y divide-slate-100">
+                  <tr
+                    v-for="part in partsTableList"
+                    :key="part.id"
+                    class="hover:bg-blue-50/40 transition"
+                  >
+                    <!-- Checkbox -->
+                    <td class="py-3 px-3 align-top">
+                      <input type="checkbox" class="rounded" />
+                    </td>
+
+                    <!-- Número de Artículo (Negrita Azul #002b66) -->
+                    <td class="py-3 px-4 align-top">
+                      <div class="font-mono font-bold text-sm text-[#002b66]">
+                        {{ part.equivalencias?.[0]?.codigo_alterno || part.codigo_oem }}
+                      </div>
+                      <div class="text-[10px] text-slate-400 mt-0.5">
+                        OEM: <span class="font-mono">{{ part.codigo_oem }}</span>
+                      </div>
+                      <button
+                        type="button"
+                        @click="copyToClipboard(part.equivalencias?.[0]?.codigo_alterno || part.codigo_oem, 'Código')"
+                        class="text-[10px] text-slate-400 hover:text-slate-800 flex items-center gap-1 mt-1 font-medium"
+                      >
+                        <Copy class="w-2.5 h-2.5" />
+                        <span>Copiar</span>
+                      </button>
+                    </td>
+
+                    <!-- Foto / Ilustración Técnica Limpia (SVG Exacto de Gasket/Pieza) -->
+                    <td class="py-3 px-4 align-top text-center">
+                      <div class="w-28 h-14 bg-slate-50 border border-slate-200 rounded p-1 mx-auto flex items-center justify-center">
+                        <!-- SVG Junta de culata multilámina -->
+                        <svg viewBox="0 0 160 40" class="w-full h-full text-slate-800">
+                          <rect x="2" y="4" width="156" height="32" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
+                          <circle cx="28" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2" />
+                          <circle cx="62" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2" />
+                          <circle cx="96" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2" />
+                          <circle cx="130" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2" />
+                          <circle cx="10" cy="10" r="2" fill="currentColor" />
+                          <circle cx="150" cy="10" r="2" fill="currentColor" />
+                          <circle cx="10" cy="30" r="2" fill="currentColor" />
+                          <circle cx="150" cy="30" r="2" fill="currentColor" />
+                        </svg>
+                      </div>
+                    </td>
+
+                    <!-- Denominación (Marca en negrita + especificaciones y medidas) -->
+                    <td class="py-3 px-4 align-top space-y-1">
+                      <div class="flex items-center gap-1.5">
+                        <strong class="text-sm font-black text-slate-900 uppercase">
+                          {{ part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna || 'AJUSA' }}
+                        </strong>
+                        <span class="text-[10px] text-amber-600 font-bold">✔</span>
+                        <span class="text-[10px] font-bold text-slate-500 uppercase">
+                          {{ part.dimensiones?.tipo || 'MULTILAYER STEEL' }}
+                        </span>
+                      </div>
+
+                      <div class="font-bold text-slate-800 text-xs">
+                        {{ part.nombre }}
+                      </div>
+
+                      <!-- Medidas técnicas en línea (Ø, Espesor, sólo con...) -->
+                      <div class="text-[11px] font-mono text-slate-600">
+                        <template v-if="part.categoria === 'Empaques'">
+                          Ø: <strong>{{ part.diametro_cilindro_mm || 97 }} mm</strong>; 
+                          Espesor: <strong>{{ part.dimensiones?.espesor_mm || 1.45 }} mm</strong>; 
+                          sólo con: 81014300
+                        </template>
+                        <template v-else-if="part.categoria === 'Sellos'">
+                          Ø Interior: <strong>{{ part.diametro_interior_mm }} mm</strong>; 
+                          Ø Exterior: <strong>{{ part.diametro_exterior_mm }} mm</strong>; 
+                          Altura: <strong>{{ part.altura_mm }} mm</strong>
+                        </template>
+                        <template v-else-if="part.categoria === 'Anillos'">
+                          Ø Cilindro: <strong>{{ part.diametro_cilindro_mm }} mm</strong>; 
+                          Ranuras: 1°: {{ part.espesor_anillo1_mm }}mm | 2°: {{ part.espesor_anillo2_mm }}mm | Aceite: {{ part.espesor_aceite_mm }}mm
+                        </template>
+                        <template v-else-if="part.categoria === 'Pernos'">
+                          Rosca: <strong>{{ part.medida_rosca }} x {{ part.paso_rosca_mm }}</strong>; 
+                          Longitud: <strong>{{ part.longitud_perno_mm }} mm</strong> ({{ part.cantidad_piezas }} piezas)
+                        </template>
+                        <template v-else-if="part.categoria === 'Válvulas'">
+                          Hongo: <strong>{{ part.diametro_cabeza_mm }} mm</strong>; 
+                          Vástago: <strong>{{ part.diametro_vastago_mm }} mm</strong>; 
+                          Largo: <strong>{{ part.longitud_total_mm }} mm</strong>
+                        </template>
+                      </div>
+
+                      <div class="text-[10px] text-slate-400">
+                        Unidad de embalaje: 1 • Precio taller: ${{ part.precio.toFixed(2) }}
+                      </div>
+                    </td>
+
+                    <!-- Estado del Artículo y Botón a Orden -->
+                    <td class="py-3 px-4 align-top text-right space-y-2">
+                      <span class="inline-block text-xs font-bold text-slate-700">
+                        Normal
+                      </span>
+                      <div>
+                        <button
+                          type="button"
+                          @click="addToWorkOrder(part)"
+                          :class="[
+                            'px-2.5 py-1 rounded text-[11px] font-bold transition shadow-2xs',
+                            addedPartId === part.id
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-[#002b66] hover:bg-[#001d47] text-white'
+                          ]"
+                        >
+                          <span v-if="addedPartId === part.id">✓ Agregado</span>
+                          <span v-else>+ A Orden</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr v-if="partsTableList.length === 0">
+                    <td colspan="5" class="py-10 text-center text-slate-400">
+                      No se encontraron artículos en este grupo.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Footer Paginación -->
+            <div class="bg-[#f8fafc] px-4 py-2 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+              <button
+                type="button"
+                @click="currentView = 'motor_groups'"
+                class="font-bold text-[#002b66] hover:underline flex items-center gap-1"
+              >
+                <span>« Volver a grupos de montaje</span>
+              </button>
+
+              <div class="flex items-center gap-1 font-mono">
+                <span>1 desde 1</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ======================================================================= -->
+      <!-- CASO C: BÚSQUEDA POR MEDIDAS (ADAPTACIONES TALLER SIN CÓDIGO)             -->
+      <!-- ======================================================================= -->
+      <div v-else-if="currentView === 'adaptaciones'" class="space-y-4">
+        
+        <div class="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h2 class="text-base font-black text-[#002b66]">
+                Motor de Adaptaciones Dimensionales de Taller (Sin código de motor)
+              </h2>
+              <p class="text-xs text-slate-500">
+                Localiza repuestos por cotas en milímetros (mm) cuando la pieza está desgastada o sin código ("NE").
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="currentView = 'home'"
+              class="text-xs font-bold text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded"
+            >
+              Volver al inicio
+            </button>
+          </div>
+
+          <!-- Muestra de Prueba Rápida -->
+          <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center justify-between gap-3">
+            <div>
+              <strong class="text-xs text-cyan-900 block font-bold">Muestra de prueba de taller:</strong>
+              <span class="text-xs text-cyan-800">Sello de válvula 4.8 mm (D.int) x 10.8 mm (D.ext) x 10 mm (Altura)</span>
+            </div>
+            <button
+              type="button"
+              @click="openGroupParts('Culata / Piezas de montaje', 'Junta/guía/ajuste de válvulas', 'Sellos')"
+              class="px-3 py-1.5 rounded bg-[#002b66] text-white text-xs font-bold hover:bg-[#001d47] transition shadow-xs"
+            >
+              Ver piezas compatibles
+            </button>
+          </div>
+        </div>
+      </div>
 
     </main>
+
+    <!-- ========================================================================= -->
+    <!-- 4. FOOTER TIPO AJUSA                                                      -->
+    <!-- ========================================================================= -->
+    <footer class="bg-[#001736] text-white text-xs py-3 mt-auto border-t border-blue-900">
+      <div class="max-w-[1440px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div class="flex items-center gap-4 text-blue-200 text-[11px]">
+          <span>▶ Google Play</span>
+          <span> App Store</span>
+          <span>Política de privacidad</span>
+          <span>Aviso legal</span>
+        </div>
+        <div class="text-[11px] text-blue-300">
+          JR Blanco • Sistema SWGORA © 2026
+        </div>
+      </div>
+    </footer>
   </div>
 </template>
