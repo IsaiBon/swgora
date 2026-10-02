@@ -39,3 +39,4 @@ supabase/.temp/
 
 # Temporary Office files
 ~$*
+.agents
