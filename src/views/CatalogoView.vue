@@ -4,9 +4,7 @@ import {
   type Motor, 
   type RepuestoTecnico, 
   type Fabricante,
-  type Modelo,
   mockFabricantes,
-  mockModelos,
   mockMotores,
   mockRepuestos
 } from '@/services/catalogService'
@@ -34,10 +32,6 @@ import {
 // =============================================================================
 // ESTADO DE VISTAS (IMAGEN 1, IMAGEN 2, IMAGEN 3)
 // =============================================================================
-// 'home': Imagen 3 (Menú de inicio / Búsqueda manual)
-// 'motor_groups': Imagen 1 (Vista de Motor y Grupos de Montaje)
-// 'parts_list': Imagen 2 (Tabla técnica al hacer clic en un grupo)
-// 'adaptaciones': Búsqueda dimensional para taller sin código
 type ViewMode = 'home' | 'motor_groups' | 'parts_list' | 'adaptaciones'
 const currentView = ref<ViewMode>('home')
 
@@ -96,7 +90,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
 // =============================================================================
 // MOTOR Y VEHÍCULO SELECCIONADO (SIDEBAR IZQUIERDO Y MATRIZ)
 // =============================================================================
-const activeMotor = ref<Motor | null>(mockMotores[0]) // Toyota 3L por defecto para demo
+const activeMotor = ref<Motor | null>(mockMotores[0])
 const selectedBrandName = ref<string>('TOYOTA')
 const isDetailsCollapsed = ref<boolean>(false)
 
@@ -104,11 +98,11 @@ const isDetailsCollapsed = ref<boolean>(false)
 const activeVehicleCategory = ref<'motores' | 'turismos' | 'comerciales' | 'industriales'>('motores')
 
 // =============================================================================
-// MENÚS DE BÚSQUEDA INTERACTIVA (COMBOBOX DONDE SE ESCRIBE Y APARECEN OPCIONES)
+// MENÚS DE BÚSQUEDA INTERACTIVA (SOLO: FABRICANTE, CÓDIGO DE MOTOR, GRUPO)
 // =============================================================================
 
-// 1. Fabricante
-const fabricanteInput = ref<string>('')
+// 1. Fabricante (Searchable combobox)
+const fabricanteInput = ref<string>('TOYOTA')
 const isFabricanteOpen = ref<boolean>(false)
 const filteredFabricantes = computed(() => {
   const q = fabricanteInput.value.toLowerCase().trim()
@@ -120,32 +114,11 @@ const selectFabricante = (fab: Fabricante) => {
   fabricanteInput.value = fab.nombre.toUpperCase()
   selectedBrandName.value = fab.nombre.toUpperCase()
   isFabricanteOpen.value = false
-  // Reset modelo y motor
-  modeloInput.value = ''
   motorInput.value = ''
 }
 
-// 2. Modelo
-const modeloInput = ref<string>('')
-const isModeloOpen = ref<boolean>(false)
-const availableModelos = computed(() => {
-  const currentFab = mockFabricantes.find(f => f.nombre.toUpperCase() === selectedBrandName.value.toUpperCase())
-  if (!currentFab) return mockModelos
-  return mockModelos.filter(m => m.fabricante_id === currentFab.id)
-})
-const filteredModelos = computed(() => {
-  const q = modeloInput.value.toLowerCase().trim()
-  if (!q) return availableModelos.value
-  return availableModelos.value.filter(m => m.nombre.toLowerCase().includes(q))
-})
-
-const selectModelo = (mod: Modelo) => {
-  modeloInput.value = mod.nombre
-  isModeloOpen.value = false
-}
-
-// 3. Código de Motor
-const motorInput = ref<string>('')
+// 2. Código de Motor (Searchable combobox)
+const motorInput = ref<string>('3L')
 const isMotorOpen = ref<boolean>(false)
 const availableMotores = computed(() => {
   const currentFab = mockFabricantes.find(f => f.nombre.toUpperCase() === selectedBrandName.value.toUpperCase())
@@ -170,39 +143,24 @@ const selectMotor = (mot: Motor) => {
     selectedBrandName.value = fab.nombre.toUpperCase()
     fabricanteInput.value = fab.nombre.toUpperCase()
   }
-  // Ir directamente a la vista de grupos del motor (Imagen 1)
-  currentView.value = 'motor_groups'
-  showToast(`Motor seleccionado: ${selectedBrandName.value} - ${mot.codigo}`)
 }
 
-// 4. Filtros secundarios de Inicio
-const selectedYear = ref<string>('')
-const selectedFuel = ref<string>('Todos los combustibles')
-const inputCc = ref<string>('')
-const inputPotencia = ref<string>('')
-const potenciaUnit = ref<'CV' | 'kW'>('CV')
-
-// 5. Búsqueda inferior de Marcas y Grupos de Productos
-const brandProductInput = ref<string>('AJUSA')
-const isBrandProductOpen = ref<boolean>(false)
-const productBrandsList = ['AJUSA', 'DOKURO', 'RIK', 'NPR', 'NDC', 'PIONEER', 'TAIHO']
-const filteredProductBrands = computed(() => {
-  const q = brandProductInput.value.toLowerCase().trim()
-  if (!q) return productBrandsList
-  return productBrandsList.filter(b => b.toLowerCase().includes(q))
-})
-
-const groupProductInput = ref<string>('')
+// 3. Grupo del Producto (Searchable combobox)
+const groupProductInput = ref<string>('Culata / Piezas de montaje')
 const isGroupProductOpen = ref<boolean>(false)
 const productGroupsList = [
+  'Culata / Piezas de montaje',
   'Junta de culata',
-  'Junta/guía/ajuste de válvulas (Sellos)',
+  'Junta/guía/ajuste de válvulas',
   'Válvula de motor',
-  'Juego de anillos de pistón',
   'Tornillos de culata',
+  'Bloque motor',
+  'Anillos de pistón STD',
+  'Accionamiento de cigüeñal',
   'Cojinetes de bancada MS',
-  'Cojinetes de biela CB',
-  'Juego completo de juntas'
+  'Distribución del motor',
+  'Juntas',
+  'Lubricación'
 ]
 const filteredProductGroups = computed(() => {
   const q = groupProductInput.value.toLowerCase().trim()
@@ -210,7 +168,51 @@ const filteredProductGroups = computed(() => {
   return productGroupsList.filter(g => g.toLowerCase().includes(q))
 })
 
-// 6. Barra Superior de Búsqueda Global (Ajusa Top Bar)
+const selectGroup = (groupName: string) => {
+  groupProductInput.value = groupName
+  isGroupProductOpen.value = false
+}
+
+// Botón Buscar principal
+const handleSearchManual = () => {
+  // 1. Identificar o asegurar motor
+  let foundMotor = mockMotores.find(m => m.codigo.toLowerCase() === motorInput.value.toLowerCase().trim())
+  if (!foundMotor && availableMotores.value.length > 0) {
+    foundMotor = availableMotores.value[0]
+  } else if (!foundMotor) {
+    foundMotor = mockMotores[0]
+  }
+
+  activeMotor.value = foundMotor
+  const fab = mockFabricantes.find(f => f.id === foundMotor?.fabricante_id)
+  if (fab) {
+    selectedBrandName.value = fab.nombre.toUpperCase()
+    fabricanteInput.value = fab.nombre.toUpperCase()
+  }
+
+  // 2. Si se especificó un grupo de producto, ir directo a la tabla de piezas (Imagen 2)
+  if (groupProductInput.value.trim()) {
+    selectedGroupTitle.value = groupProductInput.value
+    selectedSubitemFilter.value = groupProductInput.value
+    currentView.value = 'parts_list'
+  } else {
+    // Si no, mostrar los 6 grupos del motor (Imagen 1)
+    currentView.value = 'motor_groups'
+  }
+}
+
+// Botón Limpiar filtros
+const handleResetManualFilters = () => {
+  fabricanteInput.value = ''
+  selectedBrandName.value = 'TOYOTA'
+  motorInput.value = ''
+  groupProductInput.value = ''
+  showToast('Filtros restablecidos')
+}
+
+// =============================================================================
+// BARRA SUPERIOR DE BÚSQUEDA GLOBAL (AJUSA TOP BAR)
+// =============================================================================
 const topSearchType = ref<'grupos' | 'articulo'>('grupos')
 const topSearchQuery = ref<string>('')
 const isTopSearchOpen = ref<boolean>(false)
@@ -235,6 +237,7 @@ const topSuggestions = computed(() => {
 
 const selectTopSuggestionMotor = (mot: Motor) => {
   selectMotor(mot)
+  currentView.value = 'motor_groups'
   topSearchQuery.value = ''
   isTopSearchOpen.value = false
 }
@@ -247,39 +250,10 @@ const selectTopSuggestionPart = (part: RepuestoTecnico) => {
     if (fab) selectedBrandName.value = fab.nombre.toUpperCase()
   }
   selectedGroupTitle.value = part.subsistema
+  selectedSubitemFilter.value = part.subsistema
   currentView.value = 'parts_list'
   topSearchQuery.value = ''
   isTopSearchOpen.value = false
-}
-
-// Botón Buscar manual de la pantalla de inicio
-const handleSearchManual = () => {
-  if (motorInput.value) {
-    const found = mockMotores.find(m => m.codigo.toLowerCase() === motorInput.value.toLowerCase())
-    if (found) {
-      selectMotor(found)
-      return
-    }
-  }
-  // Si hay fabricante pero no motor específico, tomar el primero de la marca
-  if (availableMotores.value.length > 0) {
-    selectMotor(availableMotores.value[0])
-  } else {
-    selectMotor(mockMotores[0])
-  }
-}
-
-// Limpiar filtros de inicio
-const handleResetManualFilters = () => {
-  fabricanteInput.value = ''
-  selectedBrandName.value = 'TOYOTA'
-  modeloInput.value = ''
-  motorInput.value = ''
-  selectedYear.value = ''
-  selectedFuel.value = 'Todos los combustibles'
-  inputCc.value = ''
-  inputPotencia.value = ''
-  showToast('Filtros restablecidos')
 }
 
 // =============================================================================
@@ -354,7 +328,6 @@ const assemblyGroups: AssemblyGroup[] = [
   }
 ]
 
-// Navegación hacia la lista de piezas (Imagen 2)
 const selectedGroupTitle = ref<string>('Junta de culata')
 const selectedSubitemFilter = ref<string>('')
 
@@ -373,7 +346,6 @@ const partsTableList = computed(() => {
 
   let list = mockRepuestos.filter(r => r.motor_id === activeMotor.value?.id)
 
-  // Filtrado según el sub-ítem seleccionado o grupo
   if (selectedSubitemFilter.value) {
     const k = selectedSubitemFilter.value.toLowerCase()
     list = list.filter(r => 
@@ -383,7 +355,6 @@ const partsTableList = computed(() => {
     )
   }
 
-  // Filtrado por marca de catálogo si se seleccionó en el dropdown superior
   if (selectedBrandFilterInTable.value !== 'Todas las marcas') {
     const b = selectedBrandFilterInTable.value.toLowerCase()
     list = list.filter(r => 
@@ -392,7 +363,6 @@ const partsTableList = computed(() => {
     )
   }
 
-  // Si no hay resultados específicos, mostrar los componentes del motor para no dejar vacía la tabla
   if (list.length === 0) {
     list = mockRepuestos.filter(r => r.motor_id === activeMotor.value?.id)
   }
@@ -400,13 +370,12 @@ const partsTableList = computed(() => {
   return list
 })
 
-// Deseleccionar motor y volver al inicio
 const clearActiveMotor = () => {
   activeMotor.value = null
   currentView.value = 'home'
 }
 
-// Banner Slider de Inicio (Sellos, Juntas, etc.)
+// Banner Slider
 const currentSlide = ref<number>(0)
 const bannerSlides = [
   {
@@ -427,14 +396,11 @@ const bannerSlides = [
 ]
 let slideInterval: ReturnType<typeof setInterval> | null = null
 
-// Cerrar comboboxes al hacer click fuera
 const handleClickOutside = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.combobox-container')) {
     isFabricanteOpen.value = false
-    isModeloOpen.value = false
     isMotorOpen.value = false
-    isBrandProductOpen.value = false
     isGroupProductOpen.value = false
     isTopSearchOpen.value = false
   }
@@ -475,14 +441,14 @@ onUnmounted(() => {
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- 1. BARRA SUPERIOR AJUSA (AZUL CORPORATIVO #002b66)                        -->
+    <!-- 1. BARRA SUPERIOR AJUSA (#002b66)                                         -->
     <!-- ========================================================================= -->
     <header class="bg-[#002b66] text-white sticky top-0 z-40 shadow-md">
       
-      <!-- Fila Superior: Logo + Buscador Central + Iconos de Utilidad -->
+      <!-- Fila Superior: Logo + Buscador Central + Iconos -->
       <div class="max-w-[1440px] mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
         
-        <!-- Logo / Marca Ajusa / SWGORA -->
+        <!-- Logo Ajusa -->
         <div class="flex items-center gap-3 cursor-pointer" @click="currentView = 'home'">
           <div class="bg-white text-[#002b66] px-3 py-1 rounded font-black italic tracking-tighter text-lg shadow-xs flex items-center gap-1">
             <span>ajusa</span>
@@ -492,31 +458,28 @@ onUnmounted(() => {
           </span>
         </div>
 
-        <!-- Buscador Central: [Búsqueda por grupos v] [Input] [Mic] [Lupa] -->
+        <!-- Buscador Central -->
         <div class="flex-1 max-w-2xl relative combobox-container">
           <div class="flex items-center bg-white rounded overflow-hidden shadow-inner text-slate-800 border border-transparent focus-within:border-[#04c4d9]">
             
-            <!-- Selector de tipo de búsqueda -->
             <button
               type="button"
               @click="topSearchType = topSearchType === 'grupos' ? 'articulo' : 'grupos'"
               class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 text-xs font-bold flex items-center gap-1.5 border-r border-slate-200 shrink-0"
             >
-              <span>{{ topSearchType === 'grupos' ? 'Búsqueda por grupos' : 'Búsqueda por artículo' }}</span>
+              <span>{{ topSearchType === 'grupos' ? 'Búsqueda por grupos' : 'Búsqueda por número aleatorio' }}</span>
               <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
             </button>
 
-            <!-- Input de Texto con Autocompletado mientras se escribe -->
             <input
               v-model="topSearchQuery"
               @focus="isTopSearchOpen = true"
               @input="isTopSearchOpen = true"
               type="text"
-              placeholder="Escribe código de motor, OEM o número de pieza (ej. 3L, 10115000, SV-108)..."
+              placeholder="Búsqueda por grupos"
               class="w-full px-3 py-2 text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none"
             />
 
-            <!-- Botón Limpiar si hay texto -->
             <button
               v-if="topSearchQuery"
               @click="topSearchQuery = ''"
@@ -526,7 +489,6 @@ onUnmounted(() => {
               <X class="w-3.5 h-3.5" />
             </button>
 
-            <!-- Micrófono -->
             <button
               type="button"
               class="px-2.5 text-slate-400 hover:text-slate-600 hidden sm:block"
@@ -535,7 +497,6 @@ onUnmounted(() => {
               <Mic class="w-4 h-4" />
             </button>
 
-            <!-- Botón Lupa Azul Oficial -->
             <button
               type="button"
               @click="isTopSearchOpen = true"
@@ -546,12 +507,11 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- DROPDOWN DE AUTOCOMPLETADO MIENTRAS SE ESCRIBE -->
+          <!-- Sugerencias al escribir -->
           <div
             v-if="isTopSearchOpen && (topSuggestions.motors.length > 0 || topSuggestions.parts.length > 0)"
             class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-2xl border border-slate-200 z-50 max-h-80 overflow-y-auto text-slate-800"
           >
-            <!-- Coincidencias de Motores -->
             <div v-if="topSuggestions.motors.length > 0" class="p-2 border-b border-slate-100">
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2 mb-1">
                 Motores coincidentes
@@ -570,10 +530,9 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Coincidencias de Repuestos -->
             <div v-if="topSuggestions.parts.length > 0" class="p-2">
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2 mb-1">
-                Artículos & Repuestos coincidentes
+                Artículos coincidentes
               </span>
               <div
                 v-for="part in topSuggestions.parts"
@@ -593,7 +552,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Iconos de Utilidad Derecha -->
+        <!-- Iconos de Utilidad -->
         <div class="flex items-center gap-3 text-blue-200 shrink-0">
           <button type="button" @click="currentView = 'home'" class="hover:text-white p-1" title="Inicio">
             <Clock class="w-4 h-4" />
@@ -610,7 +569,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Fila Inferior: Pestañas de Categoría Vehicular (Iconos: Turismos, Vehículos industriales, Motores...) -->
+      <!-- Fila de Categorías Vehiculares -->
       <div class="bg-[#002252] border-t border-blue-900/50">
         <div class="max-w-[1440px] mx-auto px-3 sm:px-6 flex items-center gap-1 overflow-x-auto text-xs font-semibold py-1">
           
@@ -657,7 +616,6 @@ onUnmounted(() => {
             <span>Vehículos comerciales ligeros</span>
           </button>
 
-          <!-- PESTAÑA MOTORES (ACTIVA EN LAS FOTOS DEL USUARIO) -->
           <button
             type="button"
             @click="activeVehicleCategory = 'motores'; if (activeMotor) currentView = 'motor_groups'; else currentView = 'home'"
@@ -691,7 +649,7 @@ onUnmounted(() => {
     <div v-if="currentView === 'motor_groups' || currentView === 'parts_list'" class="bg-white border-b border-slate-200 shadow-2xs">
       <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-2 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs">
         
-        <!-- Breadcrumbs: <- Motores > TOYOTA > 3L > Junta de culata -->
+        <!-- Breadcrumbs: <- Motores TOYOTA 3L Junta de culata -->
         <div class="flex items-center gap-2 text-slate-600 font-medium overflow-x-auto">
           <button
             type="button"
@@ -703,26 +661,23 @@ onUnmounted(() => {
           </button>
 
           <span class="cursor-pointer hover:text-[#002b66]" @click="currentView = 'home'">Motores</span>
-          <span class="text-slate-300">/</span>
           <span class="cursor-pointer hover:text-[#002b66] font-bold text-slate-800" @click="currentView = 'motor_groups'">
             {{ selectedBrandName }}
           </span>
-          <span class="text-slate-300">/</span>
           <span class="font-bold text-[#002b66] font-mono cursor-pointer" @click="currentView = 'motor_groups'">
             {{ activeMotor?.codigo }}
           </span>
           <template v-if="currentView === 'parts_list'">
-            <span class="text-slate-300">/</span>
             <span class="font-bold text-slate-900">{{ selectedGroupTitle }}</span>
           </template>
         </div>
 
-        <!-- Filtros Rápidos de la Barra Superior -->
+        <!-- Filtros Superiores de Imagen 1 & 2 -->
         <div class="flex items-center gap-2 text-xs shrink-0">
           <select
             v-if="currentView === 'parts_list'"
             v-model="selectedGroupTitle"
-            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#002b66]"
+            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-800 font-bold focus:outline-none"
           >
             <option value="Junta de culata">Junta de culata [Culata / Piezas de montaje]</option>
             <option value="Válvula de motor">Válvula de motor</option>
@@ -730,6 +685,13 @@ onUnmounted(() => {
             <option value="Anillos de pistón STD">Anillos de pistón STD</option>
             <option value="Cojinetes de bancada MS">Cojinetes de bancada MS</option>
             <option value="Cojinetes de biela CB">Cojinetes de biela CB</option>
+          </select>
+
+          <select
+            v-else
+            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-700 text-xs focus:outline-none"
+          >
+            <option>Todos los grupos de montaje</option>
           </select>
 
           <select
@@ -749,21 +711,22 @@ onUnmounted(() => {
     </div>
 
     <!-- ========================================================================= -->
-    <!-- 3. CUERPO PRINCIPAL (DISPOSICIÓN TIPO TECDOC / AJUSA)                      -->
+    <!-- 3. CUERPO PRINCIPAL                                                       -->
     <!-- ========================================================================= -->
     <main class="flex-1 max-w-[1440px] mx-auto w-full px-3 sm:px-6 py-4">
 
       <!-- ======================================================================= -->
       <!-- CASO A: IMAGEN 3 - MENÚ DE INICIO / BÚSQUEDA MANUAL                       -->
+      <!-- SOLO DEJA: Fabricante, Código de motor, Grupo del producto                -->
       <!-- ======================================================================= -->
       <div v-if="currentView === 'home'" class="space-y-4">
         
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
           
-          <!-- Bloque Izquierdo: Formulario de Búsqueda Manual con Comboboxes -->
+          <!-- Bloque Izquierdo: Formulario Simplificado y Limpio (Exacto a la imagen) -->
           <div class="lg:col-span-7 bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
             
-            <!-- Pestañas Superiores de Búsqueda -->
+            <!-- Pestañas Superiores -->
             <div class="flex items-center border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
               <button
                 type="button"
@@ -777,14 +740,6 @@ onUnmounted(() => {
                 class="px-4 py-2.5 text-slate-500 hover:text-slate-800 flex items-center gap-1.5"
               >
                 <span>Identificación del vehículo</span>
-              </button>
-              <button
-                type="button"
-                @click="currentView = 'adaptaciones'"
-                class="px-4 py-2.5 text-[#04c4d9] hover:text-cyan-800 ml-auto flex items-center gap-1"
-              >
-                <Ruler class="w-3.5 h-3.5" />
-                <span>Por Medidas (Adaptaciones)</span>
               </button>
             </div>
 
@@ -804,11 +759,12 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <!-- FORMULARIO CON MENÚS DESPLEGABLES DONDE SE ESCRIBE Y APARECEN OPCIONES -->
-            <div class="p-4 sm:p-5 space-y-3">
+            <!-- FORMULARIO LIMPIO: SOLO FABRICANTE, CÓDIGO DE MOTOR Y GRUPO DEL PRODUCTO -->
+            <div class="p-4 sm:p-6 space-y-4">
               
-              <!-- 1. Menú Fabricante (Searchable Combobox) -->
+              <!-- 1. Fabricante -->
               <div class="relative combobox-container">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Fabricante</label>
                 <div class="flex items-center">
                   <div class="relative flex-1">
                     <input
@@ -816,7 +772,7 @@ onUnmounted(() => {
                       @focus="isFabricanteOpen = true"
                       @input="isFabricanteOpen = true"
                       type="text"
-                      placeholder="Fabricante (ej. TOYOTA, NISSAN, MITSUBISHI...)"
+                      placeholder="Fabricante"
                       class="w-full px-3 py-2 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
                     />
                     <ChevronDown
@@ -824,17 +780,16 @@ onUnmounted(() => {
                       class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
                     />
                   </div>
-                  <!-- Botón Lupa Fabricante -->
                   <button
                     type="button"
                     @click="isFabricanteOpen = !isFabricanteOpen"
-                    class="bg-[#8ca8cb] hover:bg-[#7292bb] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center"
+                    class="bg-[#8ca8cb] hover:bg-[#7292bb] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center shrink-0"
                   >
                     <Search class="w-4 h-4" />
                   </button>
                 </div>
 
-                <!-- Dropdown de Opciones Fabricante -->
+                <!-- Dropdown Fabricantes -->
                 <div
                   v-if="isFabricanteOpen"
                   class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
@@ -843,7 +798,7 @@ onUnmounted(() => {
                     v-for="fab in filteredFabricantes"
                     :key="fab.id"
                     @click="selectFabricante(fab)"
-                    class="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between"
+                    class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-50 last:border-0"
                   >
                     <span>{{ fab.nombre.toUpperCase() }}</span>
                     <span class="text-[10px] text-slate-400 font-normal">{{ fab.engines_count }} motores</span>
@@ -854,74 +809,38 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- 2. Menú Modelos (Searchable Combobox) -->
+              <!-- 2. Código de Motor -->
               <div class="relative combobox-container">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Código de motor</label>
                 <div class="flex items-center">
                   <div class="relative flex-1">
                     <input
-                      v-model="modeloInput"
-                      @focus="isModeloOpen = true"
-                      @input="isModeloOpen = true"
+                      v-model="motorInput"
+                      @focus="isMotorOpen = true"
+                      @input="isMotorOpen = true"
                       type="text"
-                      placeholder="Modelos (ej. Hilux, Hiace, Land Cruiser...)"
-                      class="w-full px-3 py-2 text-xs sm:text-sm font-medium bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
+                      placeholder="Código de motor"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
                     />
                     <ChevronDown
-                      @click="isModeloOpen = !isModeloOpen"
+                      @click="isMotorOpen = !isMotorOpen"
                       class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
                     />
                   </div>
-                  <!-- Botón X / Limpiar -->
                   <button
                     type="button"
-                    @click="modeloInput = ''; motorInput = ''"
-                    class="bg-[#5984c3] hover:bg-[#4873b2] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center"
+                    @click="motorInput = ''"
+                    class="bg-[#5984c3] hover:bg-[#4873b2] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center shrink-0"
                     title="Limpiar"
                   >
                     <X class="w-4 h-4" />
                   </button>
                 </div>
 
-                <!-- Dropdown Modelos -->
-                <div
-                  v-if="isModeloOpen"
-                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
-                >
-                  <div
-                    v-for="mod in filteredModelos"
-                    :key="mod.id"
-                    @click="selectModelo(mod)"
-                    class="px-3 py-1.5 hover:bg-blue-50 cursor-pointer text-xs font-semibold text-slate-800"
-                  >
-                    {{ mod.nombre }}
-                  </div>
-                  <div v-if="filteredModelos.length === 0" class="p-2 text-center text-xs text-slate-400">
-                    No hay modelos disponibles
-                  </div>
-                </div>
-              </div>
-
-              <!-- 3. Menú Código de Motor (Searchable Combobox) -->
-              <div class="relative combobox-container">
-                <div class="relative">
-                  <input
-                    v-model="motorInput"
-                    @focus="isMotorOpen = true"
-                    @input="isMotorOpen = true"
-                    type="text"
-                    placeholder="Código de motor (ej. 3L, 1KD-FTV, Z24, 4D56...)"
-                    class="w-full px-3 py-2 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded focus:outline-none focus:border-[#002b66]"
-                  />
-                  <ChevronDown
-                    @click="isMotorOpen = !isMotorOpen"
-                    class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
-                  />
-                </div>
-
                 <!-- Dropdown Motores -->
                 <div
                   v-if="isMotorOpen"
-                  class="absolute left-0 right-0 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
                 >
                   <div
                     v-for="mot in filteredMotores"
@@ -943,160 +862,70 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Fila de Filtros Secundarios: Año, Combustible, CC -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                <div>
-                  <select
-                    v-model="selectedYear"
-                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none"
-                  >
-                    <option value="">Año de construcción</option>
-                    <option value="2024">2024</option>
-                    <option value="2020">2020</option>
-                    <option value="2015">2015</option>
-                    <option value="2010">2010</option>
-                    <option value="2005">2005</option>
-                    <option value="2000">2000</option>
-                    <option value="1995">1995</option>
-                  </select>
-                </div>
-
-                <div>
-                  <select
-                    v-model="selectedFuel"
-                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none"
-                  >
-                    <option value="Todos los combustibles">Todos los combustibles</option>
-                    <option value="Diésel">Gasóleo / Diésel</option>
-                    <option value="Gasolina">Gasolina</option>
-                  </select>
-                </div>
-
-                <div>
-                  <input
-                    v-model="inputCc"
-                    type="text"
-                    placeholder="cc (ej. 2779)"
-                    class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              <!-- Fila: Potencia CV/kW + Botón Buscar -->
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                <div class="flex items-center border border-slate-300 rounded overflow-hidden">
-                  <input
-                    v-model="inputPotencia"
-                    type="text"
-                    placeholder="Potencia"
-                    class="w-full px-2.5 py-1.5 text-slate-700 focus:outline-none font-mono"
-                  />
-                  <div class="flex bg-slate-100 text-[11px] font-bold border-l border-slate-300">
-                    <button
-                      type="button"
-                      @click="potenciaUnit = 'CV'"
-                      :class="['px-2 py-1', potenciaUnit === 'CV' ? 'bg-[#5984c3] text-white' : 'text-slate-600']"
-                    >
-                      CV
-                    </button>
-                    <button
-                      type="button"
-                      @click="potenciaUnit = 'kW'"
-                      :class="['px-2 py-1', potenciaUnit === 'kW' ? 'bg-[#5984c3] text-white' : 'text-slate-600']"
-                    >
-                      kW
-                    </button>
-                  </div>
-                </div>
-
-                <div class="sm:col-span-2 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    @click="handleResetManualFilters"
-                    class="px-3 py-1.5 rounded border border-slate-200 text-slate-500 hover:text-slate-800 text-xs font-bold"
-                  >
-                    Limpiar
-                  </button>
-                  <button
-                    type="button"
-                    @click="handleSearchManual"
-                    class="px-5 py-2 rounded bg-[#003882] hover:bg-[#002b66] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Search class="w-3.5 h-3.5" />
-                    <span>Buscar Motor</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Bloque Inferior: Búsqueda de Marcas y Grupos de Productos -->
-              <div class="pt-3 border-t border-slate-200 space-y-2">
-                <span class="text-[11px] font-bold text-[#002b66] block">
-                  Búsqueda de marcas y grupos de productos
-                </span>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  
-                  <!-- Marca de Producto -->
-                  <div class="relative combobox-container">
-                    <input
-                      v-model="brandProductInput"
-                      @focus="isBrandProductOpen = true"
-                      @input="isBrandProductOpen = true"
-                      type="text"
-                      placeholder="Marca de producto..."
-                      class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded focus:outline-none"
-                    />
-                    <div
-                      v-if="isBrandProductOpen"
-                      class="absolute left-0 right-0 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-20 max-h-40 overflow-y-auto"
-                    >
-                      <div
-                        v-for="b in filteredProductBrands"
-                        :key="b"
-                        @click="brandProductInput = b; isBrandProductOpen = false"
-                        class="px-2.5 py-1 text-xs hover:bg-blue-50 cursor-pointer font-bold"
-                      >
-                        {{ b }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Grupo de Productos -->
-                  <div class="relative combobox-container flex items-center">
+              <!-- 3. Grupo del Producto -->
+              <div class="relative combobox-container">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Grupo de productos</label>
+                <div class="flex items-center">
+                  <div class="relative flex-1">
                     <input
                       v-model="groupProductInput"
                       @focus="isGroupProductOpen = true"
                       @input="isGroupProductOpen = true"
                       type="text"
-                      placeholder="Grupo de productos..."
-                      class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-l focus:outline-none font-medium"
+                      placeholder="Grupo de productos"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-medium bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
                     />
-                    <button
-                      type="button"
-                      @click="openGroupParts('Catálogo de Productos', groupProductInput || 'Junta de culata')"
-                      class="bg-[#003882] hover:bg-[#002b66] text-white px-3 py-2 rounded-r flex items-center justify-center shrink-0"
-                    >
-                      <Search class="w-3.5 h-3.5" />
-                    </button>
+                    <ChevronDown
+                      @click="isGroupProductOpen = !isGroupProductOpen"
+                      class="w-4 h-4 text-slate-400 absolute right-2.5 top-2.5 cursor-pointer"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    @click="isGroupProductOpen = !isGroupProductOpen"
+                    class="bg-[#003882] hover:bg-[#002b66] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center shrink-0"
+                  >
+                    <Search class="w-4 h-4" />
+                  </button>
+                </div>
 
-                    <div
-                      v-if="isGroupProductOpen"
-                      class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-20 max-h-40 overflow-y-auto"
-                    >
-                      <div
-                        v-for="g in filteredProductGroups"
-                        :key="g"
-                        @click="groupProductInput = g; isGroupProductOpen = false; openGroupParts('Grupo de Productos', g)"
-                        class="px-2.5 py-1.5 text-xs hover:bg-blue-50 cursor-pointer"
-                      >
-                        {{ g }}
-                      </div>
-                    </div>
+                <!-- Dropdown Grupos de Productos -->
+                <div
+                  v-if="isGroupProductOpen"
+                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                >
+                  <div
+                    v-for="grp in filteredProductGroups"
+                    :key="grp"
+                    @click="selectGroup(grp)"
+                    class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs font-semibold text-slate-800 border-b border-slate-50 last:border-0"
+                  >
+                    {{ grp }}
                   </div>
                 </div>
               </div>
 
-              <!-- Pestañas Finales -->
-              <div class="pt-2 flex items-center gap-2 border-t border-slate-100 text-xs">
+              <!-- Botones de Acción: Buscar y Limpiar -->
+              <div class="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  @click="handleResetManualFilters"
+                  class="px-4 py-2 rounded border border-slate-300 text-slate-600 hover:text-slate-900 text-xs font-bold"
+                >
+                  Limpiar
+                </button>
+                <button
+                  type="button"
+                  @click="handleSearchManual"
+                  class="px-6 py-2 rounded bg-[#003882] hover:bg-[#002b66] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
+                >
+                  <Search class="w-3.5 h-3.5" />
+                  <span>Buscar</span>
+                </button>
+              </div>
+
+              <!-- Pestañas Inferiores de Estado -->
+              <div class="pt-3 flex items-center gap-2 border-t border-slate-100 text-xs">
                 <button type="button" class="px-3 py-1 bg-[#001736] text-white font-bold rounded flex items-center gap-1">
                   <span>Todos</span>
                 </button>
@@ -1110,10 +939,9 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Bloque Derecho: Banner / Slider Técnico (Imagen 3) -->
+          <!-- Bloque Derecho: Slider Técnico con Retenes y Juntas (Imagen 3) -->
           <div class="lg:col-span-5 bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between p-6 relative">
             
-            <!-- Contenido del Banner -->
             <div class="space-y-3 z-10">
               <span class="inline-block px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-100 text-[#002b66]">
                 {{ bannerSlides[currentSlide].badge }}
@@ -1128,9 +956,8 @@ onUnmounted(() => {
               </p>
             </div>
 
-            <!-- Gráfico / Ilustración Técnica de Retenes y Juntas (Vector Limpio) -->
+            <!-- Gráfico Concétrico Circular Exacto a la Imagen 3 -->
             <div class="my-6 flex items-center justify-center relative py-4">
-              <!-- Círculos concéntricos de retén radial / junta -->
               <div class="w-48 h-48 rounded-full border-8 border-rose-500/80 bg-rose-50 flex items-center justify-center shadow-lg relative">
                 <div class="w-36 h-36 rounded-full border-4 border-slate-700 bg-slate-900 flex items-center justify-center">
                   <div class="w-24 h-24 rounded-full border-2 border-dashed border-[#04c4d9] flex items-center justify-center text-center p-2">
@@ -1142,7 +969,6 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Controles del Slider -->
             <div class="flex items-center justify-between z-10 pt-2 border-t border-slate-100">
               <div class="flex items-center gap-1.5">
                 <span
@@ -1182,26 +1008,23 @@ onUnmounted(() => {
       <!-- ======================================================================= -->
       <div v-else-if="currentView === 'motor_groups' || currentView === 'parts_list'" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        <!-- ===================================================================== -->
-        <!-- SIDEBAR IZQUIERDO: SELECCIÓN ACTUAL & DETALLES DEL MOTOR              -->
-        <!-- ===================================================================== -->
+        <!-- SIDEBAR IZQUIERDO: SELECCIÓN ACTUAL & DETALLES DEL MOTOR -->
         <aside class="lg:col-span-3 space-y-4">
           
-          <!-- Tarjeta 1: Selección actual (Logo + TOYOTA - 3L con botón X) -->
+          <!-- Tarjeta 1: Selección actual -->
           <div class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
             <div class="bg-[#f1f5f9] px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-[#002b66]">
               Selección actual
             </div>
 
             <div class="p-4 text-center space-y-3">
-              <!-- Emblema de la Marca -->
               <div class="w-16 h-16 mx-auto rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center p-2 shadow-2xs">
                 <div class="w-12 h-12 rounded-full border-2 border-slate-800 flex items-center justify-center font-black text-xs tracking-tighter">
                   {{ selectedBrandName.substring(0, 3) }}
                 </div>
               </div>
 
-              <!-- Badge con Botón de Cierre [ TOYOTA - 3L | X ] -->
+              <!-- Badge [ TOYOTA - 3L | X ] -->
               <div class="flex items-center rounded overflow-hidden shadow-2xs border border-[#002b66]">
                 <div class="bg-[#002b66] text-white flex-1 py-1.5 px-3 text-xs font-mono font-black tracking-wide text-left">
                   {{ selectedBrandName }} - {{ activeMotor?.codigo }}
@@ -1218,7 +1041,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Tarjeta 2: Detalles del motor (Tabla de Parámetros Técnicos) -->
+          <!-- Tarjeta 2: Detalles del motor -->
           <div class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
             <div
               @click="isDetailsCollapsed = !isDetailsCollapsed"
@@ -1286,15 +1109,12 @@ onUnmounted(() => {
           </div>
         </aside>
 
-        <!-- ===================================================================== -->
-        <!-- CONTENIDO PRINCIPAL: IMAGEN 1 (GRUPOS) O IMAGEN 2 (TABLA DETALLADA)   -->
-        <!-- ===================================================================== -->
+        <!-- PANEL PRINCIPAL (IMAGEN 1 O IMAGEN 2) -->
         <section class="lg:col-span-9 space-y-4">
           
-          <!-- CASO B.1: IMAGEN 1 - VISTA DE GRUPOS DE MONTAJE (6 TARJETAS TÉCNICAS) -->
+          <!-- CASO B.1: IMAGEN 1 - VISTA DE GRUPOS DE MONTAJE -->
           <div v-if="currentView === 'motor_groups'" class="space-y-3">
             
-            <!-- Barra Superior de Pestañas: [Panel de información (Grid/List)] [Aplicaciones del vehículo] -->
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
               <div class="flex items-center gap-2">
                 <button
@@ -1317,7 +1137,7 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- CUADRÍCULA DE 6 GRUPOS DE MONTAJE (IMAGEN 1 EXACTA) -->
+            <!-- Cuadrícula de 6 Grupos de Montaje (Imagen 1) -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               <div
                 v-for="grp in assemblyGroups"
@@ -1325,7 +1145,6 @@ onUnmounted(() => {
                 class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs hover:border-[#003882] hover:shadow-md transition flex flex-col justify-between min-h-[170px] relative overflow-hidden"
               >
                 <div>
-                  <!-- Encabezado de la Tarjeta con Título Azul y Estrella Favorito -->
                   <div class="flex items-start justify-between gap-2">
                     <div
                       @click="openGroupParts(grp.title)"
@@ -1339,7 +1158,6 @@ onUnmounted(() => {
                     </button>
                   </div>
 
-                  <!-- Sub-lista de Componentes con Flecha Pequeña '▸' -->
                   <ul class="mt-3 space-y-1.5 text-xs">
                     <li
                       v-for="sub in grp.subitems"
@@ -1353,7 +1171,6 @@ onUnmounted(() => {
                   </ul>
                 </div>
 
-                <!-- Marca de agua técnica sutil en fondo -->
                 <div class="absolute right-2 bottom-1 text-slate-100 pointer-events-none -z-0">
                   <div class="w-16 h-16 rounded-full border-4 border-slate-100 flex items-center justify-center font-black text-xs">
                     JR
@@ -1363,10 +1180,9 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- CASO B.2: IMAGEN 2 - TABLA DETALLADA DE PIEZAS (AL CLIC EN UN GRUPO) -->
+          <!-- CASO B.2: IMAGEN 2 - TABLA DETALLADA DE PIEZAS -->
           <div v-else-if="currentView === 'parts_list'" class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
             
-            <!-- Barra Superior Azul de la Tabla: Grupo + Resultados -->
             <div class="bg-[#002b66] text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
               <span>{{ selectedGroupTitle }}</span>
               <div class="flex items-center gap-3">
@@ -1380,7 +1196,7 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Tabla de Artículos (Columnas: Checkbox | Número de artículo | Foto | Denominación | Estado) -->
+            <!-- Tabla de Artículos Exacta a Imagen 2 -->
             <div class="overflow-x-auto">
               <table class="w-full text-left text-xs">
                 <thead class="bg-[#f8fafc] text-slate-500 font-semibold border-b border-slate-200">
@@ -1401,12 +1217,10 @@ onUnmounted(() => {
                     :key="part.id"
                     class="hover:bg-blue-50/40 transition"
                   >
-                    <!-- Checkbox -->
                     <td class="py-3 px-3 align-top">
                       <input type="checkbox" class="rounded" />
                     </td>
 
-                    <!-- Número de Artículo (Negrita Azul #002b66) -->
                     <td class="py-3 px-4 align-top">
                       <div class="font-mono font-bold text-sm text-[#002b66]">
                         {{ part.equivalencias?.[0]?.codigo_alterno || part.codigo_oem }}
@@ -1424,10 +1238,8 @@ onUnmounted(() => {
                       </button>
                     </td>
 
-                    <!-- Foto / Ilustración Técnica Limpia (SVG Exacto de Gasket/Pieza) -->
                     <td class="py-3 px-4 align-top text-center">
                       <div class="w-28 h-14 bg-slate-50 border border-slate-200 rounded p-1 mx-auto flex items-center justify-center">
-                        <!-- SVG Junta de culata multilámina -->
                         <svg viewBox="0 0 160 40" class="w-full h-full text-slate-800">
                           <rect x="2" y="4" width="156" height="32" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
                           <circle cx="28" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2" />
@@ -1442,7 +1254,6 @@ onUnmounted(() => {
                       </div>
                     </td>
 
-                    <!-- Denominación (Marca en negrita + especificaciones y medidas) -->
                     <td class="py-3 px-4 align-top space-y-1">
                       <div class="flex items-center gap-1.5">
                         <strong class="text-sm font-black text-slate-900 uppercase">
@@ -1458,7 +1269,6 @@ onUnmounted(() => {
                         {{ part.nombre }}
                       </div>
 
-                      <!-- Medidas técnicas en línea (Ø, Espesor, sólo con...) -->
                       <div class="text-[11px] font-mono text-slate-600">
                         <template v-if="part.categoria === 'Empaques'">
                           Ø: <strong>{{ part.diametro_cilindro_mm || 97 }} mm</strong>; 
@@ -1490,7 +1300,6 @@ onUnmounted(() => {
                       </div>
                     </td>
 
-                    <!-- Estado del Artículo y Botón a Orden -->
                     <td class="py-3 px-4 align-top text-right space-y-2">
                       <span class="inline-block text-xs font-bold text-slate-700">
                         Normal
@@ -1522,7 +1331,6 @@ onUnmounted(() => {
               </table>
             </div>
 
-            <!-- Footer Paginación -->
             <div class="bg-[#f8fafc] px-4 py-2 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
               <button
                 type="button"
@@ -1552,7 +1360,7 @@ onUnmounted(() => {
                 Motor de Adaptaciones Dimensionales de Taller (Sin código de motor)
               </h2>
               <p class="text-xs text-slate-500">
-                Localiza repuestos por cotas en milímetros (mm) cuando la pieza está desgastada o sin código ("NE").
+                Localiza repuestos por cotas en milímetros (mm) cuando la pieza está desgastada o sin código.
               </p>
             </div>
             <button
@@ -1564,16 +1372,15 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- Muestra de Prueba Rápida -->
-          <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center justify-between gap-3">
+          <div class="p-4 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center justify-between gap-3">
             <div>
-              <strong class="text-xs text-cyan-900 block font-bold">Muestra de prueba de taller:</strong>
-              <span class="text-xs text-cyan-800">Sello de válvula 4.8 mm (D.int) x 10.8 mm (D.ext) x 10 mm (Altura)</span>
+              <strong class="text-xs text-cyan-900 block font-bold">Muestra de taller comprobada:</strong>
+              <span class="text-xs text-cyan-800">Sello de válvula 4.8 mm x 10.8 mm x 10.0 mm (Dokuro SV-108 / Ajusa 12014500)</span>
             </div>
             <button
               type="button"
               @click="openGroupParts('Culata / Piezas de montaje', 'Junta/guía/ajuste de válvulas', 'Sellos')"
-              class="px-3 py-1.5 rounded bg-[#002b66] text-white text-xs font-bold hover:bg-[#001d47] transition shadow-xs"
+              class="px-3.5 py-1.5 rounded bg-[#002b66] text-white text-xs font-bold hover:bg-[#001d47] transition shadow-xs"
             >
               Ver piezas compatibles
             </button>
