@@ -8,6 +8,7 @@ import {
   mockMotores,
   mockRepuestos
 } from '@/services/catalogService'
+import JrLogo from '@/components/JrLogo.vue'
 import { 
   Search, 
   X, 
@@ -88,7 +89,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
 }
 
 // =============================================================================
-// MOTOR Y VEHÍCULO SELECCIONADO (SIDEBAR IZQUIERDO Y MATRIZ)
+// MOTOR Y VEHÍCULO SELECCIONADO
 // =============================================================================
 const activeMotor = ref<Motor | null>(mockMotores[0])
 const selectedBrandName = ref<string>('TOYOTA')
@@ -98,7 +99,7 @@ const isDetailsCollapsed = ref<boolean>(false)
 const activeVehicleCategory = ref<'motores' | 'turismos' | 'comerciales' | 'industriales'>('motores')
 
 // =============================================================================
-// MENÚS DE BÚSQUEDA INTERACTIVA (SOLO: FABRICANTE, CÓDIGO DE MOTOR, GRUPO)
+// MENÚS DE BÚSQUEDA INTERACTIVA (FABRICANTE, CÓDIGO DE MOTOR, GRUPO)
 // =============================================================================
 
 // 1. Fabricante (Searchable combobox)
@@ -175,7 +176,6 @@ const selectGroup = (groupName: string) => {
 
 // Botón Buscar principal
 const handleSearchManual = () => {
-  // 1. Identificar o asegurar motor
   let foundMotor = mockMotores.find(m => m.codigo.toLowerCase() === motorInput.value.toLowerCase().trim())
   if (!foundMotor && availableMotores.value.length > 0) {
     foundMotor = availableMotores.value[0]
@@ -190,13 +190,11 @@ const handleSearchManual = () => {
     fabricanteInput.value = fab.nombre.toUpperCase()
   }
 
-  // 2. Si se especificó un grupo de producto, ir directo a la tabla de piezas (Imagen 2)
   if (groupProductInput.value.trim()) {
     selectedGroupTitle.value = groupProductInput.value
     selectedSubitemFilter.value = groupProductInput.value
     currentView.value = 'parts_list'
   } else {
-    // Si no, mostrar los 6 grupos del motor (Imagen 1)
     currentView.value = 'motor_groups'
   }
 }
@@ -211,7 +209,7 @@ const handleResetManualFilters = () => {
 }
 
 // =============================================================================
-// BARRA SUPERIOR DE BÚSQUEDA GLOBAL (AJUSA TOP BAR)
+// BARRA SUPERIOR DE BÚSQUEDA GLOBAL
 // =============================================================================
 const topSearchType = ref<'grupos' | 'articulo'>('grupos')
 const topSearchQuery = ref<string>('')
@@ -420,7 +418,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="bg-[#f0f4f8] min-h-screen text-slate-800 flex flex-col font-sans select-none">
+  <div class="bg-slate-50 min-h-screen text-slate-800 flex flex-col font-sans select-none">
     
     <!-- Toast Flotante -->
     <Transition
@@ -433,7 +431,7 @@ onUnmounted(() => {
     >
       <div 
         v-if="toastMessage" 
-        class="fixed bottom-5 right-5 z-50 bg-[#001d47] text-white px-4 py-2.5 rounded-lg shadow-2xl border border-blue-400/40 flex items-center gap-2 text-xs font-bold"
+        class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-2 text-xs font-bold"
       >
         <CheckCircle2 class="w-4 h-4 text-[#04c4d9]" />
         <span>{{ toastMessage }}</span>
@@ -441,33 +439,32 @@ onUnmounted(() => {
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- 1. BARRA SUPERIOR AJUSA (#002b66)                                         -->
+    <!-- 1. BARRA SUPERIOR CON COLORES DE SWGORA (BLANCO / SLATE / CYAN #04c4d9)   -->
     <!-- ========================================================================= -->
-    <header class="bg-[#002b66] text-white sticky top-0 z-40 shadow-md">
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
       
-      <!-- Fila Superior: Logo + Buscador Central + Iconos -->
+      <!-- Fila Superior: Logo SWGORA + Buscador Central + Iconos -->
       <div class="max-w-[1440px] mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
         
-        <!-- Logo Ajusa -->
-        <div class="flex items-center gap-3 cursor-pointer" @click="currentView = 'home'">
-          <div class="bg-white text-[#002b66] px-3 py-1 rounded font-black italic tracking-tighter text-lg shadow-xs flex items-center gap-1">
-            <span>ajusa</span>
+        <!-- Logo e Identidad SWGORA / JR BLANCO -->
+        <div class="flex items-center gap-2.5 cursor-pointer" @click="currentView = 'home'">
+          <JrLogo :size="32" />
+          <div class="flex flex-col leading-none">
+            <span class="text-xs font-black tracking-tight text-slate-900">JR BLANCO</span>
+            <span class="text-[9px] text-[#04c4d9] font-mono font-bold tracking-widest mt-0.5">SWGORA</span>
           </div>
-          <span class="text-xs font-bold text-blue-200 tracking-wider hidden md:inline">
-            SWGORA • JR BLANCO
-          </span>
         </div>
 
         <!-- Buscador Central -->
         <div class="flex-1 max-w-2xl relative combobox-container">
-          <div class="flex items-center bg-white rounded overflow-hidden shadow-inner text-slate-800 border border-transparent focus-within:border-[#04c4d9]">
+          <div class="flex items-center bg-slate-50 hover:bg-white focus-within:bg-white rounded-xl overflow-hidden shadow-2xs text-slate-800 border border-slate-200 focus-within:border-[#04c4d9] focus-within:ring-2 focus-within:ring-[#04c4d9]/20 transition">
             
             <button
               type="button"
               @click="topSearchType = topSearchType === 'grupos' ? 'articulo' : 'grupos'"
               class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 text-xs font-bold flex items-center gap-1.5 border-r border-slate-200 shrink-0"
             >
-              <span>{{ topSearchType === 'grupos' ? 'Búsqueda por grupos' : 'Búsqueda por número aleatorio' }}</span>
+              <span>{{ topSearchType === 'grupos' ? 'Búsqueda por grupos' : 'Búsqueda por artículo' }}</span>
               <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
             </button>
 
@@ -476,8 +473,8 @@ onUnmounted(() => {
               @focus="isTopSearchOpen = true"
               @input="isTopSearchOpen = true"
               type="text"
-              placeholder="Búsqueda por grupos"
-              class="w-full px-3 py-2 text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none"
+              placeholder="Búsqueda por grupos o código de artículo..."
+              class="w-full px-3 py-2 text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none bg-transparent"
             />
 
             <button
@@ -497,10 +494,11 @@ onUnmounted(() => {
               <Mic class="w-4 h-4" />
             </button>
 
+            <!-- Botón Buscar en Cyan SWGORA -->
             <button
               type="button"
               @click="isTopSearchOpen = true"
-              class="bg-[#003882] hover:bg-[#002b66] text-white px-4 py-2.5 flex items-center justify-center shrink-0 transition"
+              class="bg-[#04c4d9] hover:bg-[#03a9bc] text-white px-4 py-2.5 flex items-center justify-center shrink-0 transition"
               title="Buscar"
             >
               <Search class="w-4 h-4" />
@@ -510,7 +508,7 @@ onUnmounted(() => {
           <!-- Sugerencias al escribir -->
           <div
             v-if="isTopSearchOpen && (topSuggestions.motors.length > 0 || topSuggestions.parts.length > 0)"
-            class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-2xl border border-slate-200 z-50 max-h-80 overflow-y-auto text-slate-800"
+            class="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-80 overflow-y-auto text-slate-800"
           >
             <div v-if="topSuggestions.motors.length > 0" class="p-2 border-b border-slate-100">
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2 mb-1">
@@ -520,13 +518,13 @@ onUnmounted(() => {
                 v-for="mot in topSuggestions.motors"
                 :key="mot.id"
                 @click="selectTopSuggestionMotor(mot)"
-                class="px-3 py-1.5 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-between text-xs"
+                class="px-3 py-1.5 hover:bg-cyan-50 rounded-lg cursor-pointer flex items-center justify-between text-xs"
               >
                 <div>
-                  <strong class="text-[#002b66] font-mono">{{ mot.codigo }}</strong>
+                  <strong class="text-slate-900 font-mono">{{ mot.codigo }}</strong>
                   <span class="text-slate-500 ml-1.5">{{ mot.nombre_comercial }}</span>
                 </div>
-                <span class="text-[10px] font-bold text-slate-400">{{ mot.combustible }}</span>
+                <span class="text-[10px] font-bold text-[#04c4d9]">{{ mot.combustible }}</span>
               </div>
             </div>
 
@@ -538,13 +536,13 @@ onUnmounted(() => {
                 v-for="part in topSuggestions.parts"
                 :key="part.id"
                 @click="selectTopSuggestionPart(part)"
-                class="px-3 py-1.5 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-between text-xs"
+                class="px-3 py-1.5 hover:bg-cyan-50 rounded-lg cursor-pointer flex items-center justify-between text-xs"
               >
                 <div>
                   <strong class="font-mono text-slate-900">{{ part.codigo_oem }}</strong>
                   <span class="text-slate-600 ml-2">{{ part.nombre }}</span>
                 </div>
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                   {{ part.catalogo_origen || 'Catálogo' }}
                 </span>
               </div>
@@ -552,31 +550,31 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Iconos de Utilidad -->
-        <div class="flex items-center gap-3 text-blue-200 shrink-0">
-          <button type="button" @click="currentView = 'home'" class="hover:text-white p-1" title="Inicio">
+        <!-- Iconos de Utilidad en Gris Suave -->
+        <div class="flex items-center gap-3 text-slate-400 shrink-0">
+          <button type="button" @click="currentView = 'home'" class="hover:text-slate-900 p-1" title="Inicio">
             <Clock class="w-4 h-4" />
           </button>
-          <button type="button" @click="currentView = 'parts_list'" class="hover:text-white p-1" title="Catálogo">
+          <button type="button" @click="currentView = 'parts_list'" class="hover:text-slate-900 p-1" title="Catálogo">
             <FileText class="w-4 h-4" />
           </button>
-          <button type="button" class="hover:text-white p-1" title="Idioma">
+          <button type="button" class="hover:text-slate-900 p-1" title="Idioma">
             <Globe class="w-4 h-4" />
           </button>
-          <button type="button" class="hover:text-white p-1" title="Configuración">
+          <button type="button" class="hover:text-slate-900 p-1" title="Configuración">
             <Settings class="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      <!-- Fila de Categorías Vehiculares -->
-      <div class="bg-[#002252] border-t border-blue-900/50">
+      <!-- Fila de Categorías Vehiculares (Grafito #0D0D0D a juego con Sidebar SWGORA) -->
+      <div class="bg-[#0D0D0D] border-t border-neutral-800">
         <div class="max-w-[1440px] mx-auto px-3 sm:px-6 flex items-center gap-1 overflow-x-auto text-xs font-semibold py-1">
           
           <button
             type="button"
             @click="currentView = 'home'"
-            class="px-2.5 py-1.5 rounded text-blue-200 hover:text-white flex items-center gap-1.5 transition"
+            class="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition"
           >
             <span>⌂</span>
           </button>
@@ -585,8 +583,8 @@ onUnmounted(() => {
             type="button"
             @click="activeVehicleCategory = 'turismos'; currentView = 'home'"
             :class="[
-              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition',
-              activeVehicleCategory === 'turismos' ? 'bg-[#001736] text-white shadow-xs' : 'text-blue-200 hover:text-white'
+              'px-3 py-1.5 rounded-lg flex items-center gap-1.5 whitespace-nowrap transition',
+              activeVehicleCategory === 'turismos' ? 'bg-neutral-800 text-white shadow-xs' : 'text-slate-400 hover:text-white'
             ]"
           >
             <Car class="w-3.5 h-3.5" />
@@ -597,8 +595,8 @@ onUnmounted(() => {
             type="button"
             @click="activeVehicleCategory = 'industriales'; currentView = 'home'"
             :class="[
-              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition',
-              activeVehicleCategory === 'industriales' ? 'bg-[#001736] text-white shadow-xs' : 'text-blue-200 hover:text-white'
+              'px-3 py-1.5 rounded-lg flex items-center gap-1.5 whitespace-nowrap transition',
+              activeVehicleCategory === 'industriales' ? 'bg-neutral-800 text-white shadow-xs' : 'text-slate-400 hover:text-white'
             ]"
           >
             <Truck class="w-3.5 h-3.5" />
@@ -609,19 +607,20 @@ onUnmounted(() => {
             type="button"
             @click="activeVehicleCategory = 'comerciales'; currentView = 'home'"
             :class="[
-              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition',
-              activeVehicleCategory === 'comerciales' ? 'bg-[#001736] text-white shadow-xs' : 'text-blue-200 hover:text-white'
+              'px-3 py-1.5 rounded-lg flex items-center gap-1.5 whitespace-nowrap transition',
+              activeVehicleCategory === 'comerciales' ? 'bg-neutral-800 text-white shadow-xs' : 'text-slate-400 hover:text-white'
             ]"
           >
             <span>Vehículos comerciales ligeros</span>
           </button>
 
+          <!-- Pestaña Motores Activa con Acento Cyan -->
           <button
             type="button"
             @click="activeVehicleCategory = 'motores'; if (activeMotor) currentView = 'motor_groups'; else currentView = 'home'"
             :class="[
-              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition font-bold',
-              activeVehicleCategory === 'motores' ? 'bg-[#001430] text-white border border-blue-400/40 shadow-xs' : 'text-blue-200 hover:text-white'
+              'px-3 py-1.5 rounded-lg flex items-center gap-1.5 whitespace-nowrap transition font-bold',
+              activeVehicleCategory === 'motores' ? 'bg-neutral-800 text-white border border-[#04c4d9]/50 shadow-xs' : 'text-slate-400 hover:text-white'
             ]"
           >
             <Wrench class="w-3.5 h-3.5 text-[#04c4d9]" />
@@ -632,8 +631,8 @@ onUnmounted(() => {
             type="button"
             @click="currentView = 'adaptaciones'"
             :class="[
-              'px-3 py-1.5 rounded flex items-center gap-1.5 whitespace-nowrap transition ml-auto font-bold',
-              currentView === 'adaptaciones' ? 'bg-[#001430] text-[#04c4d9] border border-[#04c4d9]/40' : 'text-[#04c4d9] hover:text-white'
+              'px-3 py-1.5 rounded-lg flex items-center gap-1.5 whitespace-nowrap transition ml-auto font-bold',
+              currentView === 'adaptaciones' ? 'bg-neutral-800 text-[#04c4d9] border border-[#04c4d9]/50' : 'text-[#04c4d9] hover:text-cyan-300'
             ]"
           >
             <Ruler class="w-3.5 h-3.5" />
@@ -644,40 +643,43 @@ onUnmounted(() => {
     </header>
 
     <!-- ========================================================================= -->
-    <!-- 2. BARRAS DE SUB-NAVEGACIÓN / BREADCRUMBS (IMAGEN 1 & IMAGEN 2)             -->
+    <!-- 2. BARRAS DE SUB-NAVEGACIÓN / BREADCRUMBS                                  -->
     <!-- ========================================================================= -->
     <div v-if="currentView === 'motor_groups' || currentView === 'parts_list'" class="bg-white border-b border-slate-200 shadow-2xs">
       <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-2 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs">
         
-        <!-- Breadcrumbs: <- Motores TOYOTA 3L Junta de culata -->
+        <!-- Breadcrumbs -->
         <div class="flex items-center gap-2 text-slate-600 font-medium overflow-x-auto">
           <button
             type="button"
             @click="currentView === 'parts_list' ? (currentView = 'motor_groups') : (currentView = 'home')"
-            class="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100"
+            class="p-1 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100"
             title="Volver"
           >
             <ChevronLeft class="w-4 h-4" />
           </button>
 
-          <span class="cursor-pointer hover:text-[#002b66]" @click="currentView = 'home'">Motores</span>
-          <span class="cursor-pointer hover:text-[#002b66] font-bold text-slate-800" @click="currentView = 'motor_groups'">
+          <span class="cursor-pointer hover:text-slate-900" @click="currentView = 'home'">Motores</span>
+          <span class="text-slate-300">/</span>
+          <span class="cursor-pointer hover:text-slate-900 font-bold text-slate-800" @click="currentView = 'motor_groups'">
             {{ selectedBrandName }}
           </span>
-          <span class="font-bold text-[#002b66] font-mono cursor-pointer" @click="currentView = 'motor_groups'">
+          <span class="text-slate-300">/</span>
+          <span class="font-bold text-[#04c4d9] font-mono cursor-pointer" @click="currentView = 'motor_groups'">
             {{ activeMotor?.codigo }}
           </span>
           <template v-if="currentView === 'parts_list'">
+            <span class="text-slate-300">/</span>
             <span class="font-bold text-slate-900">{{ selectedGroupTitle }}</span>
           </template>
         </div>
 
-        <!-- Filtros Superiores de Imagen 1 & 2 -->
+        <!-- Filtros Superiores -->
         <div class="flex items-center gap-2 text-xs shrink-0">
           <select
             v-if="currentView === 'parts_list'"
             v-model="selectedGroupTitle"
-            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-800 font-bold focus:outline-none"
+            class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
           >
             <option value="Junta de culata">Junta de culata [Culata / Piezas de montaje]</option>
             <option value="Válvula de motor">Válvula de motor</option>
@@ -689,14 +691,14 @@ onUnmounted(() => {
 
           <select
             v-else
-            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-700 text-xs focus:outline-none"
+            class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 text-xs focus:outline-none"
           >
             <option>Todos los grupos de montaje</option>
           </select>
 
           <select
             v-model="selectedBrandFilterInTable"
-            class="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-slate-700 text-xs focus:outline-none"
+            class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 text-xs focus:outline-none"
           >
             <option value="Todas las marcas">Todas las marcas</option>
             <option value="Ajusa">Ajusa</option>
@@ -717,20 +719,20 @@ onUnmounted(() => {
 
       <!-- ======================================================================= -->
       <!-- CASO A: IMAGEN 3 - MENÚ DE INICIO / BÚSQUEDA MANUAL                       -->
-      <!-- SOLO DEJA: Fabricante, Código de motor, Grupo del producto                -->
+      <!-- SOLO: Fabricante, Código de motor, Grupo del producto                     -->
       <!-- ======================================================================= -->
       <div v-if="currentView === 'home'" class="space-y-4">
         
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
           
-          <!-- Bloque Izquierdo: Formulario Simplificado y Limpio (Exacto a la imagen) -->
-          <div class="lg:col-span-7 bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+          <!-- Bloque Izquierdo: Formulario Simplificado -->
+          <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
             
             <!-- Pestañas Superiores -->
             <div class="flex items-center border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
               <button
                 type="button"
-                class="px-4 py-2.5 border-b-2 border-[#002b66] bg-white text-[#002b66] flex items-center gap-1.5"
+                class="px-4 py-2.5 border-b-2 border-[#04c4d9] bg-white text-slate-900 flex items-center gap-1.5"
               >
                 <span>Búsqueda manual</span>
               </button>
@@ -745,7 +747,7 @@ onUnmounted(() => {
 
             <!-- Fila de Iconos de Tipo de Vehículo -->
             <div class="grid grid-cols-4 border-b border-slate-200 text-center bg-white">
-              <button type="button" class="py-2.5 border-r border-slate-200 bg-[#001736] text-white flex justify-center">
+              <button type="button" class="py-2.5 border-r border-slate-200 bg-slate-900 text-[#04c4d9] flex justify-center">
                 <Car class="w-5 h-5" />
               </button>
               <button type="button" class="py-2.5 border-r border-slate-200 text-slate-600 hover:bg-slate-50 flex justify-center">
@@ -759,7 +761,7 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <!-- FORMULARIO LIMPIO: SOLO FABRICANTE, CÓDIGO DE MOTOR Y GRUPO DEL PRODUCTO -->
+            <!-- FORMULARIO LIMPIO: SOLO FABRICANTE, CÓDIGO DE MOTOR Y GRUPO -->
             <div class="p-4 sm:p-6 space-y-4">
               
               <!-- 1. Fabricante -->
@@ -773,7 +775,7 @@ onUnmounted(() => {
                       @input="isFabricanteOpen = true"
                       type="text"
                       placeholder="Fabricante"
-                      class="w-full px-3 py-2 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-l-lg focus:outline-none focus:border-[#04c4d9] focus:ring-1 focus:ring-[#04c4d9]"
                     />
                     <ChevronDown
                       @click="isFabricanteOpen = !isFabricanteOpen"
@@ -783,7 +785,7 @@ onUnmounted(() => {
                   <button
                     type="button"
                     @click="isFabricanteOpen = !isFabricanteOpen"
-                    class="bg-[#8ca8cb] hover:bg-[#7292bb] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center shrink-0"
+                    class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-l-0 border-slate-300 px-3.5 py-2.5 rounded-r-lg flex items-center justify-center shrink-0 transition"
                   >
                     <Search class="w-4 h-4" />
                   </button>
@@ -792,13 +794,13 @@ onUnmounted(() => {
                 <!-- Dropdown Fabricantes -->
                 <div
                   v-if="isFabricanteOpen"
-                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                  class="absolute left-0 right-10 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto"
                 >
                   <div
                     v-for="fab in filteredFabricantes"
                     :key="fab.id"
                     @click="selectFabricante(fab)"
-                    class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-50 last:border-0"
+                    class="px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-50 last:border-0"
                   >
                     <span>{{ fab.nombre.toUpperCase() }}</span>
                     <span class="text-[10px] text-slate-400 font-normal">{{ fab.engines_count }} motores</span>
@@ -820,7 +822,7 @@ onUnmounted(() => {
                       @input="isMotorOpen = true"
                       type="text"
                       placeholder="Código de motor"
-                      class="w-full px-3 py-2 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-mono font-bold bg-white border border-slate-300 rounded-l-lg focus:outline-none focus:border-[#04c4d9] focus:ring-1 focus:ring-[#04c4d9]"
                     />
                     <ChevronDown
                       @click="isMotorOpen = !isMotorOpen"
@@ -830,7 +832,7 @@ onUnmounted(() => {
                   <button
                     type="button"
                     @click="motorInput = ''"
-                    class="bg-[#5984c3] hover:bg-[#4873b2] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center shrink-0"
+                    class="bg-slate-100 hover:bg-slate-200 text-slate-600 border border-l-0 border-slate-300 px-3.5 py-2.5 rounded-r-lg flex items-center justify-center shrink-0 transition"
                     title="Limpiar"
                   >
                     <X class="w-4 h-4" />
@@ -840,16 +842,16 @@ onUnmounted(() => {
                 <!-- Dropdown Motores -->
                 <div
                   v-if="isMotorOpen"
-                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                  class="absolute left-0 right-10 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto"
                 >
                   <div
                     v-for="mot in filteredMotores"
                     :key="mot.id"
                     @click="selectMotor(mot)"
-                    class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0"
+                    class="px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0"
                   >
                     <div>
-                      <strong class="text-[#002b66] font-mono text-sm">{{ mot.codigo }}</strong>
+                      <strong class="text-slate-900 font-mono text-sm">{{ mot.codigo }}</strong>
                       <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
                     </div>
                     <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -873,7 +875,7 @@ onUnmounted(() => {
                       @input="isGroupProductOpen = true"
                       type="text"
                       placeholder="Grupo de productos"
-                      class="w-full px-3 py-2 text-xs sm:text-sm font-medium bg-white border border-slate-300 rounded-l focus:outline-none focus:border-[#002b66]"
+                      class="w-full px-3 py-2 text-xs sm:text-sm font-medium bg-white border border-slate-300 rounded-l-lg focus:outline-none focus:border-[#04c4d9] focus:ring-1 focus:ring-[#04c4d9]"
                     />
                     <ChevronDown
                       @click="isGroupProductOpen = !isGroupProductOpen"
@@ -883,67 +885,67 @@ onUnmounted(() => {
                   <button
                     type="button"
                     @click="isGroupProductOpen = !isGroupProductOpen"
-                    class="bg-[#003882] hover:bg-[#002b66] text-white px-3.5 py-2.5 rounded-r flex items-center justify-center shrink-0"
+                    class="bg-[#04c4d9] hover:bg-[#03a9bc] text-white px-3.5 py-2.5 rounded-r-lg flex items-center justify-center shrink-0 transition"
                   >
                     <Search class="w-4 h-4" />
                   </button>
                 </div>
 
-                <!-- Dropdown Grupos de Productos -->
+                <!-- Dropdown Grupos -->
                 <div
                   v-if="isGroupProductOpen"
-                  class="absolute left-0 right-10 top-full mt-0.5 bg-white border border-slate-300 rounded shadow-xl z-30 max-h-56 overflow-y-auto"
+                  class="absolute left-0 right-10 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto"
                 >
                   <div
                     v-for="grp in filteredProductGroups"
                     :key="grp"
                     @click="selectGroup(grp)"
-                    class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs font-semibold text-slate-800 border-b border-slate-50 last:border-0"
+                    class="px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs font-semibold text-slate-800 border-b border-slate-50 last:border-0"
                   >
                     {{ grp }}
                   </div>
                 </div>
               </div>
 
-              <!-- Botones de Acción: Buscar y Limpiar -->
+              <!-- Botones de Acción (Cyan SWGORA) -->
               <div class="pt-2 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   @click="handleResetManualFilters"
-                  class="px-4 py-2 rounded border border-slate-300 text-slate-600 hover:text-slate-900 text-xs font-bold"
+                  class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 text-xs font-bold transition"
                 >
                   Limpiar
                 </button>
                 <button
                   type="button"
                   @click="handleSearchManual"
-                  class="px-6 py-2 rounded bg-[#003882] hover:bg-[#002b66] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
+                  class="px-6 py-2 rounded-xl bg-[#04c4d9] hover:bg-[#03a9bc] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition"
                 >
                   <Search class="w-3.5 h-3.5" />
                   <span>Buscar</span>
                 </button>
               </div>
 
-              <!-- Pestañas Inferiores de Estado -->
+              <!-- Pestañas Inferiores -->
               <div class="pt-3 flex items-center gap-2 border-t border-slate-100 text-xs">
-                <button type="button" class="px-3 py-1 bg-[#001736] text-white font-bold rounded flex items-center gap-1">
+                <button type="button" class="px-3 py-1 bg-slate-900 text-white font-bold rounded-lg flex items-center gap-1">
                   <span>Todos</span>
                 </button>
-                <button type="button" class="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded">
+                <button type="button" class="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg">
                   Artículo universal
                 </button>
-                <button type="button" class="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded">
+                <button type="button" class="px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg">
                   Listas de verificación
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Bloque Derecho: Slider Técnico con Retenes y Juntas (Imagen 3) -->
-          <div class="lg:col-span-5 bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden flex flex-col justify-between p-6 relative">
+          <!-- Bloque Derecho: Slider Técnico con Paleta SWGORA (Graphite / Cyan) -->
+          <div class="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col justify-between p-6 relative">
             
             <div class="space-y-3 z-10">
-              <span class="inline-block px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-100 text-[#002b66]">
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-50 text-[#04c4d9] border border-cyan-200">
                 {{ bannerSlides[currentSlide].badge }}
               </span>
 
@@ -956,13 +958,13 @@ onUnmounted(() => {
               </p>
             </div>
 
-            <!-- Gráfico Concétrico Circular Exacto a la Imagen 3 -->
+            <!-- Gráfico Concétrico Técnico en Grafito y Cyan -->
             <div class="my-6 flex items-center justify-center relative py-4">
-              <div class="w-48 h-48 rounded-full border-8 border-rose-500/80 bg-rose-50 flex items-center justify-center shadow-lg relative">
-                <div class="w-36 h-36 rounded-full border-4 border-slate-700 bg-slate-900 flex items-center justify-center">
+              <div class="w-48 h-48 rounded-full border-8 border-slate-200 bg-slate-50 flex items-center justify-center shadow-md relative">
+                <div class="w-36 h-36 rounded-full border-4 border-slate-700 bg-[#0D0D0D] flex items-center justify-center">
                   <div class="w-24 h-24 rounded-full border-2 border-dashed border-[#04c4d9] flex items-center justify-center text-center p-2">
-                    <span class="text-[10px] font-mono text-cyan-300 font-bold leading-tight">
-                      AJUSA DOKURO RIK
+                    <span class="text-[10px] font-mono text-[#04c4d9] font-bold leading-tight">
+                      SWGORA JR BLANCO
                     </span>
                   </div>
                 </div>
@@ -977,7 +979,7 @@ onUnmounted(() => {
                   @click="currentSlide = idx"
                   :class="[
                     'h-1.5 rounded-full transition-all cursor-pointer',
-                    currentSlide === idx ? 'w-6 bg-[#002b66]' : 'w-2 bg-slate-300'
+                    currentSlide === idx ? 'w-6 bg-[#04c4d9]' : 'w-2 bg-slate-300'
                   ]"
                 ></span>
               </div>
@@ -1012,27 +1014,25 @@ onUnmounted(() => {
         <aside class="lg:col-span-3 space-y-4">
           
           <!-- Tarjeta 1: Selección actual -->
-          <div class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
-            <div class="bg-[#f1f5f9] px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-[#002b66]">
+          <div class="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
+            <div class="bg-slate-50 px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-slate-900">
               Selección actual
             </div>
 
             <div class="p-4 text-center space-y-3">
               <div class="w-16 h-16 mx-auto rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center p-2 shadow-2xs">
-                <div class="w-12 h-12 rounded-full border-2 border-slate-800 flex items-center justify-center font-black text-xs tracking-tighter">
-                  {{ selectedBrandName.substring(0, 3) }}
-                </div>
+                <JrLogo :size="40" />
               </div>
 
               <!-- Badge [ TOYOTA - 3L | X ] -->
-              <div class="flex items-center rounded overflow-hidden shadow-2xs border border-[#002b66]">
-                <div class="bg-[#002b66] text-white flex-1 py-1.5 px-3 text-xs font-mono font-black tracking-wide text-left">
+              <div class="flex items-center rounded-lg overflow-hidden shadow-2xs border border-slate-800">
+                <div class="bg-slate-900 text-[#04c4d9] flex-1 py-1.5 px-3 text-xs font-mono font-black tracking-wide text-left">
                   {{ selectedBrandName }} - {{ activeMotor?.codigo }}
                 </div>
                 <button
                   type="button"
                   @click="clearActiveMotor"
-                  class="bg-[#001f4d] hover:bg-rose-600 text-white px-2.5 py-1.5 flex items-center justify-center transition"
+                  class="bg-slate-800 hover:bg-rose-600 text-white px-2.5 py-1.5 flex items-center justify-center transition"
                   title="Eliminar selección y volver"
                 >
                   <X class="w-3.5 h-3.5" />
@@ -1042,10 +1042,10 @@ onUnmounted(() => {
           </div>
 
           <!-- Tarjeta 2: Detalles del motor -->
-          <div class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+          <div class="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
             <div
               @click="isDetailsCollapsed = !isDetailsCollapsed"
-              class="bg-[#f1f5f9] px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-[#002b66] flex items-center justify-between cursor-pointer"
+              class="bg-slate-50 px-3.5 py-2 border-b border-slate-200 text-xs font-bold text-slate-900 flex items-center justify-between cursor-pointer"
             >
               <span>Detalles del motor</span>
               <ChevronUp v-if="!isDetailsCollapsed" class="w-4 h-4 text-slate-500" />
@@ -1060,47 +1060,47 @@ onUnmounted(() => {
               <table class="w-full text-[11px] divide-y divide-slate-100">
                 <tbody>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Fabricante</td>
+                    <td class="py-1 text-slate-500 font-medium">Fabricante</td>
                     <td class="py-1 text-slate-900 font-bold text-right">{{ selectedBrandName }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Código de motor</td>
-                    <td class="py-1 text-[#002b66] font-mono font-bold text-right">{{ activeMotor?.codigo }}</td>
+                    <td class="py-1 text-slate-500 font-medium">Código de motor</td>
+                    <td class="py-1 text-[#04c4d9] font-mono font-bold text-right">{{ activeMotor?.codigo }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Potencia</td>
+                    <td class="py-1 text-slate-500 font-medium">Potencia</td>
                     <td class="py-1 text-slate-900 text-right">57 kW / 77 CV</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Cilindrada</td>
+                    <td class="py-1 text-slate-500 font-medium">Cilindrada</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.cilindrada_cc || '2779' }} cc / 2.8 l</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Cilindros</td>
+                    <td class="py-1 text-slate-500 font-medium">Cilindros</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.cilindros || 4 }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Válvulas</td>
+                    <td class="py-1 text-slate-500 font-medium">Válvulas</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.valvulas || 8 }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Control de válvulas</td>
+                    <td class="py-1 text-slate-500 font-medium">Control de válvulas</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.configuracion || 'SOHC' }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Tipo de motor</td>
+                    <td class="py-1 text-slate-500 font-medium">Tipo de motor</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.combustible === 'Diésel' ? 'Gasóleo' : 'Gasolina' }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Tipo de combustible</td>
+                    <td class="py-1 text-slate-500 font-medium">Tipo de combustible</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.combustible === 'Diésel' ? 'Gasóleo' : 'Gasolina' }}</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Procesamiento</td>
+                    <td class="py-1 text-slate-500 font-medium">Procesamiento</td>
                     <td class="py-1 text-slate-900 text-right">Motor con cámara auxiliar</td>
                   </tr>
                   <tr>
-                    <td class="py-1 text-slate-500 font-bold">Carga</td>
+                    <td class="py-1 text-slate-500 font-medium">Carga</td>
                     <td class="py-1 text-slate-900 text-right">{{ activeMotor?.aspiracion || 'Aspirado' }}</td>
                   </tr>
                 </tbody>
@@ -1109,7 +1109,7 @@ onUnmounted(() => {
           </div>
         </aside>
 
-        <!-- PANEL PRINCIPAL (IMAGEN 1 O IMAGEN 2) -->
+        <!-- PANEL PRINCIPAL -->
         <section class="lg:col-span-9 space-y-4">
           
           <!-- CASO B.1: IMAGEN 1 - VISTA DE GRUPOS DE MONTAJE -->
@@ -1119,18 +1119,18 @@ onUnmounted(() => {
               <div class="flex items-center gap-2">
                 <button
                   type="button"
-                  class="px-4 py-2 bg-white border border-slate-300 rounded font-bold text-xs text-[#002b66] shadow-2xs flex items-center gap-2"
+                  class="px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-900 shadow-2xs flex items-center gap-2"
                 >
                   <span>Panel de información</span>
                   <div class="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded">
-                    <span class="w-3.5 h-3.5 bg-[#002b66] text-white rounded-xs flex items-center justify-center text-[9px]">■</span>
+                    <span class="w-3.5 h-3.5 bg-slate-900 text-white rounded-xs flex items-center justify-center text-[9px]">■</span>
                     <span class="w-3.5 h-3.5 text-slate-400 flex items-center justify-center text-[9px]">≡</span>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  class="px-4 py-2 bg-white border border-slate-200 rounded font-medium text-xs text-slate-600 hover:bg-slate-50"
+                  class="px-4 py-2 bg-white border border-slate-200 rounded-lg font-medium text-xs text-slate-600 hover:bg-slate-50"
                 >
                   Aplicaciones del vehículo
                 </button>
@@ -1142,15 +1142,15 @@ onUnmounted(() => {
               <div
                 v-for="grp in assemblyGroups"
                 :key="grp.id"
-                class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs hover:border-[#003882] hover:shadow-md transition flex flex-col justify-between min-h-[170px] relative overflow-hidden"
+                class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs hover:border-[#04c4d9] hover:shadow-md transition flex flex-col justify-between min-h-[170px] relative overflow-hidden"
               >
                 <div>
                   <div class="flex items-start justify-between gap-2">
                     <div
                       @click="openGroupParts(grp.title)"
-                      class="flex items-center gap-1.5 font-bold text-sm text-[#002b66] cursor-pointer hover:underline"
+                      class="flex items-center gap-1.5 font-bold text-sm text-slate-900 cursor-pointer hover:text-[#04c4d9]"
                     >
-                      <Wrench class="w-4 h-4 text-[#003882]" />
+                      <Wrench class="w-4 h-4 text-[#04c4d9]" />
                       <span>{{ grp.title }}</span>
                     </div>
                     <button type="button" class="text-slate-300 hover:text-amber-500">
@@ -1163,9 +1163,9 @@ onUnmounted(() => {
                       v-for="sub in grp.subitems"
                       :key="sub.name"
                       @click="openGroupParts(grp.title, sub.name, sub.filterKey)"
-                      class="text-slate-700 hover:text-[#002b66] cursor-pointer flex items-center gap-1.5 transition group"
+                      class="text-slate-700 hover:text-[#04c4d9] cursor-pointer flex items-center gap-1.5 transition group"
                     >
-                      <span class="text-[#003882] font-black text-[10px] group-hover:translate-x-0.5 transition">▸</span>
+                      <span class="text-[#04c4d9] font-black text-[10px] group-hover:translate-x-0.5 transition">▸</span>
                       <span class="group-hover:underline">{{ sub.name }}</span>
                     </li>
                   </ul>
@@ -1181,17 +1181,20 @@ onUnmounted(() => {
           </div>
 
           <!-- CASO B.2: IMAGEN 2 - TABLA DETALLADA DE PIEZAS -->
-          <div v-else-if="currentView === 'parts_list'" class="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+          <div v-else-if="currentView === 'parts_list'" class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             
-            <div class="bg-[#002b66] text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
-              <span>{{ selectedGroupTitle }}</span>
+            <div class="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
+              <span class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-[#04c4d9]"></span>
+                {{ selectedGroupTitle }}
+              </span>
               <div class="flex items-center gap-3">
-                <span class="font-normal text-blue-200">
+                <span class="font-normal text-slate-300">
                   Resultado 1 - {{ partsTableList.length }} desde {{ partsTableList.length }}
                 </span>
                 <div class="flex items-center gap-1">
-                  <span class="px-1 bg-[#001736] rounded text-[10px]">≡</span>
-                  <span class="px-1 text-blue-300 text-[10px]">v</span>
+                  <span class="px-1 bg-slate-800 rounded text-[10px]">≡</span>
+                  <span class="px-1 text-slate-400 text-[10px]">v</span>
                 </div>
               </div>
             </div>
@@ -1215,14 +1218,14 @@ onUnmounted(() => {
                   <tr
                     v-for="part in partsTableList"
                     :key="part.id"
-                    class="hover:bg-blue-50/40 transition"
+                    class="hover:bg-cyan-50/30 transition"
                   >
                     <td class="py-3 px-3 align-top">
                       <input type="checkbox" class="rounded" />
                     </td>
 
                     <td class="py-3 px-4 align-top">
-                      <div class="font-mono font-bold text-sm text-[#002b66]">
+                      <div class="font-mono font-bold text-sm text-slate-900 hover:text-[#04c4d9]">
                         {{ part.equivalencias?.[0]?.codigo_alterno || part.codigo_oem }}
                       </div>
                       <div class="text-[10px] text-slate-400 mt-0.5">
@@ -1239,7 +1242,7 @@ onUnmounted(() => {
                     </td>
 
                     <td class="py-3 px-4 align-top text-center">
-                      <div class="w-28 h-14 bg-slate-50 border border-slate-200 rounded p-1 mx-auto flex items-center justify-center">
+                      <div class="w-28 h-14 bg-slate-50 border border-slate-200 rounded-lg p-1 mx-auto flex items-center justify-center">
                         <svg viewBox="0 0 160 40" class="w-full h-full text-slate-800">
                           <rect x="2" y="4" width="156" height="32" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
                           <circle cx="28" cy="20" r="11" fill="none" stroke="currentColor" stroke-width="2" />
@@ -1259,7 +1262,7 @@ onUnmounted(() => {
                         <strong class="text-sm font-black text-slate-900 uppercase">
                           {{ part.catalogo_origen || part.equivalencias?.[0]?.marca_alterna || 'AJUSA' }}
                         </strong>
-                        <span class="text-[10px] text-amber-600 font-bold">✔</span>
+                        <span class="text-[10px] text-amber-500 font-bold">✔</span>
                         <span class="text-[10px] font-bold text-slate-500 uppercase">
                           {{ part.dimensiones?.tipo || 'MULTILAYER STEEL' }}
                         </span>
@@ -1309,10 +1312,10 @@ onUnmounted(() => {
                           type="button"
                           @click="addToWorkOrder(part)"
                           :class="[
-                            'px-2.5 py-1 rounded text-[11px] font-bold transition shadow-2xs',
+                            'px-2.5 py-1 rounded-lg text-[11px] font-bold transition shadow-2xs',
                             addedPartId === part.id
                               ? 'bg-emerald-600 text-white'
-                              : 'bg-[#002b66] hover:bg-[#001d47] text-white'
+                              : 'bg-[#04c4d9] hover:bg-[#03a9bc] text-white'
                           ]"
                         >
                           <span v-if="addedPartId === part.id">✓ Agregado</span>
@@ -1335,7 +1338,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="currentView = 'motor_groups'"
-                class="font-bold text-[#002b66] hover:underline flex items-center gap-1"
+                class="font-bold text-[#04c4d9] hover:underline flex items-center gap-1"
               >
                 <span>« Volver a grupos de montaje</span>
               </button>
@@ -1353,10 +1356,10 @@ onUnmounted(() => {
       <!-- ======================================================================= -->
       <div v-else-if="currentView === 'adaptaciones'" class="space-y-4">
         
-        <div class="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs space-y-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200/90 shadow-xs space-y-4">
           <div class="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h2 class="text-base font-black text-[#002b66]">
+              <h2 class="text-base font-black text-slate-900">
                 Motor de Adaptaciones Dimensionales de Taller (Sin código de motor)
               </h2>
               <p class="text-xs text-slate-500">
@@ -1366,13 +1369,13 @@ onUnmounted(() => {
             <button
               type="button"
               @click="currentView = 'home'"
-              class="text-xs font-bold text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded"
+              class="text-xs font-bold text-slate-600 hover:text-slate-900 border border-slate-200 px-3 py-1.5 rounded-lg"
             >
               Volver al inicio
             </button>
           </div>
 
-          <div class="p-4 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center justify-between gap-3">
+          <div class="p-4 bg-cyan-50 border border-cyan-200 rounded-xl flex items-center justify-between gap-3">
             <div>
               <strong class="text-xs text-cyan-900 block font-bold">Muestra de taller comprobada:</strong>
               <span class="text-xs text-cyan-800">Sello de válvula 4.8 mm x 10.8 mm x 10.0 mm (Dokuro SV-108 / Ajusa 12014500)</span>
@@ -1380,7 +1383,7 @@ onUnmounted(() => {
             <button
               type="button"
               @click="openGroupParts('Culata / Piezas de montaje', 'Junta/guía/ajuste de válvulas', 'Sellos')"
-              class="px-3.5 py-1.5 rounded bg-[#002b66] text-white text-xs font-bold hover:bg-[#001d47] transition shadow-xs"
+              class="px-3.5 py-1.5 rounded-xl bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold transition shadow-xs"
             >
               Ver piezas compatibles
             </button>
@@ -1391,17 +1394,17 @@ onUnmounted(() => {
     </main>
 
     <!-- ========================================================================= -->
-    <!-- 4. FOOTER TIPO AJUSA                                                      -->
+    <!-- 4. FOOTER SWGORA LIMPIO                                                   -->
     <!-- ========================================================================= -->
-    <footer class="bg-[#001736] text-white text-xs py-3 mt-auto border-t border-blue-900">
-      <div class="max-w-[1440px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <div class="flex items-center gap-4 text-blue-200 text-[11px]">
-          <span>▶ Google Play</span>
-          <span> App Store</span>
-          <span>Política de privacidad</span>
-          <span>Aviso legal</span>
+    <footer class="bg-white border-t border-slate-200 text-xs py-3 mt-auto">
+      <div class="max-w-[1440px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-slate-400 text-[11px]">
+        <div class="flex items-center gap-4">
+          <span class="hover:text-slate-700 cursor-pointer">▶ Google Play</span>
+          <span class="hover:text-slate-700 cursor-pointer"> App Store</span>
+          <span class="hover:text-slate-700 cursor-pointer">Política de privacidad</span>
+          <span class="hover:text-slate-700 cursor-pointer">Aviso legal</span>
         </div>
-        <div class="text-[11px] text-blue-300">
+        <div>
           JR Blanco • Sistema SWGORA © 2026
         </div>
       </div>
