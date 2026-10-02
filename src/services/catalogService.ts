@@ -66,22 +66,40 @@ export interface RepuestoTecnico {
   stock: number
   estado: 'Disponible' | 'Bajo Stock' | 'Agotado'
   imagen_url?: string
+  catalogo_origen?: 'Dokuro' | 'Rik' | 'NPR' | 'NDC' | 'Ajusa' | 'Pioneer' | 'OEM' | string
 
-  // Dimensiones físicas clave (números exactos en mm)
+  // Dimensiones físicas - Válvulas
   diametro_cabeza_mm?: number | null
   diametro_vastago_mm?: number | null
   longitud_total_mm?: number | null
   angulo_asiento_grados?: number | null
+  tipo_valvula?: 'Admisión' | 'Escape' | string | null
 
+  // Dimensiones físicas - Sellos / Ajuste de Válvula
+  diametro_interior_mm?: number | null
+  diametro_exterior_mm?: number | null
+  altura_mm?: number | null
+
+  // Dimensiones físicas - Anillos
   diametro_cilindro_mm?: number | null
   espesor_anillo1_mm?: number | null
   espesor_anillo2_mm?: number | null
   espesor_aceite_mm?: number | null
 
+  // Dimensiones físicas - Cojinetes / Casquetes NDC
   tipo_cojinete?: 'MS' | 'CB' | 'TW' | 'SH' | 'PB' | string | null
   diametro_munon_mm?: number | null
   diametro_alojamiento_mm?: number | null
   ancho_casquete_mm?: number | null
+
+  // Dimensiones físicas - Pernos / Tornillos de Culata
+  medida_rosca?: 'M10' | 'M11' | 'M12' | string | null
+  paso_rosca_mm?: number | null
+  longitud_perno_mm?: number | null
+  cantidad_piezas?: number | null
+  paso_rosca1_mm?: number | null
+  longitud1_mm?: number | null
+  longitud2_mm?: number | null
 
   dimensiones?: Record<string, unknown>
   especificaciones_tecnicas?: Record<string, unknown>
@@ -100,6 +118,12 @@ export interface DimensionalFilter {
   diametro_cabeza?: number
   diametro_vastago?: number
   longitud_total?: number
+  tipo_valvula?: string
+
+  // Sellos
+  diametro_interior?: number
+  diametro_exterior?: number
+  altura?: number
 
   // Anillos
   diametro_cilindro?: number
@@ -112,10 +136,14 @@ export interface DimensionalFilter {
   diametro_munon?: number
   ancho_casquete?: number
 
-  // Sellos
-  diametro_interior?: number
-  diametro_exterior?: number
-  altura?: number
+  // Pernos de Culata
+  medida_rosca?: string
+  paso_rosca?: number
+  longitud_perno?: number
+  cantidad_piezas?: number
+  paso_rosca1?: number
+  longitud1?: number
+  longitud2?: number
 }
 
 // Compatibilidad retroactiva para WorkOrderForm.vue
@@ -431,6 +459,34 @@ export const mockRepuestos: RepuestoTecnico[] = [
     ]
   },
   {
+    id: 'rep-3l-sello-48',
+    motor_id: 'mot-1',
+    codigo_oem: '90913-02090',
+    nombre: 'Sello de Válvula Vitón 4.8 x 10.8 x 10 mm',
+    subsistema: 'Sellos y Juntas',
+    categoria: 'Sellos',
+    precio: 48.00,
+    stock: 64,
+    estado: 'Disponible',
+    catalogo_origen: 'Dokuro',
+    diametro_interior_mm: 4.800,
+    diametro_exterior_mm: 10.800,
+    altura_mm: 10.000,
+    diametro_vastago_mm: 4.800,
+    longitud_total_mm: 10.000,
+    dimensiones: {
+      diametro_interior_mm: 4.8,
+      diametro_exterior_mm: 10.8,
+      altura_mm: 10.0,
+      material: 'FKM Vitón con resorte garter',
+      tipo: 'Sellado alta temperatura'
+    },
+    equivalencias: [
+      { id: 'eq-sv108', repuesto_id: 'rep-3l-sello-48', marca_alterna: 'Dokuro', codigo_alterno: 'SV-108', notas: 'Dokuro Japón 4.8x10.8x10mm STD' },
+      { id: 'eq-aj120145', repuesto_id: 'rep-3l-sello-48', marca_alterna: 'Ajusa', codigo_alterno: '12014500', notas: 'Ajusa España Vitón 4.8x10.8x10' }
+    ]
+  },
+  {
     id: 'rep-3l-8',
     motor_id: 'mot-1',
     codigo_oem: '90913-02089',
@@ -440,6 +496,10 @@ export const mockRepuestos: RepuestoTecnico[] = [
     precio: 320.00,
     stock: 20,
     estado: 'Disponible',
+    catalogo_origen: 'Dokuro',
+    diametro_interior_mm: 8.000,
+    diametro_exterior_mm: 11.200,
+    altura_mm: 10.200,
     diametro_vastago_mm: 8.000,
     longitud_total_mm: 10.200,
     dimensiones: { diametro_interior_mm: 8.0, diametro_exterior_mm: 11.2, altura_mm: 10.2 },
@@ -452,17 +512,25 @@ export const mockRepuestos: RepuestoTecnico[] = [
     id: 'rep-3l-9',
     motor_id: 'mot-1',
     codigo_oem: '90910-02096',
-    nombre: 'Juego de Tornillos de Culata M12 L=120mm',
+    nombre: 'Juego de Tornillos de Culata M12 x 1.25 x 120mm (18 pcs)',
     subsistema: 'Culata',
     categoria: 'Pernos',
     precio: 850.00,
     stock: 5,
     estado: 'Disponible',
+    catalogo_origen: 'Ajusa',
+    medida_rosca: 'M12',
+    paso_rosca_mm: 1.25,
+    longitud_perno_mm: 120.0,
+    cantidad_piezas: 18,
+    paso_rosca1_mm: 1.25,
+    longitud1_mm: 120.0,
+    longitud2_mm: 120.0,
     longitud_total_mm: 120.000,
-    dimensiones: { rosca: 'M12x1.25', longitud_mm: 120, cabeza: 'Polydrive 12pt' },
+    dimensiones: { rosca: 'M12x1.25', longitud_mm: 120, cabeza: 'Polydrive 12pt', cantidad: 18 },
     equivalencias: [
       { id: 'eq-15', repuesto_id: 'rep-3l-9', marca_alterna: 'Pioneer', codigo_alterno: 'HB-3L', notas: 'Pernos culata Grado 12.9' },
-      { id: 'eq-16', repuesto_id: 'rep-3l-9', marca_alterna: 'Ajusa', codigo_alterno: '81014300', notas: 'Juego tornillos culata 18 uds' }
+      { id: 'eq-16', repuesto_id: 'rep-3l-9', marca_alterna: 'Ajusa', codigo_alterno: '81014300', notas: 'Juego tornillos culata 18 uds M12x1.25x120' }
     ]
   },
 
@@ -581,6 +649,52 @@ export const mockRepuestos: RepuestoTecnico[] = [
       { id: 'eq-25', repuesto_id: 'rep-z24-6', marca_alterna: 'Ajusa', codigo_alterno: '10032900', notas: 'Junta culata grafito reforzado' }
     ]
   },
+  {
+    id: 'rep-z24-7',
+    motor_id: 'mot-4',
+    codigo_oem: '11056-21W00',
+    nombre: 'Juego de Pernos de Culata M10 x 1.5 x 115mm (10 pcs)',
+    subsistema: 'Culata',
+    categoria: 'Pernos',
+    precio: 520.00,
+    stock: 12,
+    estado: 'Disponible',
+    catalogo_origen: 'Ajusa',
+    medida_rosca: 'M10',
+    paso_rosca_mm: 1.50,
+    longitud_perno_mm: 115.0,
+    cantidad_piezas: 10,
+    paso_rosca1_mm: 1.50,
+    longitud1_mm: 115.0,
+    longitud2_mm: 120.0,
+    dimensiones: { rosca: 'M10x1.5', longitud_mm: 115, cabeza: 'Hexagonal', cantidad: 10 },
+    equivalencias: [
+      { id: 'eq-z24-hb', repuesto_id: 'rep-z24-7', marca_alterna: 'Ajusa', codigo_alterno: '81008700', notas: 'Juego 10 tornillos M10x1.5 L=115mm' },
+      { id: 'eq-z24-pion', repuesto_id: 'rep-z24-7', marca_alterna: 'Pioneer', codigo_alterno: 'HB-Z24', notas: 'Head bolt set Z24 Nissan' }
+    ]
+  },
+  {
+    id: 'rep-z24-8',
+    motor_id: 'mot-4',
+    codigo_oem: '13207-84A00',
+    nombre: 'Sello de Válvula Vitón 7.0 x 12.0 x 10.5 mm',
+    subsistema: 'Sellos y Juntas',
+    categoria: 'Sellos',
+    precio: 38.00,
+    stock: 40,
+    estado: 'Disponible',
+    catalogo_origen: 'Dokuro',
+    diametro_interior_mm: 7.000,
+    diametro_exterior_mm: 12.000,
+    altura_mm: 10.500,
+    diametro_vastago_mm: 7.000,
+    longitud_total_mm: 10.500,
+    dimensiones: { diametro_interior_mm: 7.0, diametro_exterior_mm: 12.0, altura_mm: 10.5 },
+    equivalencias: [
+      { id: 'eq-z24-sello', repuesto_id: 'rep-z24-8', marca_alterna: 'Dokuro', codigo_alterno: 'SV-7012', notas: 'Sello admisión/escape 7x12x10.5' },
+      { id: 'eq-z24-ajusa', repuesto_id: 'rep-z24-8', marca_alterna: 'Ajusa', codigo_alterno: '12001900', notas: 'Juego sellos Z24 8uds' }
+    ]
+  },
 
   // --- TOYOTA 1KD-FTV ---
   {
@@ -695,6 +809,51 @@ export const mockRepuestos: RepuestoTecnico[] = [
     dimensiones: { tipo: 'MLS Multilámina acero', espesor_mm: 1.25 },
     equivalencias: [
       { id: 'eq-34', repuesto_id: 'rep-1kd-6', marca_alterna: 'Ajusa', codigo_alterno: '10156900', notas: 'Junta culata MLS 1KD-FTV' }
+    ]
+  },
+  {
+    id: 'rep-1kd-7',
+    motor_id: 'mot-2',
+    codigo_oem: '90910-02143',
+    nombre: 'Juego de Tornillos de Culata M12 x 1.25 x 162mm 1KD/2KD (18 pcs)',
+    subsistema: 'Culata',
+    categoria: 'Pernos',
+    precio: 1100.00,
+    stock: 6,
+    estado: 'Disponible',
+    catalogo_origen: 'Ajusa',
+    medida_rosca: 'M12',
+    paso_rosca_mm: 1.25,
+    longitud_perno_mm: 162.0,
+    cantidad_piezas: 18,
+    paso_rosca1_mm: 1.25,
+    longitud1_mm: 162.0,
+    longitud2_mm: 162.0,
+    dimensiones: { rosca: 'M12x1.25', longitud_mm: 162, cantidad: 18 },
+    equivalencias: [
+      { id: 'eq-1kd-hb', repuesto_id: 'rep-1kd-7', marca_alterna: 'Ajusa', codigo_alterno: '81035200', notas: 'Juego tornillos culata 1KD-FTV 18 uds' }
+    ]
+  },
+  {
+    id: 'rep-1kd-8',
+    motor_id: 'mot-2',
+    codigo_oem: '90913-02096',
+    nombre: 'Sello de Válvula Vitón 5.5 x 11.2 x 10.2 mm 1KD (16V)',
+    subsistema: 'Sellos y Juntas',
+    categoria: 'Sellos',
+    precio: 42.00,
+    stock: 48,
+    estado: 'Disponible',
+    catalogo_origen: 'Dokuro',
+    diametro_interior_mm: 5.500,
+    diametro_exterior_mm: 11.200,
+    altura_mm: 10.200,
+    diametro_vastago_mm: 5.500,
+    longitud_total_mm: 10.200,
+    dimensiones: { diametro_interior_mm: 5.5, diametro_exterior_mm: 11.2, altura_mm: 10.2 },
+    equivalencias: [
+      { id: 'eq-1kd-sello', repuesto_id: 'rep-1kd-8', marca_alterna: 'Dokuro', codigo_alterno: 'SV-5511', notas: '1KD DOHC 16V Vitón' },
+      { id: 'eq-1kd-ajusa-sello', repuesto_id: 'rep-1kd-8', marca_alterna: 'Ajusa', codigo_alterno: '12019700', notas: 'Sellos 1KD-FTV 5.5mm' }
     ]
   },
 
@@ -1356,103 +1515,306 @@ export const catalogService = {
   },
 
   /**
-   * Búsqueda dimensional para adaptaciones de taller (Válvulas, Anillos, Cojinetes, Sellos)
+   * Obtiene la lista de motores vinculados a un fabricante/marca específica
    */
-  async searchDimensional(filters: DimensionalFilter): Promise<RepuestoTecnico[]> {
-    const tol = filters.tolerancia_mm !== undefined ? filters.tolerancia_mm : 0.5
-    const all = mockRepuestos
+  async getMotorsByBrand(brand: string): Promise<Motor[]> {
+    if (!brand || brand.trim() === '') return mockMotores
+    const cleanBrand = brand.toLowerCase().trim()
+    const fab = mockFabricantes.find(f => f.nombre.toLowerCase() === cleanBrand)
 
-    return all.filter(r => {
-      // Filtrado por categoría si está especificada
-      if (filters.categoria !== 'Todas' && r.categoria !== filters.categoria) {
-        return false
-      }
-
-      // Filtro para Válvulas
-      if (filters.categoria === 'Válvulas' || (!filters.categoria && r.categoria === 'Válvulas')) {
-        if (filters.diametro_cabeza !== undefined && filters.diametro_cabeza > 0) {
-          if (!r.diametro_cabeza_mm || Math.abs(r.diametro_cabeza_mm - filters.diametro_cabeza) > tol) {
-            return false
-          }
-        }
-        if (filters.diametro_vastago !== undefined && filters.diametro_vastago > 0) {
-          if (!r.diametro_vastago_mm || Math.abs(r.diametro_vastago_mm - filters.diametro_vastago) > (tol > 0.1 ? 0.1 : tol)) {
-            return false
-          }
-        }
-        if (filters.longitud_total !== undefined && filters.longitud_total > 0) {
-          if (!r.longitud_total_mm || Math.abs(r.longitud_total_mm - filters.longitud_total) > (tol * 2)) {
-            return false
-          }
-        }
-      }
-
-      // Filtro para Anillos de Pistón
-      if (filters.categoria === 'Anillos' || (!filters.categoria && r.categoria === 'Anillos')) {
-        if (filters.diametro_cilindro !== undefined && filters.diametro_cilindro > 0) {
-          if (!r.diametro_cilindro_mm || Math.abs(r.diametro_cilindro_mm - filters.diametro_cilindro) > tol) {
-            return false
-          }
-        }
-        if (filters.espesor_anillo1 !== undefined && filters.espesor_anillo1 > 0) {
-          if (!r.espesor_anillo1_mm || Math.abs(r.espesor_anillo1_mm - filters.espesor_anillo1) > 0.15) {
-            return false
-          }
-        }
-        if (filters.espesor_anillo2 !== undefined && filters.espesor_anillo2 > 0) {
-          if (!r.espesor_anillo2_mm || Math.abs(r.espesor_anillo2_mm - filters.espesor_anillo2) > 0.15) {
-            return false
-          }
+    try {
+      if (fab) {
+        const { data, error } = await supabase
+          .from('motores')
+          .select('*, fabricante:fabricantes(*), modelo:modelos(*)')
+          .eq('fabricante_id', fab.id)
+        if (!error && data && data.length > 0) {
+          return data.map((item: Record<string, unknown>) => ({
+            id: String(item.id),
+            fabricante_id: String(item.fabricante_id),
+            modelo_id: item.modelo_id ? String(item.modelo_id) : undefined,
+            codigo: String(item.codigo),
+            nombre_comercial: item.nombre_comercial ? String(item.nombre_comercial) : undefined,
+            cilindrada_cc: item.cilindrada_cc ? Number(item.cilindrada_cc) : undefined,
+            combustible: String(item.combustible || 'Diésel'),
+            cilindros: Number(item.cilindros || 4),
+            valvulas: Number(item.valvulas || 8),
+            diametro_cilindro_std_mm: item.diametro_cilindro_std_mm ? Number(item.diametro_cilindro_std_mm) : undefined,
+            carrera_piston_mm: item.carrera_piston_mm ? Number(item.carrera_piston_mm) : undefined,
+            configuracion: item.configuracion ? String(item.configuracion) : undefined,
+            aspiracion: item.aspiracion ? String(item.aspiracion) : undefined,
+            anios: item.anios ? String(item.anios) : undefined,
+            fabricante: item.fabricante as Fabricante | undefined,
+            modelo: item.modelo as Modelo | undefined
+          }))
         }
       }
+    } catch {
+      // Fallback a memoria local
+    }
 
-      // Filtro para Casquetes / Cojinetes NDC
-      if (filters.categoria === 'Casquetería' || (!filters.categoria && r.categoria === 'Casquetería')) {
-        if (filters.tipo_cojinete && r.tipo_cojinete !== filters.tipo_cojinete) {
-          return false
-        }
-        if (filters.diametro_munon !== undefined && filters.diametro_munon > 0) {
-          if (!r.diametro_munon_mm || Math.abs(r.diametro_munon_mm - filters.diametro_munon) > tol) {
-            return false
-          }
-        }
-        if (filters.ancho_casquete !== undefined && filters.ancho_casquete > 0) {
-          if (!r.ancho_casquete_mm || Math.abs(r.ancho_casquete_mm - filters.ancho_casquete) > tol) {
-            return false
-          }
-        }
+    if (fab) {
+      return mockMotores
+        .filter(m => m.fabricante_id === fab.id)
+        .map(m => ({ ...m, fabricante: fab }))
+    }
+
+    return mockMotores.filter(m => {
+      const f = mockFabricantes.find(fabItem => fabItem.id === m.fabricante_id)
+      return f?.nombre.toLowerCase().includes(cleanBrand)
+    }).map(m => ({
+      ...m,
+      fabricante: mockFabricantes.find(fabItem => fabItem.id === m.fabricante_id)
+    }))
+  },
+
+  /**
+   * Búsqueda principal por vehículo y jerarquía (Marca -> Motor -> Grupo de Repuestos)
+   */
+  async searchByVehicle(brand: string, motor: string, group?: string): Promise<RepuestoTecnico[]> {
+    const cleanMotor = (motor || '').toLowerCase().trim()
+    const matchingMotor = mockMotores.find(m =>
+      m.id === motor ||
+      m.codigo.toLowerCase() === cleanMotor ||
+      m.codigo.toLowerCase().includes(cleanMotor)
+    )
+
+    const motorId = matchingMotor ? matchingMotor.id : motor
+
+    let results = mockRepuestos.filter(r => r.motor_id === motorId)
+
+    if (results.length === 0 && matchingMotor) {
+      results = mockRepuestos.filter(r => r.motor_id === matchingMotor.id)
+    }
+
+    // Si aún no hay resultados pero se seleccionó una marca, traer repuestos de los motores de esa marca
+    if (results.length === 0 && brand) {
+      const motorsOfBrand = await this.getMotorsByBrand(brand)
+      const motorIds = new Set(motorsOfBrand.map(m => m.id))
+      results = mockRepuestos.filter(r => r.motor_id && motorIds.has(r.motor_id))
+    }
+
+    if (group && group !== 'Todos') {
+      const g = group.toLowerCase()
+      results = results.filter(r =>
+        r.subsistema.toLowerCase() === g ||
+        r.categoria.toLowerCase() === g ||
+        r.subsistema.toLowerCase().includes(g) ||
+        r.categoria.toLowerCase().includes(g)
+      )
+    }
+
+    return results.map(r => {
+      const mot = mockMotores.find(m => m.id === r.motor_id)
+      const fab = mot ? mockFabricantes.find(f => f.id === mot.fabricante_id) : undefined
+      return {
+        ...r,
+        motor: mot ? { ...mot, fabricante: fab } : undefined
       }
-
-      // Filtro para Sellos
-      if (filters.categoria === 'Sellos' || (!filters.categoria && r.categoria === 'Sellos')) {
-        if (filters.diametro_vastago !== undefined && filters.diametro_vastago > 0) {
-          if (!r.diametro_vastago_mm || Math.abs(r.diametro_vastago_mm - filters.diametro_vastago) > 0.1) {
-            return false
-          }
-        }
-      }
-
-      return true
     })
   },
 
   /**
-   * Búsqueda inversa por código OEM o código alterno (Dokuro, Rik, NPR, NDC, Ajusa)
+   * Búsqueda dimensional para adaptaciones de taller por medidas exactas en milímetros
    */
-  async searchByCodeOrKeyword(query: string): Promise<RepuestoTecnico[]> {
-    if (!query || query.trim() === '') return []
-    const q = query.toLowerCase().trim().replace(/[-\s]/g, '')
+  async searchByDimensions(componentType: string, dimensions: Record<string, number | string>): Promise<RepuestoTecnico[]> {
+    const type = (componentType || '').toLowerCase().trim()
+    const tol = typeof dimensions.tolerancia_mm === 'number' ? dimensions.tolerancia_mm : 0.35
 
-    return mockRepuestos.filter(r => {
+    const filtered = mockRepuestos.filter(r => {
+      // 1. Sellos de Válvula / Ajuste de Válvula
+      if (type.includes('sello') || type.includes('ajuste')) {
+        if (r.categoria !== 'Sellos') return false
+
+        // Diámetro interior (ej. 4.8 mm)
+        const dInt = Number(dimensions.diametro_interior || dimensions.diametro_int || dimensions.d_int || dimensions.diametro_vastago || 0)
+        if (dInt > 0) {
+          const actualDInt = r.diametro_interior_mm ?? (r.dimensiones?.diametro_interior_mm as number) ?? r.diametro_vastago_mm
+          if (!actualDInt || Math.abs(actualDInt - dInt) > 0.15) return false
+        }
+
+        // Diámetro exterior (ej. 10.8 mm)
+        const dExt = Number(dimensions.diametro_exterior || dimensions.diametro_ext || dimensions.d_ext || 0)
+        if (dExt > 0) {
+          const actualDExt = r.diametro_exterior_mm ?? (r.dimensiones?.diametro_exterior_mm as number)
+          if (!actualDExt || Math.abs(actualDExt - dExt) > 0.25) return false
+        }
+
+        // Altura (ej. 10 mm)
+        const alt = Number(dimensions.altura || dimensions.altura_mm || dimensions.longitud || 0)
+        if (alt > 0) {
+          const actualAlt = r.altura_mm ?? (r.dimensiones?.altura_mm as number) ?? r.longitud_total_mm
+          if (!actualAlt || Math.abs(actualAlt - alt) > 0.5) return false
+        }
+
+        return true
+      }
+
+      // 2. Válvula de motor
+      if (type.includes('valvula') || type.includes('válvula')) {
+        if (r.categoria !== 'Válvulas') return false
+
+        const dHongo = Number(dimensions.diametro_cabeza || dimensions.diametro_hongo || 0)
+        if (dHongo > 0) {
+          if (!r.diametro_cabeza_mm || Math.abs(r.diametro_cabeza_mm - dHongo) > tol) return false
+        }
+
+        const dVastago = Number(dimensions.diametro_vastago || 0)
+        if (dVastago > 0) {
+          if (!r.diametro_vastago_mm || Math.abs(r.diametro_vastago_mm - dVastago) > 0.1) return false
+        }
+
+        const longTotal = Number(dimensions.longitud_total || dimensions.longitud || dimensions.altura || 0)
+        if (longTotal > 0) {
+          if (!r.longitud_total_mm || Math.abs(r.longitud_total_mm - longTotal) > (tol * 2)) return false
+        }
+
+        return true
+      }
+
+      // 3. Anillos de pistón / motor
+      if (type.includes('anillo')) {
+        if (r.categoria !== 'Anillos') return false
+
+        const dCilindro = Number(dimensions.diametro_cilindro || dimensions.diametro || 0)
+        if (dCilindro > 0) {
+          if (!r.diametro_cilindro_mm || Math.abs(r.diametro_cilindro_mm - dCilindro) > tol) return false
+        }
+
+        const esp1 = Number(dimensions.espesor_anillo1 || dimensions.anillo1 || 0)
+        if (esp1 > 0) {
+          if (!r.espesor_anillo1_mm || Math.abs(r.espesor_anillo1_mm - esp1) > 0.15) return false
+        }
+
+        const esp2 = Number(dimensions.espesor_anillo2 || dimensions.anillo2 || 0)
+        if (esp2 > 0) {
+          if (!r.espesor_anillo2_mm || Math.abs(r.espesor_anillo2_mm - esp2) > 0.15) return false
+        }
+
+        const espAceite = Number(dimensions.espesor_aceite || dimensions.anillo_aceite || dimensions.aceite || 0)
+        if (espAceite > 0) {
+          if (!r.espesor_aceite_mm || Math.abs(r.espesor_aceite_mm - espAceite) > 0.15) return false
+        }
+
+        return true
+      }
+
+      // 4. Juego de tornillos / pernos de culata
+      if (type.includes('perno') || type.includes('tornillo')) {
+        if (r.categoria !== 'Pernos') return false
+
+        const rosca = String(dimensions.medida_rosca || dimensions.rosca || '').trim().toUpperCase()
+        if (rosca && r.medida_rosca && !r.medida_rosca.toUpperCase().includes(rosca)) {
+          return false
+        }
+
+        const paso = Number(dimensions.paso_rosca || dimensions.paso || 0)
+        if (paso > 0) {
+          const actualPaso = r.paso_rosca_mm ?? r.paso_rosca1_mm
+          if (actualPaso && Math.abs(actualPaso - paso) > 0.05) return false
+        }
+
+        const longitud = Number(dimensions.longitud_perno || dimensions.longitud || 0)
+        if (longitud > 0) {
+          const lMin = r.longitud1_mm ?? r.longitud_perno_mm ?? r.longitud_total_mm ?? 0
+          const lMax = r.longitud2_mm ?? r.longitud_perno_mm ?? r.longitud_total_mm ?? 0
+          const min = Math.min(lMin, lMax)
+          const max = Math.max(lMin, lMax)
+          if (longitud < (min - 2) || longitud > (max + 2)) return false
+        }
+
+        const cant = Number(dimensions.cantidad_piezas || dimensions.cantidad || 0)
+        if (cant > 0 && r.cantidad_piezas && r.cantidad_piezas !== cant) {
+          return false
+        }
+
+        return true
+      }
+
+      // 5. Casquetería NDC
+      if (type.includes('casquete') || type.includes('cojinete')) {
+        if (r.categoria !== 'Casquetería') return false
+        if (dimensions.tipo_cojinete && r.tipo_cojinete !== dimensions.tipo_cojinete) return false
+        const dMunon = Number(dimensions.diametro_munon || 0)
+        if (dMunon > 0 && (!r.diametro_munon_mm || Math.abs(r.diametro_munon_mm - dMunon) > tol)) return false
+        const ancho = Number(dimensions.ancho_casquete || 0)
+        if (ancho > 0 && (!r.ancho_casquete_mm || Math.abs(r.ancho_casquete_mm - ancho) > tol)) return false
+        return true
+      }
+
+      return false
+    })
+
+    return filtered.map(r => {
+      const mot = mockMotores.find(m => m.id === r.motor_id)
+      const fab = mot ? mockFabricantes.find(f => f.id === mot.fabricante_id) : undefined
+      return {
+        ...r,
+        motor: mot ? { ...mot, fabricante: fab } : undefined
+      }
+    })
+  },
+
+  /**
+   * Búsqueda directa e inversa por código original OEM o de catálogo alterno
+   */
+  async searchByCode(code: string): Promise<RepuestoTecnico[]> {
+    if (!code || code.trim() === '') return []
+    const q = code.toLowerCase().trim().replace(/[-\s]/g, '')
+
+    const matches = mockRepuestos.filter(r => {
       const matchOem = r.codigo_oem.toLowerCase().replace(/[-\s]/g, '').includes(q)
-      const matchNombre = r.nombre.toLowerCase().includes(query.toLowerCase())
+      const matchNombre = r.nombre.toLowerCase().includes(code.toLowerCase().trim())
       const matchEquiv = r.equivalencias?.some(eq =>
         eq.codigo_alterno.toLowerCase().replace(/[-\s]/g, '').includes(q) ||
-        eq.marca_alterna.toLowerCase().includes(query.toLowerCase())
+        eq.marca_alterna.toLowerCase().includes(code.toLowerCase().trim())
       )
-
       return matchOem || matchNombre || matchEquiv
     })
+
+    return matches.map(r => {
+      const mot = mockMotores.find(m => m.id === r.motor_id)
+      const fab = mot ? mockFabricantes.find(f => f.id === mot.fabricante_id) : undefined
+      return {
+        ...r,
+        motor: mot ? { ...mot, fabricante: fab } : undefined
+      }
+    })
+  },
+
+  /**
+   * Búsqueda dimensional para adaptaciones (Compatibilidad retroactiva)
+   */
+  async searchDimensional(filters: DimensionalFilter): Promise<RepuestoTecnico[]> {
+    const componentType = filters.categoria
+    const dims: Record<string, number | string> = {
+      tolerancia_mm: filters.tolerancia_mm || 0.35,
+      diametro_interior: filters.diametro_interior || 0,
+      diametro_exterior: filters.diametro_exterior || 0,
+      altura: filters.altura || 0,
+      diametro_cabeza: filters.diametro_cabeza || 0,
+      diametro_vastago: filters.diametro_vastago || 0,
+      longitud_total: filters.longitud_total || 0,
+      diametro_cilindro: filters.diametro_cilindro || 0,
+      espesor_anillo1: filters.espesor_anillo1 || 0,
+      espesor_anillo2: filters.espesor_anillo2 || 0,
+      espesor_aceite: filters.espesor_aceite || 0,
+      tipo_cojinete: filters.tipo_cojinete || '',
+      diametro_munon: filters.diametro_munon || 0,
+      ancho_casquete: filters.ancho_casquete || 0,
+      medida_rosca: filters.medida_rosca || '',
+      paso_rosca: filters.paso_rosca || 0,
+      longitud_perno: filters.longitud_perno || 0,
+      cantidad_piezas: filters.cantidad_piezas || 0
+    }
+    return this.searchByDimensions(componentType, dims)
+  },
+
+  /**
+   * Búsqueda inversa por código OEM o código alterno (Compatibilidad retroactiva)
+   */
+  async searchByCodeOrKeyword(query: string): Promise<RepuestoTecnico[]> {
+    return this.searchByCode(query)
   },
 
   /**
@@ -1460,9 +1822,7 @@ export const catalogService = {
    */
   async getProducts(): Promise<CatalogProduct[]> {
     try {
-      // Mapear repuestos técnicos a la estructura de CatalogProduct
       const technicalProducts: CatalogProduct[] = mockRepuestos.map(r => {
-        // Encontrar cruce Dokuro o Rik o NDC si existe
         const dokuro = r.equivalencias?.find(e => e.marca_alterna === 'Dokuro')?.codigo_alterno
         const rik = r.equivalencias?.find(e => e.marca_alterna === 'Rik')?.codigo_alterno
         const ndc = r.equivalencias?.find(e => e.marca_alterna === 'NDC')?.codigo_alterno

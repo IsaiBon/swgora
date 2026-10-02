@@ -322,9 +322,12 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                   ${{ order.total.toFixed(2) }}
                 </td>
                 <td v-else class="px-5 py-3.5 text-center">
-                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200" title="Montos financieros restringidos para administradores">
-                    <Wrench class="w-3.5 h-3.5 text-[#04c4d9]" />
-                    <span>{{ (order.parts?.length || 0) + (order.operations?.length || 0) }} ítems</span>
+                  <span
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200"
+                    title="Visible solo para Administrador"
+                  >
+                    <Lock class="w-3.5 h-3.5 text-slate-400" />
+                    <span>Operativa / En Taller</span>
                   </span>
                 </td>
                 <td class="px-5 py-3.5 text-center" @click.stop>
