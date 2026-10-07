@@ -151,6 +151,27 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Carga todos los repuestos pertenecientes a un grupo/categoría técnica directamente desde Supabase
+   */
+  async function fetchRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string) {
+    if (!categoria) {
+      repuestos.value = []
+      return
+    }
+
+    loadingRepuestos.value = true
+    repuestosError.value = null
+    try {
+      repuestos.value = await catalogService.getRepuestosByGrupo(categoria, subsistema, fabricanteId)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al cargar repuestos del grupo'
+      repuestosError.value = msg
+    } finally {
+      loadingRepuestos.value = false
+    }
+  }
+
+  /**
    * Búsqueda por código OEM, descripción o equivalencia (cruce Dokuro, Rik, NPR, etc.)
    */
   async function searchParts(query: string) {
@@ -377,6 +398,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchModelos,
     fetchMotores,
     fetchRepuestosByMotor,
+    fetchRepuestosByGrupo,
     fetchGrupos,
     createGrupo,
     searchParts,

@@ -90,7 +90,7 @@ const baseComponentGroups: ComponentGroup[] = [
   },
   {
     id: 'valvula',
-    title: 'Válvula',
+    title: 'Válvula de motor',
     shortTitle: 'Válvulas de Motor',
     category: 'Válvulas',
     icon: 'Wrench',
@@ -112,28 +112,48 @@ const baseComponentGroups: ComponentGroup[] = [
     shortTitle: 'Pernos de Culata',
     category: 'Pernos',
     icon: 'FileText',
-    description: 'Tornillos de apriete para culata de cilindros',
+    description: 'Tornillos y pernos de apriete para culata de cilindros',
     sampleMeasurements: 'Medida rosca, paso rosca, longitudes, cant.'
+  },
+  {
+    id: 'casqueteria',
+    title: 'Casquetería y Cojinetes',
+    shortTitle: 'Casquetería',
+    category: 'Casquetería',
+    icon: 'CircleDot',
+    description: 'Cojinetes de biela, bancada y arandelas axiales',
+    sampleMeasurements: 'Muñón, alojamiento, ancho y tipo de cojinete'
+  },
+  {
+    id: 'empaques_juntas',
+    title: 'Empaques y Juntas',
+    shortTitle: 'Empaques',
+    category: 'Empaques',
+    icon: 'Layers',
+    description: 'Juntas de culata de grafito y multilámina MLS',
+    sampleMeasurements: 'Diámetro de cilindro, espesor nominal'
   }
 ]
 
+// Mapeo 100% dinámico de los grupos de Supabase con fallback a definiciones base
 const componentGroups = computed<ComponentGroup[]>(() => {
-  const list = [...baseComponentGroups]
-  // Agregar cualquier grupo creado dinámicamente en catalogStore.grupos que no esté en baseComponentGroups
-  catalogStore.grupos.forEach(g => {
-    if (!list.some(item => item.id === g.codigo)) {
-      list.push({
+  if (catalogStore.grupos && catalogStore.grupos.length > 0) {
+    return catalogStore.grupos.map(g => {
+      const base = baseComponentGroups.find(b => b.id === g.codigo || b.category.toLowerCase() === g.categoria.toLowerCase())
+      return {
         id: g.codigo,
         title: g.nombre,
         shortTitle: g.categoria || g.nombre,
         category: g.categoria,
-        icon: g.icono || 'Layers',
-        description: g.descripcion || `Familia de ${g.nombre}`,
-        sampleMeasurements: g.parametros.map(p => `${p.etiqueta}${p.unidad ? ` (${p.unidad})` : ''}`).slice(0, 3).join(', ') || 'Medidas requeridas configuradas'
-      })
-    }
-  })
-  return list
+        icon: g.icono || (base ? base.icon : 'Layers'),
+        description: g.descripcion || (base ? base.description : `Familia de ${g.nombre}`),
+        sampleMeasurements: (g.parametros && g.parametros.length > 0)
+          ? g.parametros.map(p => `${p.etiqueta}${p.unidad ? ` (${p.unidad})` : ''}`).slice(0, 3).join(', ')
+          : (base ? base.sampleMeasurements : 'Medidas requeridas configuradas')
+      }
+    })
+  }
+  return baseComponentGroups
 })
 
 // =============================================================================
@@ -312,7 +332,6 @@ const handleSelectBrand = async (fab: Fabricante) => {
   selectedBrand.value = fab
   brandInput.value = fab.nombre.toUpperCase()
   isBrandOpen.value = false
-  activeViewTab.value = 'motores'
   motorCurrentPage.value = 1
 
   // Reiniciar modelo y motor subordinados
@@ -322,6 +341,31 @@ const handleSelectBrand = async (fab: Fabricante) => {
   motorInput.value = ''
 
   await catalogStore.selectFabricante(fab.id)
+
+  if (selectedComponent.value) {
+    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, fab.id)
+  } else {
+    activeViewTab.value = 'motores'
+  }
+}
+
+const handleClearSelectedBrand = async () => {
+  brandInput.value = ''
+  selectedBrand.value = null
+  selectedModel.value = null
+  modelInput.value = ''
+  selectedMotor.value = null
+  motorInput.value = ''
+  await catalogStore.selectFabricante(null)
+
+  if (selectedComponent.value) {
+    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category)
+  } else {
+    catalogStore.repuestos = []
+    activeViewTab.value = 'motores'
+  }
 }
 
 // 2. Filtrado de MODELOS (CASCADA NIVEL 2)
@@ -336,7 +380,6 @@ const handleSelectModel = async (mod: Modelo) => {
   selectedModel.value = mod
   modelInput.value = mod.nombre
   isModelOpen.value = false
-  activeViewTab.value = 'motores'
   motorCurrentPage.value = 1
 
   // Reiniciar motor subordinado
@@ -344,12 +387,23 @@ const handleSelectModel = async (mod: Modelo) => {
   motorInput.value = ''
 
   await catalogStore.selectModelo(mod.id)
+
+  if (selectedComponent.value) {
+    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+  } else {
+    activeViewTab.value = 'motores'
+  }
 }
 
 const handleClearSelectedModel = async () => {
   selectedModel.value = null
   modelInput.value = ''
   await catalogStore.selectModelo(null)
+  if (selectedComponent.value) {
+    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+  }
 }
 
 // 3. Filtrado de MOTORES DISPONIBLES (CASCADA NIVEL 3)
@@ -399,12 +453,17 @@ const handleSelectMotor = async (mot: Motor) => {
   }
 }
 
-const handleClearSelectedMotor = () => {
+const handleClearSelectedMotor = async () => {
   selectedMotor.value = null
   motorInput.value = ''
   catalogStore.selectedMotorId = null
-  catalogStore.repuestos = []
-  activeViewTab.value = 'motores'
+  if (selectedComponent.value) {
+    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+  } else {
+    catalogStore.repuestos = []
+    activeViewTab.value = 'motores'
+  }
 }
 
 // 4. Filtrado de TIPOS DE COMPONENTE (BASE + DINÁMICOS)
@@ -419,11 +478,43 @@ const filteredComponentGroups = computed(() => {
   )
 })
 
-const handleSelectComponent = (comp: ComponentGroup) => {
+const handleFocusComponent = () => {
+  isComponentOpen.value = true
+  if (!catalogStore.grupos || catalogStore.grupos.length === 0) {
+    catalogStore.fetchGrupos()
+  }
+}
+
+const handleSelectComponent = async (comp: ComponentGroup) => {
   selectedComponent.value = comp
   componentInput.value = comp.title
   isComponentOpen.value = false
   activeViewTab.value = 'repuestos'
+
+  // Si hay motor seleccionado, cargar repuestos del motor
+  if (selectedMotor.value) {
+    await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+  } else {
+    // Al solo tener seleccionado el componente (con o sin marca seleccionada):
+    // Cargar todos los repuestos de este grupo directamente desde Supabase!
+    await catalogStore.fetchRepuestosByGrupo(comp.category, undefined, selectedBrand.value?.id)
+  }
+}
+
+const handleClearSelectedComponent = async () => {
+  componentInput.value = ''
+  selectedComponent.value = null
+  resetMeasurementsFilters()
+  if (selectedMotor.value) {
+    await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+    activeViewTab.value = 'repuestos'
+  } else if (selectedBrand.value || brandInput.value) {
+    catalogStore.repuestos = []
+    activeViewTab.value = 'motores'
+  } else {
+    catalogStore.repuestos = []
+    activeViewTab.value = 'motores'
+  }
 }
 
 // Limpiar todo y restaurar estado
@@ -526,18 +617,23 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
   // 1. Filtrar por tipo de componente si está seleccionado
   if (selectedComponent.value) {
     const compId = selectedComponent.value.id
-    if (compId === 'ajuste_valvula') {
+    const cat = selectedComponent.value.category?.toLowerCase() || ''
+    const title = selectedComponent.value.title?.toLowerCase() || ''
+
+    if (compId === 'ajuste_valvula' || cat === 'sellos') {
       list = list.filter(r => r.categoria === 'Sellos' || r.subsistema === 'Sellos y Juntas' || r.nombre.toLowerCase().includes('sello'))
-    } else if (compId === 'valvula') {
-      list = list.filter(r => r.categoria === 'Válvulas' || r.nombre.toLowerCase().includes('válvula'))
-    } else if (compId === 'anillos_motor') {
-      list = list.filter(r => r.categoria === 'Anillos' || r.nombre.toLowerCase().includes('anillos'))
-    } else if (compId === 'tornillos_culata') {
+    } else if (compId === 'valvula' || cat.includes('válvul') || cat.includes('valvul')) {
+      list = list.filter(r => r.categoria === 'Válvulas' || r.categoria === 'Valvulas' || r.nombre.toLowerCase().includes('válvula') || r.nombre.toLowerCase().includes('valvula'))
+    } else if (compId === 'anillos_motor' || cat === 'anillos') {
+      list = list.filter(r => r.categoria === 'Anillos' || r.nombre.toLowerCase().includes('anillos') || r.nombre.toLowerCase().includes('aros'))
+    } else if (compId === 'tornillos_culata' || cat === 'pernos') {
       list = list.filter(r => r.categoria === 'Pernos' || r.nombre.toLowerCase().includes('tornillos') || r.nombre.toLowerCase().includes('perno'))
+    } else if (compId === 'casqueteria' || cat.includes('casquet') || cat.includes('cojinet')) {
+      list = list.filter(r => r.categoria === 'Casquetería' || r.categoria === 'Casqueteria' || r.nombre.toLowerCase().includes('casquete') || r.nombre.toLowerCase().includes('cojinete'))
+    } else if (compId === 'empaques_juntas' || cat === 'empaques') {
+      list = list.filter(r => r.categoria === 'Empaques' || r.nombre.toLowerCase().includes('empaque') || r.nombre.toLowerCase().includes('junta'))
     } else {
-      // Grupos personalizados dinámicos (ej. Camisas, Pistones, etc.)
-      const cat = selectedComponent.value.category?.toLowerCase() || ''
-      const title = selectedComponent.value.title?.toLowerCase() || ''
+      // Grupos personalizados dinámicos (ej. Camisas, etc.)
       list = list.filter(r =>
         (r.categoria && r.categoria.toLowerCase() === cat) ||
         (r.categoria && r.categoria.toLowerCase().includes(cat)) ||
@@ -545,6 +641,16 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         (r.nombre && r.nombre.toLowerCase().includes(cat)) ||
         (r.nombre && r.nombre.toLowerCase().includes(title))
       )
+    }
+
+    // 1b. Si hay marca seleccionada (y ningún motor específico), filtrar repuestos por esa marca
+    if (selectedBrand.value && !selectedMotor.value) {
+      const brandName = selectedBrand.value.nombre.toLowerCase().trim()
+      list = list.filter(r => {
+        const fabName = r.motor?.fabricante?.nombre?.toLowerCase() || ''
+        const fabId = r.motor?.fabricante_id || ''
+        return !fabName || fabName.includes(brandName) || fabId === selectedBrand.value?.id
+      })
     }
 
     // 2. Filtros de medidas dimensionales específicas
@@ -851,7 +957,7 @@ onUnmounted(() => {
             <button
               v-if="brandInput"
               type="button"
-              @click="brandInput = ''; selectedBrand = null; catalogStore.selectFabricante(null)"
+              @click="handleClearSelectedBrand"
               class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
               title="Limpiar marca"
             >
@@ -1007,7 +1113,7 @@ onUnmounted(() => {
           <div class="relative flex items-center">
             <input
               v-model="componentInput"
-              @focus="isComponentOpen = true"
+              @focus="handleFocusComponent"
               @input="isComponentOpen = true"
               type="text"
               placeholder="Componente (Válvula, Anillos...)"
@@ -1016,7 +1122,7 @@ onUnmounted(() => {
             <button
               v-if="componentInput"
               type="button"
-              @click="componentInput = ''; selectedComponent = null; resetMeasurementsFilters()"
+              @click="handleClearSelectedComponent"
               class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
               title="Limpiar componente"
             >
@@ -1040,10 +1146,13 @@ onUnmounted(() => {
               class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-50 last:border-0 transition"
             >
               <div class="flex items-center gap-2.5">
-                <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-4 h-4 text-[#04C4D9]" />
-                <Wrench v-else-if="grp.id === 'valvula'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else-if="grp.id === 'anillos_motor'" class="w-4 h-4 text-[#04C4D9]" />
-                <FileText v-else class="w-4 h-4 text-[#04C4D9]" />
+                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9]" />
+                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9]" />
+                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9]" />
+                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-4 h-4 text-[#04C4D9]" />
+                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9]" />
+                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9]" />
+                <Layers v-else class="w-4 h-4 text-[#04C4D9]" />
                 <div>
                   <div class="text-slate-900 font-extrabold">{{ grp.title }}</div>
                   <div class="text-[10px] text-slate-400 font-normal">{{ grp.sampleMeasurements }}</div>
@@ -1152,7 +1261,7 @@ onUnmounted(() => {
     <!-- ESTADO 2: TABLA DE MOTORES (ESTILO TECDOC / AJUSA)                        -->
     <!-- ========================================================================= -->
     <div 
-      v-else-if="(selectedBrand || brandInput) && (!selectedMotor || activeViewTab === 'motores') && !searchInput" 
+      v-else-if="(selectedBrand || brandInput) && (!selectedMotor || activeViewTab === 'motores') && !searchInput && (!selectedComponent || activeViewTab === 'motores')" 
       class="space-y-4"
     >
       <!-- Encabezado de la tabla de motores -->
@@ -1350,7 +1459,7 @@ onUnmounted(() => {
           </span>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <div
             v-for="grp in componentGroups"
             :key="grp.id"
@@ -1359,10 +1468,13 @@ onUnmounted(() => {
           >
             <div>
               <div class="flex items-center gap-2 text-slate-900 group-hover:text-[#04C4D9] font-black text-xs sm:text-sm">
-                <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-4 h-4 text-[#04C4D9]" />
-                <Wrench v-else-if="grp.id === 'valvula'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else-if="grp.id === 'anillos_motor'" class="w-4 h-4 text-[#04C4D9]" />
-                <FileText v-else class="w-4 h-4 text-[#04C4D9]" />
+                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9]" />
+                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9]" />
+                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9]" />
+                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-4 h-4 text-[#04C4D9]" />
+                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9]" />
+                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9]" />
+                <Layers v-else class="w-4 h-4 text-[#04C4D9]" />
                 <span>{{ grp.title }}</span>
               </div>
               <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
@@ -1370,7 +1482,7 @@ onUnmounted(() => {
               </p>
             </div>
             <div class="mt-3 pt-2 border-t border-slate-50 text-[10px] font-bold text-[#04C4D9] flex items-center justify-between">
-              <span>Filtrar medidas</span>
+              <span>Consultar grupo</span>
               <span>→</span>
             </div>
           </div>
@@ -1384,7 +1496,7 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <div v-else class="space-y-4">
       
-      <!-- Selector Rápido de Componentes (4 Botones Superiores) -->
+      <!-- Selector Rápido de Componentes (Botones Superiores) -->
       <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span class="text-xs font-black uppercase tracking-wider text-slate-600">Componente:</span>
@@ -1401,10 +1513,13 @@ onUnmounted(() => {
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               ]"
             >
-              <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <Wrench v-else-if="grp.id === 'valvula'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <Layers v-else-if="grp.id === 'anillos_motor'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <FileText v-else class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <Layers v-else class="w-3.5 h-3.5 text-[#04C4D9]" />
               <span>{{ grp.title }}</span>
             </button>
           </div>
@@ -1669,6 +1784,12 @@ onUnmounted(() => {
           <span v-if="selectedMotor" class="font-mono text-[#05F2F2]">
             MOTOR {{ selectedMotor.codigo }}
           </span>
+          <span v-else-if="selectedBrand" class="font-mono text-[#05F2F2] uppercase">
+            {{ selectedBrand.nombre }}
+          </span>
+          <span v-else class="font-mono text-cyan-300">
+            TODOS LOS MOTORES
+          </span>
         </div>
 
         <div class="overflow-x-auto overflow-y-auto max-h-[520px]">
@@ -1679,17 +1800,23 @@ onUnmounted(() => {
                 <th class="py-3 px-3 w-36">Código OEM</th>
                 <th class="py-3 px-3 w-56">Catálogos Alternos</th>
                 
-                <th v-if="selectedComponent?.id === 'ajuste_valvula'" class="py-3 px-3">
+                <th v-if="selectedComponent?.id === 'ajuste_valvula' || selectedComponent?.category === 'Sellos'" class="py-3 px-3">
                   Medidas de Ajuste: Diám. Int / Diám. Ext / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'valvula'" class="py-3 px-3">
+                <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-3 px-3">
                   Medidas de Válvula: Hongo / Vástago / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'anillos_motor'" class="py-3 px-3">
+                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-3 px-3">
                   Medidas de Anillos: Diámetro / 1er Anillo / 2do Anillo / Aceite
                 </th>
-                <th v-else-if="selectedComponent?.id === 'tornillos_culata'" class="py-3 px-3">
+                <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-3 px-3">
                   Tornillos de Culata: Rosca / Paso / Longitud / Cantidad
+                </th>
+                <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-3 px-3">
+                  Cojinetes: Muñón / Alojamiento / Ancho / Tipo
+                </th>
+                <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-3 px-3">
+                  Empaques: Diámetro de Cilindro / Espesor / Material
                 </th>
                 <th v-else class="py-3 px-3">
                   Especificaciones Técnicas (mm)
@@ -1720,17 +1847,20 @@ onUnmounted(() => {
                 <td class="py-3.5 px-3.5 align-middle">
                   <div class="flex items-center gap-2">
                     <span class="p-1.5 bg-slate-100 text-slate-700 rounded-lg group-hover:bg-[#04C4D9] group-hover:text-white transition">
-                      <CircleDot v-if="selectedComponent?.id === 'ajuste_valvula'" class="w-4 h-4" />
-                      <Wrench v-else-if="selectedComponent?.id === 'valvula'" class="w-4 h-4" />
-                      <Layers v-else-if="selectedComponent?.id === 'anillos_motor'" class="w-4 h-4" />
-                      <FileText v-else class="w-4 h-4" />
+                      <CircleDot v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="w-4 h-4" />
+                      <Wrench v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="w-4 h-4" />
+                      <Layers v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="w-4 h-4" />
+                      <FileText v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="w-4 h-4" />
+                      <CircleDot v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="w-4 h-4" />
+                      <Layers v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="w-4 h-4" />
+                      <Layers v-else class="w-4 h-4" />
                     </span>
                     <div>
                       <div class="font-black text-slate-900 text-xs sm:text-sm leading-tight">
                         {{ part.nombre }}
                       </div>
                       <span class="text-[10px] font-bold text-[#038391] uppercase">
-                        {{ part.subsistema }} • {{ part.motor?.codigo ? `Motor ${part.motor.codigo}` : (part.catalogo_origen || 'OEM') }}
+                        {{ part.subsistema }} • {{ part.motor?.codigo ? `${part.motor?.fabricante?.nombre ? `${part.motor.fabricante.nombre} ` : ''}Motor ${part.motor.codigo}` : (part.catalogo_origen || 'OEM') }}
                       </span>
                     </div>
                   </div>
@@ -1843,7 +1973,33 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Caso E: Genérico / Otros -->
+                  <!-- Caso E: Casquetería -->
+                  <div v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span v-if="part.diametro_munon_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
+                      Muñón: <strong class="text-slate-900">{{ part.diametro_munon_mm }} mm</strong>
+                    </span>
+                    <span v-if="part.ancho_casquete_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
+                      Ancho: <strong class="text-slate-900">{{ part.ancho_casquete_mm }} mm</strong>
+                    </span>
+                    <span v-if="part.tipo_cojinete" class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-900 border border-emerald-200 font-bold">
+                      {{ part.tipo_cojinete }}
+                    </span>
+                  </div>
+
+                  <!-- Caso F: Empaques -->
+                  <div v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span v-if="part.diametro_cilindro_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
+                      Ø Cilindro: <strong class="text-slate-900">{{ part.diametro_cilindro_mm }} mm</strong>
+                    </span>
+                    <span v-if="part.dimensiones?.espesor_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
+                      Espesor: <strong class="text-slate-900">{{ part.dimensiones.espesor_mm }} mm</strong>
+                    </span>
+                    <span v-if="part.dimensiones?.tipo" class="px-2 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200 font-bold">
+                      {{ part.dimensiones.tipo }}
+                    </span>
+                  </div>
+
+                  <!-- Caso G: Genérico / Otros -->
                   <div v-else class="text-xs text-slate-500 font-mono">
                     {{ part.categoria }} • Ref: {{ part.subsistema }}
                   </div>

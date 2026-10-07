@@ -283,6 +283,36 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
       { id: 'p_pern_3', clave: 'longitud_perno_mm', etiqueta: 'Longitud del Perno', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Largo del espárrago bajo cabeza' },
       { id: 'p_pern_4', clave: 'cantidad_piezas', etiqueta: 'Cantidad de Piezas', unidad: 'piezas', tipo_dato: 'numero', requerido: true, descripcion: 'Tornillos por juego' }
     ]
+  },
+  {
+    id: 'grp-5',
+    codigo: 'casqueteria',
+    nombre: 'Casquetería y Cojinetes',
+    categoria: 'Casquetería',
+    subsistema: 'Cigüeñal',
+    descripcion: 'Cojinetes de biela, bancada y arandelas axiales',
+    icono: 'CircleDot',
+    activo: true,
+    orden_visual: 5,
+    parametros: [
+      { id: 'p_casq_1', clave: 'diametro_munon_mm', etiqueta: 'Diámetro de Muñón', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro del muñón de biela o bancada' },
+      { id: 'p_casq_2', clave: 'ancho_casquete_mm', etiqueta: 'Ancho de Casquete', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Ancho o longitud del cojinete' }
+    ]
+  },
+  {
+    id: 'grp-6',
+    codigo: 'empaques_juntas',
+    nombre: 'Empaques y Juntas',
+    categoria: 'Empaques',
+    subsistema: 'Culata',
+    descripcion: 'Juntas de culata de grafito y multilámina MLS',
+    icono: 'Layers',
+    activo: true,
+    orden_visual: 6,
+    parametros: [
+      { id: 'p_emp_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de Cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro del barreno del cilindro' },
+      { id: 'p_emp_2', clave: 'espesor_mm', etiqueta: 'Espesor de Junta', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Grosor nominal comprimido' }
+    ]
   }
 ]
 
@@ -1977,6 +2007,84 @@ export const catalogService = {
       }
       return filtered
     }
+  },
+
+  /**
+   * Obtiene todos los repuestos pertenecientes a una categoría/grupo técnico desde Supabase
+   */
+  async getRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string): Promise<RepuestoTecnico[]> {
+    try {
+      let query = supabase
+        .from('repuestos_tecnicos')
+        .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+
+      if (categoria) {
+        query = query.eq('categoria', categoria)
+      }
+
+      if (subsistema && subsistema !== 'Todos') {
+        query = query.eq('subsistema', subsistema)
+      }
+
+      const { data, error } = await query.order('codigo_oem', { ascending: true })
+
+      if (!error && data && data.length > 0) {
+        let mapped = data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+        if (fabricanteId) {
+          mapped = mapped.filter(r => r.motor?.fabricante_id === fabricanteId)
+        }
+        return mapped
+      }
+
+      // Si no hubo resultados por coincidencia exacta, probar búsqueda flexible por nombre o categoría
+      if (categoria && (!data || data.length === 0)) {
+        const { data: altData } = await supabase
+          .from('repuestos_tecnicos')
+          .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+          .or(`categoria.ilike.%${categoria}%,nombre.ilike.%${categoria}%`)
+          .order('codigo_oem', { ascending: true })
+
+        if (altData && altData.length > 0) {
+          let mapped = altData.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+          if (fabricanteId) {
+            mapped = mapped.filter(r => r.motor?.fabricante_id === fabricanteId)
+          }
+          return mapped
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error consultando repuestos por grupo en Supabase, usando respaldo:', err)
+    }
+
+    // Fallback con mockRepuestos y repuestos creados localmente
+    const localParts = getLocalCustomRepuestos()
+    let list = [...mockRepuestos, ...localParts]
+
+    if (categoria) {
+      const catLower = categoria.toLowerCase()
+      list = list.filter(r =>
+        (r.categoria && r.categoria.toLowerCase() === catLower) ||
+        (r.categoria && r.categoria.toLowerCase().includes(catLower)) ||
+        (r.nombre && r.nombre.toLowerCase().includes(catLower)) ||
+        (r.subsistema && r.subsistema.toLowerCase().includes(catLower))
+      )
+    }
+
+    if (fabricanteId) {
+      list = list.filter(r => {
+        const mot = mockMotores.find(m => m.id === r.motor_id)
+        return mot?.fabricante_id === fabricanteId || r.motor?.fabricante_id === fabricanteId
+      })
+    }
+
+    return list.map(r => {
+      const mot = mockMotores.find(m => m.id === r.motor_id)
+      const fab = mot ? mockFabricantes.find(f => f.id === mot.fabricante_id) : undefined
+      return {
+        ...r,
+        motor: r.motor || (mot ? { ...mot, fabricante: fab } : undefined)
+      }
+    })
   },
 
   /**
