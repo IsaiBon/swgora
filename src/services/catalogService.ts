@@ -1544,9 +1544,96 @@ export const mockRepuestos: RepuestoTecnico[] = [
   }
 ]
 
+/**
+ * Mapea una fila de Supabase (con sus relaciones motor, fabricante y equivalencias) a RepuestoTecnico
+ */
+export function mapDbRepuestoToFrontend(item: Record<string, unknown>): RepuestoTecnico {
+  const motorRaw = item.motor as Record<string, unknown> | undefined
+  let motorData: Motor | undefined = undefined
+
+  if (motorRaw) {
+    const motorEspec = (motorRaw.especificaciones_tecnicas as Record<string, unknown>) || {}
+    motorData = {
+      id: String(motorRaw.id),
+      fabricante_id: String(motorRaw.fabricante_id),
+      modelo_id: motorRaw.modelo_id ? String(motorRaw.modelo_id) : undefined,
+      numero_id: motorEspec.numero_id ? (motorEspec.numero_id as number | string) : undefined,
+      codigo: String(motorRaw.codigo),
+      nombre_comercial: motorRaw.nombre_comercial ? String(motorRaw.nombre_comercial) : undefined,
+      denominacion_venta: motorEspec.denominacion_venta ? String(motorEspec.denominacion_venta) : undefined,
+      cilindrada_cc: motorRaw.cilindrada_cc ? Number(motorRaw.cilindrada_cc) : undefined,
+      cilindrada_texto: motorEspec.cilindrada_texto ? String(motorEspec.cilindrada_texto) : (motorRaw.cilindrada_cc ? `${motorRaw.cilindrada_cc} cc` : undefined),
+      kw: motorEspec.kw ? Number(motorEspec.kw) : undefined,
+      cv: motorEspec.cv ? Number(motorEspec.cv) : undefined,
+      combustible: String(motorRaw.combustible || 'Diésel'),
+      cilindros: Number(motorRaw.cilindros || 4),
+      valvulas: Number(motorRaw.valvulas || 8),
+      diametro_cilindro_std_mm: motorRaw.diametro_cilindro_std_mm ? Number(motorRaw.diametro_cilindro_std_mm) : undefined,
+      carrera_piston_mm: motorRaw.carrera_piston_mm ? Number(motorRaw.carrera_piston_mm) : undefined,
+      configuracion: motorRaw.configuracion ? String(motorRaw.configuracion) : undefined,
+      aspiracion: motorRaw.aspiracion ? String(motorRaw.aspiracion) : undefined,
+      anios: motorRaw.anios ? String(motorRaw.anios) : undefined,
+      especificaciones_tecnicas: motorEspec,
+      fabricante: motorRaw.fabricante as Fabricante | undefined,
+      modelo: motorRaw.modelo as Modelo | undefined
+    }
+  }
+
+  const dims = (item.dimensiones as Record<string, unknown>) || {}
+
+  return {
+    id: String(item.id),
+    motor_id: item.motor_id ? String(item.motor_id) : undefined,
+    codigo_oem: String(item.codigo_oem),
+    nombre: String(item.nombre),
+    subsistema: String(item.subsistema),
+    categoria: String(item.categoria),
+    precio: Number(item.precio || 0),
+    stock: Number(item.stock || 0),
+    estado: (item.estado as RepuestoTecnico['estado']) || 'Disponible',
+    imagen_url: item.imagen_url ? String(item.imagen_url) : undefined,
+    catalogo_origen: item.catalogo_origen ? String(item.catalogo_origen) : 'OEM',
+
+    diametro_cabeza_mm: item.diametro_cabeza_mm != null ? Number(item.diametro_cabeza_mm) : null,
+    diametro_vastago_mm: item.diametro_vastago_mm != null ? Number(item.diametro_vastago_mm) : null,
+    longitud_total_mm: item.longitud_total_mm != null ? Number(item.longitud_total_mm) : null,
+    angulo_asiento_grados: item.angulo_asiento_grados != null ? Number(item.angulo_asiento_grados) : null,
+
+    diametro_interior_mm: item.diametro_interior_mm != null ? Number(item.diametro_interior_mm) : (dims.diametro_interior_mm != null ? Number(dims.diametro_interior_mm) : null),
+    diametro_exterior_mm: item.diametro_exterior_mm != null ? Number(item.diametro_exterior_mm) : (dims.diametro_exterior_mm != null ? Number(dims.diametro_exterior_mm) : null),
+    altura_mm: item.altura_mm != null ? Number(item.altura_mm) : (dims.altura_mm != null ? Number(dims.altura_mm) : null),
+
+    diametro_cilindro_mm: item.diametro_cilindro_mm != null ? Number(item.diametro_cilindro_mm) : (dims.diametro_cilindro_mm != null ? Number(dims.diametro_cilindro_mm) : null),
+    espesor_anillo1_mm: item.espesor_anillo1_mm != null ? Number(item.espesor_anillo1_mm) : (dims.espesor_anillo1_mm != null ? Number(dims.espesor_anillo1_mm) : null),
+    espesor_anillo2_mm: item.espesor_anillo2_mm != null ? Number(item.espesor_anillo2_mm) : (dims.espesor_anillo2_mm != null ? Number(dims.espesor_anillo2_mm) : null),
+    espesor_aceite_mm: item.espesor_aceite_mm != null ? Number(item.espesor_aceite_mm) : (dims.espesor_aceite_mm != null ? Number(dims.espesor_aceite_mm) : null),
+
+    tipo_cojinete: item.tipo_cojinete ? String(item.tipo_cojinete) : (dims.tipo_cojinete ? String(dims.tipo_cojinete) : null),
+    diametro_munon_mm: item.diametro_munon_mm != null ? Number(item.diametro_munon_mm) : (dims.diametro_munon_mm != null ? Number(dims.diametro_munon_mm) : null),
+    diametro_alojamiento_mm: item.diametro_alojamiento_mm != null ? Number(item.diametro_alojamiento_mm) : (dims.diametro_alojamiento_mm != null ? Number(dims.diametro_alojamiento_mm) : null),
+    ancho_casquete_mm: item.ancho_casquete_mm != null ? Number(item.ancho_casquete_mm) : (dims.ancho_casquete_mm != null ? Number(dims.ancho_casquete_mm) : null),
+
+    medida_rosca: item.medida_rosca ? String(item.medida_rosca) : (dims.medida_rosca ? String(dims.medida_rosca) : null),
+    paso_rosca_mm: item.paso_rosca_mm != null ? Number(item.paso_rosca_mm) : (dims.paso_rosca_mm != null ? Number(dims.paso_rosca_mm) : null),
+    longitud_perno_mm: item.longitud_perno_mm != null ? Number(item.longitud_perno_mm) : (dims.longitud_perno_mm != null ? Number(dims.longitud_perno_mm) : null),
+    cantidad_piezas: item.cantidad_piezas != null ? Number(item.cantidad_piezas) : (dims.cantidad_piezas != null ? Number(dims.cantidad_piezas) : null),
+    paso_rosca1_mm: item.paso_rosca1_mm != null ? Number(item.paso_rosca1_mm) : (dims.paso_rosca1_mm != null ? Number(dims.paso_rosca1_mm) : null),
+    longitud1_mm: item.longitud1_mm != null ? Number(item.longitud1_mm) : (dims.longitud1_mm != null ? Number(dims.longitud1_mm) : null),
+    longitud2_mm: item.longitud2_mm != null ? Number(item.longitud2_mm) : (dims.longitud2_mm != null ? Number(dims.longitud2_mm) : null),
+
+    dimensiones: dims,
+    especificaciones_tecnicas: (item.especificaciones_tecnicas as Record<string, unknown>) || {},
+    equivalencias: (item.equivalencias as Equivalencia[]) || [],
+    motor: motorData
+  }
+}
+
 export const catalogService = {
   /**
    * Obtiene la lista de fabricantes disponibles
+   */
+  /**
+   * Obtiene la lista de fabricantes disponibles desde Supabase con recuento dinámico de motores
    */
   async getFabricantes(): Promise<Fabricante[]> {
     try {
@@ -1560,13 +1647,31 @@ export const catalogService = {
         return mockFabricantes
       }
 
+      // Conteo dinámico de motores por fabricante
+      const countMap: Record<string, number> = {}
+      try {
+        const { data: enginesData } = await supabase
+          .from('motores')
+          .select('fabricante_id')
+        if (enginesData) {
+          enginesData.forEach((row: { fabricante_id: string }) => {
+            if (row.fabricante_id) {
+              countMap[row.fabricante_id] = (countMap[row.fabricante_id] || 0) + 1
+            }
+          })
+        }
+      } catch {
+        // Silencioso
+      }
+
       return data.map((item: Record<string, unknown>) => ({
         id: String(item.id),
         nombre: String(item.nombre),
         pais_origen: item.pais_origen ? String(item.pais_origen) : undefined,
         logo_url: item.logo_url ? String(item.logo_url) : undefined,
         activo: Boolean(item.activo),
-        orden_visual: Number(item.orden_visual || 0)
+        orden_visual: Number(item.orden_visual || 0),
+        engines_count: countMap[String(item.id)] || undefined
       }))
     } catch {
       return mockFabricantes
@@ -1574,7 +1679,7 @@ export const catalogService = {
   },
 
   /**
-   * Obtiene modelos de vehículos, opcionalmente filtrados por fabricante
+   * Obtiene modelos de vehículos desde Supabase, opcionalmente filtrados por fabricante
    */
   async getModelos(fabricanteId?: string): Promise<Modelo[]> {
     try {
@@ -1607,7 +1712,7 @@ export const catalogService = {
   },
 
   /**
-   * Obtiene motores filtrados por fabricante o modelo
+   * Obtiene motores filtrados por fabricante o modelo directamente desde Supabase
    */
   async getMotores(fabricanteId?: string, modeloId?: string): Promise<Motor[]> {
     try {
@@ -1632,25 +1737,33 @@ export const catalogService = {
         return filtered.length > 0 ? filtered : mockMotores
       }
 
-      return data.map((item: Record<string, unknown>) => ({
-        id: String(item.id),
-        fabricante_id: String(item.fabricante_id),
-        modelo_id: item.modelo_id ? String(item.modelo_id) : undefined,
-        codigo: String(item.codigo),
-        nombre_comercial: item.nombre_comercial ? String(item.nombre_comercial) : undefined,
-        cilindrada_cc: item.cilindrada_cc ? Number(item.cilindrada_cc) : undefined,
-        combustible: String(item.combustible || 'Diésel'),
-        cilindros: Number(item.cilindros || 4),
-        valvulas: Number(item.valvulas || 8),
-        diametro_cilindro_std_mm: item.diametro_cilindro_std_mm ? Number(item.diametro_cilindro_std_mm) : undefined,
-        carrera_piston_mm: item.carrera_piston_mm ? Number(item.carrera_piston_mm) : undefined,
-        configuracion: item.configuracion ? String(item.configuracion) : undefined,
-        aspiracion: item.aspiracion ? String(item.aspiracion) : undefined,
-        anios: item.anios ? String(item.anios) : undefined,
-        especificaciones_tecnicas: (item.especificaciones_tecnicas as Record<string, unknown>) || {},
-        fabricante: item.fabricante as Fabricante | undefined,
-        modelo: item.modelo as Modelo | undefined
-      }))
+      return data.map((item: Record<string, unknown>) => {
+        const espec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
+        return {
+          id: String(item.id),
+          fabricante_id: String(item.fabricante_id),
+          modelo_id: item.modelo_id ? String(item.modelo_id) : undefined,
+          numero_id: espec.numero_id ? (espec.numero_id as number | string) : undefined,
+          codigo: String(item.codigo),
+          nombre_comercial: item.nombre_comercial ? String(item.nombre_comercial) : undefined,
+          denominacion_venta: espec.denominacion_venta ? String(espec.denominacion_venta) : undefined,
+          cilindrada_cc: item.cilindrada_cc ? Number(item.cilindrada_cc) : undefined,
+          cilindrada_texto: espec.cilindrada_texto ? String(espec.cilindrada_texto) : (item.cilindrada_cc ? `${item.cilindrada_cc} cc` : undefined),
+          kw: espec.kw ? Number(espec.kw) : undefined,
+          cv: espec.cv ? Number(espec.cv) : undefined,
+          combustible: String(item.combustible || 'Diésel'),
+          cilindros: Number(item.cilindros || 4),
+          valvulas: Number(item.valvulas || 8),
+          diametro_cilindro_std_mm: item.diametro_cilindro_std_mm ? Number(item.diametro_cilindro_std_mm) : undefined,
+          carrera_piston_mm: item.carrera_piston_mm ? Number(item.carrera_piston_mm) : undefined,
+          configuracion: item.configuracion ? String(item.configuracion) : undefined,
+          aspiracion: item.aspiracion ? String(item.aspiracion) : undefined,
+          anios: item.anios ? String(item.anios) : undefined,
+          especificaciones_tecnicas: espec,
+          fabricante: item.fabricante as Fabricante | undefined,
+          modelo: item.modelo as Modelo | undefined
+        }
+      })
     } catch {
       return mockMotores
     }
@@ -1665,13 +1778,13 @@ export const catalogService = {
   },
 
   /**
-   * Obtiene repuestos técnicos para un motor específico con su matriz de equivalencias
+   * Obtiene repuestos técnicos para un motor específico con su matriz de equivalencias desde Supabase
    */
   async getRepuestosByMotor(motorId: string, subsistema?: string): Promise<RepuestoTecnico[]> {
     try {
       let query = supabase
         .from('repuestos_tecnicos')
-        .select('*, equivalencias:equivalencias_repuestos(*)')
+        .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
         .eq('motor_id', motorId)
 
       if (subsistema && subsistema !== 'Todos') {
@@ -1688,37 +1801,7 @@ export const catalogService = {
         return filtered.length > 0 ? filtered : mockRepuestos.filter(r => !subsistema || subsistema === 'Todos' || r.subsistema === subsistema)
       }
 
-      return data.map((item: Record<string, unknown>) => ({
-        id: String(item.id),
-        motor_id: item.motor_id ? String(item.motor_id) : undefined,
-        codigo_oem: String(item.codigo_oem),
-        nombre: String(item.nombre),
-        subsistema: String(item.subsistema),
-        categoria: String(item.categoria),
-        precio: Number(item.precio || 0),
-        stock: Number(item.stock || 0),
-        estado: (item.estado as RepuestoTecnico['estado']) || 'Disponible',
-        imagen_url: item.imagen_url ? String(item.imagen_url) : undefined,
-
-        diametro_cabeza_mm: item.diametro_cabeza_mm ? Number(item.diametro_cabeza_mm) : null,
-        diametro_vastago_mm: item.diametro_vastago_mm ? Number(item.diametro_vastago_mm) : null,
-        longitud_total_mm: item.longitud_total_mm ? Number(item.longitud_total_mm) : null,
-        angulo_asiento_grados: item.angulo_asiento_grados ? Number(item.angulo_asiento_grados) : null,
-
-        diametro_cilindro_mm: item.diametro_cilindro_mm ? Number(item.diametro_cilindro_mm) : null,
-        espesor_anillo1_mm: item.espesor_anillo1_mm ? Number(item.espesor_anillo1_mm) : null,
-        espesor_anillo2_mm: item.espesor_anillo2_mm ? Number(item.espesor_anillo2_mm) : null,
-        espesor_aceite_mm: item.espesor_aceite_mm ? Number(item.espesor_aceite_mm) : null,
-
-        tipo_cojinete: item.tipo_cojinete ? String(item.tipo_cojinete) : null,
-        diametro_munon_mm: item.diametro_munon_mm ? Number(item.diametro_munon_mm) : null,
-        diametro_alojamiento_mm: item.diametro_alojamiento_mm ? Number(item.diametro_alojamiento_mm) : null,
-        ancho_casquete_mm: item.ancho_casquete_mm ? Number(item.ancho_casquete_mm) : null,
-
-        dimensiones: (item.dimensiones as Record<string, unknown>) || {},
-        especificaciones_tecnicas: (item.especificaciones_tecnicas as Record<string, unknown>) || {},
-        equivalencias: (item.equivalencias as Equivalencia[]) || []
-      }))
+      return data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
     } catch {
       let filtered = mockRepuestos.filter(r => r.motor_id === motorId)
       if (subsistema && subsistema !== 'Todos') {
@@ -1970,18 +2053,51 @@ export const catalogService = {
   },
 
   /**
-   * Búsqueda directa e inversa por código original OEM o de catálogo alterno
+   * Búsqueda directa e inversa por código original OEM o de catálogo alterno (Supabase con fallback)
    */
   async searchByCode(code: string): Promise<RepuestoTecnico[]> {
     if (!code || code.trim() === '') return []
-    const q = code.toLowerCase().trim().replace(/[-\s]/g, '')
+    const clean = code.trim()
+    const q = clean.toLowerCase().replace(/[-\s]/g, '')
+
+    try {
+      // 1. Buscar en equivalencias alternas para recolectar IDs
+      const { data: equivData } = await supabase
+        .from('equivalencias_repuestos')
+        .select('repuesto_id')
+        .or(`codigo_alterno.ilike.%${clean}%,marca_alterna.ilike.%${clean}%`)
+        .limit(60)
+
+      const repuestoIds = (equivData || [])
+        .map(e => e.repuesto_id)
+        .filter(Boolean) as string[]
+
+      // 2. Buscar en repuestos_tecnicos
+      let query = supabase
+        .from('repuestos_tecnicos')
+        .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+
+      if (repuestoIds.length > 0) {
+        query = query.or(`codigo_oem.ilike.%${clean}%,nombre.ilike.%${clean}%,id.in.(${repuestoIds.join(',')})`)
+      } else {
+        query = query.or(`codigo_oem.ilike.%${clean}%,nombre.ilike.%${clean}%`)
+      }
+
+      const { data, error } = await query.limit(60)
+
+      if (!error && data && data.length > 0) {
+        return data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+      }
+    } catch {
+      // Fallback
+    }
 
     const matches = mockRepuestos.filter(r => {
       const matchOem = r.codigo_oem.toLowerCase().replace(/[-\s]/g, '').includes(q)
-      const matchNombre = r.nombre.toLowerCase().includes(code.toLowerCase().trim())
+      const matchNombre = r.nombre.toLowerCase().includes(clean.toLowerCase())
       const matchEquiv = r.equivalencias?.some(eq =>
         eq.codigo_alterno.toLowerCase().replace(/[-\s]/g, '').includes(q) ||
-        eq.marca_alterna.toLowerCase().includes(code.toLowerCase().trim())
+        eq.marca_alterna.toLowerCase().includes(clean.toLowerCase())
       )
       return matchOem || matchNombre || matchEquiv
     })
@@ -1993,6 +2109,96 @@ export const catalogService = {
         ...r,
         motor: mot ? { ...mot, fabricante: fab } : undefined
       }
+    })
+  },
+
+  /**
+   * Búsqueda global reactiva con soporte para código OEM, descripción y catálogo alterno
+   */
+  async searchGlobalParts(query: string): Promise<RepuestoTecnico[]> {
+    return this.searchByCode(query)
+  },
+
+  /**
+   * Registra un nuevo repuesto técnico con sus equivalencias directamente en Supabase
+   */
+  async createRepuesto(
+    part: Partial<RepuestoTecnico>,
+    equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
+  ): Promise<RepuestoTecnico> {
+    const insertPayload = {
+      motor_id: part.motor_id || null,
+      codigo_oem: (part.codigo_oem || '').trim().toUpperCase(),
+      nombre: (part.nombre || '').trim(),
+      subsistema: part.subsistema || 'Culata',
+      categoria: part.categoria || 'Válvulas',
+      precio: Number(part.precio || 0),
+      stock: Number(part.stock || 0),
+      estado: part.estado || 'Disponible',
+      imagen_url: part.imagen_url || null,
+      diametro_cabeza_mm: part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null,
+      diametro_vastago_mm: part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null,
+      longitud_total_mm: part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null,
+      angulo_asiento_grados: part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null,
+      diametro_cilindro_mm: part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null,
+      espesor_anillo1_mm: part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null,
+      espesor_anillo2_mm: part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null,
+      espesor_aceite_mm: part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null,
+      tipo_cojinete: part.tipo_cojinete || null,
+      diametro_munon_mm: part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null,
+      diametro_alojamiento_mm: part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null,
+      ancho_casquete_mm: part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null,
+      dimensiones: {
+        diametro_interior_mm: part.diametro_interior_mm,
+        diametro_exterior_mm: part.diametro_exterior_mm,
+        altura_mm: part.altura_mm,
+        medida_rosca: part.medida_rosca,
+        paso_rosca_mm: part.paso_rosca_mm,
+        longitud_perno_mm: part.longitud_perno_mm,
+        cantidad_piezas: part.cantidad_piezas,
+        paso_rosca1_mm: part.paso_rosca1_mm,
+        longitud1_mm: part.longitud1_mm,
+        longitud2_mm: part.longitud2_mm,
+        ...(part.dimensiones || {})
+      },
+      especificaciones_tecnicas: part.especificaciones_tecnicas || {}
+    }
+
+    const { data: insertedPart, error: partError } = await supabase
+      .from('repuestos_tecnicos')
+      .insert(insertPayload)
+      .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+      .single()
+
+    if (partError || !insertedPart) {
+      throw new Error(partError?.message || 'Error al registrar el repuesto en Supabase')
+    }
+
+    let createdEquivs: Equivalencia[] = []
+    if (equivalencias && equivalencias.length > 0) {
+      const equivRows = equivalencias
+        .filter(eq => eq.marca_alterna && eq.codigo_alterno)
+        .map(eq => ({
+          repuesto_id: insertedPart.id,
+          marca_alterna: eq.marca_alterna.trim(),
+          codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
+          notas: eq.notas || null
+        }))
+
+      if (equivRows.length > 0) {
+        const { data: savedEquivs } = await supabase
+          .from('equivalencias_repuestos')
+          .insert(equivRows)
+          .select('*')
+        if (savedEquivs) {
+          createdEquivs = savedEquivs as Equivalencia[]
+        }
+      }
+    }
+
+    return mapDbRepuestoToFrontend({
+      ...insertedPart,
+      equivalencias: createdEquivs
     })
   },
 
