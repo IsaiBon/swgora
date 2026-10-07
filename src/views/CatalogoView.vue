@@ -5,8 +5,10 @@ import {
   type Motor, 
   type Modelo,
   type RepuestoTecnico, 
-  type Fabricante 
+  type Fabricante,
+  type GrupoRepuesto
 } from '@/services/catalogService'
+import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
 import { 
   Search, 
   X, 
@@ -32,7 +34,8 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
-  Sparkles
+  Sparkles,
+  FolderPlus
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -63,10 +66,10 @@ let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const activeViewTab = ref<'motores' | 'repuestos'>('motores')
 
 // =============================================================================
-// DEFINICIÓN DE LOS 4 TIPOS DE COMPONENTE ÚNICOS (SIN RELLENO)
+// DEFINICIÓN DE GRUPOS / FAMILIAS DE PIEZAS (BASE + DINÁMICOS)
 // =============================================================================
 interface ComponentGroup {
-  id: 'ajuste_valvula' | 'valvula' | 'anillos_motor' | 'tornillos_culata'
+  id: string
   title: string
   shortTitle: string
   category: string
@@ -75,7 +78,7 @@ interface ComponentGroup {
   sampleMeasurements: string
 }
 
-const componentGroups: ComponentGroup[] = [
+const baseComponentGroups: ComponentGroup[] = [
   {
     id: 'ajuste_valvula',
     title: 'Ajuste de válvula',
@@ -113,6 +116,25 @@ const componentGroups: ComponentGroup[] = [
     sampleMeasurements: 'Medida rosca, paso rosca, longitudes, cant.'
   }
 ]
+
+const componentGroups = computed<ComponentGroup[]>(() => {
+  const list = [...baseComponentGroups]
+  // Agregar cualquier grupo creado dinámicamente en catalogStore.grupos que no esté en baseComponentGroups
+  catalogStore.grupos.forEach(g => {
+    if (!list.some(item => item.id === g.codigo)) {
+      list.push({
+        id: g.codigo,
+        title: g.nombre,
+        shortTitle: g.categoria || g.nombre,
+        category: g.categoria,
+        icon: g.icono || 'Layers',
+        description: g.descripcion || `Familia de ${g.nombre}`,
+        sampleMeasurements: g.parametros.map(p => `${p.etiqueta}${p.unidad ? ` (${p.unidad})` : ''}`).slice(0, 3).join(', ') || 'Medidas requeridas configuradas'
+      })
+    }
+  })
+  return list
+})
 
 // =============================================================================
 // FILTROS DE MEDIDAS EXACTAS POR TIPO DE COMPONENTE
@@ -385,11 +407,11 @@ const handleClearSelectedMotor = () => {
   activeViewTab.value = 'motores'
 }
 
-// 4. Filtrado de TIPOS DE COMPONENTE (LOS 4 EXACTOS)
+// 4. Filtrado de TIPOS DE COMPONENTE (BASE + DINÁMICOS)
 const filteredComponentGroups = computed(() => {
   const q = componentInput.value.toLowerCase().trim()
-  if (!q) return componentGroups
-  return componentGroups.filter(g => 
+  if (!q) return componentGroups.value
+  return componentGroups.value.filter(g => 
     g.title.toLowerCase().includes(q) || 
     g.shortTitle.toLowerCase().includes(q) ||
     g.category.toLowerCase().includes(q) ||
@@ -512,6 +534,17 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       list = list.filter(r => r.categoria === 'Anillos' || r.nombre.toLowerCase().includes('anillos'))
     } else if (compId === 'tornillos_culata') {
       list = list.filter(r => r.categoria === 'Pernos' || r.nombre.toLowerCase().includes('tornillos') || r.nombre.toLowerCase().includes('perno'))
+    } else {
+      // Grupos personalizados dinámicos (ej. Camisas, Pistones, etc.)
+      const cat = selectedComponent.value.category?.toLowerCase() || ''
+      const title = selectedComponent.value.title?.toLowerCase() || ''
+      list = list.filter(r =>
+        (r.categoria && r.categoria.toLowerCase() === cat) ||
+        (r.categoria && r.categoria.toLowerCase().includes(cat)) ||
+        (r.subsistema && r.subsistema.toLowerCase().includes(title)) ||
+        (r.nombre && r.nombre.toLowerCase().includes(cat)) ||
+        (r.nombre && r.nombre.toLowerCase().includes(title))
+      )
     }
 
     // 2. Filtros de medidas dimensionales específicas
@@ -624,116 +657,30 @@ const closeTechnicalSheet = () => {
 }
 
 // =============================================================================
-// MODAL: AÑADIR NUEVO ELEMENTO DIRECTAMENTE A SUPABASE
 // =============================================================================
-const isAddModalOpen = ref<boolean>(false)
-const isSubmittingNewPart = ref<boolean>(false)
+// MODAL ADMINISTRATIVO DE CATÁLOGO (NUEVO REPUESTO / NUEVA FAMILIA DINÁMICA)
+// =============================================================================
+const isAdminModalOpen = ref<boolean>(false)
+const adminModalTab = ref<'repuesto' | 'grupo'>('repuesto')
 
-const newPartForm = ref({
-  motor_id: '',
-  codigo_oem: '',
-  nombre: '',
-  subsistema: 'Culata',
-  categoria: 'Válvulas',
-  precio: 0,
-  stock: 12,
-  estado: 'Disponible' as 'Disponible' | 'Bajo Stock' | 'Agotado',
-  // Cotas según categoría
-  diametro_cabeza_mm: undefined as number | undefined,
-  diametro_vastago_mm: undefined as number | undefined,
-  longitud_total_mm: undefined as number | undefined,
-  diametro_interior_mm: undefined as number | undefined,
-  diametro_exterior_mm: undefined as number | undefined,
-  altura_mm: undefined as number | undefined,
-  diametro_cilindro_mm: undefined as number | undefined,
-  espesor_anillo1_mm: undefined as number | undefined,
-  espesor_anillo2_mm: undefined as number | undefined,
-  espesor_aceite_mm: undefined as number | undefined,
-  medida_rosca: '',
-  paso_rosca_mm: undefined as number | undefined,
-  longitud_perno_mm: undefined as number | undefined,
-  cantidad_piezas: undefined as number | undefined,
-  // Equivalencias
-  equivalencias: [
-    { marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }
-  ]
-})
+const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto') => {
+  adminModalTab.value = tab
+  isAdminModalOpen.value = true
+}
 
+// Retrocompatibilidad con openAddPartModal
 const openAddPartModal = () => {
-  // Pre-rellenar motor si hay uno seleccionado
-  newPartForm.value.motor_id = selectedMotor.value?.id || (catalogStore.motores[0]?.id || '')
-  if (selectedComponent.value) {
-    newPartForm.value.categoria = selectedComponent.value.category
-    if (selectedComponent.value.id === 'ajuste_valvula') newPartForm.value.subsistema = 'Sellos y Juntas'
-    else if (selectedComponent.value.id === 'valvula') newPartForm.value.subsistema = 'Culata'
-    else if (selectedComponent.value.id === 'anillos_motor') newPartForm.value.subsistema = 'Block'
-    else if (selectedComponent.value.id === 'tornillos_culata') newPartForm.value.subsistema = 'Culata'
-  }
-  isAddModalOpen.value = true
+  openAdminCatalogModal('repuesto')
 }
 
-const addEquivalenceRow = () => {
-  newPartForm.value.equivalencias.push({
-    marca_alterna: 'NPR',
-    codigo_alterno: '',
-    notas: ''
-  })
+const onPartCreated = (newPart: RepuestoTecnico) => {
+  showToast(`✓ Repuesto ${newPart.codigo_oem} (${newPart.nombre}) registrado exitosamente`)
+  activeViewTab.value = 'repuestos'
+  openTechnicalSheet(newPart)
 }
 
-const removeEquivalenceRow = (index: number) => {
-  if (newPartForm.value.equivalencias.length > 1) {
-    newPartForm.value.equivalencias.splice(index, 1)
-  }
-}
-
-const handleSaveNewPart = async () => {
-  if (!newPartForm.value.codigo_oem.trim() || !newPartForm.value.nombre.trim()) {
-    showToast('Por favor ingrese código OEM y nombre del componente')
-    return
-  }
-
-  isSubmittingNewPart.value = true
-  try {
-    const validEquivs = newPartForm.value.equivalencias
-      .filter(eq => eq.marca_alterna && eq.codigo_alterno.trim().length > 0)
-
-    const created = await catalogStore.createRepuesto(
-      {
-        motor_id: newPartForm.value.motor_id || undefined,
-        codigo_oem: newPartForm.value.codigo_oem.trim().toUpperCase(),
-        nombre: newPartForm.value.nombre.trim(),
-        subsistema: newPartForm.value.subsistema,
-        categoria: newPartForm.value.categoria,
-        precio: Number(newPartForm.value.precio || 0),
-        stock: Number(newPartForm.value.stock || 0),
-        estado: newPartForm.value.estado,
-        diametro_cabeza_mm: newPartForm.value.diametro_cabeza_mm,
-        diametro_vastago_mm: newPartForm.value.diametro_vastago_mm,
-        longitud_total_mm: newPartForm.value.longitud_total_mm,
-        diametro_interior_mm: newPartForm.value.diametro_interior_mm,
-        diametro_exterior_mm: newPartForm.value.diametro_exterior_mm,
-        altura_mm: newPartForm.value.altura_mm,
-        diametro_cilindro_mm: newPartForm.value.diametro_cilindro_mm,
-        espesor_anillo1_mm: newPartForm.value.espesor_anillo1_mm,
-        espesor_anillo2_mm: newPartForm.value.espesor_anillo2_mm,
-        espesor_aceite_mm: newPartForm.value.espesor_aceite_mm,
-        medida_rosca: newPartForm.value.medida_rosca || undefined,
-        paso_rosca_mm: newPartForm.value.paso_rosca_mm,
-        longitud_perno_mm: newPartForm.value.longitud_perno_mm,
-        cantidad_piezas: newPartForm.value.cantidad_piezas
-      },
-      validEquivs
-    )
-
-    showToast(`✓ Elemento ${created.codigo_oem} añadido directamente a Supabase`)
-    isAddModalOpen.value = false
-    activeViewTab.value = 'repuestos'
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al guardar elemento'
-    showToast(`Error: ${msg}`)
-  } finally {
-    isSubmittingNewPart.value = false
-  }
+const onGroupCreated = (newGroup: GrupoRepuesto) => {
+  showToast(`✓ Familia "${newGroup.nombre}" creada con ${newGroup.parametros.length} parámetros técnicos`)
 }
 
 // Cerrar dropdowns al hacer clic fuera
@@ -802,12 +749,22 @@ onUnmounted(() => {
       <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
         <button
           type="button"
-          @click="openAddPartModal"
+          @click="openAdminCatalogModal('repuesto')"
           class="min-h-[44px] px-4 py-2 rounded-full bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-extrabold transition flex items-center gap-2 shadow-sm active:scale-95"
-          title="Registrar una nueva pieza técnica en la base de datos"
+          title="Registrar una nueva pieza técnica en la base de datos o dar de alta repuesto"
         >
           <Plus class="w-4 h-4" />
-          <span>Añadir Elemento</span>
+          <span>Nuevo Repuesto / Grupo</span>
+        </button>
+
+        <button
+          type="button"
+          @click="openAdminCatalogModal('grupo')"
+          class="min-h-[44px] px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-2 shadow-sm active:scale-95"
+          title="Crear un nuevo grupo/familia con reglas paramétricas técnicas"
+        >
+          <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
+          <span>+ Nueva Familia</span>
         </button>
 
         <button
@@ -2192,6 +2149,21 @@ onUnmounted(() => {
                     <td class="py-2 px-3 text-slate-500 font-sans font-medium">Rosca y Paso:</td>
                     <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.medida_rosca }} x {{ modalPart.paso_rosca_mm || 1.25 }} mm</td>
                   </tr>
+                  <!-- Parámetros técnicos dinámicos adicionales guardados en dimensiones JSONB -->
+                  <template v-if="modalPart.dimensiones && typeof modalPart.dimensiones === 'object'">
+                    <tr 
+                      v-for="(val, key) in modalPart.dimensiones" 
+                      :key="`dyn-dim-${key}`"
+                      class="border-t border-slate-100 hover:bg-slate-50"
+                    >
+                      <td class="py-2 px-3 text-slate-500 font-sans font-medium capitalize">
+                        {{ String(key).replace(/_/g, ' ') }}:
+                      </td>
+                      <td class="py-2 px-3 text-slate-900 font-bold text-right font-mono">
+                        {{ val }}
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
@@ -2223,295 +2195,16 @@ onUnmounted(() => {
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- MODAL 3: AÑADIR ELEMENTO DIRECTAMENTE A SUPABASE                          -->
+    <!-- MODAL ADMINISTRATIVO: NUEVO REPUESTO / GRUPO DINÁMICO                     -->
     <!-- ========================================================================= -->
-    <Transition
-      enter-active-class="transition duration-200 ease-out"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition duration-150 ease-in"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
-      <div 
-        v-if="isAddModalOpen" 
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
-        @click.self="isAddModalOpen = false"
-      >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]">
-          
-          <div class="bg-[#0f172a] text-white px-6 py-4 flex items-center justify-between">
-            <div>
-              <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#04C4D9] block">
-                Nuevo Registro • Base de Datos Supabase
-              </span>
-              <h3 class="text-base sm:text-lg font-black text-white mt-0.5">
-                Añadir Repuesto Técnico y Equivalencias
-              </h3>
-            </div>
-            <button
-              type="button"
-              @click="isAddModalOpen = false"
-              class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-            >
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-
-          <div class="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
-            
-            <!-- Datos Base -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <div>
-                <label class="block text-slate-700 font-bold mb-1">Código OEM / Principal *</label>
-                <input
-                  v-model="newPartForm.codigo_oem"
-                  type="text"
-                  placeholder="ej. 13711-54020 o SWH30037ZZ"
-                  class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label class="block text-slate-700 font-bold mb-1">Nombre del Componente *</label>
-                <input
-                  v-model="newPartForm.nombre"
-                  type="text"
-                  placeholder="ej. Válvula de Admisión STD"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label class="block text-slate-700 font-bold mb-1">Motor Asociado</label>
-                <select
-                  v-model="newPartForm.motor_id"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                >
-                  <option value="">(Sin motor específico / Universal)</option>
-                  <option 
-                    v-for="m in catalogStore.motores" 
-                    :key="m.id" 
-                    :value="m.id"
-                  >
-                    {{ m.codigo }} - {{ m.nombre_comercial }}
-                  </option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-slate-700 font-bold mb-1">Categoría</label>
-                <select
-                  v-model="newPartForm.categoria"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                >
-                  <option value="Válvulas">Válvulas</option>
-                  <option value="Anillos">Anillos</option>
-                  <option value="Sellos">Sellos</option>
-                  <option value="Pernos">Pernos</option>
-                  <option value="Casquetería">Casquetería</option>
-                  <option value="Empaques">Empaques</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-slate-700 font-bold mb-1">Subsistema de Motor</label>
-                <select
-                  v-model="newPartForm.subsistema"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                >
-                  <option value="Culata">Culata</option>
-                  <option value="Block">Block</option>
-                  <option value="Cigüeñal">Cigüeñal</option>
-                  <option value="Bielas">Bielas</option>
-                  <option value="Sellos y Juntas">Sellos y Juntas</option>
-                </select>
-              </div>
-
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-slate-700 font-bold mb-1">Precio ($)</label>
-                  <input
-                    v-model.number="newPartForm.precio"
-                    type="number"
-                    step="0.5"
-                    class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label class="block text-slate-700 font-bold mb-1">Stock</label>
-                  <input
-                    v-model.number="newPartForm.stock"
-                    type="number"
-                    step="1"
-                    class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- Cotas Dimensionales Específicas según Categoría -->
-            <div class="bg-cyan-50/50 p-4 rounded-xl border border-cyan-200/80 space-y-3">
-              <h4 class="text-xs font-extrabold uppercase text-[#038391] tracking-wider">
-                Cotas Dimensionales Técnicas (mm)
-              </h4>
-
-              <!-- Cotas Válvulas -->
-              <div v-if="newPartForm.categoria === 'Válvulas'" class="grid grid-cols-3 gap-3">
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Ø Cabeza / Hongo</label>
-                  <input v-model.number="newPartForm.diametro_cabeza_mm" type="number" step="0.1" placeholder="ej. 42.5" class="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Ø Vástago</label>
-                  <input v-model.number="newPartForm.diametro_vastago_mm" type="number" step="0.05" placeholder="ej. 8.0" class="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Longitud Total</label>
-                  <input v-model.number="newPartForm.longitud_total_mm" type="number" step="0.5" placeholder="ej. 103.5" class="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-              </div>
-
-              <!-- Cotas Sellos -->
-              <div v-else-if="newPartForm.categoria === 'Sellos'" class="grid grid-cols-3 gap-3">
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Ø Interior</label>
-                  <input v-model.number="newPartForm.diametro_interior_mm" type="number" step="0.1" placeholder="ej. 4.8" class="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Ø Exterior</label>
-                  <input v-model.number="newPartForm.diametro_exterior_mm" type="number" step="0.1" placeholder="ej. 10.8" class="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Altura</label>
-                  <input v-model.number="newPartForm.altura_mm" type="number" step="0.1" placeholder="ej. 10.0" class="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-              </div>
-
-              <!-- Cotas Anillos -->
-              <div v-else-if="newPartForm.categoria === 'Anillos'" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Ø Cilindro</label>
-                  <input v-model.number="newPartForm.diametro_cilindro_mm" type="number" step="0.1" placeholder="ej. 96.0" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">1° Anillo</label>
-                  <input v-model.number="newPartForm.espesor_anillo1_mm" type="number" step="0.1" placeholder="ej. 2.0" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">2° Anillo</label>
-                  <input v-model.number="newPartForm.espesor_anillo2_mm" type="number" step="0.1" placeholder="ej. 2.0" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Aceite</label>
-                  <input v-model.number="newPartForm.espesor_aceite_mm" type="number" step="0.1" placeholder="ej. 4.0" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-              </div>
-
-              <!-- Cotas Pernos -->
-              <div v-else-if="newPartForm.categoria === 'Pernos'" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Rosca</label>
-                  <input v-model="newPartForm.medida_rosca" type="text" placeholder="ej. M12" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Paso</label>
-                  <input v-model.number="newPartForm.paso_rosca_mm" type="number" step="0.25" placeholder="ej. 1.25" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Longitud</label>
-                  <input v-model.number="newPartForm.longitud_perno_mm" type="number" step="1" placeholder="ej. 120" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Cantidad</label>
-                  <input v-model.number="newPartForm.cantidad_piezas" type="number" step="1" placeholder="ej. 18" class="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg" />
-                </div>
-              </div>
-
-              <div v-else class="text-[11px] text-slate-500">
-                Se registrarán los parámetros estándar de taller para esta pieza.
-              </div>
-            </div>
-
-            <!-- Equivalencias Multimarca -->
-            <div class="space-y-2 pt-2 border-t border-slate-200">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-extrabold uppercase text-slate-700 tracking-wider">
-                  Equivalencias de Catálogo Alterno (Cruce de Marcas)
-                </label>
-                <button
-                  type="button"
-                  @click="addEquivalenceRow"
-                  class="text-[11px] font-bold text-[#04C4D9] hover:text-[#038391] flex items-center gap-1"
-                >
-                  <Plus class="w-3.5 h-3.5" />
-                  <span>Añadir otra marca</span>
-                </button>
-              </div>
-
-              <div 
-                v-for="(eq, idx) in newPartForm.equivalencias" 
-                :key="`new-eq-${idx}`"
-                class="flex items-center gap-2"
-              >
-                <select
-                  v-model="eq.marca_alterna"
-                  class="w-36 px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none"
-                >
-                  <option value="Dokuro">Dokuro</option>
-                  <option value="Rik">Rik</option>
-                  <option value="NPR">NPR</option>
-                  <option value="NDC">NDC</option>
-                  <option value="Taiho">Taiho</option>
-                  <option value="Ajusa">Ajusa</option>
-                  <option value="Pioneer">Pioneer</option>
-                </select>
-
-                <input
-                  v-model="eq.codigo_alterno"
-                  type="text"
-                  placeholder="Código de parte alterno (ej. 21-2856)"
-                  class="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white"
-                />
-
-                <button
-                  v-if="newPartForm.equivalencias.length > 1"
-                  type="button"
-                  @click="removeEquivalenceRow(idx)"
-                  class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
-                  title="Eliminar fila"
-                >
-                  <X class="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-          </div>
-
-          <div class="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
-            <button
-              type="button"
-              @click="isAddModalOpen = false"
-              class="px-4 py-2 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100"
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="button"
-              @click="handleSaveNewPart"
-              :disabled="isSubmittingNewPart"
-              class="px-5 py-2 bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition"
-            >
-              <Loader2 v-if="isSubmittingNewPart" class="w-4 h-4 animate-spin" />
-              <Check v-else class="w-4 h-4" />
-              <span>Guardar en Supabase</span>
-            </button>
-          </div>
-
-        </div>
-      </div>
-    </Transition>
+    <AdminCatalogModal
+      :is-open="isAdminModalOpen"
+      :initial-tab="adminModalTab"
+      :preselected-group-id="selectedComponent?.id"
+      @close="isAdminModalOpen = false"
+      @part-created="onPartCreated"
+      @group-created="onGroupCreated"
+    />
 
   </div>
 </template>

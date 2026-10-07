@@ -5,7 +5,9 @@ import {
   type Fabricante, 
   type Modelo, 
   type Motor, 
-  type RepuestoTecnico
+  type RepuestoTecnico,
+  type GrupoRepuesto,
+  type GrupoRepuestoInsert
 } from '@/services/catalogService'
 
 export const useCatalogStore = defineStore('catalog', () => {
@@ -14,6 +16,7 @@ export const useCatalogStore = defineStore('catalog', () => {
   const modelos = ref<Modelo[]>([])
   const motores = ref<Motor[]>([])
   const repuestos = ref<RepuestoTecnico[]>([])
+  const grupos = ref<GrupoRepuesto[]>([])
 
   // Filtros reactivos en cascada (Fabricante -> Modelo -> Motor)
   const selectedFabricanteId = ref<string | null>(null)
@@ -30,6 +33,7 @@ export const useCatalogStore = defineStore('catalog', () => {
   const loadingModelos = ref<boolean>(false)
   const loadingMotores = ref<boolean>(false)
   const loadingRepuestos = ref<boolean>(false)
+  const loadingGrupos = ref<boolean>(false)
   const isSearching = ref<boolean>(false)
   const isSaving = ref<boolean>(false)
 
@@ -289,13 +293,52 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Carga los grupos o familias de piezas y sus esquemas paramétricos desde Supabase/local
+   */
+  async function fetchGrupos() {
+    loadingGrupos.value = true
+    try {
+      grupos.value = await catalogService.getGrupos()
+    } catch (err: unknown) {
+      console.warn('Error al cargar grupos:', err)
+    } finally {
+      loadingGrupos.value = false
+    }
+  }
+
+  /**
+   * Crea una nueva familia / grupo de repuestos con sus parámetros dinámicos requeridos
+   */
+  async function createGrupo(grupoData: GrupoRepuestoInsert) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const created = await catalogService.createGrupo(grupoData)
+      const idx = grupos.value.findIndex(g => g.id === created.id || g.codigo === created.codigo)
+      if (idx >= 0) {
+        grupos.value[idx] = created
+      } else {
+        grupos.value.push(created)
+      }
+      return created
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al guardar el nuevo grupo en Supabase'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
    * Inicialización del catálogo
    */
   async function initCatalog() {
     await Promise.all([
       fetchFabricantes(),
       fetchModelos(),
-      fetchMotores()
+      fetchMotores(),
+      fetchGrupos()
     ])
   }
 
@@ -305,6 +348,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     modelos,
     motores,
     repuestos,
+    grupos,
     selectedFabricanteId,
     selectedModeloId,
     selectedMotorId,
@@ -315,6 +359,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     loadingModelos,
     loadingMotores,
     loadingRepuestos,
+    loadingGrupos,
     isSearching,
     isSaving,
     error,
@@ -332,6 +377,8 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchModelos,
     fetchMotores,
     fetchRepuestosByMotor,
+    fetchGrupos,
+    createGrupo,
     searchParts,
     selectFabricante,
     selectModelo,

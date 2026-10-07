@@ -60,6 +60,48 @@ export interface Equivalencia {
   especificaciones_tecnicas?: Record<string, unknown>
 }
 
+export type ParametroTipoDato = 'numero' | 'texto' | 'booleano' | 'seleccion'
+
+export interface ParametroTecnicoDefinicion {
+  id: string
+  clave: string
+  etiqueta: string
+  unidad: string
+  tipo_dato: ParametroTipoDato
+  requerido: boolean
+  descripcion?: string
+  opciones?: string[]
+  valor_minimo?: number
+  valor_maximo?: number
+}
+
+export interface GrupoRepuesto {
+  id: string
+  codigo: string
+  nombre: string
+  categoria: string
+  subsistema: string
+  descripcion?: string
+  icono?: string
+  parametros: ParametroTecnicoDefinicion[]
+  activo: boolean
+  orden_visual?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface GrupoRepuestoInsert {
+  codigo?: string
+  nombre: string
+  categoria: string
+  subsistema?: string
+  descripcion?: string
+  icono?: string
+  parametros: ParametroTecnicoDefinicion[]
+  activo?: boolean
+  orden_visual?: number
+}
+
 export interface RepuestoTecnico {
   id: string
   motor_id?: string
@@ -169,6 +211,132 @@ export interface CatalogProduct {
 // =============================================================================
 // DATOS MOCK REALISTAS DEL TALLER JR BLANCO (DOKURO, RIK, NPR, NDC, AJUSA, PIONEER)
 // =============================================================================
+
+export const LOCAL_GROUPS_STORAGE_KEY = 'swgora_grupos_repuestos_v1'
+export const LOCAL_PARTS_STORAGE_KEY = 'swgora_custom_repuestos_v1'
+
+export const mockGruposRepuestos: GrupoRepuesto[] = [
+  {
+    id: 'grp-1',
+    codigo: 'ajuste_valvula',
+    nombre: 'Ajuste de válvula',
+    categoria: 'Sellos',
+    subsistema: 'Sellos y Juntas',
+    descripcion: 'Sellos y retenes de guía de válvula (Vitón / Alta temperatura)',
+    icono: 'CircleDot',
+    activo: true,
+    orden_visual: 1,
+    parametros: [
+      { id: 'p_sello_1', clave: 'diametro_interior_mm', etiqueta: 'Diámetro Interior', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Medida interna del retén' },
+      { id: 'p_sello_2', clave: 'diametro_exterior_mm', etiqueta: 'Diámetro Exterior', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro de alojamiento en la guía' },
+      { id: 'p_sello_3', clave: 'altura_mm', etiqueta: 'Altura Total', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Altura de la falda del sello' }
+    ]
+  },
+  {
+    id: 'grp-2',
+    codigo: 'valvula',
+    nombre: 'Válvula de motor',
+    categoria: 'Válvulas',
+    subsistema: 'Culata',
+    descripcion: 'Válvulas de admisión y escape estándar y sobremedida',
+    icono: 'Wrench',
+    activo: true,
+    orden_visual: 2,
+    parametros: [
+      { id: 'p_valv_1', clave: 'diametro_cabeza_mm', etiqueta: 'Diámetro de Cabeza (Hongo)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro mayor del plato o hongo' },
+      { id: 'p_valv_2', clave: 'diametro_vastago_mm', etiqueta: 'Diámetro de Vástago', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del vástago' },
+      { id: 'p_valv_3', clave: 'longitud_total_mm', etiqueta: 'Longitud Total', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Largo de punta a cabeza' },
+      { id: 'p_valv_4', clave: 'angulo_asiento_grados', etiqueta: 'Ángulo de Asiento', unidad: '°', tipo_dato: 'numero', requerido: false, descripcion: 'Ángulo de rectificación (ej. 45°)' },
+      { id: 'p_valv_5', clave: 'tipo_valvula', etiqueta: 'Tipo de Válvula', unidad: '', tipo_dato: 'seleccion', requerido: true, opciones: ['Admisión', 'Escape'], descripcion: 'Función en la culata' }
+    ]
+  },
+  {
+    id: 'grp-3',
+    codigo: 'anillos_motor',
+    nombre: 'Anillos de motor',
+    categoria: 'Anillos',
+    subsistema: 'Block',
+    descripcion: 'Juegos de aros de pistón (Desglose explícito 1°, 2° y aceite)',
+    icono: 'Layers',
+    activo: true,
+    orden_visual: 3,
+    parametros: [
+      { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de Cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Calibre del orificio del cilindro' },
+      { id: 'p_anil_2', clave: 'espesor_anillo1_mm', etiqueta: 'Espesor 1° Anillo (Compresión)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del aro superior' },
+      { id: 'p_anil_3', clave: 'espesor_anillo2_mm', etiqueta: 'Espesor 2° Anillo (Raspador)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del segundo aro' },
+      { id: 'p_anil_4', clave: 'espesor_aceite_mm', etiqueta: 'Espesor Anillo de Aceite', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del aro rascador de aceite' }
+    ]
+  },
+  {
+    id: 'grp-4',
+    codigo: 'tornillos_culata',
+    nombre: 'Juego de tornillos de culata',
+    categoria: 'Pernos',
+    subsistema: 'Culata',
+    descripcion: 'Tornillos y pernos de apriete para culata de cilindros',
+    icono: 'FileText',
+    activo: true,
+    orden_visual: 4,
+    parametros: [
+      { id: 'p_pern_1', clave: 'medida_rosca', etiqueta: 'Medida de Rosca', unidad: '', tipo_dato: 'texto', requerido: true, descripcion: 'Métrica de rosca (ej. M10, M11, M12)' },
+      { id: 'p_pern_2', clave: 'paso_rosca_mm', etiqueta: 'Paso de Rosca', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Paso entre crestas (ej. 1.25, 1.50)' },
+      { id: 'p_pern_3', clave: 'longitud_perno_mm', etiqueta: 'Longitud del Perno', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Largo del espárrago bajo cabeza' },
+      { id: 'p_pern_4', clave: 'cantidad_piezas', etiqueta: 'Cantidad de Piezas', unidad: 'piezas', tipo_dato: 'numero', requerido: true, descripcion: 'Tornillos por juego' }
+    ]
+  }
+]
+
+function getLocalDynamicGrupos(): GrupoRepuesto[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalDynamicGrupo(grupo: GrupoRepuesto): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalDynamicGrupos()
+    const idx = list.findIndex(g => g.codigo === grupo.codigo || g.id === grupo.id)
+    if (idx >= 0) {
+      list[idx] = grupo
+    } else {
+      list.push(grupo)
+    }
+    localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error guardando grupo en localStorage:', e)
+  }
+}
+
+function getLocalCustomRepuestos(): RepuestoTecnico[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LOCAL_PARTS_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalCustomRepuesto(part: RepuestoTecnico): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalCustomRepuestos()
+    const idx = list.findIndex(p => p.id === part.id || p.codigo_oem === part.codigo_oem)
+    if (idx >= 0) {
+      list[idx] = part
+    } else {
+      list.unshift(part)
+    }
+    localStorage.setItem(LOCAL_PARTS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error guardando repuesto en localStorage:', e)
+  }
+}
 
 export const mockFabricantes: Fabricante[] = [
   { id: 'fab-1', nombre: 'Toyota', pais_origen: 'Japón', logo_url: 'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?w=120&auto=format&fit=crop&q=80', activo: true, orden_visual: 1, engines_count: 5 },
@@ -2120,6 +2288,123 @@ export const catalogService = {
   },
 
   /**
+   * Obtiene la lista de grupos / familias de piezas y sus esquemas paramétricos técnicos
+   */
+  async getGrupos(): Promise<GrupoRepuesto[]> {
+    const localGrupos = getLocalDynamicGrupos()
+
+    try {
+      const { data, error } = await supabase
+        .from('grupos_repuestos')
+        .select('*')
+        .eq('activo', true)
+        .order('orden_visual', { ascending: true })
+
+      if (!error && data && data.length > 0) {
+        const fromDb: GrupoRepuesto[] = data.map((row: Record<string, unknown>) => ({
+          id: String(row.id),
+          codigo: String(row.codigo),
+          nombre: String(row.nombre),
+          categoria: String(row.categoria),
+          subsistema: String(row.subsistema || 'Block'),
+          descripcion: row.descripcion ? String(row.descripcion) : undefined,
+          icono: row.icono ? String(row.icono) : 'Layers',
+          parametros: Array.isArray(row.parametros) ? (row.parametros as ParametroTecnicoDefinicion[]) : [],
+          activo: Boolean(row.activo),
+          orden_visual: Number(row.orden_visual || 0),
+          created_at: row.created_at ? String(row.created_at) : undefined,
+          updated_at: row.updated_at ? String(row.updated_at) : undefined
+        }))
+
+        // Fusionar con grupos locales creados que no estén en BD
+        const merged = [...fromDb]
+        for (const loc of localGrupos) {
+          if (!merged.some(m => m.codigo === loc.codigo || m.id === loc.id)) {
+            merged.push(loc)
+          }
+        }
+        return merged
+      }
+    } catch (e) {
+      console.warn('[CatalogService] Error consultando grupos_repuestos en Supabase, usando respaldo:', e)
+    }
+
+    // Fallback a mockGruposRepuestos + grupos locales
+    const merged = [...mockGruposRepuestos]
+    for (const loc of localGrupos) {
+      if (!merged.some(m => m.codigo === loc.codigo || m.id === loc.id)) {
+        merged.push(loc)
+      }
+    }
+    return merged
+  },
+
+  /**
+   * Obtiene un grupo por su código único
+   */
+  async getGrupoByCodigo(codigo: string): Promise<GrupoRepuesto | null> {
+    const list = await this.getGrupos()
+    return list.find(g => g.codigo === codigo) || null
+  },
+
+  /**
+   * Registra un nuevo grupo o familia de piezas con sus parámetros técnicos requeridos
+   */
+  async createGrupo(grupoData: GrupoRepuestoInsert): Promise<GrupoRepuesto> {
+    const slug = (grupoData.codigo || grupoData.nombre)
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+
+    const newGroup: GrupoRepuesto = {
+      id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      codigo: slug,
+      nombre: grupoData.nombre.trim(),
+      categoria: grupoData.categoria.trim() || grupoData.nombre.trim(),
+      subsistema: grupoData.subsistema || 'Block',
+      descripcion: grupoData.descripcion?.trim() || undefined,
+      icono: grupoData.icono || 'Layers',
+      parametros: grupoData.parametros || [],
+      activo: grupoData.activo !== false,
+      orden_visual: grupoData.orden_visual || 10,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    // Intentar inserción en Supabase
+    try {
+      const { data, error } = await supabase
+        .from('grupos_repuestos')
+        .insert({
+          codigo: newGroup.codigo,
+          nombre: newGroup.nombre,
+          categoria: newGroup.categoria,
+          subsistema: newGroup.subsistema,
+          descripcion: newGroup.descripcion,
+          icono: newGroup.icono,
+          parametros: newGroup.parametros,
+          activo: newGroup.activo,
+          orden_visual: newGroup.orden_visual
+        })
+        .select('*')
+        .single()
+
+      if (!error && data) {
+        newGroup.id = String(data.id)
+      }
+    } catch (err) {
+      console.warn('[CatalogService] No se pudo guardar grupo en Supabase directamente, guardando en cache local:', err)
+    }
+
+    // Persistir siempre en localStorage para disponibilidad inmediata
+    saveLocalDynamicGrupo(newGroup)
+    return newGroup
+  },
+
+  /**
    * Registra un nuevo repuesto técnico con sus equivalencias directamente en Supabase
    */
   async createRepuesto(
@@ -2164,42 +2449,97 @@ export const catalogService = {
       especificaciones_tecnicas: part.especificaciones_tecnicas || {}
     }
 
-    const { data: insertedPart, error: partError } = await supabase
-      .from('repuestos_tecnicos')
-      .insert(insertPayload)
-      .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
-      .single()
+    try {
+      const { data: insertedPart, error: partError } = await supabase
+        .from('repuestos_tecnicos')
+        .insert(insertPayload)
+        .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+        .single()
 
-    if (partError || !insertedPart) {
-      throw new Error(partError?.message || 'Error al registrar el repuesto en Supabase')
-    }
+      if (!partError && insertedPart) {
+        let createdEquivs: Equivalencia[] = []
+        if (equivalencias && equivalencias.length > 0) {
+          const equivRows = equivalencias
+            .filter(eq => eq.marca_alterna && eq.codigo_alterno)
+            .map(eq => ({
+              repuesto_id: insertedPart.id,
+              marca_alterna: eq.marca_alterna.trim(),
+              codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
+              notas: eq.notas || null
+            }))
 
-    let createdEquivs: Equivalencia[] = []
-    if (equivalencias && equivalencias.length > 0) {
-      const equivRows = equivalencias
-        .filter(eq => eq.marca_alterna && eq.codigo_alterno)
-        .map(eq => ({
-          repuesto_id: insertedPart.id,
-          marca_alterna: eq.marca_alterna.trim(),
-          codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
-          notas: eq.notas || null
-        }))
-
-      if (equivRows.length > 0) {
-        const { data: savedEquivs } = await supabase
-          .from('equivalencias_repuestos')
-          .insert(equivRows)
-          .select('*')
-        if (savedEquivs) {
-          createdEquivs = savedEquivs as Equivalencia[]
+          if (equivRows.length > 0) {
+            const { data: savedEquivs } = await supabase
+              .from('equivalencias_repuestos')
+              .insert(equivRows)
+              .select('*')
+            if (savedEquivs) {
+              createdEquivs = savedEquivs as Equivalencia[]
+            }
+          }
         }
+
+        const mapped = mapDbRepuestoToFrontend({
+          ...insertedPart,
+          equivalencias: createdEquivs
+        })
+        saveLocalCustomRepuesto(mapped)
+        mockRepuestos.unshift(mapped)
+        return mapped
       }
+    } catch (err) {
+      console.warn('[CatalogService] Inserción en Supabase falló, usando respaldo local:', err)
     }
 
-    return mapDbRepuestoToFrontend({
-      ...insertedPart,
-      equivalencias: createdEquivs
-    })
+    // Fallback local garantizado
+    const fallbackId = `part-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
+    const mappedEquivs: Equivalencia[] = (equivalencias || []).map((eq, i) => ({
+      id: `eq-${Date.now()}-${i}`,
+      repuesto_id: fallbackId,
+      marca_alterna: eq.marca_alterna,
+      codigo_alterno: eq.codigo_alterno,
+      notas: eq.notas
+    }))
+
+    const fallbackMotor = part.motor_id ? mockMotores.find(m => m.id === part.motor_id) : undefined
+
+    const fallbackPart: RepuestoTecnico = {
+      id: fallbackId,
+      motor_id: part.motor_id,
+      codigo_oem: insertPayload.codigo_oem,
+      nombre: insertPayload.nombre,
+      subsistema: insertPayload.subsistema,
+      categoria: insertPayload.categoria,
+      precio: insertPayload.precio,
+      stock: insertPayload.stock,
+      estado: insertPayload.estado as any,
+      imagen_url: insertPayload.imagen_url || undefined,
+      catalogo_origen: 'OEM',
+      diametro_cabeza_mm: insertPayload.diametro_cabeza_mm,
+      diametro_vastago_mm: insertPayload.diametro_vastago_mm,
+      longitud_total_mm: insertPayload.longitud_total_mm,
+      angulo_asiento_grados: insertPayload.angulo_asiento_grados,
+      diametro_cilindro_mm: insertPayload.diametro_cilindro_mm,
+      espesor_anillo1_mm: insertPayload.espesor_anillo1_mm,
+      espesor_anillo2_mm: insertPayload.espesor_anillo2_mm,
+      espesor_aceite_mm: insertPayload.espesor_aceite_mm,
+      tipo_cojinete: insertPayload.tipo_cojinete as any,
+      diametro_munon_mm: insertPayload.diametro_munon_mm,
+      diametro_alojamiento_mm: insertPayload.diametro_alojamiento_mm,
+      ancho_casquete_mm: insertPayload.ancho_casquete_mm,
+      medida_rosca: insertPayload.dimensiones?.medida_rosca as any,
+      paso_rosca_mm: insertPayload.dimensiones?.paso_rosca_mm as any,
+      longitud_perno_mm: insertPayload.dimensiones?.longitud_perno_mm as any,
+      cantidad_piezas: insertPayload.dimensiones?.cantidad_piezas as any,
+      dimensiones: insertPayload.dimensiones,
+      especificaciones_tecnicas: insertPayload.especificaciones_tecnicas,
+      equivalencias: mappedEquivs,
+      motor: fallbackMotor
+    }
+
+    saveLocalCustomRepuesto(fallbackPart)
+    mockRepuestos.unshift(fallbackPart)
+    return fallbackPart
   },
 
   /**
