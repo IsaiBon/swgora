@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { 
   ordersService, 
@@ -24,13 +24,13 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle,
-  Package,
   Layers,
   UserCheck,
   Building,
   ChevronDown,
   Filter,
-  RotateCcw
+  RotateCcw,
+  X
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -66,9 +66,12 @@ const docType = ref<DocumentType>('orden')
 
 // Campos Cliente
 const clientSearchQuery = ref('')
+const isSearchingClients = ref(false)
 const clientSearchResults = ref<Cliente[]>([])
 const allRegisteredClients = ref<Cliente[]>([])
 const showClientDropdown = ref(false)
+const clientSearchContainerRef = ref<HTMLElement | null>(null)
+const clientSearchInputRef = ref<HTMLInputElement | null>(null)
 const selectedCustomerId = ref<string | undefined>()
 const selectedCustomerCode = ref<string | undefined>()
 const selectedCustomerType = ref<ClientType | undefined>()
@@ -94,7 +97,8 @@ interface FormOperationItem {
   selected: boolean
   quantity: number | null
   unitPrice: number | null
-  subtotal: number
+  subtotal: number | null
+  lastEdited?: 'price' | 'subtotal'
   isCustom?: boolean
   measure?: string
   measureBanco?: string
@@ -111,71 +115,71 @@ const VALVE_TYPE_OPTIONS = ['EX', 'AD', 'EX Y AD'] as const
 // Todas las opciones inician con cantidad y precio vacíos (null)
 const defaultOperationsCatalog: FormOperationItem[] = [
   // BIELAS (4 operaciones)
-  { id: 'op-bie-1', category: 'Bielas', operation: 'Rectificar Housing', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-bie-2', category: 'Bielas', operation: 'Cambio de Pistones a Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-bie-3', category: 'Bielas', operation: 'Cambio de Bujes a Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-bie-4', category: 'Bielas', operation: 'Adapte de Bujes', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-bie-1', category: 'Bielas', operation: 'Rectificar Housing', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-2', category: 'Bielas', operation: 'Cambio de Pistones a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-3', category: 'Bielas', operation: 'Cambio de Bujes a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-4', category: 'Bielas', operation: 'Adapte de Bujes', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // BANCADAS (3 operaciones)
-  { id: 'op-ban-1', category: 'Bancadas', operation: 'Revisión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-ban-2', category: 'Bancadas', operation: 'Alineado y Rectificado', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-ban-3', category: 'Bancadas', operation: 'Metalizado', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-ban-1', category: 'Bancadas', operation: 'Revisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-ban-2', category: 'Bancadas', operation: 'Alineado y Rectificado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-ban-3', category: 'Bancadas', operation: 'Metalizado', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // CIGÜEÑAL (8 operaciones)
-  { id: 'op-cig-1', category: 'Cigüeñal', operation: 'Enderezar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-2', category: 'Cigüeñal', operation: 'Rectificar Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0, measureBanco: '', measureBiela: '' },
-  { id: 'op-cig-3', category: 'Cigüeñal', operation: 'Pulir Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0, measureBanco: '', measureBiela: '' },
-  { id: 'op-cig-4', category: 'Cigüeñal', operation: 'Pista Sello Delantero', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-5', category: 'Cigüeñal', operation: 'Pista Sello Trasero', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-6', category: 'Cigüeñal', operation: 'Cambio de Balero', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-7', category: 'Cigüeñal', operation: 'Metalizar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-8', category: 'Cigüeñal', operation: 'Polea', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-cig-1', category: 'Cigüeñal', operation: 'Enderezar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-2', category: 'Cigüeñal', operation: 'Rectificar Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
+  { id: 'op-cig-3', category: 'Cigüeñal', operation: 'Pulir Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
+  { id: 'op-cig-4', category: 'Cigüeñal', operation: 'Pista Sello Delantero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-5', category: 'Cigüeñal', operation: 'Pista Sello Trasero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-6', category: 'Cigüeñal', operation: 'Cambio de Balero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-7', category: 'Cigüeñal', operation: 'Metalizar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-8', category: 'Cigüeñal', operation: 'Polea', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // CULATA (13 operaciones)
-  { id: 'op-cul-1', category: 'Culata', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-2', category: 'Culata', operation: 'Rectificar Asientos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-3', category: 'Culata', operation: 'Rectificar Válvulas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-4', category: 'Culata', operation: 'Cambio de Guías y Adapte', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-5', category: 'Culata', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-6', category: 'Culata', operation: 'Reconstruir Pasos de Agua', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-7', category: 'Culata', operation: 'Hacer Asientos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-8', category: 'Culata', operation: 'Sacar y Colocar Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-9', category: 'Culata', operation: 'Ajustar Eje de Leva', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-10', category: 'Culata', operation: 'Extraer Perno Roto', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-11', category: 'Culata', operation: 'Cambio de Sellos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-12', category: 'Culata', operation: 'Armar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-13', category: 'Culata', operation: 'Calibrar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-cul-1', category: 'Culata', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-2', category: 'Culata', operation: 'Rectificar Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-3', category: 'Culata', operation: 'Rectificar Válvulas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-4', category: 'Culata', operation: 'Cambio de Guías y Adapte', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-5', category: 'Culata', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-6', category: 'Culata', operation: 'Reconstruir Pasos de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-7', category: 'Culata', operation: 'Hacer Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-8', category: 'Culata', operation: 'Sacar y Colocar Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-9', category: 'Culata', operation: 'Ajustar Eje de Leva', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-10', category: 'Culata', operation: 'Extraer Perno Roto', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-11', category: 'Culata', operation: 'Cambio de Sellos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-12', category: 'Culata', operation: 'Armar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-13', category: 'Culata', operation: 'Calibrar', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // BLOCKS (10 operaciones)
-  { id: 'op-blo-1', category: 'Block', operation: 'Rectificar Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-blo-2', category: 'Block', operation: 'Bruñir Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-blo-3', category: 'Block', operation: 'Sacar y Colocar Camisas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-4', category: 'Block', operation: 'Cambio de Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-5', category: 'Block', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-6', category: 'Block', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-7', category: 'Block', operation: 'Reparar 1 Cilindro', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-8', category: 'Block', operation: 'Adapte de Camisas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-9', category: 'Block', operation: 'Extraer Pernos Rotos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-10', category: 'Block', operation: 'Tapón de Agua', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-blo-1', category: 'Block', operation: 'Rectificar Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-blo-2', category: 'Block', operation: 'Bruñir Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-blo-3', category: 'Block', operation: 'Sacar y Colocar Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-4', category: 'Block', operation: 'Cambio de Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-5', category: 'Block', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-6', category: 'Block', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-7', category: 'Block', operation: 'Reparar 1 Cilindro', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-8', category: 'Block', operation: 'Adapte de Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-9', category: 'Block', operation: 'Extraer Pernos Rotos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-10', category: 'Block', operation: 'Tapón de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // REPUESTOS (17 ítems extraídos de Diego/ORDEN DE TRABAJO.xlsx)
-  { id: 'op-rep-1', category: 'Repuestos', operation: 'Válvulas de Escape', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-2', category: 'Repuestos', operation: 'Válvulas de Admisión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-3', category: 'Repuestos', operation: 'Guías de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-4', category: 'Repuestos', operation: 'Sellos de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-5', category: 'Repuestos', operation: 'Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-6', category: 'Repuestos', operation: 'Casquetes de Banco', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-rep-7', category: 'Repuestos', operation: 'Casquetes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-rep-8', category: 'Repuestos', operation: 'Lainas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-9', category: 'Repuestos', operation: 'Bujes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-10', category: 'Repuestos', operation: 'Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-11', category: 'Repuestos', operation: 'Jgo de Empaque', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-12', category: 'Repuestos', operation: 'Descarbonado', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-13', category: 'Repuestos', operation: 'Empaque de Culata Ajusa', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-14', category: 'Repuestos', operation: 'Pistones', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-15', category: 'Repuestos', operation: 'Anillos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-16', category: 'Repuestos', operation: 'Camisas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-17', category: 'Repuestos', operation: 'Culata', selected: false, quantity: null, unitPrice: null, subtotal: 0 }
+  { id: 'op-rep-1', category: 'Repuestos', operation: 'Válvulas de Escape', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-2', category: 'Repuestos', operation: 'Válvulas de Admisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-3', category: 'Repuestos', operation: 'Guías de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-4', category: 'Repuestos', operation: 'Sellos de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-5', category: 'Repuestos', operation: 'Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-6', category: 'Repuestos', operation: 'Casquetes de Banco', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-rep-7', category: 'Repuestos', operation: 'Casquetes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-rep-8', category: 'Repuestos', operation: 'Lainas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-9', category: 'Repuestos', operation: 'Bujes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-10', category: 'Repuestos', operation: 'Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-11', category: 'Repuestos', operation: 'Jgo de Empaque', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-12', category: 'Repuestos', operation: 'Descarbonado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-13', category: 'Repuestos', operation: 'Empaque de Culata Ajusa', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-14', category: 'Repuestos', operation: 'Pistones', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-15', category: 'Repuestos', operation: 'Anillos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-16', category: 'Repuestos', operation: 'Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-17', category: 'Repuestos', operation: 'Culata', selected: false, quantity: null, unitPrice: null, subtotal: null }
 ]
 
 // Lista estándar de repuestos comunes de rectificadora del Excel
@@ -209,8 +213,10 @@ const operationSearchQuery = ref<string>('')
 // Entrada para agregar una operación especial o personalizada
 const customCategory = ref<RectificationBlock>('Culata')
 const customOpName = ref('')
-const customOpQty = ref(1)
+const customOpQty = ref<number | null>(1)
 const customOpPrice = ref<number | null>(null)
+const customOpSubtotal = ref<number | null>(null)
+const customOpLastEdited = ref<'price' | 'subtotal'>('price')
 
 // Repuestos y Materiales
 const parts = ref<OrderPartItem[]>([])
@@ -223,10 +229,11 @@ const customPartName = ref('')
 const customPartPrice = ref<number | null>(null)
 const customPartQuantity = ref(1)
 
-// Insumos rápidos
+// Insumos rápidos (solo nombre, sin precio)
 const customMaterialName = ref('')
-const customMaterialPrice = ref<number | null>(null)
-const customMaterialQuantity = ref(1)
+
+// Impuesto IVA (13%)
+const applyIva = ref(false)
 
 // Modal de impresión
 const showPrintModal = ref(false)
@@ -250,10 +257,49 @@ const newClientForm = ref({
 })
 
 
+// Orden canónico de componentes mecánicos
+const CATEGORY_ORDER: Record<RectificationBlock, number> = {
+  'Bielas': 1,
+  'Bancadas': 2,
+  'Cigüeñal': 3,
+  'Culata': 4,
+  'Block': 5,
+  'Repuestos': 6
+}
+
+// Helper para insertar cualquier operación (especial o existente) en la sección de su componente
+const insertOperationInCategory = (item: FormOperationItem) => {
+  // Buscar el último índice de la misma categoría en allOperations
+  let lastCategoryIndex = -1
+  for (let i = allOperations.value.length - 1; i >= 0; i--) {
+    if (allOperations.value[i].category === item.category) {
+      lastCategoryIndex = i
+      break
+    }
+  }
+
+  if (lastCategoryIndex !== -1) {
+    allOperations.value.splice(lastCategoryIndex + 1, 0, item)
+    return
+  }
+
+  // Si no hay operaciones previas de esa categoría, ubicar según orden canónico
+  const targetOrder = CATEGORY_ORDER[item.category] ?? 99
+  const nextCategoryIndex = allOperations.value.findIndex(op => (CATEGORY_ORDER[op.category] ?? 99) > targetOrder)
+  if (nextCategoryIndex !== -1) {
+    allOperations.value.splice(nextCategoryIndex, 0, item)
+  } else {
+    allOperations.value.push(item)
+  }
+}
+
 // Operaciones filtradas para la visualización en la tabla
 const displayedOperations = computed(() => {
-  return allOperations.value.filter(op => {
-    const hasData = op.quantity !== null && Number(op.quantity) > 0 && op.unitPrice !== null && Number(op.unitPrice) > 0
+  const filtered = allOperations.value.filter(op => {
+    const qty = op.quantity !== null ? Number(op.quantity) : 0
+    const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
+    const sub = op.subtotal !== null ? Number(op.subtotal) : 0
+    const hasData = qty > 0 && (price > 0 || sub > 0)
     const matchesCategory = 
       operationFilterCategory.value === 'Todos' ||
       (operationFilterCategory.value === 'ConDatos' ? hasData : op.category === operationFilterCategory.value)
@@ -264,6 +310,13 @@ const displayedOperations = computed(() => {
       op.category.toLowerCase().includes(operationSearchQuery.value.toLowerCase())
 
     return matchesCategory && matchesSearch
+  })
+
+  // Garantizar que siempre se muestren agrupadas por su categoría canónica
+  return filtered.slice().sort((a, b) => {
+    const orderA = CATEGORY_ORDER[a.category] ?? 99
+    const orderB = CATEGORY_ORDER[b.category] ?? 99
+    return orderA - orderB
   })
 })
 
@@ -292,77 +345,145 @@ const isPartWithMeasure = (partName: string) => {
   return lower.includes('casquete') || lower.includes('cojinete')
 }
 
-const isPartWithValveType = (partName: string) => {
-  const lower = partName.toLowerCase()
-  return (lower.includes('guía') || lower.includes('guia')) && (lower.includes('válvula') || lower.includes('valvula'))
-}
-
 // Operaciones activas (con datos ingresados) que se enviarán a la orden y al documento impreso
 const activeBilledOperations = computed(() => {
-  return allOperations.value
-    .filter(op => op.quantity !== null && Number(op.quantity) > 0 && op.unitPrice !== null && Number(op.unitPrice) >= 0 && (op.selected || Number(op.unitPrice) > 0))
-    .map(op => ({
-      id: op.id,
-      category: op.category,
-      operation: op.operation,
-      quantity: Number(op.quantity),
-      unitPrice: Number(op.unitPrice),
-      subtotal: Number((Number(op.quantity) * Number(op.unitPrice)).toFixed(2)),
-      measure: op.measure || undefined,
-      measureBanco: op.measureBanco || undefined,
-      measureBiela: op.measureBiela || undefined
-    }))
+  const list = allOperations.value
+    .filter(op => {
+      const qty = op.quantity !== null ? Number(op.quantity) : 0
+      const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
+      const sub = op.subtotal !== null ? Number(op.subtotal) : 0
+      return qty > 0 && (price > 0 || sub > 0) && (op.selected || price > 0 || sub > 0)
+    })
+    .map(op => {
+      const qty = Number(op.quantity)
+      const sub = op.subtotal !== null && Number(op.subtotal) > 0
+        ? Number(Number(op.subtotal).toFixed(2))
+        : Number((qty * (Number(op.unitPrice) || 0)).toFixed(2))
+      const price = op.unitPrice !== null && Number(op.unitPrice) > 0
+        ? Number(Number(op.unitPrice).toFixed(2))
+        : (qty > 0 ? Number((sub / qty).toFixed(2)) : 0)
+
+      return {
+        id: op.id,
+        category: op.category,
+        operation: op.operation,
+        quantity: qty,
+        unitPrice: price,
+        subtotal: sub,
+        measure: op.measure || undefined,
+        measureBanco: op.measureBanco || undefined,
+        measureBiela: op.measureBiela || undefined
+      }
+    })
+
+  // Asegurar orden estricto por componente/categoría
+  return list.sort((a, b) => {
+    const orderA = CATEGORY_ORDER[a.category] ?? 99
+    const orderB = CATEGORY_ORDER[b.category] ?? 99
+    return orderA - orderB
+  })
 })
 
-// Totales calculados en tiempo real
+// Totales calculados en tiempo real (Mano de obra y servicios)
 const laborTotal = computed(() => {
-  return activeBilledOperations.value
-    .filter(op => op.category !== 'Repuestos')
-    .reduce((acc, curr) => acc + curr.subtotal, 0)
+  return activeBilledOperations.value.reduce((acc, curr) => acc + curr.subtotal, 0)
 })
 
-const partsTotal = computed(() => {
-  const fromRepuestosOperations = activeBilledOperations.value
-    .filter(op => op.category === 'Repuestos')
-    .reduce((acc, curr) => acc + curr.subtotal, 0)
-  const fromPartsList = parts.value.reduce((acc, curr) => acc + (Number(curr.subtotal) || 0), 0)
-  return fromRepuestosOperations + fromPartsList
-})
+const partsTotal = computed(() => 0)
 
-const materialsTotal = computed(() => {
-  return materials.value.reduce((acc, curr) => acc + (Number(curr.subtotal) || 0), 0)
+const materialsTotal = computed(() => 0)
+
+const ivaAmount = computed(() => {
+  if (!applyIva.value) return 0
+  return Number((laborTotal.value * 0.13).toFixed(2))
 })
 
 const totalOrder = computed(() => {
-  return laborTotal.value + partsTotal.value + materialsTotal.value
+  if (!applyIva.value) {
+    return laborTotal.value
+  }
+  return Number((laborTotal.value + ivaAmount.value).toFixed(2))
 })
 
 // Métodos de interacción en la lista unificada de operaciones
-const handleRowToggle = (op: FormOperationItem) => {
-  if (!op.selected) {
-    op.quantity = null
-    op.unitPrice = null
-    op.subtotal = 0
+const handleRowQuantityChange = (op: FormOperationItem) => {
+  const qty = op.quantity !== null && !isNaN(Number(op.quantity)) ? Number(op.quantity) : 0
+  const price = op.unitPrice !== null && !isNaN(Number(op.unitPrice)) ? Number(op.unitPrice) : 0
+  const subtotal = op.subtotal !== null && !isNaN(Number(op.subtotal)) ? Number(op.subtotal) : 0
+
+  if (qty > 0) {
+    op.selected = true
+    if (op.lastEdited === 'subtotal' && subtotal > 0) {
+      // Si el subtotal fue ingresado manualmente, recalcular precio unitario automáticamente
+      op.unitPrice = Number((subtotal / qty).toFixed(2))
+    } else if (price > 0) {
+      // Si el precio unitario fue ingresado manualmente (o por defecto), calcular subtotal automáticamente
+      op.subtotal = Number((qty * price).toFixed(2))
+    } else if (subtotal > 0) {
+      op.unitPrice = Number((subtotal / qty).toFixed(2))
+    }
   } else {
-    // Si se activa con el checkbox pero no hay valores, no poner precios predeterminados
-    if (op.quantity && Number(op.quantity) > 0 && op.unitPrice && Number(op.unitPrice) > 0) {
-      op.subtotal = Number((Number(op.quantity) * Number(op.unitPrice)).toFixed(2))
-    } else {
-      op.subtotal = 0
+    if (price <= 0 && subtotal <= 0) {
+      op.selected = false
+      op.subtotal = null
+      op.unitPrice = null
     }
   }
 }
 
-const handleRowDataChange = (op: FormOperationItem) => {
-  const qty = op.quantity !== null ? Number(op.quantity) : 0
-  const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
-  if (qty > 0 && price > 0) {
+const handleRowPriceChange = (op: FormOperationItem) => {
+  op.lastEdited = 'price'
+  const price = op.unitPrice !== null && !isNaN(Number(op.unitPrice)) ? Number(op.unitPrice) : 0
+
+  if (price > 0) {
     op.selected = true
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.quantity = 1
+    }
+    const qty = Number(op.quantity)
     op.subtotal = Number((qty * price).toFixed(2))
   } else {
-    op.subtotal = 0
-    if ((op.quantity === null || qty <= 0) && (op.unitPrice === null || price <= 0)) {
+    op.subtotal = null
+    if (op.quantity === null || Number(op.quantity) <= 0) {
       op.selected = false
+    }
+  }
+}
+
+const handleRowSubtotalChange = (op: FormOperationItem) => {
+  op.lastEdited = 'subtotal'
+  const subtotal = op.subtotal !== null && !isNaN(Number(op.subtotal)) ? Number(op.subtotal) : 0
+
+  if (subtotal > 0) {
+    op.selected = true
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.quantity = 1
+    }
+    const qty = Number(op.quantity)
+    op.unitPrice = Number((subtotal / qty).toFixed(2))
+  } else {
+    op.unitPrice = null
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.selected = false
+    }
+  }
+}
+
+const handleRowToggle = (op: FormOperationItem) => {
+  if (!op.selected) {
+    op.quantity = null
+    op.unitPrice = null
+    op.subtotal = null
+    op.lastEdited = undefined
+  } else {
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.quantity = 1
+    }
+    const qty = Number(op.quantity)
+    if (op.unitPrice !== null && Number(op.unitPrice) > 0) {
+      op.subtotal = Number((qty * Number(op.unitPrice)).toFixed(2))
+    } else if (op.subtotal !== null && Number(op.subtotal) > 0) {
+      op.unitPrice = Number((Number(op.subtotal) / qty).toFixed(2))
     }
   }
 }
@@ -371,11 +492,14 @@ const handleMeasureChange = (op: FormOperationItem) => {
   const hasMeasure = !!(op.measure || op.measureBanco || op.measureBiela)
   if (hasMeasure) {
     op.selected = true
-    if (op.quantity === null || op.quantity <= 0) {
+    if (op.quantity === null || Number(op.quantity) <= 0) {
       op.quantity = 1
     }
+    const qty = Number(op.quantity)
     if (op.unitPrice !== null && Number(op.unitPrice) > 0) {
-      op.subtotal = Number((Number(op.quantity) * Number(op.unitPrice)).toFixed(2))
+      op.subtotal = Number((qty * Number(op.unitPrice)).toFixed(2))
+    } else if (op.subtotal !== null && Number(op.subtotal) > 0) {
+      op.unitPrice = Number((Number(op.subtotal) / qty).toFixed(2))
     }
   }
 }
@@ -384,7 +508,8 @@ const resetRow = (op: FormOperationItem) => {
   op.selected = false
   op.quantity = null
   op.unitPrice = null
-  op.subtotal = 0
+  op.subtotal = null
+  op.lastEdited = undefined
   op.measure = ''
   op.measureBanco = ''
   op.measureBiela = ''
@@ -394,29 +519,85 @@ const removeCustomOperation = (id: string) => {
   allOperations.value = allOperations.value.filter(o => o.id !== id)
 }
 
+// Métodos para agregar operación especial o personalizada con cálculo bidireccional
+const handleCustomOpQtyChange = () => {
+  const qty = customOpQty.value !== null && Number(customOpQty.value) > 0 ? Number(customOpQty.value) : 0
+  const price = customOpPrice.value !== null && Number(customOpPrice.value) > 0 ? Number(customOpPrice.value) : 0
+  const subtotal = customOpSubtotal.value !== null && Number(customOpSubtotal.value) > 0 ? Number(customOpSubtotal.value) : 0
+
+  if (qty > 0) {
+    if (customOpLastEdited.value === 'subtotal' && subtotal > 0) {
+      customOpPrice.value = Number((subtotal / qty).toFixed(2))
+    } else if (price > 0) {
+      customOpSubtotal.value = Number((qty * price).toFixed(2))
+    } else if (subtotal > 0) {
+      customOpPrice.value = Number((subtotal / qty).toFixed(2))
+    }
+  }
+}
+
+const handleCustomOpPriceChange = () => {
+  customOpLastEdited.value = 'price'
+  const price = customOpPrice.value !== null && Number(customOpPrice.value) > 0 ? Number(customOpPrice.value) : 0
+  if (price > 0) {
+    if (customOpQty.value === null || Number(customOpQty.value) <= 0) {
+      customOpQty.value = 1
+    }
+    const qty = Number(customOpQty.value)
+    customOpSubtotal.value = Number((qty * price).toFixed(2))
+  } else {
+    customOpSubtotal.value = null
+  }
+}
+
+const handleCustomOpSubtotalChange = () => {
+  customOpLastEdited.value = 'subtotal'
+  const subtotal = customOpSubtotal.value !== null && Number(customOpSubtotal.value) > 0 ? Number(customOpSubtotal.value) : 0
+  if (subtotal > 0) {
+    if (customOpQty.value === null || Number(customOpQty.value) <= 0) {
+      customOpQty.value = 1
+    }
+    const qty = Number(customOpQty.value)
+    customOpPrice.value = Number((subtotal / qty).toFixed(2))
+  } else {
+    customOpPrice.value = null
+  }
+}
+
 // Agregar operación especial personalizada a la lista
 const addCustomOperation = () => {
   if (!customOpName.value.trim()) return
 
-  const price = customOpPrice.value !== null && customOpPrice.value >= 0 ? customOpPrice.value : null
-  const qty = customOpQty.value !== null && customOpQty.value > 0 ? customOpQty.value : null
-  const hasData = qty !== null && price !== null && qty > 0 && price > 0
+  const qty = customOpQty.value !== null && customOpQty.value > 0 ? customOpQty.value : 1
+  let price = customOpPrice.value !== null && customOpPrice.value >= 0 ? customOpPrice.value : null
+  let subtotal = customOpSubtotal.value !== null && customOpSubtotal.value >= 0 ? customOpSubtotal.value : null
+
+  if (subtotal !== null && subtotal > 0 && (price === null || price <= 0)) {
+    price = Number((subtotal / qty).toFixed(2))
+  } else if (price !== null && price > 0 && (subtotal === null || subtotal <= 0)) {
+    subtotal = Number((qty * price).toFixed(2))
+  }
+
+  const hasData = qty > 0 && ((price !== null && price > 0) || (subtotal !== null && subtotal > 0))
 
   const newItem: FormOperationItem = {
     id: `custom-op-${Date.now()}`,
     category: customCategory.value,
     operation: customOpName.value.trim(),
     selected: hasData,
-    quantity: qty,
+    quantity: hasData ? qty : null,
     unitPrice: price,
-    subtotal: hasData ? Number((qty * price).toFixed(2)) : 0,
+    subtotal: subtotal !== null ? subtotal : (price !== null ? Number((qty * price).toFixed(2)) : null),
+    lastEdited: customOpLastEdited.value,
     isCustom: true
   }
 
-  allOperations.value.push(newItem)
+  insertOperationInCategory(newItem)
   customOpName.value = ''
   customOpPrice.value = null
+  customOpSubtotal.value = null
   customOpQty.value = 1
+  customOpLastEdited.value = 'price'
 }
 
 // Agregar repuesto rápido de la lista estándar de rectificadora del Excel
@@ -435,6 +616,7 @@ const addExcelPart = (partName: string) => {
 
 // Inicialización de la orden
 onMounted(async () => {
+  document.addEventListener('click', handleClickOutsideClientSearch)
   catalogProducts.value = await catalogService.getProducts()
   await loadAllClients()
 
@@ -467,6 +649,10 @@ onMounted(async () => {
   orderNumber.value = await ordersService.getNextOrderNumber()
 })
 
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutsideClientSearch)
+})
+
 const loadExistingOrder = (order: Order) => {
   orderNumber.value = order.orderNumber
   orderDate.value = order.date
@@ -494,6 +680,7 @@ const loadExistingOrder = (order: Order) => {
   observations.value = order.observations || ''
   parts.value = order.parts ? JSON.parse(JSON.stringify(order.parts)) : []
   materials.value = order.materials ? JSON.parse(JSON.stringify(order.materials)) : []
+  applyIva.value = Boolean(order.hasIva)
 
   // Sincronizar las operaciones existentes en la lista unificada
   if (order.operations && order.operations.length > 0) {
@@ -510,8 +697,8 @@ const loadExistingOrder = (order: Order) => {
         match.measureBanco = savedOp.measureBanco || ''
         match.measureBiela = savedOp.measureBiela || ''
       } else {
-        // Operación personalizada previa
-        allOperations.value.push({
+        // Operación personalizada previa: insertar en la sección de su componente/categoría
+        const customItem: FormOperationItem = {
           id: savedOp.id || `custom-${Date.now()}-${Math.random()}`,
           category: savedOp.category,
           operation: savedOp.operation,
@@ -523,24 +710,28 @@ const loadExistingOrder = (order: Order) => {
           measureBanco: savedOp.measureBanco || '',
           measureBiela: savedOp.measureBiela || '',
           isCustom: true
-        })
+        }
+        insertOperationInCategory(customItem)
       }
     })
   }
 }
 
-// Cargar listado completo de clientes registrados
+// Búsqueda y selección de clientes
 const loadAllClients = async () => {
+  isSearchingClients.value = true
   try {
     const list = await clientesService.getClientes()
-    allRegisteredClients.value = list
+    allRegisteredClients.value = list || []
   } catch (err) {
     console.error('Error cargando clientes:', err)
+  } finally {
+    isSearchingClients.value = false
   }
 }
 
-// Filtrar clientes registrados por código único, nombre, taller o teléfono
-const filterClientResults = () => {
+// Filtrar clientes registrados por código único, nombre, taller o teléfono, o mostrar todos si está vacío
+const filterClients = () => {
   const query = clientSearchQuery.value.trim().toLowerCase()
   if (!query) {
     clientSearchResults.value = [...allRegisteredClients.value]
@@ -551,30 +742,40 @@ const filterClientResults = () => {
       const matchPhone = c.telefono?.toLowerCase().includes(query)
       const matchWorkshop = (c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa || '').toLowerCase().includes(query)
       const matchType = c.tipo?.toLowerCase().includes(query)
-      return matchCode || matchName || matchPhone || matchWorkshop || matchType
+      const matchCedula = (c as any).cedula?.toLowerCase().includes(query)
+      return matchCode || matchName || matchPhone || matchWorkshop || matchType || matchCedula
     })
   }
 }
 
-// Búsqueda reactiva de clientes
-watch(clientSearchQuery, () => {
-  filterClientResults()
-  showClientDropdown.value = true
-})
-
-// Desplegar todo el listado al dar clic o foco en el buscador
+// Al dar clic o enfocar el buscador: mostrar la lista completa si está vacío, o los filtrados
 const handleClientSearchFocus = async () => {
   if (allRegisteredClients.value.length === 0) {
     await loadAllClients()
   }
-  filterClientResults()
+  filterClients()
   showClientDropdown.value = true
 }
 
-const handleClientSearchBlur = () => {
-  setTimeout(() => {
+// Conforme se escribe en el buscador, filtrar dinámicamente en tiempo real
+const handleClientSearchInput = () => {
+  filterClients()
+  showClientDropdown.value = true
+}
+
+// Limpiar búsqueda y desplegar la lista completa
+const clearClientSearch = () => {
+  clientSearchQuery.value = ''
+  filterClients()
+  showClientDropdown.value = true
+  clientSearchInputRef.value?.focus()
+}
+
+// Cerrar dropdown al hacer clic fuera del contenedor del buscador
+const handleClickOutsideClientSearch = (event: MouseEvent) => {
+  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(event.target as Node)) {
     showClientDropdown.value = false
-  }, 250)
+  }
 }
 
 const selectCustomer = (client: Cliente) => {
@@ -644,40 +845,20 @@ const addCustomPart = () => {
   showCatalogModal.value = false
 }
 
-const updatePartSubtotal = (part: OrderPartItem) => {
-  if (part.quantity < 1) part.quantity = 1
-  if (part.unitPrice < 0) part.unitPrice = 0
-  part.subtotal = Number((part.quantity * part.unitPrice).toFixed(2))
-}
-
-const removePart = (id: string) => {
-  parts.value = parts.value.filter(p => p.id !== id)
-}
-
-// Materiales
+// Materiales (solo nombre, sin precio)
 const addMaterial = () => {
   if (!customMaterialName.value.trim()) return
-  const price = customMaterialPrice.value && customMaterialPrice.value >= 0 ? customMaterialPrice.value : 0
-  const qty = customMaterialQuantity.value > 0 ? customMaterialQuantity.value : 1
 
   materials.value.push({
     id: `mat-${Date.now()}`,
     category: 'Materiales',
     name: customMaterialName.value.trim(),
-    quantity: qty,
-    unitPrice: price,
-    subtotal: Number((qty * price).toFixed(2))
+    quantity: 1,
+    unitPrice: 0,
+    subtotal: 0
   })
 
   customMaterialName.value = ''
-  customMaterialPrice.value = null
-  customMaterialQuantity.value = 1
-}
-
-const updateMaterialSubtotal = (mat: OrderMaterialItem) => {
-  if (mat.quantity < 1) mat.quantity = 1
-  if (mat.unitPrice < 0) mat.unitPrice = 0
-  mat.subtotal = Number((mat.quantity * mat.unitPrice).toFixed(2))
 }
 
 const removeMaterial = (id: string) => {
@@ -785,6 +966,9 @@ const handleSaveOrder = async () => {
       laborTotal: laborTotal.value,
       partsTotal: partsTotal.value,
       materialsTotal: materialsTotal.value,
+      hasIva: applyIva.value,
+      subtotal: laborTotal.value,
+      iva: applyIva.value ? ivaAmount.value : 0,
       total: totalOrder.value,
       itemsCount: savedOperations.length + parts.value.length + materials.value.length,
       component: savedOperations[0]?.category || 'Culata',
@@ -1000,32 +1184,61 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
           <!-- Barra de Búsqueda Rápida de Clientes (Código o Nombre) -->
           <div class="flex flex-col sm:flex-row gap-3 relative">
-            <div class="relative flex-1">
+            <div ref="clientSearchContainerRef" class="relative flex-1">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                 <Search class="w-4 h-4" />
               </div>
               <input
+                ref="clientSearchInputRef"
                 v-model="clientSearchQuery"
-                type="text"
                 @focus="handleClientSearchFocus"
                 @click="handleClientSearchFocus"
-                @blur="handleClientSearchBlur"
+                @input="handleClientSearchInput"
+                @keydown.esc="showClientDropdown = false"
+                type="text"
                 placeholder="Buscar por código (ej. CLI-001, TAL-001), nombre o taller (clic para ver todos)..."
-                class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
+                class="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
               />
+              <button
+                v-if="clientSearchQuery"
+                type="button"
+                @click.stop="clearClientSearch"
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition"
+                title="Limpiar búsqueda"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
+
               <!-- Dropdown de resultados de búsqueda -->
               <div
                 v-if="showClientDropdown"
                 class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100"
               >
-                <div v-if="clientSearchResults.length === 0" class="p-4 text-center text-xs text-slate-400">
-                  No se encontraron clientes ni talleristas registrados
+                <!-- Cabecera de estado de la lista -->
+                <div class="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 sticky top-0 z-10">
+                  <span>
+                    {{ clientSearchQuery.trim() ? 'Resultados filtrados' : 'Todos los clientes registrados' }}
+                    ({{ clientSearchResults.length }})
+                  </span>
+                  <span class="text-[10px] text-slate-400 font-normal">
+                    {{ isSearchingClients ? 'Cargando...' : 'Clic para seleccionar' }}
+                  </span>
                 </div>
+
+                <!-- Estado de carga inicial -->
+                <div
+                  v-if="isSearchingClients && clientSearchResults.length === 0"
+                  class="p-4 text-center text-xs text-slate-400 font-medium"
+                >
+                  Cargando lista de clientes...
+                </div>
+
+                <!-- Lista de clientes -->
                 <div
                   v-for="c in clientSearchResults"
                   :key="c.id"
                   @mousedown.prevent="selectCustomer(c)"
-                  class="p-3 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between gap-3 group"
+                  class="p-3 hover:bg-cyan-50/60 cursor-pointer transition flex items-center justify-between gap-3 group"
                 >
                   <div class="flex items-center gap-2.5 min-w-0">
                     <span 
@@ -1066,6 +1279,15 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       {{ c.estado || 'Activo' }}
                     </span>
                   </div>
+                </div>
+
+                <!-- Sin coincidencias -->
+                <div
+                  v-if="!isSearchingClients && clientSearchResults.length === 0"
+                  class="p-4 text-center text-xs text-slate-500 font-medium space-y-1"
+                >
+                  <p>No se encontraron clientes ni talleristas que coincidan con "{{ clientSearchQuery }}".</p>
+                  <p class="text-[11px] text-slate-400">Puedes crearlo usando el botón "Nuevo Cliente".</p>
                 </div>
               </div>
             </div>
@@ -1272,9 +1494,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <th class="px-3 py-2.5 text-center w-24">Cantidad</th>
                   <th class="px-4 py-2.5 text-right w-28">
                     Precio U. ($)
-                    <span class="block text-[9px] font-normal text-slate-500 lowercase">100% manual</span>
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">manual / auto</span>
                   </th>
-                  <th class="px-4 py-2.5 text-right w-28">Sub Total</th>
+                  <th class="px-4 py-2.5 text-right w-28">
+                    Sub Total ($)
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">manual / auto</span>
+                  </th>
                   <th class="px-2 py-2.5 text-center w-10"></th>
                 </tr>
               </thead>
@@ -1284,7 +1509,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   :key="op.id"
                   :class="[
                     'transition',
-                    op.selected && op.quantity !== null && Number(op.quantity) > 0 && op.unitPrice !== null && Number(op.unitPrice) > 0
+                    op.selected && op.quantity !== null && Number(op.quantity) > 0 && ((op.unitPrice !== null && Number(op.unitPrice) > 0) || (op.subtotal !== null && Number(op.subtotal) > 0))
                       ? 'bg-cyan-50/60 hover:bg-cyan-50'
                       : 'hover:bg-slate-50/70'
                   ]"
@@ -1377,9 +1602,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       </div>
                     </div>
 
-                    <!-- Operaciones estándar -->
-                    <div v-else :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                      {{ op.operation }}
+                    <!-- Operaciones estándar o personalizadas -->
+                    <div v-else :class="['font-medium text-slate-900 flex items-center gap-1.5', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
+                      <span>{{ op.operation }}</span>
+                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        Especial
+                      </span>
                     </div>
                   </td>
 
@@ -1387,7 +1615,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <td class="px-3 py-2.5 text-center">
                     <input
                       v-model.number="op.quantity"
-                      @input="handleRowDataChange(op)"
+                      @input="handleRowQuantityChange(op); formErrors.noItems = false"
                       type="number"
                       min="0"
                       placeholder="-"
@@ -1395,13 +1623,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     />
                   </td>
 
-                  <!-- Precio unitario editable flexible (100% manual) -->
+                  <!-- Precio unitario editable flexible (manual o calculado automáticamente desde subtotal) -->
                   <td class="px-4 py-2.5 text-right">
                     <input
                       v-model.number="op.unitPrice"
-                      @input="handleRowDataChange(op); formErrors.noItems = false"
+                      @input="handleRowPriceChange(op); formErrors.noItems = false"
                       type="number"
-                      step="0.5"
+                      step="0.01"
                       min="0"
                       placeholder="$ 0.00"
                       :class="[
@@ -1410,15 +1638,27 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                           ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900 placeholder-amber-400 ring-1 ring-amber-200'
                           : 'border border-slate-300 bg-white text-slate-900'
                       ]"
-                      title="Ingreso 100% manual de precio (sin costos automáticos)"
+                      title="Ingresa precio unitario o escribe subtotal para cálculo automático"
                     />
                   </td>
 
-                  <!-- Subtotal calculado en vivo -->
-                  <td class="px-4 py-2.5 text-right font-black">
-                    <span :class="op.selected && op.subtotal > 0 ? 'text-slate-900' : 'text-slate-300'">
-                      {{ op.selected && op.subtotal > 0 ? `$${op.subtotal.toFixed(2)}` : '-' }}
-                    </span>
+                  <!-- Subtotal editable manual o calculado en vivo -->
+                  <td class="px-4 py-2.5 text-right">
+                    <input
+                      v-model.number="op.subtotal"
+                      @input="handleRowSubtotalChange(op); formErrors.noItems = false"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="$ 0.00"
+                      :class="[
+                        'w-24 text-right rounded-md py-1 px-2 font-bold text-xs transition focus:outline-none focus:ring-1 focus:ring-[#04c4d9]',
+                        op.selected && op.subtotal && op.subtotal > 0
+                          ? 'border border-cyan-400 bg-cyan-50/40 text-slate-900 font-black'
+                          : 'border border-slate-300 bg-white text-slate-900'
+                      ]"
+                      title="Ingresa el subtotal directamente o se calculará automáticamente con cantidad y precio"
+                    />
                   </td>
 
                   <!-- Acción de limpiar o eliminar -->
@@ -1458,8 +1698,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <span class="text-[11px] font-bold text-slate-600 block mb-2">
               + ¿Requieres agregar una operación especial no listada?
             </span>
-            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
               <div class="sm:col-span-3">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1">Componente:</label>
                 <select
                   v-model="customCategory"
                   class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-semibold"
@@ -1472,32 +1713,65 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <option value="Repuestos">Repuestos</option>
                 </select>
               </div>
-              <div class="sm:col-span-5">
+              <div class="sm:col-span-3">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1">Descripción del Servicio:</label>
                 <input
                   v-model="customOpName"
                   type="text"
-                  placeholder="Descripción de la operación especial..."
+                  placeholder="Ej. Rectificar o adaptar pieza..."
                   class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs"
                   @keyup.enter="addCustomOperation"
                 />
               </div>
-              <div class="sm:col-span-2">
+              <div class="sm:col-span-1">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1 text-center">Cant:</label>
                 <input
-                  v-model.number="customOpPrice"
+                  v-model.number="customOpQty"
+                  @input="handleCustomOpQtyChange"
                   type="number"
-                  step="0.5"
-                  placeholder="Precio $"
-                  class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-right"
+                  min="1"
+                  placeholder="1"
+                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-center font-bold"
                   @keyup.enter="addCustomOperation"
                 />
               </div>
               <div class="sm:col-span-2">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1 text-right">P. Unitario ($):</label>
+                <input
+                  v-model.number="customOpPrice"
+                  @input="handleCustomOpPriceChange"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="$ 0.00"
+                  class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-right font-medium"
+                  @keyup.enter="addCustomOperation"
+                  title="Ingresa precio unitario o escribe subtotal para cálculo automático"
+                />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[10px] font-bold text-cyan-700 mb-1 text-right">Subtotal ($):</label>
+                <input
+                  v-model.number="customOpSubtotal"
+                  @input="handleCustomOpSubtotalChange"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="$ 0.00"
+                  class="w-full px-2.5 py-1.5 bg-cyan-50/60 border border-cyan-300 rounded-md text-xs text-right font-bold text-slate-900"
+                  @keyup.enter="addCustomOperation"
+                  title="Ingresa subtotal manual y el precio unitario se calculará automáticamente"
+                />
+              </div>
+              <div class="sm:col-span-1">
                 <button
                   type="button"
                   @click="addCustomOperation"
-                  class="w-full py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-xs font-bold transition flex items-center justify-center gap-1"
+                  class="w-full py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                  title="Agregar servicio"
                 >
-                  <Plus class="w-3.5 h-3.5" /> Agregar
+                  <Plus class="w-3.5 h-3.5" />
+                  <span class="sm:hidden">Agregar</span>
                 </button>
               </div>
             </div>
@@ -1509,169 +1783,59 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <!-- Columna Derecha (5 o 4 de 12 - idéntica a Diego/html/index.html) -->
       <div class="lg:col-span-5 xl:col-span-4 space-y-6">
 
-        <!-- 1. Card Repuestos Facturados -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
-          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-            <h2 class="text-sm font-bold text-[#131523] flex items-center gap-1.5">
-              <Package class="w-4 h-4 text-[#04c4d9]" />
-              Repuestos Facturados
-            </h2>
-            <button
-              type="button"
-              @click="showCatalogModal = true"
-              class="px-2.5 py-1 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-md shadow-xs flex items-center gap-1 transition"
-            >
-              <Plus class="w-3.5 h-3.5" /> Agregar
-            </button>
-          </div>
-
-          <div class="overflow-x-auto max-h-56">
-            <table class="w-full text-xs">
-              <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                <tr>
-                  <th class="px-3 py-2 text-left">Repuesto</th>
-                  <th class="px-2 py-2 text-center w-12">Cant.</th>
-                  <th class="px-3 py-2 text-right w-16">P.U.</th>
-                  <th class="px-3 py-2 text-right w-16">Sub T.</th>
-                  <th class="px-1 py-2 w-8"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="p in parts" :key="p.id">
-                  <td class="px-3 py-2">
-                    <div class="font-bold text-slate-800 leading-tight">{{ p.name }}</div>
-                    <div class="flex items-center gap-2 mt-0.5">
-                      <span class="text-[10px] text-slate-400">{{ p.code || p.category }}</span>
-                      <!-- Selector de Tipo para Guías de Válvula -->
-                      <div v-if="isPartWithValveType(p.name)" class="inline-flex items-center gap-1">
-                        <span class="text-[9px] font-bold text-slate-500 uppercase">Tipo:</span>
-                        <select
-                          v-model="p.measure"
-                          class="bg-white border border-slate-300 text-[10px] font-semibold text-slate-800 rounded px-1 py-0.2 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
-                        >
-                          <option value="">-</option>
-                          <option v-for="t in VALVE_TYPE_OPTIONS" :key="t" :value="t">{{ t }}</option>
-                        </select>
-                      </div>
-                      <!-- Selector de Medida para Casquetes / Cojinetes -->
-                      <div v-else-if="isPartWithMeasure(p.name)" class="inline-flex items-center gap-1">
-                        <span class="text-[9px] font-bold text-slate-500 uppercase">Med:</span>
-                        <select
-                          v-model="p.measure"
-                          class="bg-white border border-slate-300 text-[10px] font-semibold text-slate-800 rounded px-1 py-0.2 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
-                        >
-                          <option value="">-</option>
-                          <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
-                        </select>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-2 py-2 text-center">
-                    <input
-                      v-model.number="p.quantity"
-                      @input="updatePartSubtotal(p)"
-                      type="number"
-                      min="1"
-                      class="w-10 text-center border border-slate-200 rounded py-0.5 text-xs font-bold"
-                    />
-                  </td>
-                  <td class="px-3 py-2 text-right font-medium text-slate-600">
-                    ${{ p.unitPrice.toFixed(2) }}
-                  </td>
-                  <td class="px-3 py-2 text-right font-bold text-slate-900">
-                    ${{ p.subtotal.toFixed(2) }}
-                  </td>
-                  <td class="px-1 py-2 text-center">
-                    <button
-                      type="button"
-                      @click="removePart(p.id)"
-                      class="text-slate-300 hover:text-rose-600 transition"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="parts.length === 0">
-                  <td colspan="5" class="px-3 py-6 text-center text-slate-400 text-xs">
-                    Sin repuestos asociados
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 3. Card Materiales / Insumos de Taller -->
+        <!-- Card Materiales / Insumos de Taller (Solo nombre del material, sin precio $) -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
           <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
             <h2 class="text-sm font-bold text-[#131523] flex items-center gap-1.5">
               <Layers class="w-4 h-4 text-[#04c4d9]" />
               Materiales e Insumos
             </h2>
+            <span class="text-xs text-slate-400 font-semibold">{{ materials.length }} registrado(s)</span>
           </div>
 
-          <!-- Input rápido para agregar material -->
+          <!-- Input rápido para agregar material (solo nombre) -->
           <div class="p-3 bg-slate-50 border-b border-slate-200 flex gap-2 items-center">
             <input
               v-model="customMaterialName"
               type="text"
-              placeholder="Ej. Desengrasante, sellador..."
-              class="flex-1 px-2.5 py-1 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
-              @keyup.enter="addMaterial"
-            />
-            <input
-              v-model.number="customMaterialPrice"
-              type="number"
-              step="0.5"
-              placeholder="$"
-              class="w-16 px-2 py-1 bg-white border border-slate-300 rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+              placeholder="Nombre del material (ej. Desengrasante, sellador, lija...)"
+              class="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
               @keyup.enter="addMaterial"
             />
             <button
               type="button"
               @click="addMaterial"
-              class="px-2.5 py-1 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded shadow-xs"
+              class="px-3 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 transition cursor-pointer"
             >
-              <Plus class="w-3.5 h-3.5" />
+              <Plus class="w-3.5 h-3.5" /> Agregar
             </button>
           </div>
 
-          <div class="overflow-x-auto max-h-48">
-            <table class="w-full text-xs">
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="m in materials" :key="m.id">
-                  <td class="px-3 py-2 font-medium text-slate-800">{{ m.name }}</td>
-                  <td class="px-2 py-2 text-center w-12 font-bold">
-                    <input
-                      v-model.number="m.quantity"
-                      @input="updateMaterialSubtotal(m)"
-                      type="number"
-                      min="1"
-                      class="w-10 text-center border border-slate-200 rounded py-0.5 text-xs font-bold"
-                    />
-                  </td>
-                  <td class="px-3 py-2 text-right w-16 font-bold text-slate-900">${{ m.subtotal.toFixed(2) }}</td>
-                  <td class="px-1 py-2 text-center w-8">
-                    <button
-                      type="button"
-                      @click="removeMaterial(m.id)"
-                      class="text-slate-300 hover:text-rose-600 transition"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="materials.length === 0">
-                  <td colspan="4" class="px-3 py-4 text-center text-slate-400 text-xs">
-                    Sin materiales registrados
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="overflow-x-auto max-h-48 p-3">
+            <div v-if="materials.length > 0" class="flex flex-wrap gap-2">
+              <div
+                v-for="m in materials"
+                :key="m.id"
+                class="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 text-xs px-2.5 py-1 rounded-lg font-medium transition"
+              >
+                <span>{{ m.name }}</span>
+                <button
+                  type="button"
+                  @click="removeMaterial(m.id)"
+                  class="text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                  title="Eliminar material"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <div v-else class="py-4 text-center text-slate-400 text-xs italic">
+              Sin materiales registrados
+            </div>
           </div>
         </div>
 
-        <!-- 4. Card Resumen de la Orden (Idéntica a Diego/html/index.html) -->
+        <!-- Card Resumen de la Orden -->
         <div class="bg-white rounded-xl shadow-md border border-slate-200/80 p-6 space-y-4">
           <div class="flex items-center justify-between border-b pb-3 border-slate-100">
             <h2 class="text-base font-bold text-[#131523]">
@@ -1682,23 +1846,56 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </span>
           </div>
 
-          <div class="space-y-2.5 text-xs text-slate-700">
+          <div class="space-y-2 text-xs text-slate-700">
             <div class="flex justify-between items-center">
-              <span>Sub T. Servicios (Mano de Obra):</span>
+              <span>Mano de Obra (Rectificación):</span>
               <span class="font-bold text-slate-900">${{ laborTotal.toFixed(2) }}</span>
             </div>
-            <div class="flex justify-between items-center">
-              <span>Materiales e Insumos:</span>
-              <span class="font-bold text-slate-900">${{ materialsTotal.toFixed(2) }}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span>Repuestos Facturados:</span>
-              <span class="font-bold text-slate-900">${{ partsTotal.toFixed(2) }}</span>
+            <div v-if="materials.length > 0" class="flex justify-between items-center text-slate-500">
+              <span>Materiales Registrados:</span>
+              <span class="font-semibold text-slate-700">{{ materials.length }} ítem(s) (sin cobro)</span>
             </div>
           </div>
 
-          <div class="pt-4 border-t-2 border-slate-900 flex justify-between items-baseline">
-            <span class="text-base font-bold text-slate-900">Total General:</span>
+          <!-- Opción de IVA (13%) -->
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <label for="toggle-iva" class="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  id="toggle-iva"
+                  type="checkbox"
+                  v-model="applyIva"
+                  class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] focus:ring-2 cursor-pointer"
+                />
+                <span class="text-xs font-bold text-slate-800">
+                  Aplicar IVA (13%)
+                </span>
+              </label>
+              <span v-if="applyIva" class="text-xs font-extrabold text-[#04c4d9] font-mono">
+                +${{ ivaAmount.toFixed(2) }}
+              </span>
+            </div>
+            <p class="text-[10.5px] text-slate-500">
+              {{ applyIva ? 'Se calculará y mostrará el desglose de Sub-Total e IVA en la impresión.' : 'Sin IVA: no se reflejará desglose de impuesto en el documento impreso.' }}
+            </p>
+          </div>
+
+          <!-- Desglose si IVA está activo -->
+          <div v-if="applyIva" class="space-y-1.5 text-xs text-slate-700 pt-2 border-t border-slate-100">
+            <div class="flex justify-between items-center">
+              <span class="font-medium text-slate-600">Sub-Total (Mano de Obra):</span>
+              <span class="font-bold text-slate-900 font-mono">${{ laborTotal.toFixed(2) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="font-medium text-slate-600">IVA (13%):</span>
+              <span class="font-bold text-slate-900 font-mono">${{ ivaAmount.toFixed(2) }}</span>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t-2 border-slate-900 flex justify-between items-baseline">
+            <span class="text-base font-bold text-slate-900">
+              {{ applyIva ? 'Total del Trabajo:' : 'Total General:' }}
+            </span>
             <span class="text-3xl font-black text-[#04c4d9]">
               ${{ totalOrder.toFixed(2) }}
             </span>
