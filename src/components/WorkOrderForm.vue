@@ -88,7 +88,8 @@ interface FormOperationItem {
   selected: boolean
   quantity: number | null
   unitPrice: number | null
-  subtotal: number
+  subtotal: number | null
+  lastEdited?: 'price' | 'subtotal'
   isCustom?: boolean
   measure?: string
   measureBanco?: string
@@ -105,71 +106,71 @@ const VALVE_TYPE_OPTIONS = ['EX', 'AD', 'EX Y AD'] as const
 // Todas las opciones inician con cantidad y precio vacíos (null)
 const defaultOperationsCatalog: FormOperationItem[] = [
   // BIELAS (4 operaciones)
-  { id: 'op-bie-1', category: 'Bielas', operation: 'Rectificar Housing', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-bie-2', category: 'Bielas', operation: 'Cambio de Pistones a Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-bie-3', category: 'Bielas', operation: 'Cambio de Bujes a Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-bie-4', category: 'Bielas', operation: 'Adapte de Bujes', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-bie-1', category: 'Bielas', operation: 'Rectificar Housing', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-2', category: 'Bielas', operation: 'Cambio de Pistones a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-3', category: 'Bielas', operation: 'Cambio de Bujes a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-4', category: 'Bielas', operation: 'Adapte de Bujes', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // BANCADAS (3 operaciones)
-  { id: 'op-ban-1', category: 'Bancadas', operation: 'Revisión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-ban-2', category: 'Bancadas', operation: 'Alineado y Rectificado', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-ban-3', category: 'Bancadas', operation: 'Metalizado', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-ban-1', category: 'Bancadas', operation: 'Revisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-ban-2', category: 'Bancadas', operation: 'Alineado y Rectificado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-ban-3', category: 'Bancadas', operation: 'Metalizado', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // CIGÜEÑAL (8 operaciones)
-  { id: 'op-cig-1', category: 'Cigüeñal', operation: 'Enderezar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-2', category: 'Cigüeñal', operation: 'Rectificar Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0, measureBanco: '', measureBiela: '' },
-  { id: 'op-cig-3', category: 'Cigüeñal', operation: 'Pulir Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0, measureBanco: '', measureBiela: '' },
-  { id: 'op-cig-4', category: 'Cigüeñal', operation: 'Pista Sello Delantero', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-5', category: 'Cigüeñal', operation: 'Pista Sello Trasero', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-6', category: 'Cigüeñal', operation: 'Cambio de Balero', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-7', category: 'Cigüeñal', operation: 'Metalizar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cig-8', category: 'Cigüeñal', operation: 'Polea', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-cig-1', category: 'Cigüeñal', operation: 'Enderezar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-2', category: 'Cigüeñal', operation: 'Rectificar Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
+  { id: 'op-cig-3', category: 'Cigüeñal', operation: 'Pulir Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
+  { id: 'op-cig-4', category: 'Cigüeñal', operation: 'Pista Sello Delantero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-5', category: 'Cigüeñal', operation: 'Pista Sello Trasero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-6', category: 'Cigüeñal', operation: 'Cambio de Balero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-7', category: 'Cigüeñal', operation: 'Metalizar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-8', category: 'Cigüeñal', operation: 'Polea', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // CULATA (13 operaciones)
-  { id: 'op-cul-1', category: 'Culata', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-2', category: 'Culata', operation: 'Rectificar Asientos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-3', category: 'Culata', operation: 'Rectificar Válvulas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-4', category: 'Culata', operation: 'Cambio de Guías y Adapte', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-5', category: 'Culata', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-6', category: 'Culata', operation: 'Reconstruir Pasos de Agua', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-7', category: 'Culata', operation: 'Hacer Asientos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-8', category: 'Culata', operation: 'Sacar y Colocar Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-9', category: 'Culata', operation: 'Ajustar Eje de Leva', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-10', category: 'Culata', operation: 'Extraer Perno Roto', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-11', category: 'Culata', operation: 'Cambio de Sellos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-12', category: 'Culata', operation: 'Armar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-cul-13', category: 'Culata', operation: 'Calibrar', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-cul-1', category: 'Culata', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-2', category: 'Culata', operation: 'Rectificar Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-3', category: 'Culata', operation: 'Rectificar Válvulas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-4', category: 'Culata', operation: 'Cambio de Guías y Adapte', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-5', category: 'Culata', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-6', category: 'Culata', operation: 'Reconstruir Pasos de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-7', category: 'Culata', operation: 'Hacer Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-8', category: 'Culata', operation: 'Sacar y Colocar Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-9', category: 'Culata', operation: 'Ajustar Eje de Leva', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-10', category: 'Culata', operation: 'Extraer Perno Roto', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-11', category: 'Culata', operation: 'Cambio de Sellos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-12', category: 'Culata', operation: 'Armar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-13', category: 'Culata', operation: 'Calibrar', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // BLOCKS (10 operaciones)
-  { id: 'op-blo-1', category: 'Block', operation: 'Rectificar Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-blo-2', category: 'Block', operation: 'Bruñir Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-blo-3', category: 'Block', operation: 'Sacar y Colocar Camisas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-4', category: 'Block', operation: 'Cambio de Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-5', category: 'Block', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-6', category: 'Block', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-7', category: 'Block', operation: 'Reparar 1 Cilindro', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-8', category: 'Block', operation: 'Adapte de Camisas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-9', category: 'Block', operation: 'Extraer Pernos Rotos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-blo-10', category: 'Block', operation: 'Tapón de Agua', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
+  { id: 'op-blo-1', category: 'Block', operation: 'Rectificar Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-blo-2', category: 'Block', operation: 'Bruñir Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-blo-3', category: 'Block', operation: 'Sacar y Colocar Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-4', category: 'Block', operation: 'Cambio de Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-5', category: 'Block', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-6', category: 'Block', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-7', category: 'Block', operation: 'Reparar 1 Cilindro', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-8', category: 'Block', operation: 'Adapte de Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-9', category: 'Block', operation: 'Extraer Pernos Rotos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-10', category: 'Block', operation: 'Tapón de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
 
   // REPUESTOS (17 ítems extraídos de Diego/ORDEN DE TRABAJO.xlsx)
-  { id: 'op-rep-1', category: 'Repuestos', operation: 'Válvulas de Escape', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-2', category: 'Repuestos', operation: 'Válvulas de Admisión', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-3', category: 'Repuestos', operation: 'Guías de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-4', category: 'Repuestos', operation: 'Sellos de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-5', category: 'Repuestos', operation: 'Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-6', category: 'Repuestos', operation: 'Casquetes de Banco', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-rep-7', category: 'Repuestos', operation: 'Casquetes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0, measure: '' },
-  { id: 'op-rep-8', category: 'Repuestos', operation: 'Lainas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-9', category: 'Repuestos', operation: 'Bujes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-10', category: 'Repuestos', operation: 'Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-11', category: 'Repuestos', operation: 'Jgo de Empaque', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-12', category: 'Repuestos', operation: 'Descarbonado', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-13', category: 'Repuestos', operation: 'Empaque de Culata Ajusa', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-14', category: 'Repuestos', operation: 'Pistones', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-15', category: 'Repuestos', operation: 'Anillos', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-16', category: 'Repuestos', operation: 'Camisas', selected: false, quantity: null, unitPrice: null, subtotal: 0 },
-  { id: 'op-rep-17', category: 'Repuestos', operation: 'Culata', selected: false, quantity: null, unitPrice: null, subtotal: 0 }
+  { id: 'op-rep-1', category: 'Repuestos', operation: 'Válvulas de Escape', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-2', category: 'Repuestos', operation: 'Válvulas de Admisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-3', category: 'Repuestos', operation: 'Guías de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-4', category: 'Repuestos', operation: 'Sellos de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-5', category: 'Repuestos', operation: 'Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-6', category: 'Repuestos', operation: 'Casquetes de Banco', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-rep-7', category: 'Repuestos', operation: 'Casquetes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-rep-8', category: 'Repuestos', operation: 'Lainas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-9', category: 'Repuestos', operation: 'Bujes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-10', category: 'Repuestos', operation: 'Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-11', category: 'Repuestos', operation: 'Jgo de Empaque', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-12', category: 'Repuestos', operation: 'Descarbonado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-13', category: 'Repuestos', operation: 'Empaque de Culata Ajusa', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-14', category: 'Repuestos', operation: 'Pistones', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-15', category: 'Repuestos', operation: 'Anillos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-16', category: 'Repuestos', operation: 'Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-17', category: 'Repuestos', operation: 'Culata', selected: false, quantity: null, unitPrice: null, subtotal: null }
 ]
 
 // Lista estándar de repuestos comunes de rectificadora del Excel
@@ -203,8 +204,10 @@ const operationSearchQuery = ref<string>('')
 // Entrada para agregar una operación especial o personalizada
 const customCategory = ref<RectificationBlock>('Culata')
 const customOpName = ref('')
-const customOpQty = ref(1)
+const customOpQty = ref<number | null>(1)
 const customOpPrice = ref<number | null>(null)
+const customOpSubtotal = ref<number | null>(null)
+const customOpLastEdited = ref<'price' | 'subtotal'>('price')
 
 // Repuestos y Materiales
 const parts = ref<OrderPartItem[]>([])
@@ -249,7 +252,10 @@ const newClientForm = ref({
 // Operaciones filtradas para la visualización en la tabla
 const displayedOperations = computed(() => {
   return allOperations.value.filter(op => {
-    const hasData = op.quantity !== null && Number(op.quantity) > 0 && op.unitPrice !== null && Number(op.unitPrice) > 0
+    const qty = op.quantity !== null ? Number(op.quantity) : 0
+    const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
+    const sub = op.subtotal !== null ? Number(op.subtotal) : 0
+    const hasData = qty > 0 && (price > 0 || sub > 0)
     const matchesCategory = 
       operationFilterCategory.value === 'Todos' ||
       (operationFilterCategory.value === 'ConDatos' ? hasData : op.category === operationFilterCategory.value)
@@ -291,25 +297,38 @@ const isPartWithMeasure = (partName: string) => {
 // Operaciones activas (con datos ingresados) que se enviarán a la orden y al documento impreso
 const activeBilledOperations = computed(() => {
   return allOperations.value
-    .filter(op => op.quantity !== null && Number(op.quantity) > 0 && op.unitPrice !== null && Number(op.unitPrice) >= 0 && (op.selected || Number(op.unitPrice) > 0))
-    .map(op => ({
-      id: op.id,
-      category: op.category,
-      operation: op.operation,
-      quantity: Number(op.quantity),
-      unitPrice: Number(op.unitPrice),
-      subtotal: Number((Number(op.quantity) * Number(op.unitPrice)).toFixed(2)),
-      measure: op.measure || undefined,
-      measureBanco: op.measureBanco || undefined,
-      measureBiela: op.measureBiela || undefined
-    }))
+    .filter(op => {
+      const qty = op.quantity !== null ? Number(op.quantity) : 0
+      const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
+      const sub = op.subtotal !== null ? Number(op.subtotal) : 0
+      return qty > 0 && (price > 0 || sub > 0) && (op.selected || price > 0 || sub > 0)
+    })
+    .map(op => {
+      const qty = Number(op.quantity)
+      const sub = op.subtotal !== null && Number(op.subtotal) > 0
+        ? Number(Number(op.subtotal).toFixed(2))
+        : Number((qty * (Number(op.unitPrice) || 0)).toFixed(2))
+      const price = op.unitPrice !== null && Number(op.unitPrice) > 0
+        ? Number(Number(op.unitPrice).toFixed(2))
+        : (qty > 0 ? Number((sub / qty).toFixed(2)) : 0)
+
+      return {
+        id: op.id,
+        category: op.category,
+        operation: op.operation,
+        quantity: qty,
+        unitPrice: price,
+        subtotal: sub,
+        measure: op.measure || undefined,
+        measureBanco: op.measureBanco || undefined,
+        measureBiela: op.measureBiela || undefined
+      }
+    })
 })
 
-// Totales calculados en tiempo real (Mano de obra)
+// Totales calculados en tiempo real (Mano de obra y servicios)
 const laborTotal = computed(() => {
-  return activeBilledOperations.value
-    .filter(op => op.category !== 'Repuestos')
-    .reduce((acc, curr) => acc + curr.subtotal, 0)
+  return activeBilledOperations.value.reduce((acc, curr) => acc + curr.subtotal, 0)
 })
 
 const partsTotal = computed(() => 0)
@@ -329,31 +348,84 @@ const totalOrder = computed(() => {
 })
 
 // Métodos de interacción en la lista unificada de operaciones
-const handleRowToggle = (op: FormOperationItem) => {
-  if (!op.selected) {
-    op.quantity = null
-    op.unitPrice = null
-    op.subtotal = 0
+const handleRowQuantityChange = (op: FormOperationItem) => {
+  const qty = op.quantity !== null && !isNaN(Number(op.quantity)) ? Number(op.quantity) : 0
+  const price = op.unitPrice !== null && !isNaN(Number(op.unitPrice)) ? Number(op.unitPrice) : 0
+  const subtotal = op.subtotal !== null && !isNaN(Number(op.subtotal)) ? Number(op.subtotal) : 0
+
+  if (qty > 0) {
+    op.selected = true
+    if (op.lastEdited === 'subtotal' && subtotal > 0) {
+      // Si el subtotal fue ingresado manualmente, recalcular precio unitario automáticamente
+      op.unitPrice = Number((subtotal / qty).toFixed(2))
+    } else if (price > 0) {
+      // Si el precio unitario fue ingresado manualmente (o por defecto), calcular subtotal automáticamente
+      op.subtotal = Number((qty * price).toFixed(2))
+    } else if (subtotal > 0) {
+      op.unitPrice = Number((subtotal / qty).toFixed(2))
+    }
   } else {
-    // Si se activa con el checkbox pero no hay valores, no poner precios predeterminados
-    if (op.quantity && Number(op.quantity) > 0 && op.unitPrice && Number(op.unitPrice) > 0) {
-      op.subtotal = Number((Number(op.quantity) * Number(op.unitPrice)).toFixed(2))
-    } else {
-      op.subtotal = 0
+    if (price <= 0 && subtotal <= 0) {
+      op.selected = false
+      op.subtotal = null
+      op.unitPrice = null
     }
   }
 }
 
-const handleRowDataChange = (op: FormOperationItem) => {
-  const qty = op.quantity !== null ? Number(op.quantity) : 0
-  const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
-  if (qty > 0 && price > 0) {
+const handleRowPriceChange = (op: FormOperationItem) => {
+  op.lastEdited = 'price'
+  const price = op.unitPrice !== null && !isNaN(Number(op.unitPrice)) ? Number(op.unitPrice) : 0
+
+  if (price > 0) {
     op.selected = true
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.quantity = 1
+    }
+    const qty = Number(op.quantity)
     op.subtotal = Number((qty * price).toFixed(2))
   } else {
-    op.subtotal = 0
-    if ((op.quantity === null || qty <= 0) && (op.unitPrice === null || price <= 0)) {
+    op.subtotal = null
+    if (op.quantity === null || Number(op.quantity) <= 0) {
       op.selected = false
+    }
+  }
+}
+
+const handleRowSubtotalChange = (op: FormOperationItem) => {
+  op.lastEdited = 'subtotal'
+  const subtotal = op.subtotal !== null && !isNaN(Number(op.subtotal)) ? Number(op.subtotal) : 0
+
+  if (subtotal > 0) {
+    op.selected = true
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.quantity = 1
+    }
+    const qty = Number(op.quantity)
+    op.unitPrice = Number((subtotal / qty).toFixed(2))
+  } else {
+    op.unitPrice = null
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.selected = false
+    }
+  }
+}
+
+const handleRowToggle = (op: FormOperationItem) => {
+  if (!op.selected) {
+    op.quantity = null
+    op.unitPrice = null
+    op.subtotal = null
+    op.lastEdited = undefined
+  } else {
+    if (op.quantity === null || Number(op.quantity) <= 0) {
+      op.quantity = 1
+    }
+    const qty = Number(op.quantity)
+    if (op.unitPrice !== null && Number(op.unitPrice) > 0) {
+      op.subtotal = Number((qty * Number(op.unitPrice)).toFixed(2))
+    } else if (op.subtotal !== null && Number(op.subtotal) > 0) {
+      op.unitPrice = Number((Number(op.subtotal) / qty).toFixed(2))
     }
   }
 }
@@ -362,11 +434,14 @@ const handleMeasureChange = (op: FormOperationItem) => {
   const hasMeasure = !!(op.measure || op.measureBanco || op.measureBiela)
   if (hasMeasure) {
     op.selected = true
-    if (op.quantity === null || op.quantity <= 0) {
+    if (op.quantity === null || Number(op.quantity) <= 0) {
       op.quantity = 1
     }
+    const qty = Number(op.quantity)
     if (op.unitPrice !== null && Number(op.unitPrice) > 0) {
-      op.subtotal = Number((Number(op.quantity) * Number(op.unitPrice)).toFixed(2))
+      op.subtotal = Number((qty * Number(op.unitPrice)).toFixed(2))
+    } else if (op.subtotal !== null && Number(op.subtotal) > 0) {
+      op.unitPrice = Number((Number(op.subtotal) / qty).toFixed(2))
     }
   }
 }
@@ -375,7 +450,8 @@ const resetRow = (op: FormOperationItem) => {
   op.selected = false
   op.quantity = null
   op.unitPrice = null
-  op.subtotal = 0
+  op.subtotal = null
+  op.lastEdited = undefined
   op.measure = ''
   op.measureBanco = ''
   op.measureBiela = ''
@@ -385,29 +461,85 @@ const removeCustomOperation = (id: string) => {
   allOperations.value = allOperations.value.filter(o => o.id !== id)
 }
 
+// Métodos para agregar operación especial o personalizada con cálculo bidireccional
+const handleCustomOpQtyChange = () => {
+  const qty = customOpQty.value !== null && Number(customOpQty.value) > 0 ? Number(customOpQty.value) : 0
+  const price = customOpPrice.value !== null && Number(customOpPrice.value) > 0 ? Number(customOpPrice.value) : 0
+  const subtotal = customOpSubtotal.value !== null && Number(customOpSubtotal.value) > 0 ? Number(customOpSubtotal.value) : 0
+
+  if (qty > 0) {
+    if (customOpLastEdited.value === 'subtotal' && subtotal > 0) {
+      customOpPrice.value = Number((subtotal / qty).toFixed(2))
+    } else if (price > 0) {
+      customOpSubtotal.value = Number((qty * price).toFixed(2))
+    } else if (subtotal > 0) {
+      customOpPrice.value = Number((subtotal / qty).toFixed(2))
+    }
+  }
+}
+
+const handleCustomOpPriceChange = () => {
+  customOpLastEdited.value = 'price'
+  const price = customOpPrice.value !== null && Number(customOpPrice.value) > 0 ? Number(customOpPrice.value) : 0
+  if (price > 0) {
+    if (customOpQty.value === null || Number(customOpQty.value) <= 0) {
+      customOpQty.value = 1
+    }
+    const qty = Number(customOpQty.value)
+    customOpSubtotal.value = Number((qty * price).toFixed(2))
+  } else {
+    customOpSubtotal.value = null
+  }
+}
+
+const handleCustomOpSubtotalChange = () => {
+  customOpLastEdited.value = 'subtotal'
+  const subtotal = customOpSubtotal.value !== null && Number(customOpSubtotal.value) > 0 ? Number(customOpSubtotal.value) : 0
+  if (subtotal > 0) {
+    if (customOpQty.value === null || Number(customOpQty.value) <= 0) {
+      customOpQty.value = 1
+    }
+    const qty = Number(customOpQty.value)
+    customOpPrice.value = Number((subtotal / qty).toFixed(2))
+  } else {
+    customOpPrice.value = null
+  }
+}
+
 // Agregar operación especial personalizada a la lista
 const addCustomOperation = () => {
   if (!customOpName.value.trim()) return
 
-  const price = customOpPrice.value !== null && customOpPrice.value >= 0 ? customOpPrice.value : null
-  const qty = customOpQty.value !== null && customOpQty.value > 0 ? customOpQty.value : null
-  const hasData = qty !== null && price !== null && qty > 0 && price > 0
+  const qty = customOpQty.value !== null && customOpQty.value > 0 ? customOpQty.value : 1
+  let price = customOpPrice.value !== null && customOpPrice.value >= 0 ? customOpPrice.value : null
+  let subtotal = customOpSubtotal.value !== null && customOpSubtotal.value >= 0 ? customOpSubtotal.value : null
+
+  if (subtotal !== null && subtotal > 0 && (price === null || price <= 0)) {
+    price = Number((subtotal / qty).toFixed(2))
+  } else if (price !== null && price > 0 && (subtotal === null || subtotal <= 0)) {
+    subtotal = Number((qty * price).toFixed(2))
+  }
+
+  const hasData = qty > 0 && ((price !== null && price > 0) || (subtotal !== null && subtotal > 0))
 
   const newItem: FormOperationItem = {
     id: `custom-op-${Date.now()}`,
     category: customCategory.value,
     operation: customOpName.value.trim(),
     selected: hasData,
-    quantity: qty,
+    quantity: hasData ? qty : null,
     unitPrice: price,
-    subtotal: hasData ? Number((qty * price).toFixed(2)) : 0,
+    subtotal: subtotal !== null ? subtotal : (price !== null ? Number((qty * price).toFixed(2)) : null),
+    lastEdited: customOpLastEdited.value,
     isCustom: true
   }
 
   allOperations.value.push(newItem)
   customOpName.value = ''
   customOpPrice.value = null
+  customOpSubtotal.value = null
   customOpQty.value = 1
+  customOpLastEdited.value = 'price'
 }
 
 // Agregar repuesto rápido de la lista estándar de rectificadora del Excel
@@ -1123,9 +1255,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <th class="px-3 py-2.5 text-center w-24">Cantidad</th>
                   <th class="px-4 py-2.5 text-right w-28">
                     Precio U. ($)
-                    <span class="block text-[9px] font-normal text-slate-500 lowercase">100% manual</span>
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">manual / auto</span>
                   </th>
-                  <th class="px-4 py-2.5 text-right w-28">Sub Total</th>
+                  <th class="px-4 py-2.5 text-right w-28">
+                    Sub Total ($)
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">manual / auto</span>
+                  </th>
                   <th class="px-2 py-2.5 text-center w-10"></th>
                 </tr>
               </thead>
@@ -1135,7 +1270,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   :key="op.id"
                   :class="[
                     'transition',
-                    op.selected && op.quantity !== null && Number(op.quantity) > 0 && op.unitPrice !== null && Number(op.unitPrice) > 0
+                    op.selected && op.quantity !== null && Number(op.quantity) > 0 && ((op.unitPrice !== null && Number(op.unitPrice) > 0) || (op.subtotal !== null && Number(op.subtotal) > 0))
                       ? 'bg-cyan-50/60 hover:bg-cyan-50'
                       : 'hover:bg-slate-50/70'
                   ]"
@@ -1238,7 +1373,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <td class="px-3 py-2.5 text-center">
                     <input
                       v-model.number="op.quantity"
-                      @input="handleRowDataChange(op)"
+                      @input="handleRowQuantityChange(op); formErrors.noItems = false"
                       type="number"
                       min="0"
                       placeholder="-"
@@ -1246,13 +1381,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     />
                   </td>
 
-                  <!-- Precio unitario editable flexible (100% manual) -->
+                  <!-- Precio unitario editable flexible (manual o calculado automáticamente desde subtotal) -->
                   <td class="px-4 py-2.5 text-right">
                     <input
                       v-model.number="op.unitPrice"
-                      @input="handleRowDataChange(op); formErrors.noItems = false"
+                      @input="handleRowPriceChange(op); formErrors.noItems = false"
                       type="number"
-                      step="0.5"
+                      step="0.01"
                       min="0"
                       placeholder="$ 0.00"
                       :class="[
@@ -1261,15 +1396,27 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                           ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900 placeholder-amber-400 ring-1 ring-amber-200'
                           : 'border border-slate-300 bg-white text-slate-900'
                       ]"
-                      title="Ingreso 100% manual de precio (sin costos automáticos)"
+                      title="Ingresa precio unitario o escribe subtotal para cálculo automático"
                     />
                   </td>
 
-                  <!-- Subtotal calculado en vivo -->
-                  <td class="px-4 py-2.5 text-right font-black">
-                    <span :class="op.selected && op.subtotal > 0 ? 'text-slate-900' : 'text-slate-300'">
-                      {{ op.selected && op.subtotal > 0 ? `$${op.subtotal.toFixed(2)}` : '-' }}
-                    </span>
+                  <!-- Subtotal editable manual o calculado en vivo -->
+                  <td class="px-4 py-2.5 text-right">
+                    <input
+                      v-model.number="op.subtotal"
+                      @input="handleRowSubtotalChange(op); formErrors.noItems = false"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="$ 0.00"
+                      :class="[
+                        'w-24 text-right rounded-md py-1 px-2 font-bold text-xs transition focus:outline-none focus:ring-1 focus:ring-[#04c4d9]',
+                        op.selected && op.subtotal && op.subtotal > 0
+                          ? 'border border-cyan-400 bg-cyan-50/40 text-slate-900 font-black'
+                          : 'border border-slate-300 bg-white text-slate-900'
+                      ]"
+                      title="Ingresa el subtotal directamente o se calculará automáticamente con cantidad y precio"
+                    />
                   </td>
 
                   <!-- Acción de limpiar o eliminar -->
@@ -1309,8 +1456,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <span class="text-[11px] font-bold text-slate-600 block mb-2">
               + ¿Requieres agregar una operación especial no listada?
             </span>
-            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
               <div class="sm:col-span-3">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1">Componente:</label>
                 <select
                   v-model="customCategory"
                   class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-semibold"
@@ -1323,32 +1471,65 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <option value="Repuestos">Repuestos</option>
                 </select>
               </div>
-              <div class="sm:col-span-5">
+              <div class="sm:col-span-3">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1">Descripción del Servicio:</label>
                 <input
                   v-model="customOpName"
                   type="text"
-                  placeholder="Descripción de la operación especial..."
+                  placeholder="Ej. Rectificar o adaptar pieza..."
                   class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs"
                   @keyup.enter="addCustomOperation"
                 />
               </div>
-              <div class="sm:col-span-2">
+              <div class="sm:col-span-1">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1 text-center">Cant:</label>
                 <input
-                  v-model.number="customOpPrice"
+                  v-model.number="customOpQty"
+                  @input="handleCustomOpQtyChange"
                   type="number"
-                  step="0.5"
-                  placeholder="Precio $"
-                  class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-right"
+                  min="1"
+                  placeholder="1"
+                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-center font-bold"
                   @keyup.enter="addCustomOperation"
                 />
               </div>
               <div class="sm:col-span-2">
+                <label class="block text-[10px] font-bold text-slate-500 mb-1 text-right">P. Unitario ($):</label>
+                <input
+                  v-model.number="customOpPrice"
+                  @input="handleCustomOpPriceChange"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="$ 0.00"
+                  class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-right font-medium"
+                  @keyup.enter="addCustomOperation"
+                  title="Ingresa precio unitario o escribe subtotal para cálculo automático"
+                />
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[10px] font-bold text-cyan-700 mb-1 text-right">Subtotal ($):</label>
+                <input
+                  v-model.number="customOpSubtotal"
+                  @input="handleCustomOpSubtotalChange"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="$ 0.00"
+                  class="w-full px-2.5 py-1.5 bg-cyan-50/60 border border-cyan-300 rounded-md text-xs text-right font-bold text-slate-900"
+                  @keyup.enter="addCustomOperation"
+                  title="Ingresa subtotal manual y el precio unitario se calculará automáticamente"
+                />
+              </div>
+              <div class="sm:col-span-1">
                 <button
                   type="button"
                   @click="addCustomOperation"
-                  class="w-full py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-xs font-bold transition flex items-center justify-center gap-1"
+                  class="w-full py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                  title="Agregar servicio"
                 >
-                  <Plus class="w-3.5 h-3.5" /> Agregar
+                  <Plus class="w-3.5 h-3.5" />
+                  <span class="sm:hidden">Agregar</span>
                 </button>
               </div>
             </div>
