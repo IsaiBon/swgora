@@ -249,9 +249,45 @@ const newClientForm = ref({
 })
 
 
+// Orden canónico de componentes mecánicos
+const CATEGORY_ORDER: Record<RectificationBlock, number> = {
+  'Bielas': 1,
+  'Bancadas': 2,
+  'Cigüeñal': 3,
+  'Culata': 4,
+  'Block': 5,
+  'Repuestos': 6
+}
+
+// Helper para insertar cualquier operación (especial o existente) en la sección de su componente
+const insertOperationInCategory = (item: FormOperationItem) => {
+  // Buscar el último índice de la misma categoría en allOperations
+  let lastCategoryIndex = -1
+  for (let i = allOperations.value.length - 1; i >= 0; i--) {
+    if (allOperations.value[i].category === item.category) {
+      lastCategoryIndex = i
+      break
+    }
+  }
+
+  if (lastCategoryIndex !== -1) {
+    allOperations.value.splice(lastCategoryIndex + 1, 0, item)
+    return
+  }
+
+  // Si no hay operaciones previas de esa categoría, ubicar según orden canónico
+  const targetOrder = CATEGORY_ORDER[item.category] ?? 99
+  const nextCategoryIndex = allOperations.value.findIndex(op => (CATEGORY_ORDER[op.category] ?? 99) > targetOrder)
+  if (nextCategoryIndex !== -1) {
+    allOperations.value.splice(nextCategoryIndex, 0, item)
+  } else {
+    allOperations.value.push(item)
+  }
+}
+
 // Operaciones filtradas para la visualización en la tabla
 const displayedOperations = computed(() => {
-  return allOperations.value.filter(op => {
+  const filtered = allOperations.value.filter(op => {
     const qty = op.quantity !== null ? Number(op.quantity) : 0
     const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
     const sub = op.subtotal !== null ? Number(op.subtotal) : 0
@@ -266,6 +302,13 @@ const displayedOperations = computed(() => {
       op.category.toLowerCase().includes(operationSearchQuery.value.toLowerCase())
 
     return matchesCategory && matchesSearch
+  })
+
+  // Garantizar que siempre se muestren agrupadas por su categoría canónica
+  return filtered.slice().sort((a, b) => {
+    const orderA = CATEGORY_ORDER[a.category] ?? 99
+    const orderB = CATEGORY_ORDER[b.category] ?? 99
+    return orderA - orderB
   })
 })
 
@@ -296,7 +339,7 @@ const isPartWithMeasure = (partName: string) => {
 
 // Operaciones activas (con datos ingresados) que se enviarán a la orden y al documento impreso
 const activeBilledOperations = computed(() => {
-  return allOperations.value
+  const list = allOperations.value
     .filter(op => {
       const qty = op.quantity !== null ? Number(op.quantity) : 0
       const price = op.unitPrice !== null ? Number(op.unitPrice) : 0
@@ -324,6 +367,13 @@ const activeBilledOperations = computed(() => {
         measureBiela: op.measureBiela || undefined
       }
     })
+
+  // Asegurar orden estricto por componente/categoría
+  return list.sort((a, b) => {
+    const orderA = CATEGORY_ORDER[a.category] ?? 99
+    const orderB = CATEGORY_ORDER[b.category] ?? 99
+    return orderA - orderB
+  })
 })
 
 // Totales calculados en tiempo real (Mano de obra y servicios)
@@ -534,7 +584,7 @@ const addCustomOperation = () => {
     isCustom: true
   }
 
-  allOperations.value.push(newItem)
+  insertOperationInCategory(newItem)
   customOpName.value = ''
   customOpPrice.value = null
   customOpSubtotal.value = null
@@ -607,8 +657,8 @@ const loadExistingOrder = (order: Order) => {
         match.measureBanco = savedOp.measureBanco || ''
         match.measureBiela = savedOp.measureBiela || ''
       } else {
-        // Operación personalizada previa
-        allOperations.value.push({
+        // Operación personalizada previa: insertar en la sección de su componente/categoría
+        const customItem: FormOperationItem = {
           id: savedOp.id || `custom-${Date.now()}-${Math.random()}`,
           category: savedOp.category,
           operation: savedOp.operation,
@@ -620,7 +670,8 @@ const loadExistingOrder = (order: Order) => {
           measureBanco: savedOp.measureBanco || '',
           measureBiela: savedOp.measureBiela || '',
           isCustom: true
-        })
+        }
+        insertOperationInCategory(customItem)
       }
     })
   }
@@ -1363,9 +1414,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       </div>
                     </div>
 
-                    <!-- Operaciones estándar -->
-                    <div v-else :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                      {{ op.operation }}
+                    <!-- Operaciones estándar o personalizadas -->
+                    <div v-else :class="['font-medium text-slate-900 flex items-center gap-1.5', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
+                      <span>{{ op.operation }}</span>
+                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        Especial
+                      </span>
                     </div>
                   </td>
 

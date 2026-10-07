@@ -94,6 +94,7 @@ const SECTION_ORDER_MAP: Record<string, number> = {
   'CULATA': 4,
   'BLOCKS': 5,
   'BLOCK': 5,
+  'REPUESTOS': 6,
 }
 
 const normalizeSectionTitle = (cat: string): string => {
@@ -103,20 +104,23 @@ const normalizeSectionTitle = (cat: string): string => {
   if (upper.includes('CIGÜEÑAL') || upper.includes('CIGUENAL')) return 'CIGÜEÑAL'
   if (upper.includes('CULATA')) return 'CULATA'
   if (upper.includes('BLOCK')) return 'BLOCKS'
+  if (upper.includes('REPUESTO')) return 'REPUESTOS'
   return upper || 'OPERACIONES'
 }
 
-// Clean print: Agrupación exclusiva de operaciones mecánicas (sin sección de repuestos facturados)
+// Clean print: Agrupación de operaciones mecánicas organizadas estrictamente por su componente
 const groupedSections = computed<PrintableSection[]>(() => {
   if (!props.order) return []
 
   const sectionsMap = new Map<string, PrintableItem[]>()
 
-  // Operaciones de rectificación (Mano de Obra agrupada por componente mecánico)
+  // Operaciones de rectificación agrupadas por componente mecánico
   const operations = props.order.operations || []
   for (const op of operations) {
-    if (op.quantity <= 0 || op.unitPrice < 0) continue
-    if (op.category === 'Repuestos') continue // Se omite sección de repuestos facturados
+    const qty = Number(op.quantity) || 0
+    const price = Number(op.unitPrice) || 0
+    const subtotal = Number(op.subtotal) || 0
+    if (qty <= 0 || (price <= 0 && subtotal <= 0)) continue
 
     const title = normalizeSectionTitle(op.category)
     const items = sectionsMap.get(title) || []
@@ -133,11 +137,11 @@ const groupedSections = computed<PrintableSection[]>(() => {
 
     items.push({
       id: op.id,
-      quantity: op.quantity,
+      quantity: qty,
       description: op.operation,
       detail,
-      unitPrice: op.unitPrice,
-      subtotal: op.subtotal
+      unitPrice: price,
+      subtotal: subtotal
     })
     sectionsMap.set(title, items)
   }
