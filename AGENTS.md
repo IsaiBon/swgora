@@ -20,30 +20,45 @@ Este documento proporciona el contexto arquitectónico, funcional, técnico y op
 ## 2. Requerimientos Funcionales y Módulos de Negocio
 
 ### 2.1. Módulo de Catálogos de Repuestos y Búsqueda Dimensional (Adaptadores)
-El sistema reemplaza la consulta manual en múltiples catálogos en PDF y resuelve el desafío de encontrar repuestos compatibles o adaptables:
+El sistema reemplaza la consulta manual en múltiples catálogos en PDF y resuelve el desafío de identificar repuestos originales o adaptables:
 
-- **Búsqueda por Vehículo / Motor:**
-  - Filtros jerárquicos: Fabricante (ej. *Toyota*, *Nissan*), Modelo de vehículo y Código de Motor (ej. *3L*, *Z24*).
-  - Consulta de códigos de equivalencia entre fabricantes originales (**OEM**) y marcas alternas (**Rik, NPR, NDC, Dokuro, Pioneer**, etc.).
-- **Búsqueda por Medidas / Dimensiones (Adaptaciones de Taller):**
-  - Permite identificar repuestos cuando llega una pieza desgastada o sin código de motor legible (ej. culatas marcadas como *"NE"*).
-  - Parámetros dimensionales por categoría de repuesto:
-    - **Sellos de válvula / Ajuste de válvula:** Diámetro interior, diámetro exterior, altura.
-    - **Válvulas de motor:** Diámetro de hongo (cabeza), diámetro de vástago, longitud/altura total.
-    - **Anillos de pistón:** Diámetro de cilindro/anillo (ej. 75mm, 96mm), espesor/altura del 1er anillo, 2do anillo y anillo de aceite.
-    - **Pernos / Tornillos de culata:** Diámetro de rosca y longitud total.
-    - **Casquetería (Cojinetes NDC):** Medidas y tipos estándar:
-      - Casquetes de bancada (`MS` - Main Bearing)
-      - Casquetes de biela (`CB` - Con-rod Bearing)
-      - Arandela de empuje (`TW` - Thrust Washer)
-      - Casquetes de leva (`SH` - Camshaft Bearing)
-      - Bocinas / bujes (`PB` - Pin Bushing)
-- **Búsqueda Inversa:**
-  - Al ingresar un código de parte (ej. `28006`), desplegar medidas físicas, especificaciones, descripción y lista de motores/vehículos compatibles.
-- **Creación y Parametrización Dinámica de Grupos:**
-  - El administrador puede crear nuevas familias de piezas (ej. *Camisas de cilindro*) y definir sus atributos dimensionales (diámetro interno, diámetro externo, altura, con o sin pestaña).
-- **Fichas y Multimedia:**
-  - Visualización de imágenes, planos técnicos, diagramas y especificaciones de cada repuesto.
+- **Barra Superior Unificada de Selección (3 Selectores Integrados):**
+  - Ubicada en cabecera interactiva fija (`sticky top-0 z-30`) sin etiquetas invasivas de "obligatorio" u "opcional":
+    1. **Marca / Fabricante**: Autocompletado reactivo (*search-as-you-type*) sobre marcas automotrices (Toyota, Nissan, Mitsubishi, Isuzu, etc.).
+    2. **Código de Motor**: Búsqueda asistida por código o denominación (ej. *11B*, *12HT*, *3L*, *Z24*, *1KD-FTV*).
+    3. **Tipo de Componente**: Selección directa entre las 4 familias técnicas de rectificación.
+
+- **Tabla Técnica de Motores por Marca (Despliegue Inmediato - Estilo TecDoc / Ajusa):**
+  - Al ingresar o seleccionar una Marca, se despliega de inmediato la matriz técnica de motores con cabecera corporativa azul (`#004b97`) con contador dinámico (`Resultado X - Y desde Z ›`).
+  - Columnas técnicas estandarizadas:
+    - `(i)`: Botón informativo que abre la ficha modal con cotas y especificaciones de rectificación del motor.
+    - `Número/ID ...`: Identificador numérico de referencia técnica de taller (ej. *3703*, *4931*, *9068*).
+    - `Código de motor`: Denominación formal del motor (ej. *TOYOTA - 11B*, *TOYOTA - 12HT*).
+    - `Denominación de venta`: Línea comercial o serie (ej. *B Series*, *Hilux / Hiace*).
+    - `Cilindros`: Cantidad de cilindros (ej. *4*, *6*).
+    - `Cilindrada`: Formato técnico mixto (ej. *2977 cc / 3 l*, *3980 cc / 4 l*).
+    - `kW`: Potencia métrica en kilovatios.
+    - `CV`: Potencia en caballos de vapor.
+  - Selección rápida: El operario hace clic en cualquier fila para seleccionar el motor y pasar directamente a la matriz de piezas.
+  - Paginación técnica compacta en pie de tabla: `|< < Página desde Total > >|`.
+
+- **4 Familias de Componentes Exclusivas y Filtros Dimensionales de Taller:**
+  Se eliminaron grupos de relleno, estandarizando estrictamente las 4 categorías con sus cotas de maquinado:
+  1. **Ajuste de válvula** (Sellos y retenes de guía de válvula):
+     - Diám. int. (mm) *(ej. 4,8 mm)*, Diámetro exterior (mm) *(ej. 10,8 mm)*, Altura (mm) *(ej. 10 mm)*.
+  2. **Válvula** (Válvulas de admisión y escape estándar y sobremedida):
+     - Hongo (Ø cabeza mm), Vástago (Ø vástago mm), Altura (Longitud total mm).
+  3. **Anillos de motor** (Juegos de aros de pistón STD y sobremedida):
+     - Diámetro de cilindro (mm), Grosor 1er anillo (mm), Altura/grosor (mm).
+     - **Desglose visible obligatorio en resultados**: Cada fila presenta explícitamente los badges con las medidas de `1° Anillo (Fuego)`, `2° Anillo (Compresión)` y `Anillo de Aceite (Rascador)`.
+  4. **Juego de tornillos de culata** (Pernos de apriete angular para culata):
+     - Medida de rosca (M10, M11, M12, M14), Paso de rosca (mm), Longitud (mm), Cantidad (pzs), Paso rosca 1 (mm), Longitud 1 (mm), Longitud 2 (mm).
+
+- **Ergonomía de Consulta y Scrolling Optimizado:**
+  - Barra de búsqueda y panel de cotas dimensionales acoplados arriba de la tabla con botón "*Limpiar filtros de medida*".
+  - Contenedores de tabla con scroll vertical interno (`max-h-[540px] overflow-y-auto`) y encabezados fijos (`thead sticky top-0`), eliminando el scroll vertical excesivo de la página completa.
+  - Cruce de marcas alternas en tiempo real: códigos homologados para **Dokuro, Rik, NPR, NDC, Ajusa, Pioneer**.
+  - Botón de acción directa **+ A Orden** que almacena el repuesto seleccionado en `swgora_cart_parts` de `localStorage` con notificación toast para asociarlo a las órdenes de rectificación.
 
 ### 2.2. Módulo de Órdenes de Trabajo y Cotizaciones de Rectificación
 Diseñado para agilizar el registro en el mostrador del taller y la emisión formal de documentos:
@@ -170,9 +185,19 @@ SWGORA/
 - **Índices**: B-tree sobre `codigo`, `categoria`; y GIN `idx_productos_especificaciones_tecnicas`.
 - **Triggers**: `set_productos_updated_at` (`BEFORE UPDATE`).
 
-### 5.2. Estructura de Entidades Previstas para Órdenes y Catálogo Ampliado
-- **Motores y Modelos**: Tabla o catálogo de marcas vehiculares, modelos y códigos de motor (*Toyota 3L*, *Nissan Z24*, etc.) con relaciones a repuestos.
-- **Equivalencias de Repuestos**: Mapeo entre número de parte OEM y referencias alternas (*Rik, NPR, NDC, Dokuro, Pioneer*).
+### 5.2. Estructura de Entidades del Catálogo Técnico (`src/services/catalogService.ts`)
+- **Motores (`Motor`):**
+  - Identificación: `id`, `fabricante_id`, `modelo_id`, `numero_id` (ID técnico de catálogo).
+  - Códigos y marcas: `codigo` (ej. *11B*, *12HT*, *3L*), `nombre_comercial`, `denominacion_venta` (ej. *B Series*).
+  - Parámetros motrices: `cilindros`, `valvulas`, `cilindrada_cc`, `cilindrada_texto` (ej. *2977 cc / 3 l*), `kw`, `cv`, `combustible`, `diametro_cilindro_std_mm`, `aspiracion`.
+- **Repuestos Técnicos (`RepuestoTecnico`):**
+  - Datos base: `id`, `motor_id`, `codigo_oem`, `nombre`, `subsistema`, `categoria`, `precio`, `stock`, `estado`, `catalogo_origen`.
+  - Cotas físicas indexables:
+    - *Ajuste de válvula*: `diametro_interior_mm`, `diametro_exterior_mm`, `altura_mm`.
+    - *Válvulas*: `diametro_cabeza_mm`, `diametro_vastago_mm`, `longitud_total_mm`, `angulo_asiento_grados`.
+    - *Anillos*: `diametro_cilindro_mm`, `espesor_anillo1_mm`, `espesor_anillo2_mm`, `espesor_aceite_mm`.
+    - *Pernos de culata*: `medida_rosca`, `paso_rosca_mm`, `longitud_perno_mm`, `cantidad_piezas`, `paso_rosca1_mm`, `longitud1_mm`, `longitud2_mm`.
+- **Equivalencias de Repuestos (`Equivalencia`):** Mapeo cruzado entre número de parte OEM y referencias alternas (*Dokuro, Rik, NPR, NDC, Ajusa, Pioneer*).
 - **Órdenes de Trabajo (`ordenes_trabajo`):** Correlativo, cliente_id, datos de motor, tipo_documento (`orden` | `cotizacion`), estado, total_mano_obra, total_repuestos, total_general.
 - **Detalle de Operaciones de Rectificación (`orden_operaciones`):** Sección del motor (`bielas`, `bancadas`, `cigueñal`, `culata`, `block`), descripción del trabajo, costo de mano de obra.
 - **Detalle de Repuestos de Orden (`orden_repuestos`):** producto_id, cantidad, precio_unitario, subtotal.

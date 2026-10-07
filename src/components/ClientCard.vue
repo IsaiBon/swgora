@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed } from 'vue'
 import type { Cliente, ClientStatus } from '@/services/clientesService'
 import {
@@ -6,7 +6,7 @@ import {
   MapPin,
   MessageCircle,
   Pencil,
-  CreditCard,
+  FileText,
   Wrench,
   User,
   ExternalLink,
@@ -20,6 +20,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'edit', client: Cliente): void
+  (e: 'viewOrders', client: Cliente): void
   (e: 'toggleStatus', id: string, newStatus: ClientStatus): void
 }>()
 
@@ -88,10 +89,13 @@ const handleToggleStatus = () => {
                 {{ client.tipo }}
               </span>
 
-              <!-- Cédula / Documento -->
-              <span class="inline-flex items-center gap-1 text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                <CreditCard class="w-3 h-3 text-slate-400" />
-                <span>{{ client.cedula }}</span>
+              <!-- Código Único Badge -->
+              <span
+                v-if="client.codigo"
+                class="text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300"
+                title="Código único de cliente"
+              >
+                {{ client.codigo }}
               </span>
             </div>
           </div>
@@ -179,8 +183,8 @@ const handleToggleStatus = () => {
       </button>
     </div>
 
-    <!-- Card Bottom Footer: Borrado Lógico & Fecha -->
-    <div class="px-5 sm:px-6 py-3 flex items-center justify-between text-xs text-slate-500 bg-white">
+    <!-- Card Bottom Footer: Borrado Lógico, Órdenes & Fecha -->
+    <div class="px-5 sm:px-6 py-3 flex items-center justify-between text-xs text-slate-500 bg-white border-t border-slate-100">
       <!-- Botón de Borrado Lógico Rápido (Inactivar / Reactivar) -->
       <button
         type="button"
@@ -198,9 +202,16 @@ const handleToggleStatus = () => {
         <span>{{ isActivo ? 'Inactivar' : 'Reactivar' }}</span>
       </button>
 
-      <span class="text-[11px] text-slate-400 font-medium">
-        {{ new Date(client.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) }}
-      </span>
+      <!-- Botón Ver Historial de Órdenes -->
+      <button
+        type="button"
+        @click="$emit('viewOrders', client)"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-800 bg-slate-100 hover:bg-[#05C7F2]/15 hover:text-[#04C4D9] border border-slate-200 hover:border-[#05C7F2]/40 transition active:scale-95"
+        title="Consultar historial de órdenes de este cliente"
+      >
+        <FileText class="w-3.5 h-3.5 text-[#04C4D9]" />
+        <span>Ver Órdenes</span>
+      </button>
     </div>
   </div>
 </template>
