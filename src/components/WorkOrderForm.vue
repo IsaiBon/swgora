@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { 
   ordersService, 
   type Order, 
@@ -28,7 +28,8 @@ import {
   Building,
   ChevronDown,
   Filter,
-  RotateCcw
+  RotateCcw,
+  X
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -65,6 +66,9 @@ const clientSearchQuery = ref('')
 const isSearchingClients = ref(false)
 const clientSearchResults = ref<Cliente[]>([])
 const showClientDropdown = ref(false)
+const allClients = ref<Cliente[]>([])
+const clientSearchContainerRef = ref<HTMLElement | null>(null)
+const clientSearchInputRef = ref<HTMLInputElement | null>(null)
 const selectedCustomerId = ref<string | undefined>()
 const clientName = ref('')
 const clientPhone = ref('')
@@ -608,6 +612,8 @@ const addExcelPart = (partName: string) => {
 
 // Inicialización de la orden
 onMounted(async () => {
+  document.addEventListener('click', handleClickOutsideClientSearch)
+  loadAllClients()
   catalogProducts.value = await catalogService.getProducts()
 
   if (props.initialOrderId) {
@@ -619,6 +625,10 @@ onMounted(async () => {
   }
 
   orderNumber.value = await ordersService.getNextOrderNumber()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutsideClientSearch)
 })
 
 const loadExistingOrder = (order: Order) => {
@@ -677,25 +687,64 @@ const loadExistingOrder = (order: Order) => {
   }
 }
 
-// Búsqueda rápida de clientes
-watch(clientSearchQuery, async (query) => {
-  if (!query || query.trim().length < 2) {
-    clientSearchResults.value = []
-    showClientDropdown.value = false
-    return
-  }
-
+// Búsqueda y selección de clientes
+const loadAllClients = async () => {
   isSearchingClients.value = true
   try {
-    const results = await clientesService.getClientes({ search: query.trim() })
-    clientSearchResults.value = results
-    showClientDropdown.value = results.length > 0
+    const results = await clientesService.getClientes()
+    allClients.value = results || []
   } catch (err) {
-    console.error('Error buscando clientes:', err)
+    console.error('Error cargando clientes:', err)
   } finally {
     isSearchingClients.value = false
   }
-})
+}
+
+// Filtrar clientes registrados según el texto ingresado o mostrar la lista completa si no hay texto
+const filterClients = () => {
+  const query = clientSearchQuery.value.trim().toLowerCase()
+  if (!query) {
+    clientSearchResults.value = [...allClients.value]
+  } else {
+    clientSearchResults.value = allClients.value.filter(c => {
+      const name = (c.nombre || '').toLowerCase()
+      const workshop = (c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa || '').toLowerCase()
+      const phone = (c.telefono || '').toLowerCase()
+      const cedula = (c.cedula || '').toLowerCase()
+      return name.includes(query) || workshop.includes(query) || phone.includes(query) || cedula.includes(query)
+    })
+  }
+}
+
+// Al dar clic o enfocar el buscador: mostrar la lista completa si está vacío, o los filtrados
+const handleClientSearchFocus = async () => {
+  if (allClients.value.length === 0) {
+    await loadAllClients()
+  }
+  filterClients()
+  showClientDropdown.value = true
+}
+
+// Conforme se escribe en el buscador, filtrar dinámicamente en tiempo real
+const handleClientSearchInput = () => {
+  filterClients()
+  showClientDropdown.value = true
+}
+
+// Limpiar búsqueda y desplegar la lista completa
+const clearClientSearch = () => {
+  clientSearchQuery.value = ''
+  filterClients()
+  showClientDropdown.value = true
+  clientSearchInputRef.value?.focus()
+}
+
+// Cerrar dropdown al hacer clic fuera del contenedor del buscador
+const handleClickOutsideClientSearch = (event: MouseEvent) => {
+  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(event.target as Node)) {
+    showClientDropdown.value = false
+  }
+}
 
 const selectCustomer = (client: Cliente) => {
   selectedCustomerId.value = client.id
@@ -705,6 +754,7 @@ const selectCustomer = (client: Cliente) => {
   clientWorkshop.value = client.especificaciones_tecnicas?.taller || client.especificaciones_tecnicas?.empresa || ''
   clientSearchQuery.value = ''
   showClientDropdown.value = false
+  formErrors.value.clientName = false
 }
 
 // Repuestos
@@ -787,6 +837,7 @@ const handleQuickCreateClient = async () => {
       }
     })
 
+    allClients.value.unshift(created)
     selectCustomer(created)
     showNewClientModal.value = false
     newClientForm.value = { nombre: '', taller: '', telefono: '', direccion: '', cedula: '' }
@@ -1070,36 +1121,87 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
           <!-- Barra de Búsqueda Rápida de Clientes -->
           <div class="flex flex-col sm:flex-row gap-3 relative">
-            <div class="relative flex-1">
+            <div ref="clientSearchContainerRef" class="relative flex-1">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                 <Search class="w-4 h-4" />
               </div>
               <input
+                ref="clientSearchInputRef"
                 v-model="clientSearchQuery"
+                @focus="handleClientSearchFocus"
+                @click="handleClientSearchFocus"
+                @input="handleClientSearchInput"
+                @keydown.esc="showClientDropdown = false"
                 type="text"
-                placeholder="Buscar cliente por nombre o taller..."
-                class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
+                placeholder="Buscar cliente por nombre o taller (clic para ver todos)..."
+                class="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
               />
+              <button
+                v-if="clientSearchQuery"
+                type="button"
+                @click.stop="clearClientSearch"
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition"
+                title="Limpiar búsqueda"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
+
               <!-- Dropdown de resultados de búsqueda -->
               <div
                 v-if="showClientDropdown"
-                class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100"
+                class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100"
               >
+                <!-- Cabecera de estado de la lista -->
+                <div class="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 sticky top-0 z-10">
+                  <span>
+                    {{ clientSearchQuery.trim() ? 'Resultados filtrados' : 'Todos los clientes registrados' }}
+                    ({{ clientSearchResults.length }})
+                  </span>
+                  <span class="text-[10px] text-slate-400 font-normal">
+                    {{ isSearchingClients ? 'Cargando...' : 'Clic para seleccionar' }}
+                  </span>
+                </div>
+
+                <!-- Estado de carga inicial -->
+                <div
+                  v-if="isSearchingClients && clientSearchResults.length === 0"
+                  class="p-4 text-center text-xs text-slate-400 font-medium"
+                >
+                  Cargando lista de clientes...
+                </div>
+
+                <!-- Lista de clientes -->
                 <div
                   v-for="c in clientSearchResults"
                   :key="c.id"
                   @click="selectCustomer(c)"
-                  class="p-3 hover:bg-slate-50 cursor-pointer transition flex items-center justify-between"
+                  class="p-3 hover:bg-cyan-50/60 cursor-pointer transition flex items-center justify-between group"
                 >
                   <div>
-                    <div class="text-xs font-bold text-slate-900">{{ c.nombre }}</div>
-                    <div class="text-[11px] text-slate-500">
-                      {{ c.tipo }} • {{ c.especificaciones_tecnicas?.taller || c.telefono || 'Sin taller registrado' }}
+                    <div class="text-xs font-bold text-slate-900 group-hover:text-cyan-900">
+                      {{ c.nombre }}
+                    </div>
+                    <div class="text-[11px] text-slate-500 group-hover:text-slate-600">
+                      {{ c.tipo }} • {{ c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa || c.telefono || 'Sin taller registrado' }}
                     </div>
                   </div>
-                  <span class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">
-                    {{ c.cedula || 'ID' }}
-                  </span>
+                  <div class="flex items-center gap-2">
+                    <span v-if="c.telefono" class="text-[10px] text-slate-400 hidden sm:inline">
+                      {{ c.telefono }}
+                    </span>
+                    <span class="text-[10px] bg-slate-100 group-hover:bg-cyan-100 group-hover:text-cyan-800 px-2 py-0.5 rounded text-slate-600 font-mono transition">
+                      {{ c.cedula || 'ID' }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Sin coincidencias -->
+                <div
+                  v-if="!isSearchingClients && clientSearchResults.length === 0"
+                  class="p-4 text-center text-xs text-slate-500 font-medium space-y-1"
+                >
+                  <p>No se encontraron clientes registrados que coincidan con "{{ clientSearchQuery }}".</p>
+                  <p class="text-[11px] text-slate-400">Puedes crearlo usando el botón "Nuevo Cliente".</p>
                 </div>
               </div>
             </div>

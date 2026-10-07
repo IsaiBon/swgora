@@ -1,4 +1,4 @@
-﻿import { supabase } from './supabase'
+import { supabase } from './supabase'
 
 export type ClientType = 'Cliente' | 'Tallerista'
 export type ClientStatus = 'Activo' | 'Inactivo'
@@ -172,12 +172,18 @@ export const clientesService = {
 
         if (filters?.search && filters.search.trim()) {
           const s = filters.search.toLowerCase().trim()
-          return normalized.filter((c: Cliente) =>
-            c.nombre.toLowerCase().includes(s) ||
-            c.cedula.toLowerCase().includes(s) ||
-            (c.telefono && c.telefono.includes(s)) ||
-            (c.direccion && c.direccion.toLowerCase().includes(s))
-          )
+          return normalized.filter((c: Cliente) => {
+            const taller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+            const empresa = (c.especificaciones_tecnicas?.empresa || '').toLowerCase()
+            return (
+              c.nombre.toLowerCase().includes(s) ||
+              c.cedula.toLowerCase().includes(s) ||
+              (c.telefono && c.telefono.includes(s)) ||
+              (c.direccion && c.direccion.toLowerCase().includes(s)) ||
+              taller.includes(s) ||
+              empresa.includes(s)
+            )
+          })
         }
 
         return normalized
@@ -199,12 +205,18 @@ export const clientesService = {
 
     if (filters?.search && filters.search.trim()) {
       const s = filters.search.toLowerCase().trim()
-      cached = cached.filter(c =>
-        c.nombre.toLowerCase().includes(s) ||
-        c.cedula.toLowerCase().includes(s) ||
-        (c.telefono && c.telefono.includes(s)) ||
-        (c.direccion && c.direccion.toLowerCase().includes(s))
-      )
+      cached = cached.filter(c => {
+        const taller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+        const empresa = (c.especificaciones_tecnicas?.empresa || '').toLowerCase()
+        return (
+          c.nombre.toLowerCase().includes(s) ||
+          c.cedula.toLowerCase().includes(s) ||
+          (c.telefono && c.telefono.includes(s)) ||
+          (c.direccion && c.direccion.toLowerCase().includes(s)) ||
+          taller.includes(s) ||
+          empresa.includes(s)
+        )
+      })
     }
 
     return cached
