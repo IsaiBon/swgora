@@ -4,7 +4,8 @@ import { useCatalogStore } from '@/stores/catalog'
 import { 
   type GrupoRepuesto, 
   type ParametroTecnicoDefinicion,
-  type RepuestoTecnico
+  type RepuestoTecnico,
+  type Motor
 } from '@/services/catalogService'
 import { 
   X, 
@@ -20,13 +21,17 @@ import {
   FolderPlus, 
   PackagePlus, 
   Loader2,
-  Edit3
+  Edit3,
+  Search,
+  ChevronDown,
+  Check
 } from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean
   initialTab?: 'repuesto' | 'grupo'
   preselectedGroupId?: string | null
+  preselectedMotorId?: string | null
   editGroupId?: string | null
 }>()
 
@@ -55,6 +60,23 @@ watch(() => props.isOpen, (open) => {
       selectedGroupCode.value = catalogStore.grupos[0].codigo
     }
 
+    if (props.preselectedMotorId) {
+      partMotorId.value = props.preselectedMotorId
+      const found = catalogStore.motores.find(m => m.id === props.preselectedMotorId)
+      if (found) {
+        const brand = getBrandName(found.fabricante_id)
+        motorSearchQuery.value = `${found.codigo}${found.nombre_comercial ? ` - ${found.nombre_comercial}` : (brand ? ` (${brand})` : '')}`
+      }
+    }
+
+    // Asegurar motores y marcas cargados para el buscador
+    if (catalogStore.motores.length === 0) {
+      catalogStore.fetchMotores()
+    }
+    if (catalogStore.fabricantes.length === 0) {
+      catalogStore.fetchFabricantes()
+    }
+
     if (props.editGroupId) {
       const grp = catalogStore.grupos.find(g => g.codigo === props.editGroupId || g.id === props.editGroupId)
       if (grp) {
@@ -70,6 +92,88 @@ watch(() => props.isOpen, (open) => {
 // =============================================================================
 const selectedGroupCode = ref<string>('')
 const partMotorId = ref<string>('')
+const motorSearchQuery = ref<string>('')
+const isMotorDropdownOpen = ref<boolean>(false)
+
+const getBrandName = (fabId?: string): string => {
+  if (!fabId) return ''
+  const fab = catalogStore.fabricantes.find(f => f.id === fabId)
+  return fab ? fab.nombre : ''
+}
+
+const selectedMotor = computed<Motor | null>(() => {
+  if (!partMotorId.value) return null
+  return catalogStore.motores.find(m => m.id === partMotorId.value) || null
+})
+
+const filteredMotoresList = computed<Motor[]>(() => {
+  const query = motorSearchQuery.value.trim().toLowerCase()
+  const all = catalogStore.motores || []
+  
+  if (!query) {
+    return all.slice(0, 30)
+  }
+
+  return all
+    .filter(m => {
+      const code = (m.codigo || '').toLowerCase()
+      const name = (m.nombre_comercial || '').toLowerCase()
+      const denom = (m.denominacion_venta || '').toLowerCase()
+      const brand = getBrandName(m.fabricante_id).toLowerCase()
+      const fuel = (m.combustible || '').toLowerCase()
+
+      return code.includes(query) || 
+             name.includes(query) || 
+             denom.includes(query) || 
+             brand.includes(query) ||
+             fuel.includes(query)
+    })
+    .slice(0, 40)
+})
+
+const onMotorFocus = () => {
+  isMotorDropdownOpen.value = true
+}
+
+const onMotorInput = () => {
+  isMotorDropdownOpen.value = true
+  if (!motorSearchQuery.value.trim()) {
+    partMotorId.value = ''
+  }
+}
+
+const selectMotor = (mot: Motor | null) => {
+  if (!mot) {
+    partMotorId.value = ''
+    motorSearchQuery.value = ''
+  } else {
+    partMotorId.value = mot.id
+    const brand = getBrandName(mot.fabricante_id)
+    motorSearchQuery.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : (brand ? ` (${brand})` : '')}`
+  }
+  isMotorDropdownOpen.value = false
+}
+
+const clearMotor = () => {
+  partMotorId.value = ''
+  motorSearchQuery.value = ''
+  isMotorDropdownOpen.value = false
+}
+
+const handleDocumentClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (!target.closest('.combobox-motor-asociado')) {
+    isMotorDropdownOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick)
+})
 const partCodigoOem = ref<string>('')
 const partNombre = ref<string>('')
 const partSubsistema = ref<string>('Block')
@@ -220,6 +324,9 @@ const handleSavePart = async () => {
 const resetPartForm = () => {
   partCodigoOem.value = ''
   partNombre.value = ''
+  partMotorId.value = ''
+  motorSearchQuery.value = ''
+  isMotorDropdownOpen.value = false
   partPrecio.value = null
   partStock.value = 12
   paramValues.value = {}
@@ -733,20 +840,124 @@ onUnmounted(() => {
                 </span>
               </div>
 
-              <!-- Motor Asociado -->
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Motor Asociado (Opcional)
-                </label>
-                <select
-                  v-model="partMotorId"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              <!-- Motor Asociado (Buscador reactivo con autocompletado) -->
+              <div class="relative combobox-motor-asociado">
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-bold text-slate-700">
+                    Motor Asociado (Opcional)
+                  </label>
+                  <span v-if="selectedMotor" class="text-[10px] font-bold text-[#038896] bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">
+                    {{ selectedMotor.codigo }}
+                  </span>
+                  <span v-else class="text-[10px] font-medium text-slate-400">
+                    Universal
+                  </span>
+                </div>
+
+                <div class="relative flex items-center">
+                  <Search class="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+                  <input
+                    v-model="motorSearchQuery"
+                    type="text"
+                    placeholder="Buscar motor (ej. 3L, Z24, 4JB1, Hilux)..."
+                    @focus="onMotorFocus"
+                    @input="onMotorInput"
+                    class="w-full pl-9 pr-14 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
+                    :class="selectedMotor ? 'border-cyan-300 bg-cyan-50/20' : 'border-slate-300'"
+                  />
+
+                  <div class="absolute right-2 flex items-center gap-1">
+                    <button
+                      v-if="partMotorId || motorSearchQuery"
+                      type="button"
+                      @click="clearMotor"
+                      class="p-1 rounded-full text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition"
+                      title="Quitar motor y dejar como Universal"
+                    >
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      @click="isMotorDropdownOpen = !isMotorDropdownOpen"
+                      class="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                      title="Ver lista de motores"
+                    >
+                      <ChevronDown class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Dropdown de resultados flotante -->
+                <div
+                  v-if="isMotorDropdownOpen"
+                  class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-100"
                 >
-                  <option value="">Universal / Todos los Motores</option>
-                  <option v-for="mot in catalogStore.motores" :key="mot.id" :value="mot.id">
-                    {{ mot.codigo }} - {{ mot.nombre_comercial || 'Motor' }}
-                  </option>
-                </select>
+                  <!-- Opción Universal -->
+                  <div
+                    @click="selectMotor(null)"
+                    class="px-3.5 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition"
+                    :class="!partMotorId ? 'bg-cyan-50 font-bold text-[#038896]' : 'text-slate-700'"
+                  >
+                    <div class="flex items-center gap-2">
+                      <span class="w-2 h-2 rounded-full" :class="!partMotorId ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                      <span>Universal / Todos los Motores</span>
+                    </div>
+                    <Check v-if="!partMotorId" class="w-3.5 h-3.5 text-[#038896]" />
+                  </div>
+
+                  <!-- Lista de motores filtrados -->
+                  <div
+                    v-for="mot in filteredMotoresList"
+                    :key="mot.id"
+                    @click="selectMotor(mot)"
+                    class="px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition"
+                    :class="partMotorId === mot.id ? 'bg-cyan-50 text-cyan-900 font-bold' : 'text-slate-800'"
+                  >
+                    <div class="min-w-0 pr-2">
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <span 
+                          v-if="getBrandName(mot.fabricante_id)" 
+                          class="px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded bg-slate-200 text-slate-700"
+                        >
+                          {{ getBrandName(mot.fabricante_id) }}
+                        </span>
+                        <strong class="font-mono text-xs font-black text-slate-900">{{ mot.codigo }}</strong>
+                        <span v-if="mot.nombre_comercial" class="text-slate-600 font-medium truncate">
+                          {{ mot.nombre_comercial }}
+                        </span>
+                        <span v-if="mot.denominacion_venta" class="text-slate-400 text-[11px]">
+                          ({{ mot.denominacion_venta }})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="shrink-0 flex items-center gap-2">
+                      <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                        {{ mot.cilindros }} Cil<span v-if="mot.cilindrada_texto || mot.cilindrada_cc"> • {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}</span>
+                      </span>
+                      <Check v-if="partMotorId === mot.id" class="w-3.5 h-3.5 text-[#038896]" />
+                    </div>
+                  </div>
+
+                  <!-- Sin resultados -->
+                  <div v-if="filteredMotoresList.length === 0" class="p-3 text-center text-xs text-slate-500">
+                    <p class="font-medium">No se encontraron motores para "{{ motorSearchQuery }}"</p>
+                    <button
+                      type="button"
+                      @click="selectMotor(null)"
+                      class="mt-1.5 text-xs font-bold text-[#038896] hover:underline"
+                    >
+                      Dejar como Universal / Sin motor
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Resumen técnico del motor seleccionado -->
+                <div v-if="selectedMotor" class="mt-1 flex items-center gap-1.5 text-[10px] text-slate-600 bg-slate-100/80 px-2 py-0.5 rounded-lg">
+                  <span class="font-bold text-slate-800">{{ getBrandName(selectedMotor.fabricante_id) }} {{ selectedMotor.codigo }}</span>
+                  <span v-if="selectedMotor.cilindrada_texto || selectedMotor.cilindrada_cc">• {{ selectedMotor.cilindrada_texto || `${selectedMotor.cilindrada_cc} cc` }}</span>
+                  <span v-if="selectedMotor.combustible">• {{ selectedMotor.combustible }}</span>
+                </div>
               </div>
 
               <!-- Catálogo de Origen -->

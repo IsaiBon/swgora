@@ -2891,6 +2891,7 @@ onUnmounted(() => {
       :is-open="isAdminModalOpen"
       :initial-tab="adminModalTab"
       :preselected-group-id="selectedComponent?.id"
+      :preselected-motor-id="selectedMotor?.id || null"
       :edit-group-id="adminModalEditGroupId"
       @close="isAdminModalOpen = false; adminModalEditGroupId = null"
       @part-created="onPartCreated"
