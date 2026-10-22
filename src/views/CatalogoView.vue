@@ -153,6 +153,24 @@ const baseComponentGroups: ComponentGroup[] = [
     icon: 'Layers',
     description: 'Camisas de cilindro terminadas y semiterminadas para bloque',
     sampleMeasurements: 'ØA Int × ØB Ext × C Largo'
+  },
+  {
+    id: 'guias_valvula',
+    title: 'Guías de válvula',
+    shortTitle: 'Guías de Válvula',
+    category: 'Guías',
+    icon: 'Layers',
+    description: 'Guías de válvula para culata de motor (Admisión y Escape)',
+    sampleMeasurements: 'Posición (IN/EX), piezas por juego'
+  },
+  {
+    id: 'asientos_valvula',
+    title: 'Asientos de válvula',
+    shortTitle: 'Asientos de Válvula',
+    category: 'Asientos',
+    icon: 'CircleDot',
+    description: 'Asientos de válvula para culata de cilindros',
+    sampleMeasurements: 'Posición (IN/EX), cilindros'
   }
 ]
 
@@ -2636,15 +2654,25 @@ onUnmounted(() => {
                   </div>
 
                   <!-- Caso B: Válvula -->
-                  <div v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-slate-800">
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Hongo: <strong class="text-slate-900">{{ part.diametro_cabeza_mm }} mm</strong>
+                  <div v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
+                    <span 
+                      v-if="part.dimensiones?.tipo_valvula || part.dimensiones?.posicion" 
+                      class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider"
+                      :class="(part.dimensiones?.tipo_valvula === 'Admisión' || part.dimensiones?.posicion === 'IN') ? 'bg-cyan-100 text-cyan-800 border border-cyan-200' : 'bg-amber-100 text-amber-800 border border-amber-200'"
+                    >
+                      {{ part.dimensiones?.tipo_valvula || (part.dimensiones?.posicion === 'IN' ? 'Admisión' : (part.dimensiones?.posicion === 'EX' ? 'Escape' : part.dimensiones?.posicion)) }}
                     </span>
                     <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Vástago: <strong class="text-slate-900">{{ part.diametro_vastago_mm }} mm</strong>
+                      Hongo: <strong class="text-slate-900">{{ part.diametro_cabeza_mm ? `${part.diametro_cabeza_mm} mm` : '—' }}</strong>
                     </span>
                     <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Largo: <strong class="text-slate-900">{{ part.longitud_total_mm }} mm</strong>
+                      Vástago: <strong class="text-slate-900">{{ part.diametro_vastago_mm ? `${part.diametro_vastago_mm} mm` : '—' }}</strong>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Largo: <strong class="text-slate-900">{{ part.longitud_total_mm ? `${part.longitud_total_mm} mm` : '—' }}</strong>
+                    </span>
+                    <span v-if="part.angulo_asiento_grados" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] border border-slate-200">
+                      Ángulo: <strong>{{ part.angulo_asiento_grados }}°</strong>
                     </span>
                   </div>
 
