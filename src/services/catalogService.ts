@@ -2405,6 +2405,60 @@ export const catalogService = {
   },
 
   /**
+   * Modifica un grupo o familia de piezas existente (nombre, categoría, subsistema, icono, parámetros técnicos)
+   */
+  async updateGrupo(idOrCode: string, grupoData: Partial<GrupoRepuestoInsert>): Promise<GrupoRepuesto> {
+    const existingList = await this.getGrupos()
+    const existing = existingList.find(g => g.id === idOrCode || g.codigo === idOrCode)
+    if (!existing) {
+      throw new Error(`Grupo con identificador ${idOrCode} no encontrado`)
+    }
+
+    const updated: GrupoRepuesto = {
+      ...existing,
+      nombre: grupoData.nombre !== undefined ? grupoData.nombre.trim() : existing.nombre,
+      categoria: grupoData.categoria !== undefined ? grupoData.categoria.trim() : existing.categoria,
+      subsistema: grupoData.subsistema !== undefined ? grupoData.subsistema : existing.subsistema,
+      descripcion: grupoData.descripcion !== undefined ? grupoData.descripcion.trim() : existing.descripcion,
+      icono: grupoData.icono !== undefined ? grupoData.icono : existing.icono,
+      parametros: grupoData.parametros !== undefined ? grupoData.parametros : existing.parametros,
+      activo: grupoData.activo !== undefined ? grupoData.activo : existing.activo,
+      orden_visual: grupoData.orden_visual !== undefined ? grupoData.orden_visual : existing.orden_visual,
+      updated_at: new Date().toISOString()
+    }
+
+    // Intentar actualización en Supabase
+    try {
+      const { data, error } = await supabase
+        .from('grupos_repuestos')
+        .update({
+          nombre: updated.nombre,
+          categoria: updated.categoria,
+          subsistema: updated.subsistema,
+          descripcion: updated.descripcion,
+          icono: updated.icono,
+          parametros: updated.parametros,
+          activo: updated.activo,
+          orden_visual: updated.orden_visual,
+          updated_at: updated.updated_at
+        })
+        .or(`id.eq.${updated.id},codigo.eq.${updated.codigo}`)
+        .select('*')
+        .single()
+
+      if (!error && data) {
+        updated.id = String(data.id)
+      }
+    } catch (err) {
+      console.warn('[CatalogService] No se pudo actualizar grupo en Supabase directamente, guardando en cache local:', err)
+    }
+
+    // Persistir en cache local para disponibilidad inmediata
+    saveLocalDynamicGrupo(updated)
+    return updated
+  },
+
+  /**
    * Registra un nuevo repuesto técnico con sus equivalencias directamente en Supabase
    */
   async createRepuesto(

@@ -19,19 +19,22 @@ import {
   Ruler, 
   FolderPlus, 
   PackagePlus, 
-  Loader2 
+  Loader2,
+  Edit3
 } from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean
   initialTab?: 'repuesto' | 'grupo'
   preselectedGroupId?: string | null
+  editGroupId?: string | null
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'part-created', part: RepuestoTecnico): void
   (e: 'group-created', group: GrupoRepuesto): void
+  (e: 'group-updated', group: GrupoRepuesto): void
 }>()
 
 const catalogStore = useCatalogStore()
@@ -50,6 +53,14 @@ watch(() => props.isOpen, (open) => {
       selectedGroupCode.value = props.preselectedGroupId
     } else if (!selectedGroupCode.value && catalogStore.grupos.length > 0) {
       selectedGroupCode.value = catalogStore.grupos[0].codigo
+    }
+
+    if (props.editGroupId) {
+      const grp = catalogStore.grupos.find(g => g.codigo === props.editGroupId || g.id === props.editGroupId)
+      if (grp) {
+        activeTab.value = 'grupo'
+        loadGroupForEditing(grp)
+      }
     }
   }
 })
@@ -219,11 +230,88 @@ const resetPartForm = () => {
 // =============================================================================
 // TAB 2: CONSTRUCTOR DINÁMICO DE FAMILIAS / GRUPOS DE PIEZAS Y PARÁMETROS
 // =============================================================================
+const isEditMode = ref<boolean>(false)
+const editingGroupId = ref<string | null>(null)
+const selectedEditGroupId = ref<string>('')
+
 const groupNombre = ref<string>('')
 const groupCategoria = ref<string>('')
 const groupSubsistema = ref<string>('Block')
 const groupDescripcion = ref<string>('')
 const groupIcono = ref<string>('Layers')
+
+const loadGroupForEditing = (grp: GrupoRepuesto) => {
+  isEditMode.value = true
+  editingGroupId.value = grp.codigo || grp.id
+  selectedEditGroupId.value = grp.codigo || grp.id
+  groupNombre.value = grp.nombre
+  groupCategoria.value = grp.categoria
+  groupSubsistema.value = grp.subsistema || 'Block'
+  groupDescripcion.value = grp.descripcion || ''
+  groupIcono.value = grp.icono || 'Layers'
+  dynamicParams.value = grp.parametros.map((p, idx) => ({
+    id: p.id || `param-${Date.now()}-${idx}`,
+    etiqueta: p.etiqueta,
+    clave: p.clave,
+    unidad: p.unidad,
+    tipo_dato: p.tipo_dato,
+    requerido: p.requerido,
+    descripcion: p.descripcion || ''
+  }))
+  groupErrors.value = {}
+}
+
+const switchToCreateMode = () => {
+  isEditMode.value = false
+  editingGroupId.value = null
+  selectedEditGroupId.value = ''
+  groupNombre.value = ''
+  groupCategoria.value = ''
+  groupSubsistema.value = 'Block'
+  groupDescripcion.value = ''
+  groupIcono.value = 'Layers'
+  dynamicParams.value = [
+    {
+      id: `param-${Date.now()}-1`,
+      etiqueta: 'Diámetro Interior',
+      clave: 'diametro_interior_mm',
+      unidad: 'mm',
+      tipo_dato: 'numero',
+      requerido: true,
+      descripcion: 'Medida del diámetro interno de la pieza'
+    },
+    {
+      id: `param-${Date.now()}-2`,
+      etiqueta: 'Diámetro Exterior',
+      clave: 'diametro_exterior_mm',
+      unidad: 'mm',
+      tipo_dato: 'numero',
+      requerido: true,
+      descripcion: 'Medida del diámetro externo o de alojamiento'
+    },
+    {
+      id: `param-${Date.now()}-3`,
+      etiqueta: 'Longitud / Altura Total',
+      clave: 'longitud_total_mm',
+      unidad: 'mm',
+      tipo_dato: 'numero',
+      requerido: true,
+      descripcion: 'Largo total o altura en milímetros'
+    }
+  ]
+  groupErrors.value = {}
+}
+
+const onSelectEditGroup = () => {
+  if (!selectedEditGroupId.value) {
+    switchToCreateMode()
+    return
+  }
+  const grp = catalogStore.grupos.find(g => g.codigo === selectedEditGroupId.value || g.id === selectedEditGroupId.value)
+  if (grp) {
+    loadGroupForEditing(grp)
+  }
+}
 
 // Lista dinámica de parámetros del nuevo grupo
 const dynamicParams = ref<Array<{
@@ -415,19 +503,35 @@ const handleSaveGroup = async () => {
       descripcion: p.descripcion.trim() || undefined
     }))
 
-    const created = await catalogStore.createGrupo({
-      nombre: groupNombre.value.trim(),
-      categoria: groupCategoria.value.trim() || groupNombre.value.trim(),
-      subsistema: groupSubsistema.value,
-      descripcion: groupDescripcion.value.trim() || undefined,
-      icono: groupIcono.value,
-      parametros: paramsPayload
-    })
+    if (isEditMode.value && editingGroupId.value) {
+      const updated = await catalogStore.updateGrupo(editingGroupId.value, {
+        nombre: groupNombre.value.trim(),
+        categoria: groupCategoria.value.trim() || groupNombre.value.trim(),
+        subsistema: groupSubsistema.value,
+        descripcion: groupDescripcion.value.trim() || undefined,
+        icono: groupIcono.value,
+        parametros: paramsPayload
+      })
 
-    emit('group-created', created)
-    // Pasar automáticamente a crear un repuesto de este nuevo grupo
-    selectedGroupCode.value = created.codigo
-    activeTab.value = 'repuesto'
+      emit('group-updated', updated)
+      emit('group-created', updated)
+      selectedGroupCode.value = updated.codigo
+      activeTab.value = 'repuesto'
+    } else {
+      const created = await catalogStore.createGrupo({
+        nombre: groupNombre.value.trim(),
+        categoria: groupCategoria.value.trim() || groupNombre.value.trim(),
+        subsistema: groupSubsistema.value,
+        descripcion: groupDescripcion.value.trim() || undefined,
+        icono: groupIcono.value,
+        parametros: paramsPayload
+      })
+
+      emit('group-created', created)
+      // Pasar automáticamente a crear un repuesto de este nuevo grupo
+      selectedGroupCode.value = created.codigo
+      activeTab.value = 'repuesto'
+    }
   } catch (err: unknown) {
     console.error('Error al guardar grupo:', err)
   } finally {
@@ -859,8 +963,68 @@ onUnmounted(() => {
         <!-- ----------------------------------------------------------------- -->
         <div v-else class="space-y-6">
 
-          <!-- Plantillas rápidas de taller -->
-          <div class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <!-- Selector de Modo: Crear Nuevo vs Modificar Existente -->
+          <div class="bg-slate-100 p-2.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200">
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                @click="switchToCreateMode"
+                :class="[
+                  'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
+                  !isEditMode ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                ]"
+              >
+                <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                <span>+ Crear Nueva Familia</span>
+              </button>
+              <button
+                type="button"
+                @click="isEditMode = true"
+                :class="[
+                  'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
+                  isEditMode ? 'bg-white text-[#04C4D9] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                ]"
+              >
+                <Edit3 class="w-3.5 h-3.5" />
+                <span>✏️ Modificar Familia Existente</span>
+              </button>
+            </div>
+
+            <!-- Si está en modo editar: selector de grupo a modificar -->
+            <div v-if="isEditMode" class="flex items-center gap-2">
+              <label class="text-[11px] font-bold text-slate-600 shrink-0">Familia a editar:</label>
+              <select
+                v-model="selectedEditGroupId"
+                @change="onSelectEditGroup"
+                class="px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
+              >
+                <option value="" disabled>Seleccione una familia...</option>
+                <option v-for="grp in catalogStore.grupos" :key="grp.id" :value="grp.codigo">
+                  {{ grp.nombre }} ({{ grp.parametros.length }} parámetros)
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Banner Informativo si está editando -->
+          <div v-if="isEditMode && editingGroupId" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <Edit3 class="w-4 h-4 text-[#038391]" />
+              <span class="text-xs text-[#038391] font-bold">
+                Editando familia: <strong>{{ groupNombre }}</strong> (Código: {{ editingGroupId }}). Puedes modificar nombres, agregar o eliminar parámetros requeridos.
+              </span>
+            </div>
+            <button
+              type="button"
+              @click="switchToCreateMode"
+              class="text-[11px] font-bold text-cyan-800 underline hover:text-cyan-900 shrink-0"
+            >
+              Cambiar a crear nueva
+            </button>
+          </div>
+
+          <!-- Plantillas rápidas de taller (solo en modo creación) -->
+          <div v-if="!isEditMode" class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <strong class="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
                 <Sparkles class="w-4 h-4 text-amber-600" />
@@ -892,7 +1056,7 @@ onUnmounted(() => {
           <div class="space-y-4">
             <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-              1. Datos de la Nueva Familia / Grupo de Repuestos
+              {{ isEditMode ? `1. Modificar Datos de la Familia: ${groupNombre || ''}` : '1. Datos de la Nueva Familia / Grupo de Repuestos' }}
             </h3>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1123,7 +1287,7 @@ onUnmounted(() => {
           >
             <Loader2 v-if="isSubmittingGroup" class="w-4 h-4 animate-spin" />
             <Save v-else class="w-4 h-4" />
-            <span>{{ isSubmittingGroup ? 'Guardando Familia...' : 'Guardar Familia y Esquema' }}</span>
+            <span>{{ isSubmittingGroup ? (isEditMode ? 'Guardando Modificaciones...' : 'Guardando Familia...') : (isEditMode ? 'Guardar Cambios de la Familia' : 'Guardar Familia y Esquema') }}</span>
           </button>
         </div>
       </div>

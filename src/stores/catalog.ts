@@ -59,10 +59,27 @@ export const useCatalogStore = defineStore('catalog', () => {
     return motores.value.find(m => m.id === selectedMotorId.value) || null
   })
 
-  // Modelos filtrados reactivamente por el fabricante seleccionado
+  // Modelos filtrados reactivamente por el fabricante seleccionado y/o motor seleccionado
   const availableModelos = computed<Modelo[]>(() => {
-    if (!selectedFabricanteId.value) return modelos.value
-    return modelos.value.filter(m => m.fabricante_id === selectedFabricanteId.value)
+    let list = modelos.value
+    if (selectedFabricanteId.value) {
+      list = list.filter(m => m.fabricante_id === selectedFabricanteId.value)
+    }
+    // Si hay un motor seleccionado y no se ha fijado modelo, priorizar o filtrar los modelos compatibles
+    if (selectedMotorId.value) {
+      const mot = motores.value.find(m => m.id === selectedMotorId.value)
+      if (mot) {
+        const matching = list.filter(m => 
+          m.id === mot.modelo_id ||
+          (mot.denominacion_venta && mot.denominacion_venta.toLowerCase().includes(m.nombre.toLowerCase())) ||
+          (mot.nombre_comercial && mot.nombre_comercial.toLowerCase().includes(m.nombre.toLowerCase()))
+        )
+        if (matching.length > 0) {
+          return matching
+        }
+      }
+    }
+    return list
   })
 
   // Motores filtrados reactivamente por el fabricante y/o modelo seleccionado
@@ -72,7 +89,13 @@ export const useCatalogStore = defineStore('catalog', () => {
       list = list.filter(m => m.fabricante_id === selectedFabricanteId.value)
     }
     if (selectedModeloId.value) {
-      list = list.filter(m => m.modelo_id === selectedModeloId.value)
+      const mod = modelos.value.find(m => m.id === selectedModeloId.value)
+      const modName = mod?.nombre.toLowerCase() || ''
+      list = list.filter(m => 
+        m.modelo_id === selectedModeloId.value ||
+        (modName && m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(modName)) ||
+        (modName && m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(modName))
+      )
     }
     return list
   })
@@ -331,6 +354,30 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Modifica una familia / grupo de repuestos existente y sus parámetros dinámicos
+   */
+  async function updateGrupo(idOrCode: string, grupoData: Partial<GrupoRepuestoInsert>) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const updated = await catalogService.updateGrupo(idOrCode, grupoData)
+      const idx = grupos.value.findIndex(g => g.id === updated.id || g.codigo === updated.codigo || g.id === idOrCode || g.codigo === idOrCode)
+      if (idx >= 0) {
+        grupos.value[idx] = updated
+      } else {
+        grupos.value.push(updated)
+      }
+      return updated
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar el grupo en Supabase'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
    * Inicialización del catálogo
    */
   async function initCatalog() {
@@ -379,6 +426,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchRepuestosByMotor,
     fetchGrupos,
     createGrupo,
+    updateGrupo,
     searchParts,
     selectFabricante,
     selectModelo,

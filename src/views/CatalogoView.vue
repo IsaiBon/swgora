@@ -35,7 +35,12 @@ import {
   RefreshCw,
   AlertTriangle,
   Sparkles,
-  FolderPlus
+  FolderPlus,
+  Edit3,
+  Ruler,
+  Lock,
+  ArrowRightLeft,
+  Car
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -58,12 +63,19 @@ const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
 
+// Orden en cascada intercambiable: 'modelo_motor' (Fabricante -> Modelo -> Motor) o 'motor_modelo' (Fabricante -> Motor -> Modelo)
+const cascadeOrder = ref<'modelo_motor' | 'motor_modelo'>('modelo_motor')
+const toggleCascadeOrder = () => {
+  cascadeOrder.value = cascadeOrder.value === 'modelo_motor' ? 'motor_modelo' : 'modelo_motor'
+  showToast(cascadeOrder.value === 'modelo_motor' ? 'Orden: Fabricante → Modelo → Motor' : 'Orden: Fabricante → Motor → Modelo')
+}
+
 // Barra de búsqueda global con debounce
 const searchInput = ref<string>('')
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
-// Vista activa (alternar entre motores y repuestos)
-const activeViewTab = ref<'motores' | 'repuestos'>('motores')
+// Vista activa ('motores' | 'grupos' | 'repuestos')
+const activeViewTab = ref<'motores' | 'grupos' | 'repuestos'>('motores')
 
 // =============================================================================
 // DEFINICIÓN DE GRUPOS / FAMILIAS DE PIEZAS (BASE + DINÁMICOS)
@@ -137,8 +149,19 @@ const componentGroups = computed<ComponentGroup[]>(() => {
 })
 
 // =============================================================================
-// FILTROS DE MEDIDAS EXACTAS POR TIPO DE COMPONENTE
+// FILTROS DE MEDIDAS TÉCNICAS Y TOLERANCIA UNIVERSAL (± mm)
 // =============================================================================
+
+// Filtro de Tolerancia Universal (± mm) aplicable a todas las cotas
+const filterToleranciaMm = ref<number>(1.0)
+
+// Filtros para parámetros dinámicos de nuevos grupos
+const dynamicParamFilters = ref<Record<string, any>>({})
+
+const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
+  if (!selectedComponent.value) return null
+  return catalogStore.grupos.find(g => g.codigo === selectedComponent.value?.id || g.id === selectedComponent.value?.id) || null
+})
 
 // 1. Ajuste de válvula (Sellos)
 const filterSelloDiamInt = ref<number | undefined>(undefined)
@@ -166,28 +189,29 @@ const filterPernoLongitud2 = ref<number | undefined>(undefined)
 
 // Contador de filtros de medida activos
 const activeMeasurementsCount = computed(() => {
-  if (!selectedComponent.value) return 0
-  if (selectedComponent.value.id === 'ajuste_valvula') {
-    return [filterSelloDiamInt.value, filterSelloDiamExt.value, filterSelloAltura.value].filter(v => v !== undefined && v !== null).length
+  let count = 0
+  if (selectedComponent.value) {
+    if (selectedComponent.value.id === 'ajuste_valvula') {
+      count += [filterSelloDiamInt.value, filterSelloDiamExt.value, filterSelloAltura.value].filter(v => v !== undefined && v !== null).length
+    } else if (selectedComponent.value.id === 'valvula') {
+      count += [filterValvulaHongo.value, filterValvulaVastago.value, filterValvulaAltura.value].filter(v => v !== undefined && v !== null).length
+    } else if (selectedComponent.value.id === 'anillos_motor') {
+      count += [filterAnilloDiametro.value, filterAnilloGrosor1.value, filterAnilloAlturaGrosor.value].filter(v => v !== undefined && v !== null).length
+    } else if (selectedComponent.value.id === 'tornillos_culata') {
+      count += [
+        filterPernoMedidaRosca.value || undefined,
+        filterPernoPasoRosca.value,
+        filterPernoLongitud.value,
+        filterPernoCantidad.value,
+        filterPernoPasoRosca1.value,
+        filterPernoLongitud1.value,
+        filterPernoLongitud2.value
+      ].filter(v => v !== undefined && v !== null).length
+    }
   }
-  if (selectedComponent.value.id === 'valvula') {
-    return [filterValvulaHongo.value, filterValvulaVastago.value, filterValvulaAltura.value].filter(v => v !== undefined && v !== null).length
-  }
-  if (selectedComponent.value.id === 'anillos_motor') {
-    return [filterAnilloDiametro.value, filterAnilloGrosor1.value, filterAnilloAlturaGrosor.value].filter(v => v !== undefined && v !== null).length
-  }
-  if (selectedComponent.value.id === 'tornillos_culata') {
-    return [
-      filterPernoMedidaRosca.value || undefined,
-      filterPernoPasoRosca.value,
-      filterPernoLongitud.value,
-      filterPernoCantidad.value,
-      filterPernoPasoRosca1.value,
-      filterPernoLongitud1.value,
-      filterPernoLongitud2.value
-    ].filter(v => v !== undefined && v !== null).length
-  }
-  return 0
+  // Sumar filtros dinámicos activos
+  count += Object.values(dynamicParamFilters.value).filter(v => v !== undefined && v !== null && v !== '').length
+  return count
 })
 
 const resetMeasurementsFilters = () => {
@@ -210,6 +234,8 @@ const resetMeasurementsFilters = () => {
   filterPernoPasoRosca1.value = undefined
   filterPernoLongitud1.value = undefined
   filterPernoLongitud2.value = undefined
+
+  dynamicParamFilters.value = {}
 
   showToast('Filtros de medidas restablecidos')
 }
@@ -352,9 +378,20 @@ const handleClearSelectedModel = async () => {
   await catalogStore.selectModelo(null)
 }
 
+const onFocusModel = () => { if (selectedBrand.value) isModelOpen.value = true }
+const onInputModel = () => { if (selectedBrand.value) isModelOpen.value = true }
+const onFocusMotor = () => { if (selectedBrand.value) isMotorOpen.value = true }
+const onInputMotor = () => { if (selectedBrand.value) isMotorOpen.value = true }
+
 // 3. Filtrado de MOTORES DISPONIBLES (CASCADA NIVEL 3)
 const availableMotors = computed(() => {
   return catalogStore.availableMotores
+})
+
+// Modelos compatibles con el motor seleccionado (para visualización directa)
+const compatibleModelsForMotor = computed<Modelo[]>(() => {
+  if (!selectedMotor.value) return []
+  return catalogStore.availableModelos
 })
 
 const filteredMotors = computed(() => {
@@ -393,9 +430,11 @@ const handleSelectMotor = async (mot: Motor) => {
     }
   }
 
-  // Si ya tiene un componente seleccionado, mostrar vista de repuestos
+  // Al seleccionar un motor: mostrar directamente los grupos y NO los demás motores
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
+  } else {
+    activeViewTab.value = 'grupos'
   }
 }
 
@@ -547,63 +586,89 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       )
     }
 
-    // 2. Filtros de medidas dimensionales específicas
+    // 2. Filtros de medidas dimensionales específicas (con Tolerancia Universal Configurable)
+    const tol = filterToleranciaMm.value !== undefined && filterToleranciaMm.value !== null ? Number(filterToleranciaMm.value) : 1.0
+
     if (compId === 'ajuste_valvula') {
-      if (filterSelloDiamInt.value !== undefined) {
-        list = list.filter(r => r.diametro_interior_mm && Math.abs(r.diametro_interior_mm - (filterSelloDiamInt.value || 0)) <= 0.25)
+      if (filterSelloDiamInt.value !== undefined && filterSelloDiamInt.value !== null) {
+        list = list.filter(r => r.diametro_interior_mm && Math.abs(r.diametro_interior_mm - (filterSelloDiamInt.value || 0)) <= tol)
       }
-      if (filterSelloDiamExt.value !== undefined) {
-        list = list.filter(r => r.diametro_exterior_mm && Math.abs(r.diametro_exterior_mm - (filterSelloDiamExt.value || 0)) <= 0.35)
+      if (filterSelloDiamExt.value !== undefined && filterSelloDiamExt.value !== null) {
+        list = list.filter(r => r.diametro_exterior_mm && Math.abs(r.diametro_exterior_mm - (filterSelloDiamExt.value || 0)) <= tol)
       }
-      if (filterSelloAltura.value !== undefined) {
-        list = list.filter(r => r.altura_mm && Math.abs(r.altura_mm - (filterSelloAltura.value || 0)) <= 0.5)
+      if (filterSelloAltura.value !== undefined && filterSelloAltura.value !== null) {
+        list = list.filter(r => r.altura_mm && Math.abs(r.altura_mm - (filterSelloAltura.value || 0)) <= tol)
       }
     } else if (compId === 'valvula') {
-      if (filterValvulaHongo.value !== undefined) {
-        list = list.filter(r => r.diametro_cabeza_mm && Math.abs(r.diametro_cabeza_mm - (filterValvulaHongo.value || 0)) <= 0.5)
+      if (filterValvulaHongo.value !== undefined && filterValvulaHongo.value !== null) {
+        list = list.filter(r => r.diametro_cabeza_mm && Math.abs(r.diametro_cabeza_mm - (filterValvulaHongo.value || 0)) <= tol)
       }
-      if (filterValvulaVastago.value !== undefined) {
-        list = list.filter(r => r.diametro_vastago_mm && Math.abs(r.diametro_vastago_mm - (filterValvulaVastago.value || 0)) <= 0.15)
+      if (filterValvulaVastago.value !== undefined && filterValvulaVastago.value !== null) {
+        list = list.filter(r => r.diametro_vastago_mm && Math.abs(r.diametro_vastago_mm - (filterValvulaVastago.value || 0)) <= tol)
       }
-      if (filterValvulaAltura.value !== undefined) {
-        list = list.filter(r => r.longitud_total_mm && Math.abs(r.longitud_total_mm - (filterValvulaAltura.value || 0)) <= 1.0)
+      if (filterValvulaAltura.value !== undefined && filterValvulaAltura.value !== null) {
+        list = list.filter(r => r.longitud_total_mm && Math.abs(r.longitud_total_mm - (filterValvulaAltura.value || 0)) <= tol)
       }
     } else if (compId === 'anillos_motor') {
-      if (filterAnilloDiametro.value !== undefined) {
-        list = list.filter(r => r.diametro_cilindro_mm && Math.abs(r.diametro_cilindro_mm - (filterAnilloDiametro.value || 0)) <= 0.5)
+      if (filterAnilloDiametro.value !== undefined && filterAnilloDiametro.value !== null) {
+        list = list.filter(r => r.diametro_cilindro_mm && Math.abs(r.diametro_cilindro_mm - (filterAnilloDiametro.value || 0)) <= tol)
       }
-      if (filterAnilloGrosor1.value !== undefined) {
-        list = list.filter(r => r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - (filterAnilloGrosor1.value || 0)) <= 0.15)
+      if (filterAnilloGrosor1.value !== undefined && filterAnilloGrosor1.value !== null) {
+        list = list.filter(r => r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - (filterAnilloGrosor1.value || 0)) <= tol)
       }
-      if (filterAnilloAlturaGrosor.value !== undefined) {
+      if (filterAnilloAlturaGrosor.value !== undefined && filterAnilloAlturaGrosor.value !== null) {
         const val = filterAnilloAlturaGrosor.value || 0
         list = list.filter(r => 
-          (r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - val) <= 0.15) ||
-          (r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - val) <= 0.25) ||
-          (r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - val) <= 0.15)
+          (r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - val) <= tol) ||
+          (r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - val) <= tol) ||
+          (r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - val) <= tol)
         )
       }
     } else if (compId === 'tornillos_culata') {
       if (filterPernoMedidaRosca.value) {
         list = list.filter(r => r.medida_rosca?.toLowerCase() === filterPernoMedidaRosca.value.toLowerCase())
       }
-      if (filterPernoPasoRosca.value !== undefined) {
-        list = list.filter(r => r.paso_rosca_mm && Math.abs(r.paso_rosca_mm - (filterPernoPasoRosca.value || 0)) <= 0.1)
+      if (filterPernoPasoRosca.value !== undefined && filterPernoPasoRosca.value !== null) {
+        list = list.filter(r => r.paso_rosca_mm && Math.abs(r.paso_rosca_mm - (filterPernoPasoRosca.value || 0)) <= tol)
       }
-      if (filterPernoLongitud.value !== undefined) {
-        list = list.filter(r => (r.longitud_perno_mm || r.longitud_total_mm) && Math.abs(((r.longitud_perno_mm || r.longitud_total_mm) || 0) - (filterPernoLongitud.value || 0)) <= 2.0)
+      if (filterPernoLongitud.value !== undefined && filterPernoLongitud.value !== null) {
+        list = list.filter(r => (r.longitud_perno_mm || r.longitud_total_mm) && Math.abs(((r.longitud_perno_mm || r.longitud_total_mm) || 0) - (filterPernoLongitud.value || 0)) <= tol)
       }
-      if (filterPernoCantidad.value !== undefined) {
+      if (filterPernoCantidad.value !== undefined && filterPernoCantidad.value !== null) {
         list = list.filter(r => r.cantidad_piezas === filterPernoCantidad.value)
       }
-      if (filterPernoPasoRosca1.value !== undefined) {
-        list = list.filter(r => r.paso_rosca1_mm && Math.abs(r.paso_rosca1_mm - (filterPernoPasoRosca1.value || 0)) <= 0.1)
+      if (filterPernoPasoRosca1.value !== undefined && filterPernoPasoRosca1.value !== null) {
+        list = list.filter(r => r.paso_rosca1_mm && Math.abs(r.paso_rosca1_mm - (filterPernoPasoRosca1.value || 0)) <= tol)
       }
-      if (filterPernoLongitud1.value !== undefined) {
-        list = list.filter(r => r.longitud1_mm && Math.abs(r.longitud1_mm - (filterPernoLongitud1.value || 0)) <= 2.0)
+      if (filterPernoLongitud1.value !== undefined && filterPernoLongitud1.value !== null) {
+        list = list.filter(r => r.longitud1_mm && Math.abs(r.longitud1_mm - (filterPernoLongitud1.value || 0)) <= tol)
       }
-      if (filterPernoLongitud2.value !== undefined) {
-        list = list.filter(r => r.longitud2_mm && Math.abs(r.longitud2_mm - (filterPernoLongitud2.value || 0)) <= 2.0)
+      if (filterPernoLongitud2.value !== undefined && filterPernoLongitud2.value !== null) {
+        list = list.filter(r => r.longitud2_mm && Math.abs(r.longitud2_mm - (filterPernoLongitud2.value || 0)) <= tol)
+      }
+    }
+
+    // 2.b. Filtros de parámetros dinámicos para grupos nuevos / personalizados
+    if (Object.keys(dynamicParamFilters.value).length > 0) {
+      for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
+        if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
+          list = list.filter(r => {
+            const partVal = r.dimensiones?.[key] ?? (r as any)[key]
+            if (partVal === undefined || partVal === null) return false
+
+            // Comparación numérica con tolerancia
+            if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(partVal)))) {
+              const numPart = Number(partVal)
+              const numFilter = Number(filterVal)
+              return Math.abs(numPart - numFilter) <= tol
+            }
+
+            // Comparación de texto / selección
+            const strPart = String(partVal).toLowerCase().trim()
+            const strFilter = String(filterVal).toLowerCase().trim()
+            return strPart.includes(strFilter)
+          })
+        }
       }
     }
   }
@@ -658,14 +723,20 @@ const closeTechnicalSheet = () => {
 
 // =============================================================================
 // =============================================================================
-// MODAL ADMINISTRATIVO DE CATÁLOGO (NUEVO REPUESTO / NUEVA FAMILIA DINÁMICA)
+// MODAL ADMINISTRATIVO DE CATÁLOGO (NUEVO REPUESTO / NUEVA FAMILIA DINÁMICA / EDITAR GRUPO)
 // =============================================================================
 const isAdminModalOpen = ref<boolean>(false)
 const adminModalTab = ref<'repuesto' | 'grupo'>('repuesto')
+const adminModalEditGroupId = ref<string | null>(null)
 
-const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto') => {
+const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroupId?: string | null) => {
   adminModalTab.value = tab
+  adminModalEditGroupId.value = editGroupId || null
   isAdminModalOpen.value = true
+}
+
+const handleEditGroup = (grpId: string) => {
+  openAdminCatalogModal('grupo', grpId)
 }
 
 // Retrocompatibilidad con openAddPartModal
@@ -681,6 +752,12 @@ const onPartCreated = (newPart: RepuestoTecnico) => {
 
 const onGroupCreated = (newGroup: GrupoRepuesto) => {
   showToast(`✓ Familia "${newGroup.nombre}" creada con ${newGroup.parametros.length} parámetros técnicos`)
+  catalogStore.fetchGrupos()
+}
+
+const onGroupUpdated = (updatedGroup: GrupoRepuesto) => {
+  showToast(`✓ Familia "${updatedGroup.nombre}" actualizada con ${updatedGroup.parametros.length} parámetros técnicos`)
+  catalogStore.fetchGrupos()
 }
 
 // Cerrar dropdowns al hacer clic fuera
@@ -828,9 +905,35 @@ onUnmounted(() => {
 
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
-    <!-- (1. FABRICANTE -> 2. MODELO -> 3. CÓDIGO DE MOTOR -> 4. COMPONENTE)       -->
+    <!-- (FABRICANTE -> MODELO/MOTOR -> COMPONENTE)                                -->
     <!-- ========================================================================= -->
     <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-sm">
+      <!-- Barra superior de control de cascada e inversión de orden -->
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+          <span class="text-xs font-black uppercase tracking-wider text-slate-800">
+            Filtros en Cascada
+          </span>
+          <span class="text-[11px] text-slate-500 font-medium">
+            Flujo: 
+            <strong class="text-slate-700">1. Fabricante</strong> → 
+            <strong class="text-[#038391]">{{ cascadeOrder === 'modelo_motor' ? '2. Modelo → 3. Motor' : '2. Motor → 3. Modelo' }}</strong> → 
+            <strong class="text-slate-700">4. Componente</strong>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          @click="toggleCascadeOrder"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition active:scale-95 shadow-2xs"
+          :title="cascadeOrder === 'modelo_motor' ? 'Invertir orden: Seleccionar Motor primero' : 'Invertir orden: Seleccionar Modelo primero'"
+        >
+          <ArrowRightLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span>{{ cascadeOrder === 'modelo_motor' ? 'Invertir orden (Motor primero)' : 'Invertir orden (Modelo primero)' }}</span>
+        </button>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-end">
         
         <!-- 1. CASCADA NIVEL 1: MARCA / FABRICANTE -->
@@ -887,116 +990,292 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 2. CASCADA NIVEL 2: MODELO DE VEHÍCULO -->
-        <div class="relative combobox-model">
-          <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-            2. Modelo
-          </label>
-
-          <div class="relative flex items-center">
-            <input
-              v-model="modelInput"
-              @focus="isModelOpen = true"
-              @input="isModelOpen = true"
-              type="text"
-              placeholder="Modelo (Hilux, Civic, D-Max...)"
-              class="w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold bg-slate-50/70 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs min-h-[44px]"
-            />
-            <button
-              v-if="modelInput"
-              type="button"
-              @click="handleClearSelectedModel"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-              title="Limpiar modelo"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isModelOpen = !isModelOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
-          </div>
-
-          <!-- Dropdown Modelos -->
-          <div
-            v-if="isModelOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
-          >
-            <div
-              v-for="mod in filteredModels"
-              :key="mod.id"
-              @click="handleSelectModel(mod)"
-              class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
-            >
-              <div class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                <strong class="text-slate-900 font-extrabold">{{ mod.nombre }}</strong>
-              </div>
-              <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
-                {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
+        <!-- ORDEN A: MODELO PRIMERO, MOTOR SEGUNDO -->
+        <template v-if="cascadeOrder === 'modelo_motor'">
+          <!-- 2. MODELO DE VEHÍCULO (BLOQUEADO HASTA ELEGIR FABRICANTE) -->
+          <div class="relative combobox-model">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                2. Modelo
+              </label>
+              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-semibold flex items-center gap-0.5">
+                <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
               </span>
             </div>
-            <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
-              No hay modelos para esta selección
+
+            <div class="relative flex items-center">
+              <input
+                v-model="modelInput"
+                :disabled="!selectedBrand"
+                @focus="onFocusModel"
+                @input="onInputModel"
+                type="text"
+                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : 'Modelo (Hilux, Civic...)'"
+                :class="[
+                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  !selectedBrand 
+                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                ]"
+              />
+              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
+                <Lock class="w-4 h-4" />
+              </div>
+              <template v-else>
+                <button
+                  v-if="modelInput"
+                  type="button"
+                  @click="handleClearSelectedModel"
+                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+                  title="Limpiar modelo"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+                <ChevronDown
+                  @click="isModelOpen = !isModelOpen"
+                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+                />
+              </template>
+            </div>
+
+            <!-- Dropdown Modelos -->
+            <div
+              v-if="isModelOpen && selectedBrand"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+            >
+              <div
+                v-for="mod in filteredModels"
+                :key="mod.id"
+                @click="handleSelectModel(mod)"
+                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                  <strong class="text-slate-900 font-extrabold">{{ mod.nombre }}</strong>
+                </div>
+                <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
+                  {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
+                </span>
+              </div>
+              <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
+                No hay modelos para esta selección
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 3. CASCADA NIVEL 3: CÓDIGO DE MOTOR -->
-        <div class="relative combobox-motor">
-          <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
-            3. Motor
-          </label>
+          <!-- 3. CÓDIGO DE MOTOR -->
+          <div class="relative combobox-motor">
+            <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
+              3. Motor
+            </label>
 
-          <div class="relative flex items-center">
-            <input
-              v-model="motorInput"
-              @focus="isMotorOpen = true"
-              @input="isMotorOpen = true"
-              type="text"
-              placeholder="Código (3L, Z24, K20A...)"
-              class="w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-mono font-bold bg-slate-50/70 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs min-h-[44px]"
-            />
-            <button
-              v-if="motorInput"
-              type="button"
-              @click="handleClearSelectedMotor"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-              title="Limpiar motor"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isMotorOpen = !isMotorOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
-          </div>
-
-          <!-- Dropdown Motores -->
-          <div
-            v-if="isMotorOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
-          >
-            <div
-              v-for="mot in filteredMotors"
-              :key="mot.id"
-              @click="handleSelectMotor(mot)"
-              class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
-            >
-              <div>
-                <strong class="text-slate-900 font-mono text-sm font-black">{{ mot.codigo }}</strong>
-                <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
-                <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1">({{ mot.denominacion_venta }})</span>
+            <div class="relative flex items-center">
+              <input
+                v-model="motorInput"
+                :disabled="!selectedBrand"
+                @focus="onFocusMotor"
+                @input="onInputMotor"
+                type="text"
+                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : (selectedModel ? `Motor para ${selectedModel.nombre}...` : 'Código (3L, Z24, K20A...)')"
+                :class="[
+                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-mono font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  !selectedBrand 
+                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                ]"
+              />
+              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
+                <Lock class="w-4 h-4" />
               </div>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+              <template v-else>
+                <button
+                  v-if="motorInput"
+                  type="button"
+                  @click="handleClearSelectedMotor"
+                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+                  title="Limpiar motor"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+                <ChevronDown
+                  @click="isMotorOpen = !isMotorOpen"
+                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+                />
+              </template>
+            </div>
+
+            <!-- Dropdown Motores -->
+            <div
+              v-if="isMotorOpen && selectedBrand"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+            >
+              <div
+                v-for="mot in filteredMotors"
+                :key="mot.id"
+                @click="handleSelectMotor(mot)"
+                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+              >
+                <div>
+                  <strong class="text-slate-900 font-mono text-sm font-black">{{ mot.codigo }}</strong>
+                  <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
+                  <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1">({{ mot.denominacion_venta }})</span>
+                </div>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+                </span>
+              </div>
+              <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
+                No hay motores coincidentes
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ORDEN B: MOTOR PRIMERO, MODELO SEGUNDO -->
+        <template v-else>
+          <!-- 2. CÓDIGO DE MOTOR -->
+          <div class="relative combobox-motor">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                2. Motor
+              </label>
+              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-semibold flex items-center gap-0.5">
+                <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
               </span>
             </div>
-            <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
-              No hay motores coincidentes
+
+            <div class="relative flex items-center">
+              <input
+                v-model="motorInput"
+                :disabled="!selectedBrand"
+                @focus="onFocusMotor"
+                @input="onInputMotor"
+                type="text"
+                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : 'Código (3L, Z24, K20A...)'"
+                :class="[
+                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-mono font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  !selectedBrand 
+                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                ]"
+              />
+              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
+                <Lock class="w-4 h-4" />
+              </div>
+              <template v-else>
+                <button
+                  v-if="motorInput"
+                  type="button"
+                  @click="handleClearSelectedMotor"
+                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+                  title="Limpiar motor"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+                <ChevronDown
+                  @click="isMotorOpen = !isMotorOpen"
+                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+                />
+              </template>
+            </div>
+
+            <!-- Dropdown Motores -->
+            <div
+              v-if="isMotorOpen && selectedBrand"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+            >
+              <div
+                v-for="mot in filteredMotors"
+                :key="mot.id"
+                @click="handleSelectMotor(mot)"
+                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+              >
+                <div>
+                  <strong class="text-slate-900 font-mono text-sm font-black">{{ mot.codigo }}</strong>
+                  <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
+                  <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1">({{ mot.denominacion_venta }})</span>
+                </div>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+                </span>
+              </div>
+              <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
+                No hay motores coincidentes
+              </div>
             </div>
           </div>
-        </div>
+
+          <!-- 3. MODELO DE VEHÍCULO (FILTRADO POR MOTOR O FABRICANTE) -->
+          <div class="relative combobox-model">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                3. Modelo
+              </label>
+              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-semibold flex items-center gap-0.5">
+                <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
+              </span>
+            </div>
+
+            <div class="relative flex items-center">
+              <input
+                v-model="modelInput"
+                :disabled="!selectedBrand"
+                @focus="onFocusModel"
+                @input="onInputModel"
+                type="text"
+                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : (selectedMotor ? `Modelos con motor ${selectedMotor.codigo}...` : 'Modelo compatible...')"
+                :class="[
+                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  !selectedBrand 
+                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                ]"
+              />
+              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
+                <Lock class="w-4 h-4" />
+              </div>
+              <template v-else>
+                <button
+                  v-if="modelInput"
+                  type="button"
+                  @click="handleClearSelectedModel"
+                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+                  title="Limpiar modelo"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+                <ChevronDown
+                  @click="isModelOpen = !isModelOpen"
+                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+                />
+              </template>
+            </div>
+
+            <!-- Dropdown Modelos -->
+            <div
+              v-if="isModelOpen && selectedBrand"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+            >
+              <div
+                v-for="mod in filteredModels"
+                :key="mod.id"
+                @click="handleSelectModel(mod)"
+                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                  <strong class="text-slate-900 font-extrabold">{{ mod.nombre }}</strong>
+                </div>
+                <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
+                  {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
+                </span>
+              </div>
+              <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
+                No hay modelos para esta selección
+              </div>
+            </div>
+          </div>
+        </template>
 
         <!-- 4. CAMPO: TIPO DE COMPONENTE -->
         <div class="relative combobox-component">
@@ -1380,6 +1659,144 @@ onUnmounted(() => {
     </div>
 
     <!-- ========================================================================= -->
+    <!-- ESTADO 2.B: MOTOR SELECCIONADO -> VISTA DE GRUPOS DIRECTA                 -->
+    <!-- (Muestra directamente los grupos del motor y NO los demás motores)        -->
+    <!-- ========================================================================= -->
+    <div 
+      v-else-if="selectedMotor && (activeViewTab === 'grupos' || !selectedComponent) && !searchInput" 
+      class="space-y-4"
+    >
+      <!-- Banner del Motor Seleccionado -->
+      <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center gap-3.5">
+          <div class="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-black text-lg shadow-2xs shrink-0">
+            {{ selectedMotor.codigo.slice(0, 3) }}
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 class="text-base font-black text-slate-900 font-mono">
+                MOTOR {{ selectedMotor.codigo }}
+              </h3>
+              <span class="px-2.5 py-0.5 rounded-full bg-cyan-100 text-[#038391] text-xs font-bold">
+                {{ selectedMotor.combustible.toUpperCase() }}
+              </span>
+              <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold font-mono">
+                {{ selectedMotor.cilindros }} Cil / {{ selectedMotor.cilindrada_texto || `${selectedMotor.cilindrada_cc} cc` }}
+              </span>
+              <span v-if="selectedMotor.cv" class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
+                {{ selectedMotor.cv }} CV
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 font-medium mt-1">
+              {{ selectedMotor.nombre_comercial }} 
+              <span v-if="selectedMotor.denominacion_venta"> • {{ selectedMotor.denominacion_venta }}</span>
+              <span v-if="selectedBrand"> • Fabricante: <strong class="text-slate-700">{{ selectedBrand.nombre }}</strong></span>
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 self-end md:self-auto">
+          <button
+            type="button"
+            @click="activeViewTab = 'motores'"
+            class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+            title="Volver a la lista de motores del fabricante"
+          >
+            <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>Ver otros motores</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Cuadro informativo de modelos compatibles con este motor -->
+      <div v-if="compatibleModelsForMotor.length > 0" class="bg-cyan-50/60 border border-cyan-200/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2">
+          <Car class="w-4 h-4 text-[#04C4D9]" />
+          <span class="font-extrabold text-slate-800">Modelos con este motor:</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button
+            v-for="mod in compatibleModelsForMotor"
+            :key="mod.id"
+            type="button"
+            @click="handleSelectModel(mod)"
+            :class="[
+              'px-2.5 py-1 rounded-lg text-xs font-bold transition',
+              selectedModel?.id === mod.id
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-cyan-100'
+            ]"
+          >
+            {{ mod.nombre }} <span v-if="mod.anio_inicio" class="text-[10px] opacity-75">({{ mod.anio_inicio }}-{{ mod.anio_fin || 'Act' }})</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjetas de Grupos / Familias del Motor -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+              <span>Grupos y Familias de Piezas para Motor {{ selectedMotor.codigo }}</span>
+            </h4>
+            <p class="text-[11px] text-slate-500 mt-0.5">
+              Haga clic en un grupo para consultar sus especificaciones técnicas y tolerancias dimensionales.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            @click="openAdminCatalogModal('grupo')"
+            class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+          >
+            <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>Crear / Modificar Grupo</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+          <div
+            v-for="grp in componentGroups"
+            :key="grp.id"
+            @click="handleSelectComponent(grp)"
+            class="bg-white p-4 rounded-2xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-md cursor-pointer transition flex flex-col justify-between group relative"
+          >
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="flex items-center gap-2 text-slate-900 group-hover:text-[#04C4D9] font-black text-sm">
+                  <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-4 h-4 text-[#04C4D9]" />
+                  <Wrench v-else-if="grp.id === 'valvula'" class="w-4 h-4 text-[#04C4D9]" />
+                  <Layers v-else-if="grp.id === 'anillos_motor'" class="w-4 h-4 text-[#04C4D9]" />
+                  <FileText v-else class="w-4 h-4 text-[#04C4D9]" />
+                  <span>{{ grp.title }}</span>
+                </div>
+
+                <button
+                  type="button"
+                  @click.stop="handleEditGroup(grp.id)"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  title="Modificar grupo y sus parámetros técnicos"
+                >
+                  <Edit3 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <p class="text-[11px] text-slate-500 leading-relaxed mb-3">
+                {{ grp.sampleMeasurements || grp.description }}
+              </p>
+            </div>
+
+            <div class="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-[#04C4D9]">
+              <span>Consultar cotas y piezas</span>
+              <span class="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- ESTADO 3: MOTOR Y/O COMPONENTE / BÚSQUEDA ACTIVA -> TABLA DE REPUESTOS     -->
     <!-- ========================================================================= -->
     <div v-else class="space-y-4">
@@ -1410,16 +1827,28 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Botón para volver a la lista de motores -->
-        <button
-          v-if="selectedBrand"
-          type="button"
-          @click="activeViewTab = 'motores'"
-          class="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
-        >
-          <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
-          <span>Ver lista de motores de {{ selectedBrand.nombre }}</span>
-        </button>
+        <!-- Botones para volver a la lista de motores y grupos -->
+        <div class="flex items-center gap-2">
+          <button
+            v-if="selectedMotor"
+            type="button"
+            @click="activeViewTab = 'grupos'; selectedComponent = null"
+            class="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+          >
+            <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>Grupos de {{ selectedMotor.codigo }}</span>
+          </button>
+
+          <button
+            v-if="selectedBrand"
+            type="button"
+            @click="activeViewTab = 'motores'"
+            class="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+          >
+            <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>Motores de {{ selectedBrand.nombre }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- ======================================================================= -->
@@ -1438,15 +1867,69 @@ onUnmounted(() => {
             </span>
           </div>
 
-          <button
-            v-if="activeMeasurementsCount > 0"
-            type="button"
-            @click="resetMeasurementsFilters"
-            class="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 self-start sm:self-auto"
-          >
-            <RotateCcw class="w-3 h-3" />
-            <span>Limpiar filtros de medida</span>
-          </button>
+          <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <button
+              type="button"
+              @click="handleEditGroup(selectedComponent.id)"
+              class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1.5 transition"
+              title="Modificar nombre, cotas o parámetros técnicos de esta familia"
+            >
+              <Edit3 class="w-3 h-3 text-[#04C4D9]" />
+              <span>Modificar Grupo</span>
+            </button>
+
+            <button
+              v-if="activeMeasurementsCount > 0"
+              type="button"
+              @click="resetMeasurementsFilters"
+              class="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1"
+            >
+              <RotateCcw class="w-3 h-3" />
+              <span>Limpiar filtros</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- CONTROL DE TOLERANCIA UNIVERSAL (± mm) -->
+        <div class="p-2.5 bg-slate-50/90 rounded-xl border border-slate-200/90 flex flex-wrap items-center justify-between gap-2.5">
+          <div class="flex items-center gap-2">
+            <Ruler class="w-4 h-4 text-[#04C4D9]" />
+            <span class="text-xs font-black text-slate-800">Tolerancia Universal:</span>
+            <span class="text-[11px] text-slate-500 hidden md:inline">
+              Margen de búsqueda en cotas técnicas estándar y dinámicas (± mm)
+            </span>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button
+              v-for="tolOption in [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]"
+              :key="tolOption"
+              type="button"
+              @click="filterToleranciaMm = tolOption"
+              :class="[
+                'px-2 py-1 rounded-lg text-xs font-bold font-mono transition',
+                filterToleranciaMm === tolOption
+                  ? 'bg-[#04C4D9] text-white shadow-2xs'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              ]"
+            >
+              ±{{ tolOption }} mm
+            </button>
+
+            <div class="flex items-center gap-1 ml-1 pl-2 border-l border-slate-300">
+              <span class="text-xs text-slate-500 font-bold">±</span>
+              <input
+                v-model.number="filterToleranciaMm"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                class="w-16 px-2 py-0.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-center focus:outline-none focus:border-[#04C4D9]"
+                title="Tolerancia personalizada en mm"
+              />
+              <span class="text-xs text-slate-500 font-bold">mm</span>
+            </div>
+          </div>
         </div>
 
         <!-- 1. FILTROS PARA: AJUSTE DE VÁLVULA -->
@@ -1627,6 +2110,38 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- 5. FILTROS PARA GRUPOS PERSONALIZADOS / DINÁMICOS -->
+        <div 
+          v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
+          class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+        >
+          <div 
+            v-for="param in currentGroupDefinition.parametros" 
+            :key="param.clave"
+          >
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">
+              {{ param.etiqueta }} 
+              <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+              <span v-if="param.tipo_dato === 'numero'" class="text-[10px] text-[#038391] font-mono ml-1">±{{ filterToleranciaMm }}mm</span>
+            </label>
+            <input
+              v-if="param.tipo_dato === 'numero'"
+              v-model.number="dynamicParamFilters[param.clave]"
+              type="number"
+              step="0.1"
+              :placeholder="`ej. 50 ${param.unidad || 'mm'}`"
+              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+            />
+            <input
+              v-else
+              v-model="dynamicParamFilters[param.clave]"
+              type="text"
+              :placeholder="`Filtrar ${param.etiqueta}...`"
+              class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+            />
+          </div>
+        </div>
+
         <!-- Buscador de texto y filtro por catálogo -->
         <div class="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
           <div class="relative w-full sm:w-80">
@@ -1690,6 +2205,9 @@ onUnmounted(() => {
                 </th>
                 <th v-else-if="selectedComponent?.id === 'tornillos_culata'" class="py-3 px-3">
                   Tornillos de Culata: Rosca / Paso / Longitud / Cantidad
+                </th>
+                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-3 px-3">
+                  Parámetros Técnicos: {{ currentGroupDefinition.parametros.map(p => p.etiqueta).join(' / ') }}
                 </th>
                 <th v-else class="py-3 px-3">
                   Especificaciones Técnicas (mm)
@@ -1843,7 +2361,24 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Caso E: Genérico / Otros -->
+                  <!-- Caso E: Grupo Dinámico / Personalizado -->
+                  <div 
+                    v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" 
+                    class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5"
+                  >
+                    <span 
+                      v-for="p in currentGroupDefinition.parametros" 
+                      :key="p.clave"
+                      class="px-2 py-0.5 rounded bg-white border border-slate-200"
+                    >
+                      <span class="text-slate-500 font-sans text-[10px]">{{ p.etiqueta }}:</span> 
+                      <strong class="text-slate-900 ml-1">
+                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? '—' }} {{ p.unidad || '' }}
+                      </strong>
+                    </span>
+                  </div>
+
+                  <!-- Caso F: Genérico / Otros -->
                   <div v-else class="text-xs text-slate-500 font-mono">
                     {{ part.categoria }} • Ref: {{ part.subsistema }}
                   </div>
@@ -2201,9 +2736,11 @@ onUnmounted(() => {
       :is-open="isAdminModalOpen"
       :initial-tab="adminModalTab"
       :preselected-group-id="selectedComponent?.id"
-      @close="isAdminModalOpen = false"
+      :edit-group-id="adminModalEditGroupId"
+      @close="isAdminModalOpen = false; adminModalEditGroupId = null"
       @part-created="onPartCreated"
       @group-created="onGroupCreated"
+      @group-updated="onGroupUpdated"
     />
 
   </div>
