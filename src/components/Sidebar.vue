@@ -28,6 +28,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { name: 'Usuarios', path: '/usuarios', icon: Users },
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Clientes', path: '/clientes', icon: Users, badge: '6' },
   { name: 'Órdenes', path: '/ordenes', icon: ShoppingCart, badge: '4' },

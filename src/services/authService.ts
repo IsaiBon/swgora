@@ -58,6 +58,16 @@ export const authService = {
     }
   },
 
+  async signOutLocal(): Promise<void> {
+  const { error } = await supabase.auth.signOut({
+    scope: 'local',
+  })
+
+  if (error) {
+    throw error
+  }
+},
+
   /**
    * Obtiene la sesión actual
    */

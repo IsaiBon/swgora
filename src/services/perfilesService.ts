@@ -5,12 +5,15 @@ export interface Perfil {
   nombre: string
   email: string
   rol: string
+  estado: 'Activo' | 'Inactivo'
   avatar_url?: string | null
   created_at: string
   updated_at: string
 }
 
-export type PerfilUpdate = Partial<Omit<Perfil, 'id' | 'created_at' | 'updated_at'>>
+export type PerfilUpdate = Partial<
+  Omit<Perfil, 'id' | 'created_at' | 'updated_at' | 'estado'>
+>
 
 export const perfilesService = {
   /**

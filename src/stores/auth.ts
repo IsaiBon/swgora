@@ -64,27 +64,7 @@ export function isRouteAllowedForRole(path: string, role: string): boolean {
 }
 
 function loadInitialUser(): User | null {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      if (parsed && parsed.role) {
-        parsed.role = normalizeRole(parsed.role)
-        return parsed
-      }
-    }
-  } catch (e) {
-    console.warn('[AuthStore] Error cargando usuario guardado:', e)
-  }
-
-  // Usuario predeterminado si no hay sesión previa
-  return {
-    id: 'usr-1',
-    name: 'Roberto Blanco',
-    email: 'admin@jrblanco.com',
-    role: 'Administrador',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
-  }
+  return null
 }
 
 function persistUser(u: User | null) {
@@ -127,31 +107,44 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function syncUserWithProfile(sbUser: SupabaseUser | null) {
-    if (!sbUser) {
-      user.value = null
-      persistUser(null)
-      return
+    user.value = null
+    persistUser(null)
+
+    if (!sbUser) return
+
+    const perfil = await perfilesService.getPerfilById(sbUser.id)
+
+    if (!perfil) {
+      throw new Error(
+        'Tu cuenta no tiene un perfil. Contacta al administrador.'
+      )
     }
 
-    try {
-      const perfil = await perfilesService.getPerfilById(sbUser.id)
-      if (perfil) {
-        const u: User = {
-          id: perfil.id,
-          name: perfil.nombre,
-          email: perfil.email,
-          role: normalizeRole(perfil.rol),
-          avatar: perfil.avatar_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
-        }
-        user.value = u
-        persistUser(u)
-        return
-      }
-    } catch {
-      // Fallback
+    if (perfil.estado !== 'Activo') {
+  session.value = null
+  user.value = null
+  persistUser(null)
+
+  try {
+    await authService.signOutLocal()
+  } catch (err) {
+    console.error('[AuthStore] Error cerrando la sesión:', err)
+  }
+
+  throw new Error(
+    'Tu cuenta está desactivada. Contacta al administrador.'
+  )
+}
+
+    const u: User = {
+      id: perfil.id,
+      name: perfil.nombre,
+      email: perfil.email,
+      role: normalizeRole(perfil.rol),
+      avatar: perfil.avatar_url ||
+        'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
     }
 
-    const u = mapSupabaseUser(sbUser)
     user.value = u
     persistUser(u)
   }
@@ -166,12 +159,23 @@ export const useAuthStore = defineStore('auth', () => {
         await syncUserWithProfile(currentSession.user)
       }
 
-      authService.onAuthStateChange(async (_event, newSession) => {
-        session.value = newSession
-        if (newSession?.user) {
-          await syncUserWithProfile(newSession.user)
-        }
-      })
+      authService.onAuthStateChange((_event, newSession) => {
+  session.value = newSession
+
+  if (!newSession) {
+    user.value = null
+    persistUser(null)
+    return
+  }
+
+  setTimeout(() => {
+    if (session.value !== newSession) return
+
+    void syncUserWithProfile(newSession.user).catch((err: unknown) => {
+      console.error('[AuthStore] Error verificando el perfil:', err)
+    })
+  }, 0)
+})
     } catch (err) {
       console.error('[AuthStore] Error inicializando sesión:', err)
     } finally {
@@ -215,32 +219,29 @@ export const useAuthStore = defineStore('auth', () => {
     persistUser(newUser)
   }
 
-  async function login(email: string, password: string, explicitRole?: UserRole): Promise<void> {
+   async function login(
+    email: string,
+    password: string
+  ): Promise<void> {
     loading.value = true
+
     try {
-      const data = await authService.signIn(email, password)
+      const data = await authService.signIn(email.trim(), password)
+
       session.value = data.session
       await syncUserWithProfile(data.user)
-    } catch (err) {
-      console.warn('[AuthStore] Supabase signIn falló o se ingresó cuenta demo local:', err)
-      
-      // Deducción 100% dinámica del rol a partir del usuario/correo
-      let dynamicRole: UserRole = explicitRole || 'Operador'
-      const lower = email.toLowerCase().trim()
+    } catch {
+      session.value = null
+      user.value = null
+      persistUser(null)
 
-      if (lower.includes('admin')) {
-        dynamicRole = 'Administrador'
-      } else if (lower.includes('consult')) {
-        dynamicRole = 'Consultor'
-      } else if (lower.includes('oper') || lower.includes('taller') || lower.includes('tecnic')) {
-        dynamicRole = 'Operador'
-      }
-
-      setDemoUser(email, dynamicRole)
+      throw new Error(
+        'No se pudo iniciar sesión. Revisa tu correo, contraseña y conexión.'
+      )
     } finally {
       loading.value = false
     }
-  }
+  }           
 
   async function register(email: string, password: string, name?: string): Promise<void> {
     loading.value = true

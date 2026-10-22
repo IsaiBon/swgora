@@ -8,6 +8,18 @@ import { useAuthStore, isRouteAllowedForRole, getDefaultRouteForRole } from '@/s
 
 const routes = [
   {
+    path: '/usuarios',
+    name: 'Usuarios',
+    component: () => import('@/views/UsuariosView.vue'),
+    meta: {
+      layout: 'main',
+      title: 'Administración de usuarios - JR Blanco',
+      allowedRoles: ['Administrador'],
+    },
+  },
+
+
+  {
     path: '/',
     name: 'Root',
     redirect: () => {
@@ -82,7 +94,7 @@ const router = createRouter({
  * - Operador: Solo Órdenes y Catálogo
  * - Consultor: Solo Catálogo
  */
-router.beforeEach((to, _from) => {
+router.beforeEach(async (to, _from) => {
   if (to.meta?.title) {
     document.title = to.meta.title as string
   }
@@ -92,7 +104,14 @@ router.beforeEach((to, _from) => {
     return true
   }
 
-  const authStore = useAuthStore()
+   const authStore = useAuthStore()
+
+  await authStore.init()
+
+  if (!authStore.isAuthenticated) {
+    return '/login'
+  }
+
   const userRole = authStore.user?.role || 'Consultor'
 
   // Si la ruta solicitada no está permitida para el rol activo
