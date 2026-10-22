@@ -361,12 +361,21 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
 const filteredBrands = computed(() => {
   const q = brandInput.value.toLowerCase().trim()
   const list = catalogStore.fabricantes
-  if (!q) return list
+  if (!q || (selectedBrand.value && q === selectedBrand.value.nombre.toLowerCase().trim())) {
+    return list
+  }
   return list.filter(f => 
     f.nombre.toLowerCase().includes(q) || 
     (f.pais_origen && f.pais_origen.toLowerCase().includes(q))
   )
 })
+
+const handleFocusBrand = (e?: Event) => {
+  isBrandOpen.value = true
+  if (e?.target) {
+    (e.target as HTMLInputElement).select?.()
+  }
+}
 
 const handleSelectBrand = async (fab: Fabricante) => {
   selectedBrand.value = fab
@@ -412,7 +421,9 @@ const handleClearSelectedBrand = async () => {
 const filteredModels = computed(() => {
   const q = modelInput.value.toLowerCase().trim()
   const list = catalogStore.availableModelos
-  if (!q) return list
+  if (!q || (selectedModel.value && q === selectedModel.value.nombre.toLowerCase().trim())) {
+    return list
+  }
   return list.filter(m => m.nombre.toLowerCase().includes(q))
 })
 
@@ -446,9 +457,23 @@ const handleClearSelectedModel = async () => {
   }
 }
 
-const onFocusModel = () => { if (selectedBrand.value) isModelOpen.value = true }
+const onFocusModel = (e?: Event) => {
+  if (selectedBrand.value) {
+    isModelOpen.value = true
+    if (e?.target) {
+      (e.target as HTMLInputElement).select?.()
+    }
+  }
+}
 const onInputModel = () => { if (selectedBrand.value) isModelOpen.value = true }
-const onFocusMotor = () => { if (selectedBrand.value) isMotorOpen.value = true }
+const onFocusMotor = (e?: Event) => {
+  if (selectedBrand.value) {
+    isMotorOpen.value = true
+    if (e?.target) {
+      (e.target as HTMLInputElement).select?.()
+    }
+  }
+}
 const onInputMotor = () => { if (selectedBrand.value) isMotorOpen.value = true }
 
 // 3. Filtrado de MOTORES DISPONIBLES (CASCADA NIVEL 3)
@@ -464,8 +489,15 @@ const compatibleModelsForMotor = computed<Modelo[]>(() => {
 
 const filteredMotors = computed(() => {
   const q = motorInput.value.toLowerCase().trim()
-  if (!q) return availableMotors.value
-  return availableMotors.value.filter(m => 
+  const list = availableMotors.value
+  if (!q || (selectedMotor.value && (
+    q === selectedMotor.value.codigo.toLowerCase().trim() ||
+    (selectedMotor.value.nombre_comercial && q === selectedMotor.value.nombre_comercial.toLowerCase().trim()) ||
+    (selectedMotor.value.denominacion_venta && q === selectedMotor.value.denominacion_venta.toLowerCase().trim())
+  ))) {
+    return list
+  }
+  return list.filter(m => 
     m.codigo.toLowerCase().includes(q) || 
     (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
     (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
@@ -522,8 +554,15 @@ const handleClearSelectedMotor = async () => {
 // 4. Filtrado de TIPOS DE COMPONENTE (BASE + DINÁMICOS)
 const filteredComponentGroups = computed(() => {
   const q = componentInput.value.toLowerCase().trim()
-  if (!q) return componentGroups.value
-  return componentGroups.value.filter(g => 
+  const list = componentGroups.value
+  if (!q || (selectedComponent.value && (
+    q === selectedComponent.value.title.toLowerCase().trim() ||
+    q === selectedComponent.value.shortTitle.toLowerCase().trim() ||
+    q === selectedComponent.value.category.toLowerCase().trim()
+  ))) {
+    return list
+  }
+  return list.filter(g => 
     g.title.toLowerCase().includes(q) || 
     g.shortTitle.toLowerCase().includes(q) ||
     g.category.toLowerCase().includes(q) ||
@@ -531,8 +570,11 @@ const filteredComponentGroups = computed(() => {
   )
 })
 
-const handleFocusComponent = () => {
+const handleFocusComponent = (e?: Event) => {
   isComponentOpen.value = true
+  if (e?.target) {
+    (e.target as HTMLInputElement).select?.()
+  }
   if (!catalogStore.grupos || catalogStore.grupos.length === 0) {
     catalogStore.fetchGrupos()
   }
@@ -902,7 +944,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="space-y-5 pb-12 select-none">
+  <div class="space-y-4 pb-12 select-none">
 
     <!-- Toast Notification Flotante -->
     <Transition
@@ -915,99 +957,97 @@ onUnmounted(() => {
     >
       <div 
         v-if="toastMessage" 
-        class="fixed bottom-6 right-6 z-50 bg-[#0d0d0d] text-white px-5 py-3 rounded-2xl shadow-2xl border border-[#05C7F2]/40 flex items-center gap-3"
+        class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700/60 flex items-center gap-2.5"
       >
-        <CheckCircle2 class="w-5 h-5 text-[#05F2F2] shrink-0" />
+        <CheckCircle2 class="w-4 h-4 text-[#04C4D9] shrink-0" />
         <span class="text-xs font-semibold">{{ toastMessage }}</span>
       </div>
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- HEADER SECTION                                                            -->
+    <!-- HEADER SECTION (MINIMALISTA)                                              -->
     <!-- ========================================================================= -->
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#05C7F2]/15 text-[#04C4D9] border border-[#05C7F2]/30 uppercase tracking-wider flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9] animate-pulse"></span>
-            Supabase Live • Catálogo Técnico Dinámico
+        <h1 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <span>Catálogo de Taller</span>
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-bold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            En línea
           </span>
-        </div>
-        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-          Catálogo Técnico y Buscador de Taller
         </h1>
-        <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl">
-          Búsqueda reactiva multimarca con filtros en cascada (Fabricante → Modelo → Motor) y cotas para maquinado.
+        <p class="text-xs text-slate-500 mt-0.5">
+          Consulta reactiva de motores, componentes y tolerancias dimensionales.
         </p>
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+      <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
         <button
           type="button"
           @click="openAdminCatalogModal('repuesto')"
-          class="min-h-[44px] px-4 py-2 rounded-full bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-extrabold transition flex items-center gap-2 shadow-sm active:scale-95"
-          title="Registrar una nueva pieza técnica en la base de datos o dar de alta repuesto"
+          class="px-3.5 py-2 rounded-xl bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs active:scale-95"
+          title="Dar de alta repuesto en catálogo"
         >
           <Plus class="w-4 h-4" />
-          <span>Nuevo Repuesto / Grupo</span>
+          <span>+ Repuesto / Grupo</span>
         </button>
 
         <button
           type="button"
           @click="openAdminCatalogModal('grupo')"
-          class="min-h-[44px] px-4 py-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-2 shadow-sm active:scale-95"
-          title="Crear un nuevo grupo/familia con reglas paramétricas técnicas"
+          class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs active:scale-95"
+          title="Crear nueva familia paramétrica"
         >
-          <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-          <span>+ Nueva Familia</span>
+          <FolderPlus class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span>+ Familia</span>
         </button>
 
         <button
           type="button"
           @click="handleResetAll"
-          class="min-h-[44px] px-4 py-2 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs"
-          title="Restaurar registros estándar y limpiar filtros"
+          class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition flex items-center gap-1.5"
+          title="Restaurar registros y filtros"
         >
-          <RotateCcw class="w-4 h-4 text-[#04C4D9]" />
-          <span>Restaurar Filtros</span>
+          <RotateCcw class="w-3.5 h-3.5 text-slate-400" />
+          <span>Restaurar</span>
         </button>
       </div>
     </div>
 
-    <!-- Banner de Error con Reintento si falla la conexión -->
+    <!-- Banner de Error si falla la conexión -->
     <div 
       v-if="catalogStore.error || catalogStore.repuestosError" 
-      class="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-rose-800 text-xs font-bold"
+      class="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center justify-between gap-3 text-rose-800 text-xs font-semibold"
     >
-      <div class="flex items-center gap-2.5">
-        <AlertTriangle class="w-5 h-5 text-rose-600 shrink-0" />
+      <div class="flex items-center gap-2">
+        <AlertTriangle class="w-4 h-4 text-rose-600 shrink-0" />
         <span>{{ catalogStore.error || catalogStore.repuestosError }}</span>
       </div>
       <button 
         type="button"
         @click="catalogStore.initCatalog()"
-        class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0"
+        class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shrink-0"
       >
-        <RefreshCw class="w-3.5 h-3.5" />
+        <RefreshCw class="w-3 h-3" />
         <span>Reintentar</span>
       </button>
     </div>
 
     <!-- ========================================================================= -->
-    <!-- BARRA DE BÚSQUEDA UNIVERSAL CON DEBOUNCE (CÓDIGO OEM, DESCRIPCIÓN, CRUCE) -->
+    <!-- BARRA DE BÚSQUEDA UNIVERSAL CON DEBOUNCE                                   -->
     <!-- ========================================================================= -->
-    <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs">
+    <div class="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200/90 shadow-2xs">
       <div class="relative flex items-center">
-        <Search class="w-4 h-4 text-slate-400 absolute left-3.5" />
+        <Search class="w-4 h-4 text-slate-400 absolute left-3" />
         <input
           v-model="searchInput"
           @input="handleSearchInput"
           type="text"
-          placeholder="Buscador en tiempo real por código OEM, cruce alterno (Dokuro, Rik, NPR, NDC, Taiho, Ajusa) o descripción..."
-          class="w-full pl-10 pr-24 py-2.5 text-xs sm:text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 transition"
+          placeholder="Buscar por código OEM, cruce alterno o descripción..."
+          class="w-full pl-9 pr-20 py-2 text-xs sm:text-sm font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
         />
-        <div class="absolute right-3 flex items-center gap-1.5">
+        <div class="absolute right-2.5 flex items-center gap-1.5">
           <Loader2 v-if="catalogStore.isSearching" class="w-4 h-4 text-[#04C4D9] animate-spin" />
           <button
             v-if="searchInput"
@@ -1016,7 +1056,7 @@ onUnmounted(() => {
             class="p-1 text-slate-400 hover:text-slate-600 rounded"
             title="Limpiar búsqueda"
           >
-            <X class="w-4 h-4" />
+            <X class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -1024,51 +1064,48 @@ onUnmounted(() => {
 
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
-    <!-- (FABRICANTE -> MODELO/MOTOR -> COMPONENTE)                                -->
     <!-- ========================================================================= -->
-    <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-sm">
+    <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
       <!-- Barra superior de control de cascada e inversión de orden -->
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-slate-100">
-        <div class="flex items-center gap-2">
+      <div class="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-1.5 text-xs text-slate-600">
           <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-          <span class="text-xs font-black uppercase tracking-wider text-slate-800">
-            Filtros en Cascada
-          </span>
-          <span class="text-[11px] text-slate-500 font-medium">
-            Flujo: 
-            <strong class="text-slate-700">1. Fabricante</strong> → 
-            <strong class="text-[#038391]">{{ cascadeOrder === 'modelo_motor' ? '2. Modelo → 3. Motor' : '2. Motor → 3. Modelo' }}</strong> → 
-            <strong class="text-slate-700">4. Componente</strong>
+          <span class="font-bold text-slate-800">Cascada:</span>
+          <span class="text-slate-500 font-medium text-[11px]">
+            Fabricante → 
+            <span class="text-[#038391] font-bold">{{ cascadeOrder === 'modelo_motor' ? 'Modelo → Motor' : 'Motor → Modelo' }}</span>
+            → Componente
           </span>
         </div>
 
         <button
           type="button"
           @click="toggleCascadeOrder"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition active:scale-95 shadow-2xs"
+          class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition active:scale-95"
           :title="cascadeOrder === 'modelo_motor' ? 'Invertir orden: Seleccionar Motor primero' : 'Invertir orden: Seleccionar Modelo primero'"
         >
-          <ArrowRightLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
-          <span>{{ cascadeOrder === 'modelo_motor' ? 'Invertir orden (Motor primero)' : 'Invertir orden (Modelo primero)' }}</span>
+          <ArrowRightLeft class="w-3 h-3 text-[#04C4D9]" />
+          <span>{{ cascadeOrder === 'modelo_motor' ? 'Invertir (Motor 1°)' : 'Invertir (Modelo 1°)' }}</span>
         </button>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-end">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
         
         <!-- 1. CASCADA NIVEL 1: MARCA / FABRICANTE -->
         <div class="relative combobox-brand">
-          <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             1. Fabricante
           </label>
 
           <div class="relative flex items-center">
             <input
               v-model="brandInput"
-              @focus="isBrandOpen = true"
+              @focus="handleFocusBrand"
+              @click="handleFocusBrand"
               @input="isBrandOpen = true"
               type="text"
-              placeholder="Marca (Toyota, Nissan...)"
-              class="w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold bg-slate-50/70 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs min-h-[44px]"
+              placeholder="Buscar fabricante..."
+              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
             />
             <button
               v-if="brandInput"
@@ -1088,20 +1125,26 @@ onUnmounted(() => {
           <!-- Dropdown Marcas -->
           <div
             v-if="isBrandOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
           >
             <div
               v-for="fab in filteredBrands"
               :key="fab.id"
               @click="handleSelectBrand(fab)"
-              class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+              :class="[
+                'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
+                selectedBrand?.id === fab.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+              ]"
             >
               <div class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
-                <strong class="text-slate-900 font-black">{{ fab.nombre.toUpperCase() }}</strong>
+                <span class="w-1.5 h-1.5 rounded-full" :class="selectedBrand?.id === fab.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                <strong class="font-bold">{{ fab.nombre.toUpperCase() }}</strong>
                 <span class="text-slate-400 text-[10px]">({{ fab.pais_origen || 'Japón' }})</span>
               </div>
-              <span class="text-[10px] text-slate-400 font-mono">{{ fab.engines_count || 'Varios' }} motores</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] text-slate-400 font-mono">{{ fab.engines_count || 'Varios' }} motores</span>
+                <Check v-if="selectedBrand?.id === fab.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              </div>
             </div>
             <div v-if="filteredBrands.length === 0" class="p-3 text-center text-xs text-slate-400">
               No hay marcas coincidentes
@@ -1113,11 +1156,11 @@ onUnmounted(() => {
         <template v-if="cascadeOrder === 'modelo_motor'">
           <!-- 2. MODELO DE VEHÍCULO (BLOQUEADO HASTA ELEGIR FABRICANTE) -->
           <div class="relative combobox-model">
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 2. Modelo
               </label>
-              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-semibold flex items-center gap-0.5">
+              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
                 <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
               </span>
             </div>
@@ -1127,18 +1170,19 @@ onUnmounted(() => {
                 v-model="modelInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusModel"
+                @click="onFocusModel"
                 @input="onInputModel"
                 type="text"
-                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : 'Modelo (Hilux, Civic...)'"
+                :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Buscar modelo...'"
                 :class="[
-                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-lg focus:outline-none min-h-[40px] transition',
                   !selectedBrand 
-                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
                 ]"
               />
               <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-4 h-4" />
+                <Lock class="w-3.5 h-3.5" />
               </div>
               <template v-else>
                 <button
@@ -1160,21 +1204,27 @@ onUnmounted(() => {
             <!-- Dropdown Modelos -->
             <div
               v-if="isModelOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
                 v-for="mod in filteredModels"
                 :key="mod.id"
                 @click="handleSelectModel(mod)"
-                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+                :class="[
+                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
+                  selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                ]"
               >
                 <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                  <strong class="text-slate-900 font-extrabold">{{ mod.nombre }}</strong>
+                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedModel?.id === mod.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                  <strong class="font-bold">{{ mod.nombre }}</strong>
                 </div>
-                <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
-                  {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
-                </span>
+                <div class="flex items-center gap-1.5">
+                  <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
+                    {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
+                  </span>
+                  <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
+                </div>
               </div>
               <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
                 No hay modelos para esta selección
@@ -1184,7 +1234,7 @@ onUnmounted(() => {
 
           <!-- 3. CÓDIGO DE MOTOR -->
           <div class="relative combobox-motor">
-            <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
               3. Motor
             </label>
 
@@ -1193,18 +1243,19 @@ onUnmounted(() => {
                 v-model="motorInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusMotor"
+                @click="onFocusMotor"
                 @input="onInputMotor"
                 type="text"
-                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : (selectedModel ? `Motor para ${selectedModel.nombre}...` : 'Código (3L, Z24, K20A...)')"
+                :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedModel ? `Motor para ${selectedModel.nombre}...` : 'Código de motor...')"
                 :class="[
-                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-mono font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold rounded-lg focus:outline-none min-h-[40px] transition',
                   !selectedBrand 
-                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
                 ]"
               />
               <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-4 h-4" />
+                <Lock class="w-3.5 h-3.5" />
               </div>
               <template v-else>
                 <button
@@ -1226,22 +1277,31 @@ onUnmounted(() => {
             <!-- Dropdown Motores -->
             <div
               v-if="isMotorOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
                 v-for="mot in filteredMotors"
                 :key="mot.id"
                 @click="handleSelectMotor(mot)"
-                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+                :class="[
+                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
+                  selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                ]"
               >
-                <div>
-                  <strong class="text-slate-900 font-mono text-sm font-black">{{ mot.codigo }}</strong>
-                  <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
-                  <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1">({{ mot.denominacion_venta }})</span>
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                  <div>
+                    <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
+                    <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
+                    <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
+                  </div>
                 </div>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
-                </span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+                  </span>
+                  <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
+                </div>
               </div>
               <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
                 No hay motores coincidentes
@@ -1254,11 +1314,11 @@ onUnmounted(() => {
         <template v-else>
           <!-- 2. CÓDIGO DE MOTOR -->
           <div class="relative combobox-motor">
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 2. Motor
               </label>
-              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-semibold flex items-center gap-0.5">
+              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
                 <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
               </span>
             </div>
@@ -1268,18 +1328,19 @@ onUnmounted(() => {
                 v-model="motorInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusMotor"
+                @click="onFocusMotor"
                 @input="onInputMotor"
                 type="text"
-                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : 'Código (3L, Z24, K20A...)'"
+                :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Código de motor...'"
                 :class="[
-                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-mono font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold rounded-lg focus:outline-none min-h-[40px] transition',
                   !selectedBrand 
-                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
                 ]"
               />
               <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-4 h-4" />
+                <Lock class="w-3.5 h-3.5" />
               </div>
               <template v-else>
                 <button
@@ -1301,22 +1362,31 @@ onUnmounted(() => {
             <!-- Dropdown Motores -->
             <div
               v-if="isMotorOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
                 v-for="mot in filteredMotors"
                 :key="mot.id"
                 @click="handleSelectMotor(mot)"
-                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+                :class="[
+                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
+                  selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                ]"
               >
-                <div>
-                  <strong class="text-slate-900 font-mono text-sm font-black">{{ mot.codigo }}</strong>
-                  <span class="text-slate-600 ml-2 font-medium">{{ mot.nombre_comercial }}</span>
-                  <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1">({{ mot.denominacion_venta }})</span>
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                  <div>
+                    <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
+                    <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
+                    <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
+                  </div>
                 </div>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
-                </span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+                  </span>
+                  <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
+                </div>
               </div>
               <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
                 No hay motores coincidentes
@@ -1326,11 +1396,11 @@ onUnmounted(() => {
 
           <!-- 3. MODELO DE VEHÍCULO (FILTRADO POR MOTOR O FABRICANTE) -->
           <div class="relative combobox-model">
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 3. Modelo
               </label>
-              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-semibold flex items-center gap-0.5">
+              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
                 <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
               </span>
             </div>
@@ -1340,18 +1410,19 @@ onUnmounted(() => {
                 v-model="modelInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusModel"
+                @click="onFocusModel"
                 @input="onInputModel"
                 type="text"
-                :placeholder="!selectedBrand ? 'Bloqueado (elija fabricante)' : (selectedMotor ? `Modelos con motor ${selectedMotor.codigo}...` : 'Modelo compatible...')"
+                :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedMotor ? `Modelos con ${selectedMotor.codigo}...` : 'Modelo compatible...')"
                 :class="[
-                  'w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold rounded-xl focus:outline-none min-h-[44px]',
+                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-lg focus:outline-none min-h-[40px] transition',
                   !selectedBrand 
-                    ? 'bg-slate-100/90 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50/70 border border-slate-300 focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs'
+                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
                 ]"
               />
               <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-4 h-4" />
+                <Lock class="w-3.5 h-3.5" />
               </div>
               <template v-else>
                 <button
@@ -1373,21 +1444,27 @@ onUnmounted(() => {
             <!-- Dropdown Modelos -->
             <div
               v-if="isModelOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
                 v-for="mod in filteredModels"
                 :key="mod.id"
                 @click="handleSelectModel(mod)"
-                class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+                :class="[
+                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
+                  selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                ]"
               >
                 <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                  <strong class="text-slate-900 font-extrabold">{{ mod.nombre }}</strong>
+                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedModel?.id === mod.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                  <strong class="font-bold">{{ mod.nombre }}</strong>
                 </div>
-                <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
-                  {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
-                </span>
+                <div class="flex items-center gap-1.5">
+                  <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
+                    {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
+                  </span>
+                  <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
+                </div>
               </div>
               <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
                 No hay modelos para esta selección
@@ -1398,7 +1475,7 @@ onUnmounted(() => {
 
         <!-- 4. CAMPO: TIPO DE COMPONENTE -->
         <div class="relative combobox-component">
-          <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             4. Componente
           </label>
 
@@ -1406,10 +1483,11 @@ onUnmounted(() => {
             <input
               v-model="componentInput"
               @focus="handleFocusComponent"
+              @click="handleFocusComponent"
               @input="isComponentOpen = true"
               type="text"
-              placeholder="Componente (Válvula, Anillos...)"
-              class="w-full pl-3.5 pr-8 py-2.5 text-xs sm:text-sm font-bold bg-slate-50/70 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 shadow-2xs min-h-[44px]"
+              placeholder="Buscar componente..."
+              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
             />
             <button
               v-if="componentInput"
@@ -1429,27 +1507,31 @@ onUnmounted(() => {
           <!-- Dropdown Tipos de Componente -->
           <div
             v-if="isComponentOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
           >
             <div
               v-for="grp in filteredComponentGroups"
               :key="grp.id"
               @click="handleSelectComponent(grp)"
-              class="px-3.5 py-2.5 hover:bg-cyan-50/70 cursor-pointer text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-50 last:border-0 transition"
+              :class="[
+                'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
+                selectedComponent?.id === grp.id ? 'bg-cyan-50/60 text-[#038391] font-bold' : 'text-slate-800'
+              ]"
             >
               <div class="flex items-center gap-2.5">
-                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9]" />
-                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9]" />
-                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-4 h-4 text-[#04C4D9]" />
-                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else class="w-4 h-4 text-[#04C4D9]" />
+                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <Layers v-else class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <div>
-                  <div class="text-slate-900 font-extrabold">{{ grp.title }}</div>
-                  <div class="text-[10px] text-slate-400 font-normal">{{ grp.sampleMeasurements }}</div>
+                  <div class="font-bold text-slate-900">{{ grp.title }}</div>
+                  <div class="text-[10px] text-slate-400 font-normal truncate max-w-xs">{{ grp.sampleMeasurements }}</div>
                 </div>
               </div>
+              <Check v-if="selectedComponent?.id === grp.id" class="w-4 h-4 text-[#04C4D9] shrink-0 ml-2" />
             </div>
             <div v-if="filteredComponentGroups.length === 0" class="p-3 text-center text-xs text-slate-400">
               No hay componentes coincidentes
@@ -1459,41 +1541,44 @@ onUnmounted(() => {
 
       </div>
 
-      <!-- Barra informativa activa de selección en cascada -->
-      <div v-if="selectedBrand || selectedModel || selectedMotor || selectedComponent" class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="text-[11px] font-bold text-slate-500 uppercase">Filtros activos:</span>
+      <!-- Barra informativa activa de selección en cascada (Minimalista) -->
+      <div v-if="selectedBrand || selectedModel || selectedMotor || selectedComponent" class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Activos:</span>
           
-          <span v-if="selectedBrand || brandInput" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200 font-bold">
+          <span v-if="selectedBrand || brandInput" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 text-[#038391] border border-cyan-200/80 font-bold text-xs">
             <span>{{ selectedBrand?.nombre || brandInput }}</span>
           </span>
 
-          <span v-if="selectedModel" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-bold">
-            <span>Mod: {{ selectedModel.nombre }}</span>
-            <button type="button" @click="handleClearSelectedModel" class="hover:text-rose-500">
+          <span v-if="selectedModel" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs">
+            <span>{{ selectedModel.nombre }}</span>
+            <button type="button" @click="handleClearSelectedModel" class="text-slate-400 hover:text-rose-500 ml-0.5">
               <X class="w-3 h-3" />
             </button>
           </span>
 
-          <span v-if="selectedMotor" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 text-white font-mono font-bold">
-            <span>Motor: {{ selectedMotor.codigo }}</span>
-            <button type="button" @click="handleClearSelectedMotor" class="hover:text-rose-400">
+          <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-xs">
+            <span>{{ selectedMotor.codigo }}</span>
+            <button type="button" @click="handleClearSelectedMotor" class="text-slate-400 hover:text-rose-400 ml-0.5">
               <X class="w-3 h-3" />
             </button>
           </span>
 
-          <span v-if="selectedComponent" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-900 border border-blue-200 font-bold">
+          <span v-if="selectedComponent" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 font-bold text-xs">
             <span>{{ selectedComponent.title }}</span>
+            <button type="button" @click="handleClearSelectedComponent" class="text-blue-400 hover:text-rose-500 ml-0.5">
+              <X class="w-3 h-3" />
+            </button>
           </span>
         </div>
 
         <!-- Pestañas para alternar entre lista de motores y repuestos -->
-        <div v-if="selectedBrand && selectedComponent" class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+        <div v-if="selectedBrand && selectedComponent" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
           <button
             type="button"
             @click="activeViewTab = 'motores'"
             :class="[
-              'px-3 py-1 rounded-lg text-xs font-bold transition',
+              'px-2.5 py-1 rounded-md text-xs font-bold transition',
               activeViewTab === 'motores' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
             ]"
           >
@@ -1503,45 +1588,44 @@ onUnmounted(() => {
             type="button"
             @click="activeViewTab = 'repuestos'"
             :class="[
-              'px-3 py-1 rounded-lg text-xs font-bold transition',
+              'px-2.5 py-1 rounded-md text-xs font-bold transition',
               activeViewTab === 'repuestos' ? 'bg-white text-[#04C4D9] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
             ]"
           >
-            Repuestos y Medidas ({{ displayedParts.length }})
+            Repuestos ({{ displayedParts.length }})
           </button>
         </div>
       </div>
     </div>
 
     <!-- ========================================================================= -->
-    <!-- ESTADO 1: PANTALLA INICIAL (NINGÚN FILTRO SELECCIONADO NI BÚSQUEDA)       -->
+    <!-- ESTADO 1: PANTALLA INICIAL (MINIMALISTA)                                   -->
     <!-- ========================================================================= -->
     <div 
       v-if="!selectedBrand && !brandInput && !selectedMotor && !selectedComponent && !searchInput" 
-      class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-8 text-center max-w-xl mx-auto space-y-4 my-6"
+      class="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
     >
-      <div class="w-16 h-16 rounded-2xl bg-cyan-50 border border-cyan-200 text-[#04C4D9] flex items-center justify-center mx-auto shadow-2xs">
-        <Sparkles class="w-8 h-8" />
+      <div class="w-12 h-12 rounded-xl bg-cyan-50 border border-cyan-200/80 text-[#04C4D9] flex items-center justify-center mx-auto shadow-2xs">
+        <Sparkles class="w-6 h-6" />
       </div>
-      <h2 class="text-base font-black text-slate-900">
-        Buscador Técnico de Rectificación Conectado a Supabase
-      </h2>
-      <p class="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-        Seleccione el <strong>Fabricante</strong> o use el buscador en tiempo real para consultar repuestos y tolerancias dimensionales registradas en taller.
-      </p>
+      <div>
+        <h2 class="text-base font-extrabold text-slate-900">
+          Búsqueda de Motores y Repuestos
+        </h2>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
+          Seleccione un fabricante o utilice la barra superior para buscar por código OEM y cotas métricas.
+        </p>
+      </div>
 
       <!-- Botones de acceso rápido a marcas principales -->
-      <div class="pt-4 border-t border-slate-100">
-        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
-          Marcas automotrices registradas:
-        </span>
-        <div class="flex flex-wrap items-center justify-center gap-2">
+      <div class="pt-3 border-t border-slate-100">
+        <div class="flex flex-wrap items-center justify-center gap-1.5">
           <button
             v-for="fab in catalogStore.fabricantes.slice(0, 8)"
             :key="fab.id"
             type="button"
             @click="handleSelectBrand(fab)"
-            class="px-3.5 py-1.5 rounded-full border border-slate-200 hover:border-[#04C4D9] hover:bg-cyan-50/50 text-xs font-bold text-slate-700 transition active:scale-95"
+            class="px-3 py-1 rounded-full border border-slate-200 hover:border-[#04C4D9] hover:bg-cyan-50/60 text-xs font-semibold text-slate-700 transition active:scale-95"
           >
             {{ fab.nombre }}
           </button>
@@ -1550,68 +1634,66 @@ onUnmounted(() => {
     </div>
 
     <!-- ========================================================================= -->
-    <!-- ESTADO 2: TABLA DE MOTORES (ESTILO TECDOC / AJUSA)                        -->
+    <!-- ESTADO 2: TABLA DE MOTORES (MINIMALISTA, LIMPIA Y RÁPIDA)                 -->
     <!-- ========================================================================= -->
     <div 
       v-else-if="(selectedBrand || brandInput) && (!selectedMotor || activeViewTab === 'motores') && !searchInput && (!selectedComponent || activeViewTab === 'motores')"
-      class="space-y-4"
+      class="space-y-3.5"
     >
       <!-- Encabezado de la tabla de motores -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-[#04C4D9]"></span>
-          <h3 class="text-sm font-black text-slate-900">
-            Motores disponibles para <span class="text-[#038391] uppercase">{{ selectedBrand?.nombre || brandInput }}</span>
-            <span v-if="selectedModel" class="text-slate-600 font-semibold text-xs ml-1">({{ selectedModel.nombre }})</span>
+          <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+          <h3 class="text-xs sm:text-sm font-bold text-slate-900">
+            Motores disponibles: <span class="text-[#038391] uppercase font-extrabold">{{ selectedBrand?.nombre || brandInput }}</span>
+            <span v-if="selectedModel" class="text-slate-600 font-medium ml-1">({{ selectedModel.nombre }})</span>
           </h3>
-          <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }} en base de datos)</span>
+          <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }})</span>
         </div>
 
-        <div class="text-xs text-slate-500 font-medium">
-          Haga clic en cualquier fila para seleccionar el motor y consultar sus piezas
+        <div class="text-[11px] text-slate-400 font-medium">
+          Haga clic en una fila para consultar repuestos y cotas
         </div>
       </div>
 
-      <!-- TABLA TÉCNICA DE MOTORES (CALCO FIEL DE IMAGEN 1) -->
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <!-- TABLA TÉCNICA DE MOTORES -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         
-        <!-- Barra Azul Superior de Resultados (idéntica a imagen 1) -->
-        <div class="bg-[#004b97] text-white py-2 px-4 flex items-center justify-between font-bold text-xs sm:text-sm tracking-wide">
-          <span></span>
-          <div class="flex items-center gap-1.5">
-            <span>Resultado {{ motorStartIndex + 1 }} - {{ motorEndIndex }} desde {{ brandMotorsList.length }}</span>
-            <ChevronRight class="w-4 h-4" />
-          </div>
-          <span></span>
+        <!-- Barra de Estado / Paginación Resumen -->
+        <div class="bg-slate-900 text-white py-1.5 px-3.5 flex items-center justify-between text-xs font-medium">
+          <span class="text-slate-300 font-mono text-[11px]">
+            Mostrando {{ motorStartIndex + 1 }}-{{ motorEndIndex }} de {{ brandMotorsList.length }} motores
+          </span>
+          <span class="text-[11px] text-slate-400 font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
         </div>
 
-        <!-- Contenedor con scroll interno para que no haya que subir y bajar la página -->
-        <div class="overflow-x-auto overflow-y-auto max-h-[540px]">
+        <!-- Contenedor con scroll interno -->
+        <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-collapse">
-            <thead class="sticky top-0 z-10 bg-[#f8f9fa] text-slate-600 font-bold border-b border-slate-200 text-xs shadow-2xs">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
               <tr>
-                <th class="py-2.5 px-3 w-10 text-center border-r border-slate-200/80"></th>
-                <th class="py-2.5 px-3.5 w-32 border-r border-slate-200/80">Número/ID ...</th>
-                <th class="py-2.5 px-4 w-52 border-r border-slate-200/80">Código de motor</th>
-                <th class="py-2.5 px-4 w-44 border-r border-slate-200/80">Denominación de venta</th>
-                <th class="py-2.5 px-3.5 w-24 text-center border-r border-slate-200/80">Cilindros</th>
-                <th class="py-2.5 px-4 w-44 border-r border-slate-200/80">Cilindrada</th>
-                <th class="py-2.5 px-3.5 w-20 text-center border-r border-slate-200/80">kW</th>
-                <th class="py-2.5 px-3.5 w-20 text-center">CV</th>
+                <th class="py-2 px-2.5 w-9 text-center border-r border-slate-200/80"></th>
+                <th class="py-2 px-3 w-28 border-r border-slate-200/80">ID / Ref</th>
+                <th class="py-2 px-3.5 w-48 border-r border-slate-200/80">Código Motor</th>
+                <th class="py-2 px-3.5 w-40 border-r border-slate-200/80">Denominación</th>
+                <th class="py-2 px-2.5 w-20 text-center border-r border-slate-200/80">Cil</th>
+                <th class="py-2 px-3.5 w-36 border-r border-slate-200/80">Cilindrada</th>
+                <th class="py-2 px-2.5 w-16 text-center border-r border-slate-200/80">kW</th>
+                <th class="py-2 px-2.5 w-16 text-center">CV</th>
               </tr>
             </thead>
 
             <!-- Skeleton loading de motores -->
             <tbody v-if="catalogStore.loadingMotores" class="divide-y divide-slate-100">
               <tr v-for="n in 5" :key="`skel-mot-${n}`" class="animate-pulse bg-slate-50/50">
-                <td class="py-3 px-3 text-center"><div class="w-4 h-4 bg-slate-200 rounded-full mx-auto"></div></td>
-                <td class="py-3 px-3.5"><div class="h-3 w-16 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-4"><div class="h-3 w-28 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-4"><div class="h-3 w-20 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-3.5 text-center"><div class="h-3 w-8 bg-slate-200 rounded mx-auto"></div></td>
-                <td class="py-3 px-4"><div class="h-3 w-24 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-3.5 text-center"><div class="h-3 w-8 bg-slate-200 rounded mx-auto"></div></td>
-                <td class="py-3 px-3.5 text-center"><div class="h-3 w-8 bg-slate-200 rounded mx-auto"></div></td>
+                <td class="py-2.5 px-2.5 text-center"><div class="w-3.5 h-3.5 bg-slate-200 rounded-full mx-auto"></div></td>
+                <td class="py-2.5 px-3"><div class="h-3 w-16 bg-slate-200 rounded"></div></td>
+                <td class="py-2.5 px-3.5"><div class="h-3 w-28 bg-slate-200 rounded"></div></td>
+                <td class="py-2.5 px-3.5"><div class="h-3 w-20 bg-slate-200 rounded"></div></td>
+                <td class="py-2.5 px-2.5 text-center"><div class="h-3 w-6 bg-slate-200 rounded mx-auto"></div></td>
+                <td class="py-2.5 px-3.5"><div class="h-3 w-20 bg-slate-200 rounded"></div></td>
+                <td class="py-2.5 px-2.5 text-center"><div class="h-3 w-6 bg-slate-200 rounded mx-auto"></div></td>
+                <td class="py-2.5 px-2.5 text-center"><div class="h-3 w-6 bg-slate-200 rounded mx-auto"></div></td>
               </tr>
             </tbody>
 
@@ -1623,36 +1705,36 @@ onUnmounted(() => {
                 :class="[
                   'transition cursor-pointer group',
                   selectedMotor?.id === mot.id 
-                    ? 'bg-cyan-50/90 font-bold' 
-                    : 'hover:bg-blue-50/70 text-slate-700'
+                    ? 'bg-cyan-50/80 font-bold' 
+                    : 'hover:bg-slate-50 text-slate-700'
                 ]"
               >
                 <!-- 1. Icono de Información (i) -->
-                <td class="py-2.5 px-3 text-center align-middle border-r border-slate-100">
+                <td class="py-2 px-2.5 text-center align-middle border-r border-slate-100">
                   <button
                     type="button"
                     @click="openMotorInfo(mot, $event)"
-                    class="p-1 rounded-full hover:bg-blue-100 text-[#004b97] inline-flex items-center justify-center transition"
+                    class="p-1 rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 inline-flex items-center justify-center transition"
                     title="Ver ficha técnica del motor"
                   >
-                    <Info class="w-4 h-4 fill-current text-[#004b97]" />
+                    <Info class="w-3.5 h-3.5" />
                   </button>
                 </td>
 
                 <!-- 2. Número / ID -->
-                <td class="py-2.5 px-3.5 font-mono text-slate-600 align-middle border-r border-slate-100">
+                <td class="py-2 px-3 font-mono text-slate-500 text-[11px] align-middle border-r border-slate-100">
                   {{ mot.numero_id || '—' }}
                 </td>
 
-                <!-- 3. Código de Motor (ej. TOYOTA - 11B) -->
-                <td class="py-2.5 px-4 font-semibold text-slate-800 align-middle border-r border-slate-100">
+                <!-- 3. Código de Motor -->
+                <td class="py-2 px-3.5 font-semibold text-slate-800 align-middle border-r border-slate-100">
                   <div class="flex items-center gap-1.5">
-                    <span class="text-slate-900 group-hover:text-[#004b97] transition">
+                    <span class="font-mono font-bold text-slate-900 group-hover:text-[#038391] transition">
                       {{ getBrandName(mot.fabricante_id) }} - {{ mot.codigo }}
                     </span>
                     <span 
                       v-if="selectedMotor?.id === mot.id"
-                      class="text-[10px] px-1.5 py-0.5 rounded bg-[#04C4D9] text-white font-bold"
+                      class="text-[9px] px-1.5 py-0.2 rounded bg-[#04C4D9] text-white font-bold"
                     >
                       Activo
                     </span>
@@ -1660,33 +1742,33 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 4. Denominación de Venta -->
-                <td class="py-2.5 px-4 text-slate-600 align-middle border-r border-slate-100">
+                <td class="py-2 px-3.5 text-slate-600 align-middle border-r border-slate-100">
                   {{ mot.denominacion_venta || '—' }}
                 </td>
 
                 <!-- 5. Cilindros -->
-                <td class="py-2.5 px-3.5 text-center font-mono text-slate-800 align-middle border-r border-slate-100">
+                <td class="py-2 px-2.5 text-center font-mono text-slate-800 align-middle border-r border-slate-100">
                   {{ mot.cilindros }}
                 </td>
 
                 <!-- 6. Cilindrada -->
-                <td class="py-2.5 px-4 font-mono text-slate-800 align-middle border-r border-slate-100">
+                <td class="py-2 px-3.5 font-mono text-slate-800 align-middle border-r border-slate-100">
                   {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
                 </td>
 
                 <!-- 7. kW -->
-                <td class="py-2.5 px-3.5 text-center font-mono text-slate-800 align-middle border-r border-slate-100">
+                <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle border-r border-slate-100">
                   {{ mot.kw || '—' }}
                 </td>
 
                 <!-- 8. CV -->
-                <td class="py-2.5 px-3.5 text-center font-mono text-slate-800 align-middle">
+                <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle">
                   {{ mot.cv || '—' }}
                 </td>
               </tr>
 
               <tr v-if="paginatedMotors.length === 0">
-                <td colspan="8" class="py-12 text-center text-slate-400 bg-white">
+                <td colspan="8" class="py-8 text-center text-slate-400 bg-white">
                   No hay motores que coincidan con la búsqueda.
                 </td>
               </tr>
@@ -1695,86 +1777,90 @@ onUnmounted(() => {
         </div>
 
         <!-- Pie de Tabla con Paginación -->
-        <div class="bg-white py-2.5 px-4 border-t border-slate-200 flex items-center justify-end text-xs text-slate-600 gap-2">
-          <button
-            type="button"
-            @click="goToFirstMotorPage"
-            :disabled="motorCurrentPage === 1"
-            class="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
-            title="Primera página"
-          >
-            <ChevronsLeft class="w-4 h-4" />
-          </button>
+        <div class="bg-slate-50 py-2 px-3.5 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+          <span class="text-[11px] text-slate-500">Página {{ motorCurrentPage }} de {{ motorTotalPages }}</span>
+          
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              @click="goToFirstMotorPage"
+              :disabled="motorCurrentPage === 1"
+              class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+              title="Primera página"
+            >
+              <ChevronsLeft class="w-3.5 h-3.5" />
+            </button>
 
-          <button
-            type="button"
-            @click="goToPrevMotorPage"
-            :disabled="motorCurrentPage === 1"
-            class="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
-            title="Página anterior"
-          >
-            <ChevronLeft class="w-4 h-4" />
-          </button>
+            <button
+              type="button"
+              @click="goToPrevMotorPage"
+              :disabled="motorCurrentPage === 1"
+              class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+              title="Página anterior"
+            >
+              <ChevronLeft class="w-3.5 h-3.5" />
+            </button>
 
-          <span class="px-2 font-mono font-medium text-slate-700">
-            {{ motorCurrentPage }} desde {{ motorTotalPages }}
-          </span>
+            <span class="px-2 font-mono font-bold text-slate-700 text-xs">
+              {{ motorCurrentPage }}
+            </span>
 
-          <button
-            type="button"
-            @click="goToNextMotorPage"
-            :disabled="motorCurrentPage === motorTotalPages"
-            class="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
-            title="Página siguiente"
-          >
-            <ChevronRight class="w-4 h-4" />
-          </button>
+            <button
+              type="button"
+              @click="goToNextMotorPage"
+              :disabled="motorCurrentPage === motorTotalPages"
+              class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+              title="Página siguiente"
+            >
+              <ChevronRight class="w-3.5 h-3.5" />
+            </button>
 
-          <button
-            type="button"
-            @click="goToLastMotorPage"
-            :disabled="motorCurrentPage === motorTotalPages"
-            class="p-1 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
-            title="Última página"
-          >
-            <ChevronsRight class="w-4 h-4" />
-          </button>
+            <button
+              type="button"
+              @click="goToLastMotorPage"
+              :disabled="motorCurrentPage === motorTotalPages"
+              class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+              title="Última página"
+            >
+              <ChevronsRight class="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
       </div>
 
-      <!-- Tarjetas de acceso a los 4 tipos de componente -->
-      <div class="pt-2">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-xs font-black uppercase tracking-wider text-slate-700">
-            O seleccione directamente el componente a rectificar o adaptar:
+      <!-- Tarjetas de acceso directo a tipos de componente -->
+      <div class="pt-1">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+            O elija un componente directamente:
           </span>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
           <div
             v-for="grp in componentGroups"
             :key="grp.id"
             @click="handleSelectComponent(grp)"
-            class="bg-white p-4 rounded-xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-md cursor-pointer transition flex flex-col justify-between group"
+            class="bg-white p-3 rounded-xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-2xs cursor-pointer transition flex flex-col justify-between group"
           >
             <div>
-              <div class="flex items-center gap-2 text-slate-900 group-hover:text-[#04C4D9] font-black text-xs sm:text-sm">
-                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9]" />
-                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9]" />
-                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-4 h-4 text-[#04C4D9]" />
-                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9]" />
-                <Layers v-else class="w-4 h-4 text-[#04C4D9]" />
-                <span>{{ grp.title }}</span>
+              <div class="flex items-center gap-1.5 text-slate-900 group-hover:text-[#038391] font-bold text-xs">
+                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <Layers v-else class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <span class="truncate">{{ grp.title }}</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              <p class="text-[10px] text-slate-400 mt-1 line-clamp-2 leading-tight">
                 {{ grp.sampleMeasurements }}
               </p>
             </div>
-            <div class="mt-3 pt-2 border-t border-slate-50 text-[10px] font-bold text-[#04C4D9] flex items-center justify-between">
-              <span>Consultar grupo</span>
+            <div class="mt-2 pt-1 border-t border-slate-50 text-[10px] font-bold text-[#04C4D9] flex items-center justify-between">
+              <span>Ver piezas</span>
               <span>→</span>
             </div>
           </div>
@@ -1785,135 +1871,127 @@ onUnmounted(() => {
 
     <!-- ========================================================================= -->
     <!-- ESTADO 2.B: MOTOR SELECCIONADO -> VISTA DE GRUPOS DIRECTA                 -->
-    <!-- (Muestra directamente los grupos del motor y NO los demás motores)        -->
     <!-- ========================================================================= -->
     <div 
       v-else-if="selectedMotor && (activeViewTab === 'grupos' || !selectedComponent) && !searchInput" 
-      class="space-y-4"
+      class="space-y-3.5"
     >
-      <!-- Banner del Motor Seleccionado -->
-      <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="flex items-start sm:items-center gap-3.5">
-          <div class="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-mono font-black text-lg shadow-2xs shrink-0">
+      <!-- Banner del Motor Seleccionado (Minimalista) -->
+      <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-mono font-black text-sm shrink-0">
             {{ selectedMotor.codigo.slice(0, 3) }}
           </div>
           <div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <h3 class="text-base font-black text-slate-900 font-mono">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h3 class="text-sm font-black text-slate-900 font-mono">
                 MOTOR {{ selectedMotor.codigo }}
               </h3>
-              <span class="px-2.5 py-0.5 rounded-full bg-cyan-100 text-[#038391] text-xs font-bold">
-                {{ selectedMotor.combustible.toUpperCase() }}
+              <span class="px-2 py-0.2 rounded-md bg-cyan-50 text-[#038391] border border-cyan-200/80 text-[10px] font-bold uppercase">
+                {{ selectedMotor.combustible }}
               </span>
-              <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold font-mono">
+              <span class="px-2 py-0.2 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold font-mono">
                 {{ selectedMotor.cilindros }} Cil / {{ selectedMotor.cilindrada_texto || `${selectedMotor.cilindrada_cc} cc` }}
               </span>
-              <span v-if="selectedMotor.cv" class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
+              <span v-if="selectedMotor.cv" class="px-2 py-0.2 rounded-md bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold">
                 {{ selectedMotor.cv }} CV
               </span>
             </div>
-            <p class="text-xs text-slate-500 font-medium mt-1">
+            <p class="text-[11px] text-slate-500 font-medium mt-0.5">
               {{ selectedMotor.nombre_comercial }} 
               <span v-if="selectedMotor.denominacion_venta"> • {{ selectedMotor.denominacion_venta }}</span>
-              <span v-if="selectedBrand"> • Fabricante: <strong class="text-slate-700">{{ selectedBrand.nombre }}</strong></span>
+              <span v-if="selectedBrand"> • <strong class="text-slate-700">{{ selectedBrand.nombre }}</strong></span>
             </p>
           </div>
         </div>
 
-        <div class="flex items-center gap-2 self-end md:self-auto">
-          <button
-            type="button"
-            @click="activeViewTab = 'motores'"
-            class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
-            title="Volver a la lista de motores del fabricante"
-          >
-            <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
-            <span>Ver otros motores</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          @click="activeViewTab = 'motores'"
+          class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 self-start sm:self-auto"
+          title="Ver otros motores del fabricante"
+        >
+          <ArrowLeft class="w-3.5 h-3.5 text-slate-400" />
+          <span>Ver otros motores</span>
+        </button>
       </div>
 
-      <!-- Cuadro informativo de modelos compatibles con este motor -->
-      <div v-if="compatibleModelsForMotor.length > 0" class="bg-cyan-50/60 border border-cyan-200/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div class="flex items-center gap-2">
-          <Car class="w-4 h-4 text-[#04C4D9]" />
-          <span class="font-extrabold text-slate-800">Modelos con este motor:</span>
+      <!-- Cuadro de modelos compatibles -->
+      <div v-if="compatibleModelsForMotor.length > 0" class="bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-1.5 text-slate-600">
+          <Car class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span class="font-bold text-[11px]">Modelos con este motor:</span>
         </div>
-        <div class="flex flex-wrap items-center gap-1.5">
+        <div class="flex flex-wrap items-center gap-1">
           <button
             v-for="mod in compatibleModelsForMotor"
             :key="mod.id"
             type="button"
             @click="handleSelectModel(mod)"
             :class="[
-              'px-2.5 py-1 rounded-lg text-xs font-bold transition',
+              'px-2 py-0.5 rounded text-[11px] font-semibold transition',
               selectedModel?.id === mod.id
                 ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-cyan-100'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
             ]"
           >
-            {{ mod.nombre }} <span v-if="mod.anio_inicio" class="text-[10px] opacity-75">({{ mod.anio_inicio }}-{{ mod.anio_fin || 'Act' }})</span>
+            {{ mod.nombre }} <span v-if="mod.anio_inicio" class="text-[9px] opacity-75">({{ mod.anio_inicio }}-{{ mod.anio_fin || 'Act' }})</span>
           </button>
         </div>
       </div>
 
       <!-- Tarjetas de Grupos / Familias del Motor -->
-      <div class="space-y-3">
+      <div class="space-y-2.5">
         <div class="flex items-center justify-between">
-          <div>
-            <h4 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-              <span>Grupos y Familias de Piezas para Motor {{ selectedMotor.codigo }}</span>
-            </h4>
-            <p class="text-[11px] text-slate-500 mt-0.5">
-              Haga clic en un grupo para consultar sus especificaciones técnicas y tolerancias dimensionales.
-            </p>
-          </div>
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
+            <span>Familias de Piezas para Motor {{ selectedMotor.codigo }}</span>
+          </h4>
 
           <button
             type="button"
             @click="openAdminCatalogModal('grupo')"
-            class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+            class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
           >
             <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
             <span>Crear / Modificar Grupo</span>
           </button>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
           <div
             v-for="grp in componentGroups"
             :key="grp.id"
             @click="handleSelectComponent(grp)"
-            class="bg-white p-4 rounded-2xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-md cursor-pointer transition flex flex-col justify-between group relative"
+            class="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-2xs cursor-pointer transition flex flex-col justify-between group relative"
           >
             <div>
-              <div class="flex items-start justify-between gap-2 mb-2">
-                <div class="flex items-center gap-2 text-slate-900 group-hover:text-[#04C4D9] font-black text-sm">
-                  <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-4 h-4 text-[#04C4D9]" />
-                  <Wrench v-else-if="grp.id === 'valvula'" class="w-4 h-4 text-[#04C4D9]" />
-                  <Layers v-else-if="grp.id === 'anillos_motor'" class="w-4 h-4 text-[#04C4D9]" />
-                  <FileText v-else class="w-4 h-4 text-[#04C4D9]" />
+              <div class="flex items-start justify-between gap-1.5 mb-1.5">
+                <div class="flex items-center gap-2 text-slate-900 group-hover:text-[#038391] font-bold text-xs sm:text-sm">
+                  <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                  <Wrench v-else-if="grp.id === 'valvula'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                  <Layers v-else-if="grp.id === 'anillos_motor'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                  <FileText v-else class="w-4 h-4 text-[#04C4D9] shrink-0" />
                   <span>{{ grp.title }}</span>
                 </div>
 
                 <button
                   type="button"
                   @click.stop="handleEditGroup(grp.id)"
-                  class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
-                  title="Modificar grupo y sus parámetros técnicos"
+                  class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  title="Modificar parámetros del grupo"
                 >
                   <Edit3 class="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <p class="text-[11px] text-slate-500 leading-relaxed mb-3">
+              <p class="text-[11px] text-slate-400 leading-relaxed mb-2">
                 {{ grp.sampleMeasurements || grp.description }}
               </p>
             </div>
 
-            <div class="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-[#04C4D9]">
-              <span>Consultar cotas y piezas</span>
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-[#04C4D9]">
+              <span>Ver cotas y piezas</span>
               <span class="group-hover:translate-x-1 transition-transform">→</span>
             </div>
           </div>
@@ -1924,85 +2002,85 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <!-- ESTADO 3: MOTOR Y/O COMPONENTE / BÚSQUEDA ACTIVA -> TABLA DE REPUESTOS     -->
     <!-- ========================================================================= -->
-    <div v-else class="space-y-4">
+    <div v-else class="space-y-3.5">
       
-      <!-- Selector Rápido de Componentes (Botones Superiores) -->
-      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <span class="text-xs font-black uppercase tracking-wider text-slate-600">Componente:</span>
-          <div class="flex flex-wrap items-center gap-1.5">
+      <!-- Selector Rápido de Componentes (Pills Superiores) -->
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1">Grupo:</span>
+          <div class="flex flex-wrap items-center gap-1">
             <button
               v-for="grp in componentGroups"
               :key="grp.id"
               type="button"
               @click="handleSelectComponent(grp)"
               :class="[
-                'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
+                'px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5',
                 selectedComponent?.id === grp.id
                   ? 'bg-slate-900 text-white shadow-2xs'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               ]"
             >
-              <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <Layers v-else class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3 h-3 text-[#04C4D9]" />
+              <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3 h-3 text-[#04C4D9]" />
+              <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3 h-3 text-[#04C4D9]" />
+              <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3 h-3 text-[#04C4D9]" />
+              <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3 h-3 text-[#04C4D9]" />
+              <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3 h-3 text-[#04C4D9]" />
+              <Layers v-else class="w-3 h-3 text-[#04C4D9]" />
               <span>{{ grp.title }}</span>
             </button>
           </div>
         </div>
 
-        <!-- Botones para volver a la lista de motores y grupos -->
-        <div class="flex items-center gap-2">
+        <!-- Botones para volver -->
+        <div class="flex items-center gap-1.5">
           <button
             v-if="selectedMotor"
             type="button"
             @click="activeViewTab = 'grupos'; selectedComponent = null"
-            class="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+            class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
           >
-            <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
-            <span>Grupos de {{ selectedMotor.codigo }}</span>
+            <ArrowLeft class="w-3 h-3 text-slate-400" />
+            <span>Grupos {{ selectedMotor.codigo }}</span>
           </button>
 
           <button
             v-if="selectedBrand"
             type="button"
             @click="activeViewTab = 'motores'"
-            class="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+            class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
           >
-            <ArrowLeft class="w-3.5 h-3.5 text-[#04C4D9]" />
-            <span>Motores de {{ selectedBrand.nombre }}</span>
+            <ArrowLeft class="w-3 h-3 text-slate-400" />
+            <span>Motores {{ selectedBrand.nombre }}</span>
           </button>
         </div>
       </div>
 
       <!-- ======================================================================= -->
-      <!-- BARRA DE FILTROS DE MEDIDAS TÉCNICAS (DIRECTAMENTE ADOSADA A LA TABLA)  -->
+      <!-- BARRA DE FILTROS DE MEDIDAS TÉCNICAS (MINIMALISTA)                      -->
       <!-- ======================================================================= -->
-      <div v-if="selectedComponent" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+      <div v-if="selectedComponent" class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
         
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+        <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
           <div class="flex items-center gap-2">
-            <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-            <h4 class="text-xs font-black uppercase tracking-wider text-slate-800">
-              Medidas y Cotas para {{ selectedComponent.title }}
+            <SlidersHorizontal class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Filtros: {{ selectedComponent.title }}
             </h4>
-            <span v-if="activeMeasurementsCount > 0" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 text-[#038391]">
-              {{ activeMeasurementsCount }} filtro(s) aplicado(s)
+            <span v-if="activeMeasurementsCount > 0" class="text-[10px] font-bold px-2 py-0.2 rounded-full bg-cyan-100 text-[#038391]">
+              {{ activeMeasurementsCount }} aplicado(s)
             </span>
           </div>
 
-          <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div class="flex items-center gap-2">
             <button
               type="button"
               @click="handleEditGroup(selectedComponent.id)"
-              class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1.5 transition"
-              title="Modificar nombre, cotas o parámetros técnicos de esta familia"
+              class="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1 transition"
+              title="Modificar parámetros del grupo"
             >
-              <Edit3 class="w-3 h-3 text-[#04C4D9]" />
+              <Edit3 class="w-3 h-3 text-slate-500" />
               <span>Modificar Grupo</span>
             </button>
 
@@ -2010,32 +2088,29 @@ onUnmounted(() => {
               v-if="activeMeasurementsCount > 0"
               type="button"
               @click="resetMeasurementsFilters"
-              class="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1"
+              class="text-xs font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 ml-1"
             >
               <RotateCcw class="w-3 h-3" />
-              <span>Limpiar filtros</span>
+              <span>Limpiar</span>
             </button>
           </div>
         </div>
 
         <!-- CONTROL DE TOLERANCIA UNIVERSAL (± mm) -->
-        <div class="p-2.5 bg-slate-50/90 rounded-xl border border-slate-200/90 flex flex-wrap items-center justify-between gap-2.5">
-          <div class="flex items-center gap-2">
-            <Ruler class="w-4 h-4 text-[#04C4D9]" />
-            <span class="text-xs font-black text-slate-800">Tolerancia Universal:</span>
-            <span class="text-[11px] text-slate-500 hidden md:inline">
-              Margen de búsqueda en cotas técnicas estándar y dinámicas (± mm)
-            </span>
+        <div class="p-2 bg-slate-50 rounded-lg border border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <Ruler class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span class="text-xs font-bold text-slate-700">Tolerancia:</span>
           </div>
 
-          <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="flex items-center gap-1 flex-wrap">
             <button
-              v-for="tolOption in [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0]"
+              v-for="tolOption in [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]"
               :key="tolOption"
               type="button"
               @click="filterToleranciaMm = tolOption"
               :class="[
-                'px-2 py-1 rounded-lg text-xs font-bold font-mono transition',
+                'px-2 py-0.5 rounded text-[11px] font-mono font-bold transition',
                 filterToleranciaMm === tolOption
                   ? 'bg-[#04C4D9] text-white shadow-2xs'
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
@@ -2045,15 +2120,15 @@ onUnmounted(() => {
             </button>
 
             <div class="flex items-center gap-1 ml-1 pl-2 border-l border-slate-300">
-              <span class="text-xs text-slate-500 font-bold">±</span>
+              <span class="text-xs text-slate-400 font-bold">±</span>
               <input
                 v-model.number="filterToleranciaMm"
                 type="number"
                 step="0.1"
                 min="0"
                 max="100"
-                class="w-16 px-2 py-0.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-center focus:outline-none focus:border-[#04C4D9]"
-                title="Tolerancia personalizada en mm"
+                class="w-14 px-1.5 py-0.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded text-center focus:outline-none focus:border-[#04C4D9]"
+                title="Tolerancia en mm"
               />
               <span class="text-xs text-slate-500 font-bold">mm</span>
             </div>
@@ -2061,193 +2136,191 @@ onUnmounted(() => {
         </div>
 
         <!-- 1. FILTROS PARA: AJUSTE DE VÁLVULA -->
-        <div v-if="selectedComponent.id === 'ajuste_valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div v-if="selectedComponent.id === 'ajuste_valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Diám. int. (mm) <span class="text-slate-400 font-normal">ej. 4,8 mm</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Diám. interior (mm)
             </label>
             <input
               v-model.number="filterSelloDiamInt"
               type="number"
               step="0.1"
               placeholder="ej. 4.8"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Diámetro exterior (mm) <span class="text-slate-400 font-normal">ej. 10,8 mm</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Diám. exterior (mm)
             </label>
             <input
               v-model.number="filterSelloDiamExt"
               type="number"
               step="0.1"
               placeholder="ej. 10.8"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Altura (mm) <span class="text-slate-400 font-normal">ej. 10 mm</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Altura (mm)
             </label>
             <input
               v-model.number="filterSelloAltura"
               type="number"
               step="0.1"
               placeholder="ej. 10.0"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
         </div>
 
         <!-- 2. FILTROS PARA: VÁLVULA -->
-        <div v-else-if="selectedComponent.id === 'valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div v-else-if="selectedComponent.id === 'valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Hongo (Ø cabeza mm) <span class="text-slate-400 font-normal">ej. 42.5</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Hongo (Ø cabeza mm)
             </label>
             <input
               v-model.number="filterValvulaHongo"
               type="number"
               step="0.1"
               placeholder="ej. 42.5"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Vástago (Ø vástago mm) <span class="text-slate-400 font-normal">ej. 8.0</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Vástago (Ø vástago mm)
             </label>
             <input
               v-model.number="filterValvulaVastago"
               type="number"
               step="0.05"
               placeholder="ej. 8.0"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Altura (Longitud mm) <span class="text-slate-400 font-normal">ej. 103.5</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Altura (Longitud mm)
             </label>
             <input
               v-model.number="filterValvulaAltura"
               type="number"
               step="0.5"
               placeholder="ej. 103.5"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
         </div>
 
         <!-- 3. FILTROS PARA: ANILLOS DE MOTOR -->
-        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Diámetro (Ø Cilindro mm) <span class="text-slate-400 font-normal">ej. 96.0</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Diámetro (Ø Cilindro mm)
             </label>
             <input
               v-model.number="filterAnilloDiametro"
               type="number"
               step="0.5"
               placeholder="ej. 96.0"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Grosor primer anillo (mm) <span class="text-slate-400 font-normal">ej. 2.0</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Grosor 1° Anillo (mm)
             </label>
             <input
               v-model.number="filterAnilloGrosor1"
               type="number"
               step="0.1"
               placeholder="ej. 2.0"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
-              Altura grosor (mm) <span class="text-slate-400 font-normal">ej. 2.0 ó 4.0</span>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Altura grosor (mm)
             </label>
             <input
               v-model.number="filterAnilloAlturaGrosor"
               type="number"
               step="0.1"
               placeholder="ej. 2.0 ó 4.0"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
         </div>
 
         <!-- 4. FILTROS PARA: JUEGO DE TORNILLOS DE CULATA -->
-        <div v-else-if="selectedComponent.id === 'tornillos_culata'" class="space-y-2.5">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <div>
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Medida de rosca</label>
-              <select
-                v-model="filterPernoMedidaRosca"
-                class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-              >
-                <option value="">Todas</option>
-                <option value="M10">M10</option>
-                <option value="M11">M11</option>
-                <option value="M12">M12</option>
-                <option value="M14">M14</option>
-              </select>
-            </div>
+        <div v-else-if="selectedComponent.id === 'tornillos_culata'" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Rosca</label>
+            <select
+              v-model="filterPernoMedidaRosca"
+              class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+            >
+              <option value="">Todas</option>
+              <option value="M10">M10</option>
+              <option value="M11">M11</option>
+              <option value="M12">M12</option>
+              <option value="M14">M14</option>
+            </select>
+          </div>
 
-            <div>
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Paso de rosca mm</label>
-              <input
-                v-model.number="filterPernoPasoRosca"
-                type="number"
-                step="0.25"
-                placeholder="ej. 1.25"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-              />
-            </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Paso (mm)</label>
+            <input
+              v-model.number="filterPernoPasoRosca"
+              type="number"
+              step="0.25"
+              placeholder="ej. 1.25"
+              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
+            />
+          </div>
 
-            <div>
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Long. mm</label>
-              <input
-                v-model.number="filterPernoLongitud"
-                type="number"
-                step="1"
-                placeholder="ej. 120"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-              />
-            </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Long. (mm)</label>
+            <input
+              v-model.number="filterPernoLongitud"
+              type="number"
+              step="1"
+              placeholder="ej. 120"
+              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
+            />
+          </div>
 
-            <div>
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Cant.</label>
-              <input
-                v-model.number="filterPernoCantidad"
-                type="number"
-                step="1"
-                placeholder="ej. 18"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-              />
-            </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Cantidad</label>
+            <input
+              v-model.number="filterPernoCantidad"
+              type="number"
+              step="1"
+              placeholder="ej. 18"
+              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
+            />
           </div>
         </div>
 
-        <!-- 5. FILTROS COMPACTOS PARA: CAMISAS DE CILINDRO -->
+        <!-- 5. FILTROS PARA: CAMISAS DE CILINDRO -->
         <div 
           v-else-if="selectedComponent.id === 'camisas_cilindro' || selectedComponent.category === 'Camisas'"
-          class="space-y-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/80"
+          class="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80"
         >
           <!-- Fila principal: Cotas maestras de maquinado (ØA Int, ØB Ext, C Largo) -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-tight">
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight">
                   Ø Int (A) Bore
                 </label>
                 <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
@@ -2257,13 +2330,13 @@ onUnmounted(() => {
                 type="number"
                 step="0.5"
                 placeholder="ej. 88.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
             </div>
 
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-tight">
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight">
                   Ø Ext (B) Encastre
                 </label>
                 <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
@@ -2273,13 +2346,13 @@ onUnmounted(() => {
                 type="number"
                 step="0.5"
                 placeholder="ej. 93.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
             </div>
 
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-tight">
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight">
                   Largo (C) Altura
                 </label>
                 <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
@@ -2289,13 +2362,13 @@ onUnmounted(() => {
                 type="number"
                 step="1"
                 placeholder="ej. 182.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
             </div>
           </div>
 
-          <!-- Fila secundaria compacta: Pestaña (D y E), Acabado y Tipo -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1.5 border-t border-slate-200/60">
+          <!-- Fila secundaria: Pestaña, Acabado y Tipo -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-200/60">
             <div>
               <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Ø Pestaña (D)</label>
               <input
@@ -2362,26 +2435,26 @@ onUnmounted(() => {
               type="number"
               step="0.1"
               :placeholder="`ej. 50 ${param.unidad || ''}`"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
             <input
               v-else
               v-model="dynamicParamFilters[param.clave]"
               type="text"
-              :placeholder="`Filtrar...`"
-              class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              placeholder="Filtrar..."
+              class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
         </div>
 
         <!-- Buscador de texto y filtro por catálogo -->
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
-          <div class="relative w-full sm:w-80">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div class="relative w-full sm:w-72">
             <input
               v-model="tableSearchFilter"
               type="text"
-              placeholder="Filtrar por código o nombre..."
-              class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
+              placeholder="Filtrar en esta tabla..."
+              class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
             />
             <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
           </div>
@@ -2405,73 +2478,73 @@ onUnmounted(() => {
 
       </div>
 
-      <!-- TABLA TÉCNICA DE REPUESTOS EN FORMATO MATRIZ -->
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <!-- TABLA TÉCNICA DE REPUESTOS EN FORMATO MATRIZ (MINIMALISTA) -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         
-        <div class="bg-[#0f172a] text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
-          <span class="flex items-center gap-2">
-            <span>Matriz Técnica: {{ selectedComponent?.title || 'Piezas Técnicas' }}</span>
-            <span class="font-normal text-slate-400 font-mono">({{ displayedParts.length }} registros)</span>
+        <div class="bg-slate-900 text-white px-3.5 py-2 flex items-center justify-between text-xs font-bold">
+          <span class="flex items-center gap-1.5">
+            <span>{{ selectedComponent?.title || 'Piezas Técnicas' }}</span>
+            <span class="font-normal text-slate-400 font-mono text-[11px]">({{ displayedParts.length }} registros)</span>
           </span>
-          <span v-if="selectedMotor" class="font-mono text-[#05F2F2]">
+          <span v-if="selectedMotor" class="font-mono text-[#04C4D9] text-[11px]">
             MOTOR {{ selectedMotor.codigo }}
           </span>
-          <span v-else-if="selectedBrand" class="font-mono text-[#05F2F2] uppercase">
+          <span v-else-if="selectedBrand" class="font-mono text-[#04C4D9] uppercase text-[11px]">
             {{ selectedBrand.nombre }}
           </span>
-          <span v-else class="font-mono text-cyan-300">
+          <span v-else class="font-mono text-slate-400 text-[11px]">
             TODOS LOS MOTORES
           </span>
         </div>
 
-        <div class="overflow-x-auto overflow-y-auto max-h-[520px]">
+        <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-collapse">
-            <thead class="sticky top-0 z-10 bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px] shadow-2xs">
+            <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
               <tr>
-                <th class="py-3 px-3.5 w-56">Componente</th>
-                <th class="py-3 px-3 w-36">Código OEM</th>
-                <th class="py-3 px-3 w-56">Catálogos Alternos</th>
+                <th class="py-2.5 px-3 w-52">Componente</th>
+                <th class="py-2.5 px-3 w-32">Código OEM</th>
+                <th class="py-2.5 px-3 w-48">Catálogos Alternos</th>
                 
-                <th v-if="selectedComponent?.id === 'ajuste_valvula' || selectedComponent?.category === 'Sellos'" class="py-3 px-3">
-                  Medidas de Ajuste: Diám. Int / Diám. Ext / Altura (mm)
+                <th v-if="selectedComponent?.id === 'ajuste_valvula' || selectedComponent?.category === 'Sellos'" class="py-2.5 px-3">
+                  Medidas: Diám. Int / Diám. Ext / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-3 px-3">
-                  Medidas de Válvula: Hongo / Vástago / Altura (mm)
+                <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-2.5 px-3">
+                  Medidas: Hongo / Vástago / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-3 px-3">
-                  Medidas de Anillos: Diámetro / 1er Anillo / 2do Anillo / Aceite
+                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-2.5 px-3">
+                  Medidas: Diámetro / 1er Anillo / 2do Anillo / Aceite
                 </th>
-                <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-3 px-3">
-                  Cotas de Camisa: ØA (Int) × ØB (Ext) × C (Largo) • Pestaña (D × E)
+                <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-2.5 px-3">
+                  Cotas: ØA (Int) × ØB (Ext) × C (Largo) • Pestaña (D × E)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-3 px-3">
-                  Tornillos de Culata: Rosca / Paso / Longitud / Cantidad
+                <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-2.5 px-3">
+                  Tornillos: Rosca / Paso / Longitud / Cantidad
                 </th>
-                <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-3 px-3">
+                <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-2.5 px-3">
                   Cojinetes: Muñón / Alojamiento / Ancho / Tipo
                 </th>
-                <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-3 px-3">
-                  Empaques: Diámetro de Cilindro / Espesor / Material
+                <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-2.5 px-3">
+                  Empaques: Diámetro / Espesor / Material
                 </th>
-                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-3 px-3">
+                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-2.5 px-3">
                   Parámetros: {{ currentGroupDefinition.parametros.map(p => p.etiqueta).slice(0, 3).join(' / ') }}<span v-if="currentGroupDefinition.parametros.length > 3">...</span>
                 </th>
-                <th v-else class="py-3 px-3">
+                <th v-else class="py-2.5 px-3">
                   Especificaciones Técnicas (mm)
                 </th>
 
-                <th class="py-3 px-3.5 w-32 text-right">Acciones</th>
+                <th class="py-2.5 px-3 w-28 text-right">Acciones</th>
               </tr>
             </thead>
 
             <!-- Skeleton loading de repuestos -->
             <tbody v-if="catalogStore.loadingRepuestos || catalogStore.isSearching" class="divide-y divide-slate-100">
               <tr v-for="n in 5" :key="`skel-rep-${n}`" class="animate-pulse bg-slate-50/50">
-                <td class="py-4 px-3.5"><div class="h-4 w-32 bg-slate-200 rounded"></div></td>
-                <td class="py-4 px-3"><div class="h-4 w-20 bg-slate-200 rounded"></div></td>
-                <td class="py-4 px-3"><div class="h-4 w-28 bg-slate-200 rounded"></div></td>
-                <td class="py-4 px-3"><div class="h-4 w-40 bg-slate-200 rounded"></div></td>
-                <td class="py-4 px-3.5 text-right"><div class="h-4 w-16 bg-slate-200 rounded ml-auto"></div></td>
+                <td class="py-3 px-3"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
+                <td class="py-3 px-3"><div class="h-3.5 w-20 bg-slate-200 rounded"></div></td>
+                <td class="py-3 px-3"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
+                <td class="py-3 px-3"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
+                <td class="py-3 px-3 text-right"><div class="h-3.5 w-14 bg-slate-200 rounded ml-auto"></div></td>
               </tr>
             </tbody>
 
@@ -2479,41 +2552,41 @@ onUnmounted(() => {
               <tr
                 v-for="part in displayedParts"
                 :key="part.id"
-                class="hover:bg-cyan-50/20 transition group"
+                class="hover:bg-slate-50 transition group"
               >
                 <!-- 1. Componente -->
-                <td class="py-3.5 px-3.5 align-middle">
+                <td class="py-2.5 px-3 align-middle">
                   <div class="flex items-center gap-2">
-                    <span class="p-1.5 bg-slate-100 text-slate-700 rounded-lg group-hover:bg-[#04C4D9] group-hover:text-white transition">
-                      <CircleDot v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="w-4 h-4" />
-                      <Wrench v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="w-4 h-4" />
-                      <Layers v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="w-4 h-4" />
-                      <FileText v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="w-4 h-4" />
-                      <CircleDot v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="w-4 h-4" />
-                      <Layers v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="w-4 h-4" />
-                      <Layers v-else class="w-4 h-4" />
+                    <span class="p-1 bg-slate-100 text-slate-700 rounded group-hover:bg-[#04C4D9] group-hover:text-white transition">
+                      <CircleDot v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="w-3.5 h-3.5" />
+                      <Wrench v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="w-3.5 h-3.5" />
+                      <Layers v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="w-3.5 h-3.5" />
+                      <FileText v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="w-3.5 h-3.5" />
+                      <CircleDot v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="w-3.5 h-3.5" />
+                      <Layers v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="w-3.5 h-3.5" />
+                      <Layers v-else class="w-3.5 h-3.5" />
                     </span>
                     <div>
-                      <div class="font-black text-slate-900 text-xs sm:text-sm leading-tight">
+                      <div class="font-bold text-slate-900 text-xs leading-tight">
                         {{ part.nombre }}
                       </div>
-                      <span class="text-[10px] font-bold text-[#038391] uppercase">
-                        {{ part.subsistema }} • {{ part.motor?.codigo ? `${part.motor?.fabricante?.nombre ? `${part.motor.fabricante.nombre} ` : ''}Motor ${part.motor.codigo}` : (part.catalogo_origen || 'OEM') }}
+                      <span class="text-[10px] font-semibold text-slate-400 uppercase">
+                        {{ part.subsistema }} • {{ part.motor?.codigo ? `Motor ${part.motor.codigo}` : (part.catalogo_origen || 'OEM') }}
                       </span>
                     </div>
                   </div>
                 </td>
 
                 <!-- 2. Código OEM -->
-                <td class="py-3.5 px-3 align-middle">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-mono font-bold text-xs sm:text-sm text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                <td class="py-2.5 px-3 align-middle">
+                  <div class="flex items-center gap-1">
+                    <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                       {{ part.codigo_oem }}
                     </span>
                     <button
                       type="button"
                       @click="copyToClipboard(part.codigo_oem, 'OEM')"
-                      class="p-1 text-slate-400 hover:text-slate-900 rounded hover:bg-slate-100 transition"
+                      class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
                       title="Copiar código OEM"
                     >
                       <Check v-if="copiedCode === part.codigo_oem" class="w-3.5 h-3.5 text-emerald-600" />
@@ -2523,180 +2596,172 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 3. Códigos Alternos por Catálogo -->
-                <td class="py-3.5 px-3 align-middle">
-                  <div class="flex flex-wrap gap-1.5">
+                <td class="py-2.5 px-3 align-middle">
+                  <div class="flex flex-wrap gap-1">
                     <template v-if="part.equivalencias && part.equivalencias.length > 0">
                       <span
                         v-for="eq in part.equivalencias"
                         :key="eq.id"
                         @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
                         :class="[
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-mono cursor-pointer transition shadow-2xs hover:scale-105',
+                          'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-mono cursor-pointer transition hover:opacity-80',
                           getBrandBadgeClass(eq.marca_alterna)
                         ]"
                         :title="`Clic para copiar código ${eq.marca_alterna}`"
                       >
-                        <span class="font-sans text-[10px] uppercase opacity-90">{{ eq.marca_alterna }}:</span>
+                        <span class="font-sans text-[9px] uppercase opacity-90">{{ eq.marca_alterna }}:</span>
                         <strong>{{ eq.codigo_alterno }}</strong>
                       </span>
                     </template>
-                    <span v-else class="text-[11px] text-slate-400 italic">
-                      Sin equivalencias
+                    <span v-else class="text-[10px] text-slate-400 italic">
+                      Sin cruces
                     </span>
                   </div>
                 </td>
 
                 <!-- 4. MEDIDAS Y COTAS -->
-                <td class="py-3.5 px-3 align-middle">
+                <td class="py-2.5 px-3 align-middle">
                   
                   <!-- Caso A: Ajuste de válvula -->
-                  <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Diám. int: <strong class="text-slate-900">{{ part.diametro_interior_mm || 4.8 }} mm</strong>
+                  <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-slate-800">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Int: <strong class="text-slate-900">{{ part.diametro_interior_mm || 4.8 }} mm</strong>
                     </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Diámetro exterior: <strong class="text-slate-900">{{ part.diametro_exterior_mm || 10.8 }} mm</strong>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Ext: <strong class="text-slate-900">{{ part.diametro_exterior_mm || 10.8 }} mm</strong>
                     </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Altura: <strong class="text-slate-900">{{ part.altura_mm || 10 }} mm</strong>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Alt: <strong class="text-slate-900">{{ part.altura_mm || 10 }} mm</strong>
                     </span>
                   </div>
 
                   <!-- Caso B: Válvula -->
-                  <div v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
+                  <div v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-slate-800">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
                       Hongo: <strong class="text-slate-900">{{ part.diametro_cabeza_mm }} mm</strong>
                     </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
                       Vástago: <strong class="text-slate-900">{{ part.diametro_vastago_mm }} mm</strong>
                     </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Altura: <strong class="text-slate-900">{{ part.longitud_total_mm }} mm</strong>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Largo: <strong class="text-slate-900">{{ part.longitud_total_mm }} mm</strong>
                     </span>
                   </div>
 
                   <!-- Caso C: Anillos de motor -->
-                  <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="bg-slate-50 border border-slate-200/80 p-2 rounded-xl text-xs font-mono text-slate-800 space-y-1.5">
-                    <div class="flex items-center gap-2">
-                      <span class="text-slate-500 font-sans font-bold text-[11px]">Diámetro cilindro:</span>
-                      <strong class="text-slate-900 text-sm font-black">{{ part.diametro_cilindro_mm || 96.0 }} mm</strong>
+                  <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="space-y-1 text-xs font-mono text-slate-800">
+                    <div class="flex items-center gap-1.5 text-[11px]">
+                      <span class="text-slate-500 font-sans">Ø Cilindro:</span>
+                      <strong class="text-slate-900 font-bold">{{ part.diametro_cilindro_mm || 96.0 }} mm</strong>
                     </div>
 
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <span class="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold text-[11px]">
-                        1° Anillo (Fuego): {{ part.espesor_anillo1_mm || 2.0 }} mm
+                    <div class="flex flex-wrap items-center gap-1 text-[10px]">
+                      <span class="px-1.5 py-0.2 rounded bg-blue-50 text-blue-900 border border-blue-200 font-bold">
+                        1°: {{ part.espesor_anillo1_mm || 2.0 }}mm
                       </span>
-                      <span class="px-2 py-0.5 rounded-lg bg-cyan-50 text-cyan-900 border border-cyan-200 font-bold text-[11px]">
-                        2° Anillo (Compresión): {{ part.espesor_anillo2_mm || 2.0 }} mm
+                      <span class="px-1.5 py-0.2 rounded bg-cyan-50 text-cyan-900 border border-cyan-200 font-bold">
+                        2°: {{ part.espesor_anillo2_mm || 2.0 }}mm
                       </span>
-                      <span class="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[11px]">
-                        Anillo de Aceite: {{ part.espesor_aceite_mm || 4.0 }} mm
+                      <span class="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
+                        Aceite: {{ part.espesor_aceite_mm || 4.0 }}mm
                       </span>
                     </div>
                   </div>
 
                   <!-- Caso D: Juego de tornillos de culata -->
-                  <div v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Medida de rosca: <strong class="text-slate-900">{{ part.medida_rosca || 'M12' }}</strong>
+                  <div v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      {{ part.medida_rosca || 'M12' }} × {{ part.paso_rosca_mm || 1.25 }}
                     </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Paso: <strong class="text-slate-900">{{ part.paso_rosca_mm || 1.25 }} mm</strong>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      L: {{ part.longitud_perno_mm || 120 }} mm
                     </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Longitud: <strong class="text-slate-900">{{ part.longitud_perno_mm || 120 }} mm</strong>
-                    </span>
-                    <span class="px-2 py-0.5 rounded bg-white border border-slate-200 font-bold text-[#038391]">
-                      Cant: {{ part.cantidad_piezas || 18 }} pcs
+                    <span class="px-1.5 py-0.5 rounded bg-cyan-50 text-[#038391] border border-cyan-200 font-bold text-[11px]">
+                      {{ part.cantidad_piezas || 18 }} pcs
                     </span>
                   </div>
 
                   <!-- Caso E: Casquetería -->
-                  <div v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <span v-if="part.diametro_munon_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Muñón: <strong class="text-slate-900">{{ part.diametro_munon_mm }} mm</strong>
+                  <div v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
+                    <span v-if="part.diametro_munon_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Muñón: <strong>{{ part.diametro_munon_mm }} mm</strong>
                     </span>
-                    <span v-if="part.ancho_casquete_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Ancho: <strong class="text-slate-900">{{ part.ancho_casquete_mm }} mm</strong>
+                    <span v-if="part.ancho_casquete_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Ancho: <strong>{{ part.ancho_casquete_mm }} mm</strong>
                     </span>
-                    <span v-if="part.tipo_cojinete" class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-900 border border-emerald-200 font-bold">
+                    <span v-if="part.tipo_cojinete" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-900 border border-emerald-200 font-bold text-[10px]">
                       {{ part.tipo_cojinete }}
                     </span>
                   </div>
 
                   <!-- Caso F: Empaques -->
-                  <div v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <span v-if="part.diametro_cilindro_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Ø Cilindro: <strong class="text-slate-900">{{ part.diametro_cilindro_mm }} mm</strong>
+                  <div v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
+                    <span v-if="part.diametro_cilindro_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Ø Cil: <strong>{{ part.diametro_cilindro_mm }} mm</strong>
                     </span>
-                    <span v-if="part.dimensiones?.espesor_mm" class="px-2 py-0.5 rounded bg-white border border-slate-200">
-                      Espesor: <strong class="text-slate-900">{{ part.dimensiones.espesor_mm }} mm</strong>
-                    </span>
-                    <span v-if="part.dimensiones?.tipo" class="px-2 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200 font-bold">
-                      {{ part.dimensiones.tipo }}
+                    <span v-if="part.dimensiones?.espesor_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
+                      Espesor: <strong>{{ part.dimensiones.espesor_mm }} mm</strong>
                     </span>
                   </div>
 
-                  <!-- Caso G: Camisas de cilindro (Ultra-compacto de taller) -->
-                  <div v-else-if="selectedComponent?.id === 'camisas_cilindro' || part.categoria === 'Camisas'" class="space-y-1 py-0.5">
-                    <div class="inline-flex items-center gap-1.5 bg-slate-100/90 hover:bg-slate-200/90 px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-800 transition shadow-2xs">
+                  <!-- Caso G: Camisas de cilindro (Ultra-compacto) -->
+                  <div v-else-if="selectedComponent?.id === 'camisas_cilindro' || part.categoria === 'Camisas'" class="space-y-0.5">
+                    <div class="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-bold text-slate-800">
                       <span class="text-slate-500 text-[10px] uppercase font-sans">ØA:</span>
-                      <strong class="text-slate-900 text-xs font-black">{{ part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '—' }}</strong>
-                      <span class="text-slate-300 font-normal">×</span>
+                      <strong class="text-slate-900 text-xs">{{ part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '—' }}</strong>
+                      <span class="text-slate-300">×</span>
                       <span class="text-slate-500 text-[10px] uppercase font-sans">ØB:</span>
-                      <strong class="text-slate-900 text-xs font-black">{{ part.dimensiones?.diametro_exterior_mm || '—' }}</strong>
-                      <span class="text-slate-300 font-normal">×</span>
+                      <strong class="text-slate-900 text-xs">{{ part.dimensiones?.diametro_exterior_mm || '—' }}</strong>
+                      <span class="text-slate-300">×</span>
                       <span class="text-slate-500 text-[10px] uppercase font-sans">C:</span>
-                      <strong class="text-slate-900 text-xs font-black">{{ part.dimensiones?.longitud_total_mm || part.longitud_total_mm || '—' }}</strong>
-                      <span class="text-slate-500 text-[10px]">mm</span>
+                      <strong class="text-slate-900 text-xs">{{ part.dimensiones?.longitud_total_mm || part.longitud_total_mm || '—' }}</strong>
+                      <span class="text-slate-400 text-[10px]">mm</span>
                     </div>
 
-                    <div class="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-slate-600">
-                      <span v-if="part.dimensiones?.diametro_pestana_mm || part.dimensiones?.espesor_pestana_mm" class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200">
-                        Pestaña: <strong>Ø{{ part.dimensiones?.diametro_pestana_mm || '—' }} × {{ part.dimensiones?.espesor_pestana_mm || '—' }} mm</strong>
+                    <div class="flex items-center gap-1 flex-wrap text-[10px] font-mono text-slate-600">
+                      <span v-if="part.dimensiones?.diametro_pestana_mm || part.dimensiones?.espesor_pestana_mm" class="px-1 rounded bg-slate-50 border border-slate-200 text-[9px]">
+                        Pest: Ø{{ part.dimensiones?.diametro_pestana_mm || '—' }}×{{ part.dimensiones?.espesor_pestana_mm || '—' }}mm
                       </span>
-                      <span v-if="part.dimensiones?.acabado" class="px-1.5 py-0.5 rounded font-bold uppercase" :class="part.dimensiones.acabado === 'F' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'">
-                        {{ part.dimensiones.acabado === 'F' ? 'Terminada' : (part.dimensiones.acabado === 'S' ? 'Semi' : part.dimensiones.acabado) }}
-                      </span>
-                      <span v-if="part.dimensiones?.tipo" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200">
-                        {{ part.dimensiones.tipo }}
+                      <span v-if="part.dimensiones?.acabado" class="px-1 rounded text-[9px] font-bold uppercase" :class="part.dimensiones.acabado === 'F' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'">
+                        {{ part.dimensiones.acabado === 'F' ? 'Terminada' : 'Semi' }}
                       </span>
                     </div>
                   </div>
 
-                  <!-- Caso H: Grupo Dinámico / Personalizado Compacto -->
+                  <!-- Caso H: Grupo Dinámico / Personalizado -->
                   <div 
                     v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" 
-                    class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800"
+                    class="flex flex-wrap items-center gap-1 text-xs font-mono text-slate-800"
                   >
                     <span 
                       v-for="p in currentGroupDefinition.parametros" 
                       :key="p.clave"
-                      class="px-1.5 py-0.5 rounded bg-slate-100/80 border border-slate-200 text-[11px]"
+                      class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px]"
                     >
-                      <span class="text-slate-500 font-sans text-[10px]">{{ p.etiqueta }}:</span> 
+                      <span class="text-slate-500 font-sans">{{ p.etiqueta }}:</span> 
                       <strong class="text-slate-900 ml-0.5">
-                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? '—' }}<span v-if="p.unidad" class="text-[10px] text-slate-500 font-normal ml-0.5">{{ p.unidad }}</span>
+                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? '—' }}<span v-if="p.unidad" class="text-slate-400 ml-0.5">{{ p.unidad }}</span>
                       </strong>
                     </span>
                   </div>
 
                   <!-- Caso I: Genérico / Otros -->
-                  <div v-else class="text-xs text-slate-500 font-mono">
+                  <div v-else class="text-[11px] text-slate-500 font-mono">
                     {{ part.categoria }} • Ref: {{ part.subsistema }}
                   </div>
 
                 </td>
 
                 <!-- 5. Acciones Rápidas -->
-                <td class="py-3.5 px-3.5 align-middle text-right space-y-1.5">
-                  <div class="flex items-center justify-end gap-1.5">
+                <td class="py-2.5 px-3 align-middle text-right">
+                  <div class="flex items-center justify-end gap-1">
                     <button
                       type="button"
                       @click="openTechnicalSheet(part)"
-                      class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1 shadow-2xs"
+                      class="px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold transition flex items-center gap-1"
+                      title="Ver ficha técnica"
                     >
-                      <Eye class="w-3.5 h-3.5 text-slate-500" />
+                      <Eye class="w-3 h-3 text-slate-400" />
                       <span>Ficha</span>
                     </button>
 
@@ -2704,26 +2769,15 @@ onUnmounted(() => {
                       type="button"
                       @click="addToWorkOrder(part)"
                       :class="[
-                        'px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1',
+                        'px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1',
                         addedPartId === part.id
                           ? 'bg-emerald-600 text-white'
-                          : 'bg-[#04C4D9] hover:bg-[#03a9bc] text-white'
+                          : 'bg-[#04C4D9] hover:bg-[#03a9bc] text-white shadow-2xs'
                       ]"
                     >
-                      <Check v-if="addedPartId === part.id" class="w-3.5 h-3.5" />
-                      <Plus v-else class="w-3.5 h-3.5" />
+                      <Check v-if="addedPartId === part.id" class="w-3 h-3" />
+                      <Plus v-else class="w-3 h-3" />
                       <span>{{ addedPartId === part.id ? 'Listo' : 'A Orden' }}</span>
-                    </button>
-                  </div>
-
-                  <div>
-                    <button
-                      type="button"
-                      @click="copyFullCross(part)"
-                      class="text-[10px] text-slate-400 hover:text-slate-800 transition font-medium flex items-center justify-end gap-1 ml-auto"
-                    >
-                      <Copy class="w-2.5 h-2.5" />
-                      <span>Copiar Cruce</span>
                     </button>
                   </div>
                 </td>
@@ -2731,27 +2785,27 @@ onUnmounted(() => {
 
               <!-- Empty State -->
               <tr v-if="displayedParts.length === 0">
-                <td colspan="5" class="py-12 text-center text-slate-400 bg-white">
-                  <div class="max-w-md mx-auto space-y-2">
-                    <AlertCircle class="w-8 h-8 text-slate-300 mx-auto" />
-                    <h4 class="text-sm font-bold text-slate-700">No hay repuestos coincidentes</h4>
-                    <p class="text-xs text-slate-400">
-                      No se encontraron piezas registradas con las cotas o términos ingresados.
+                <td colspan="5" class="py-10 text-center text-slate-400 bg-white">
+                  <div class="max-w-sm mx-auto space-y-2">
+                    <AlertCircle class="w-6 h-6 text-slate-300 mx-auto" />
+                    <h4 class="text-xs font-bold text-slate-700">No hay repuestos coincidentes</h4>
+                    <p class="text-[11px] text-slate-400">
+                      No se encontraron piezas con las cotas o términos ingresados.
                     </p>
-                    <div class="flex items-center justify-center gap-2 pt-2">
+                    <div class="flex items-center justify-center gap-2 pt-1">
                       <button
                         type="button"
                         @click="resetMeasurementsFilters"
-                        class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                        class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
                       >
-                        Limpiar Filtros de Medida
+                        Limpiar Filtros
                       </button>
                       <button
                         type="button"
                         @click="openAddPartModal"
-                        class="px-3 py-1.5 rounded-xl bg-[#04C4D9] text-white text-xs font-bold"
+                        class="px-2.5 py-1 rounded-lg bg-[#04C4D9] text-white text-xs font-bold"
                       >
-                        + Añadir este Repuesto
+                        + Añadir Repuesto
                       </button>
                     </div>
                   </div>
@@ -2766,7 +2820,7 @@ onUnmounted(() => {
     </div>
 
     <!-- ========================================================================= -->
-    <!-- MODAL 1: INFORMACIÓN TÉCNICA DEL MOTOR (AL CLIC EN (i) DE LA TABLA)       -->
+    <!-- MODAL 1: INFORMACIÓN TÉCNICA DEL MOTOR                                    -->
     <!-- ========================================================================= -->
     <Transition
       enter-active-class="transition duration-200 ease-out"
@@ -2782,23 +2836,23 @@ onUnmounted(() => {
         @click.self="closeMotorInfo"
       >
         <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
-          <div class="bg-[#004b97] text-white px-5 py-3.5 flex items-center justify-between">
+          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <Info class="w-5 h-5 text-[#05F2F2]" />
-              <h3 class="text-sm font-black text-white">
-                Ficha Técnica: {{ getBrandName(selectedMotorInfoModal.fabricante_id) }} - {{ selectedMotorInfoModal.codigo }}
+              <Info class="w-4 h-4 text-[#04C4D9]" />
+              <h3 class="text-sm font-bold text-white">
+                Ficha Motor: {{ getBrandName(selectedMotorInfoModal.fabricante_id) }} - {{ selectedMotorInfoModal.codigo }}
               </h3>
             </div>
             <button
               type="button"
               @click="closeMotorInfo"
-              class="p-1 text-white/80 hover:text-white rounded-lg hover:bg-blue-900 transition"
+              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
             >
               <X class="w-4 h-4" />
             </button>
           </div>
 
-          <div class="p-5 text-xs space-y-3 font-mono">
+          <div class="p-4 text-xs space-y-3 font-mono">
             <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">ID de Motor</span>
@@ -2835,21 +2889,21 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex items-center justify-between">
+          <div class="bg-slate-50 px-4 py-2.5 border-t border-slate-200 flex items-center justify-between">
             <button
               type="button"
               @click="closeMotorInfo"
-              class="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100"
+              class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-100"
             >
               Cerrar
             </button>
             <button
               type="button"
               @click="handleSelectMotor(selectedMotorInfoModal); closeMotorInfo()"
-              class="px-4 py-1.5 rounded-xl bg-[#004b97] hover:bg-[#034ea2] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
+              class="px-3.5 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs"
             >
               <Check class="w-3.5 h-3.5" />
-              <span>Seleccionar este Motor</span>
+              <span>Seleccionar Motor</span>
             </button>
           </div>
         </div>
@@ -2857,7 +2911,7 @@ onUnmounted(() => {
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- MODAL 2: FICHA TÉCNICA COMPLETA DE ARTÍCULO (VISTA DETALLADA)             -->
+    <!-- MODAL 2: FICHA TÉCNICA COMPLETA DE ARTÍCULO                               -->
     <!-- ========================================================================= -->
     <Transition
       enter-active-class="transition duration-200 ease-out"
@@ -2874,53 +2928,53 @@ onUnmounted(() => {
       >
         <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
           
-          <div class="bg-[#0f172a] text-white px-6 py-4 flex items-center justify-between">
+          <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
             <div>
               <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#04C4D9] block">
-                Ficha Técnica de Homologación & Taller
+                Ficha Técnica de Homologación
               </span>
-              <h3 class="text-base sm:text-lg font-black text-white mt-0.5">
+              <h3 class="text-base font-black text-white mt-0.5">
                 {{ modalPart.nombre }}
               </h3>
             </div>
             <button
               type="button"
               @click="closeTechnicalSheet"
-              class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
             >
-              <X class="w-5 h-5" />
+              <X class="w-4 h-4" />
             </button>
           </div>
 
-          <div class="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
+          <div class="p-5 overflow-y-auto space-y-3.5 text-xs">
             
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-mono">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
               <div>
-                <span class="text-[10px] text-slate-400 font-sans uppercase block">Código OEM Original</span>
-                <strong class="text-sm font-black text-slate-900">{{ modalPart.codigo_oem }}</strong>
+                <span class="text-[10px] text-slate-400 font-sans uppercase block">Código OEM</span>
+                <strong class="text-xs font-black text-slate-900">{{ modalPart.codigo_oem }}</strong>
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Subsistema</span>
-                <strong class="text-sm font-black text-[#038391]">{{ modalPart.subsistema }}</strong>
+                <strong class="text-xs font-black text-[#038391]">{{ modalPart.subsistema }}</strong>
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Categoría</span>
-                <strong class="text-sm font-black text-slate-900">{{ modalPart.categoria }}</strong>
+                <strong class="text-xs font-black text-slate-900">{{ modalPart.categoria }}</strong>
               </div>
             </div>
 
             <div>
-              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
                 Equivalencias Cruzadas Multimarca
               </h4>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div
                   v-for="eq in modalPart.equivalencias"
                   :key="eq.id"
-                  class="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white"
+                  class="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-white"
                 >
-                  <div class="flex items-center gap-2">
-                    <span :class="['px-2 py-0.5 rounded text-[10px] uppercase font-bold', getBrandBadgeClass(eq.marca_alterna)]">
+                  <div class="flex items-center gap-1.5">
+                    <span :class="['px-1.5 py-0.2 rounded text-[9px] uppercase font-bold', getBrandBadgeClass(eq.marca_alterna)]">
                       {{ eq.marca_alterna }}
                     </span>
                     <strong class="font-mono text-xs text-slate-900">{{ eq.codigo_alterno }}</strong>
@@ -2931,73 +2985,72 @@ onUnmounted(() => {
                     class="text-slate-400 hover:text-slate-800 p-1"
                     title="Copiar código"
                   >
-                    <Copy class="w-3.5 h-3.5" />
+                    <Copy class="w-3 h-3" />
                   </button>
                 </div>
               </div>
             </div>
 
             <div>
-              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Especificaciones Métricas de Taller (mm)
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                Especificaciones Métricas (mm)
               </h4>
-              <table class="w-full border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 font-mono text-xs">
+              <table class="w-full border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100 font-mono text-xs">
                 <tbody>
                   <tr v-if="modalPart.diametro_interior_mm" class="bg-slate-50/50">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Diámetro Interior (Diám. int):</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_interior_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Diámetro Interior:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_interior_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.diametro_exterior_mm">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Diámetro Exterior:</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_exterior_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Diámetro Exterior:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_exterior_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.altura_mm" class="bg-slate-50/50">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Altura:</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.altura_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Altura:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.altura_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.diametro_cabeza_mm">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Hongo (Diámetro Cabeza):</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_cabeza_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Hongo (Cabeza):</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_cabeza_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.diametro_vastago_mm" class="bg-slate-50/50">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Vástago:</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_vastago_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Vástago:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_vastago_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.longitud_total_mm">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Altura / Longitud Total:</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.longitud_total_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Longitud Total:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.longitud_total_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.diametro_cilindro_mm" class="bg-slate-50/50">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Diámetro Cilindro:</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_cilindro_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Diámetro Cilindro:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_cilindro_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.espesor_anillo1_mm">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">1° Anillo (Grosor / Fuego):</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.espesor_anillo1_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">1° Anillo (Fuego):</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.espesor_anillo1_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.espesor_anillo2_mm" class="bg-slate-50/50">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">2° Anillo (Compresión):</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.espesor_anillo2_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">2° Anillo (Compresión):</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.espesor_anillo2_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.espesor_aceite_mm">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Anillo de Aceite (Rascador):</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.espesor_aceite_mm }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Anillo de Aceite:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.espesor_aceite_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.medida_rosca" class="bg-slate-50/50">
-                    <td class="py-2 px-3 text-slate-500 font-sans font-medium">Rosca y Paso:</td>
-                    <td class="py-2 px-3 text-slate-900 font-bold text-right">{{ modalPart.medida_rosca }} x {{ modalPart.paso_rosca_mm || 1.25 }} mm</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Rosca y Paso:</td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.medida_rosca }} × {{ modalPart.paso_rosca_mm || 1.25 }} mm</td>
                   </tr>
-                  <!-- Parámetros técnicos dinámicos adicionales guardados en dimensiones JSONB -->
                   <template v-if="modalPart.dimensiones && typeof modalPart.dimensiones === 'object'">
                     <tr 
                       v-for="(val, key) in modalPart.dimensiones" 
                       :key="`dyn-dim-${key}`"
                       class="border-t border-slate-100 hover:bg-slate-50"
                     >
-                      <td class="py-2 px-3 text-slate-500 font-sans font-medium capitalize">
+                      <td class="py-1.5 px-3 text-slate-500 font-sans capitalize">
                         {{ String(key).replace(/_/g, ' ') }}:
                       </td>
-                      <td class="py-2 px-3 text-slate-900 font-bold text-right font-mono">
+                      <td class="py-1.5 px-3 text-slate-900 font-bold text-right font-mono">
                         {{ val }}
                       </td>
                     </tr>
@@ -3008,20 +3061,20 @@ onUnmounted(() => {
 
           </div>
 
-          <div class="bg-slate-50 px-6 py-3.5 border-t border-slate-200 flex items-center justify-between">
+          <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex items-center justify-between">
             <button
               type="button"
               @click="copyFullCross(modalPart)"
-              class="px-4 py-2 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 flex items-center gap-1.5"
+              class="px-3.5 py-1.5 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 flex items-center gap-1.5"
             >
               <Copy class="w-3.5 h-3.5" />
-              <span>Copiar Ficha Completa</span>
+              <span>Copiar Ficha</span>
             </button>
 
             <button
               type="button"
               @click="addToWorkOrder(modalPart); closeTechnicalSheet()"
-              class="px-5 py-2 bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition"
+              class="px-4 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition"
             >
               <Plus class="w-4 h-4" />
               <span>Agregar a Orden</span>
