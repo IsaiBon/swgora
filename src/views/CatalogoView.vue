@@ -144,6 +144,15 @@ const baseComponentGroups: ComponentGroup[] = [
     icon: 'Layers',
     description: 'Juntas de culata de grafito y multilámina MLS',
     sampleMeasurements: 'Diámetro de cilindro, espesor nominal'
+  },
+  {
+    id: 'camisas_cilindro',
+    title: 'Camisas de cilindro',
+    shortTitle: 'Camisas de Cilindro',
+    category: 'Camisas',
+    icon: 'Layers',
+    description: 'Camisas de cilindro terminadas y semiterminadas para bloque',
+    sampleMeasurements: 'ØA Int × ØB Ext × C Largo'
   }
 ]
 
@@ -298,13 +307,18 @@ const copyFullCross = async (part: RepuestoTecnico) => {
       lines.push(`${eq.marca_alterna}: ${eq.codigo_alterno}`)
     })
   }
-  if (part.diametro_interior_mm) {
+  if (part.categoria === 'Camisas' || part.dimensiones?.diametro_interior_mm || part.dimensiones?.diametro_exterior_mm) {
+    const a = part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '-'
+    const b = part.dimensiones?.diametro_exterior_mm || '-'
+    const c = part.dimensiones?.longitud_total_mm || part.longitud_total_mm || '-'
+    lines.push(`Camisa: ØA Int ${a}mm | ØB Ext ${b}mm | Largo C ${c}mm`)
+  } else if (part.diametro_interior_mm) {
     lines.push(`Ajuste Válvula: ØInt ${part.diametro_interior_mm}mm | ØExt ${part.diametro_exterior_mm}mm | Alt ${part.altura_mm}mm`)
   }
   if (part.diametro_cabeza_mm) {
     lines.push(`Válvula: Hongo Ø${part.diametro_cabeza_mm}mm | Vástago Ø${part.diametro_vastago_mm}mm | Altura ${part.longitud_total_mm}mm`)
   }
-  if (part.diametro_cilindro_mm) {
+  if (part.diametro_cilindro_mm && part.categoria !== 'Camisas') {
     lines.push(`Anillos: ØCil ${part.diametro_cilindro_mm}mm | 1° Anillo: ${part.espesor_anillo1_mm || '-'}mm | 2° Anillo: ${part.espesor_anillo2_mm || '-'}mm | Aceite: ${part.espesor_aceite_mm || '-'}mm`)
   }
   if (part.medida_rosca) {
@@ -2224,34 +2238,138 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 5. FILTROS PARA GRUPOS PERSONALIZADOS / DINÁMICOS -->
+        <!-- 5. FILTROS COMPACTOS PARA: CAMISAS DE CILINDRO -->
+        <div 
+          v-else-if="selectedComponent.id === 'camisas_cilindro' || selectedComponent.category === 'Camisas'"
+          class="space-y-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/80"
+        >
+          <!-- Fila principal: Cotas maestras de maquinado (ØA Int, ØB Ext, C Largo) -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-tight">
+                  Ø Int (A) Bore
+                </label>
+                <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
+              </div>
+              <input
+                v-model.number="dynamicParamFilters['diametro_interior_mm']"
+                type="number"
+                step="0.5"
+                placeholder="ej. 88.0 mm"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-tight">
+                  Ø Ext (B) Encastre
+                </label>
+                <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
+              </div>
+              <input
+                v-model.number="dynamicParamFilters['diametro_exterior_mm']"
+                type="number"
+                step="0.5"
+                placeholder="ej. 93.0 mm"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-tight">
+                  Largo (C) Altura
+                </label>
+                <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
+              </div>
+              <input
+                v-model.number="dynamicParamFilters['longitud_total_mm']"
+                type="number"
+                step="1"
+                placeholder="ej. 182.0 mm"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              />
+            </div>
+          </div>
+
+          <!-- Fila secundaria compacta: Pestaña (D y E), Acabado y Tipo -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1.5 border-t border-slate-200/60">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Ø Pestaña (D)</label>
+              <input
+                v-model.number="dynamicParamFilters['diametro_pestana_mm']"
+                type="number"
+                step="0.5"
+                placeholder="ej. 97.0"
+                class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Esp. Pestaña (E)</label>
+              <input
+                v-model.number="dynamicParamFilters['espesor_pestana_mm']"
+                type="number"
+                step="0.1"
+                placeholder="ej. 7.0"
+                class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Acabado</label>
+              <select
+                v-model="dynamicParamFilters['acabado']"
+                class="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
+              >
+                <option value="">Todos</option>
+                <option value="F">Terminada (F)</option>
+                <option value="S">Semiterminada (S)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Tipo</label>
+              <input
+                v-model="dynamicParamFilters['tipo']"
+                type="text"
+                placeholder="ej. D03"
+                class="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. FILTROS PARA OTROS GRUPOS PERSONALIZADOS / DINÁMICOS -->
         <div 
           v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
-          class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"
         >
           <div 
             v-for="param in currentGroupDefinition.parametros" 
             :key="param.clave"
           >
-            <label class="block text-[11px] font-bold text-slate-600 mb-1">
+            <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
               {{ param.etiqueta }} 
               <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
-              <span v-if="param.tipo_dato === 'numero'" class="text-[10px] text-[#038391] font-mono ml-1">±{{ filterToleranciaMm }}mm</span>
+              <span v-if="param.tipo_dato === 'numero'" class="text-[9px] text-[#038391] font-mono ml-0.5">±{{ filterToleranciaMm }}</span>
             </label>
             <input
               v-if="param.tipo_dato === 'numero'"
               v-model.number="dynamicParamFilters[param.clave]"
               type="number"
               step="0.1"
-              :placeholder="`ej. 50 ${param.unidad || 'mm'}`"
-              class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              :placeholder="`ej. 50 ${param.unidad || ''}`"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
             />
             <input
               v-else
               v-model="dynamicParamFilters[param.clave]"
               type="text"
-              :placeholder="`Filtrar ${param.etiqueta}...`"
-              class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+              :placeholder="`Filtrar...`"
+              class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
             />
           </div>
         </div>
@@ -2323,6 +2441,9 @@ onUnmounted(() => {
                 <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-3 px-3">
                   Medidas de Anillos: Diámetro / 1er Anillo / 2do Anillo / Aceite
                 </th>
+                <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-3 px-3">
+                  Cotas de Camisa: ØA (Int) × ØB (Ext) × C (Largo) • Pestaña (D × E)
+                </th>
                 <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-3 px-3">
                   Tornillos de Culata: Rosca / Paso / Longitud / Cantidad
                 </th>
@@ -2333,7 +2454,7 @@ onUnmounted(() => {
                   Empaques: Diámetro de Cilindro / Espesor / Material
                 </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-3 px-3">
-                  Parámetros Técnicos: {{ currentGroupDefinition.parametros.map(p => p.etiqueta).join(' / ') }}
+                  Parámetros: {{ currentGroupDefinition.parametros.map(p => p.etiqueta).slice(0, 3).join(' / ') }}<span v-if="currentGroupDefinition.parametros.length > 3">...</span>
                 </th>
                 <th v-else class="py-3 px-3">
                   Especificaciones Técnicas (mm)
@@ -2516,24 +2637,51 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Caso G: Grupo Dinámico / Personalizado -->
+                  <!-- Caso G: Camisas de cilindro (Ultra-compacto de taller) -->
+                  <div v-else-if="selectedComponent?.id === 'camisas_cilindro' || part.categoria === 'Camisas'" class="space-y-1 py-0.5">
+                    <div class="inline-flex items-center gap-1.5 bg-slate-100/90 hover:bg-slate-200/90 px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-800 transition shadow-2xs">
+                      <span class="text-slate-500 text-[10px] uppercase font-sans">ØA:</span>
+                      <strong class="text-slate-900 text-xs font-black">{{ part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '—' }}</strong>
+                      <span class="text-slate-300 font-normal">×</span>
+                      <span class="text-slate-500 text-[10px] uppercase font-sans">ØB:</span>
+                      <strong class="text-slate-900 text-xs font-black">{{ part.dimensiones?.diametro_exterior_mm || '—' }}</strong>
+                      <span class="text-slate-300 font-normal">×</span>
+                      <span class="text-slate-500 text-[10px] uppercase font-sans">C:</span>
+                      <strong class="text-slate-900 text-xs font-black">{{ part.dimensiones?.longitud_total_mm || part.longitud_total_mm || '—' }}</strong>
+                      <span class="text-slate-500 text-[10px]">mm</span>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 flex-wrap text-[10px] font-mono text-slate-600">
+                      <span v-if="part.dimensiones?.diametro_pestana_mm || part.dimensiones?.espesor_pestana_mm" class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200">
+                        Pestaña: <strong>Ø{{ part.dimensiones?.diametro_pestana_mm || '—' }} × {{ part.dimensiones?.espesor_pestana_mm || '—' }} mm</strong>
+                      </span>
+                      <span v-if="part.dimensiones?.acabado" class="px-1.5 py-0.5 rounded font-bold uppercase" :class="part.dimensiones.acabado === 'F' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'">
+                        {{ part.dimensiones.acabado === 'F' ? 'Terminada' : (part.dimensiones.acabado === 'S' ? 'Semi' : part.dimensiones.acabado) }}
+                      </span>
+                      <span v-if="part.dimensiones?.tipo" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                        {{ part.dimensiones.tipo }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Caso H: Grupo Dinámico / Personalizado Compacto -->
                   <div 
                     v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" 
-                    class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-xs font-mono text-slate-800 flex flex-wrap items-center gap-x-3 gap-y-1.5"
+                    class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800"
                   >
                     <span 
                       v-for="p in currentGroupDefinition.parametros" 
                       :key="p.clave"
-                      class="px-2 py-0.5 rounded bg-white border border-slate-200"
+                      class="px-1.5 py-0.5 rounded bg-slate-100/80 border border-slate-200 text-[11px]"
                     >
                       <span class="text-slate-500 font-sans text-[10px]">{{ p.etiqueta }}:</span> 
-                      <strong class="text-slate-900 ml-1">
-                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? '—' }} {{ p.unidad || '' }}
+                      <strong class="text-slate-900 ml-0.5">
+                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? '—' }}<span v-if="p.unidad" class="text-[10px] text-slate-500 font-normal ml-0.5">{{ p.unidad }}</span>
                       </strong>
                     </span>
                   </div>
 
-                  <!-- Caso H: Genérico / Otros -->
+                  <!-- Caso I: Genérico / Otros -->
                   <div v-else class="text-xs text-slate-500 font-mono">
                     {{ part.categoria }} • Ref: {{ part.subsistema }}
                   </div>
