@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useCatalogStore } from '@/stores/catalog'
 import { 
   type Motor, 
@@ -69,6 +69,171 @@ const toggleCascadeOrder = () => {
   cascadeOrder.value = cascadeOrder.value === 'motor_modelo' ? 'modelo_motor' : 'motor_modelo'
   showToast(cascadeOrder.value === 'motor_modelo' ? 'Orden: Fabricante → Motor → Modelo' : 'Orden: Fabricante → Modelo → Motor')
 }
+
+// =============================================================================
+// ACCESIBILIDAD Y CONTROL POR TECLADO EN SELECTORES DE COMBOBOX
+// =============================================================================
+const brandInputRef = ref<HTMLInputElement | null>(null)
+const motorInputRef = ref<HTMLInputElement | null>(null)
+const modelInputRef = ref<HTMLInputElement | null>(null)
+const componentInputRef = ref<HTMLInputElement | null>(null)
+
+const highlightedBrandIdx = ref<number>(0)
+const highlightedMotorIdx = ref<number>(0)
+const highlightedModelIdx = ref<number>(0)
+const highlightedComponentIdx = ref<number>(0)
+
+const scrollItemIntoView = (selector: string) => {
+  nextTick(() => {
+    const el = document.querySelector(selector)
+    if (el) {
+      el.scrollIntoView({ block: 'nearest' })
+    }
+  })
+}
+
+watch(highlightedBrandIdx, (val) => scrollItemIntoView(`.brand-item-${val}`))
+watch(highlightedMotorIdx, (val) => scrollItemIntoView(`.motor-item-${val}`))
+watch(highlightedModelIdx, (val) => scrollItemIntoView(`.model-item-${val}`))
+watch(highlightedComponentIdx, (val) => scrollItemIntoView(`.component-item-${val}`))
+
+const handleBrandKeydown = (e: KeyboardEvent) => {
+  if (!isBrandOpen.value) {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      isBrandOpen.value = true
+      highlightedBrandIdx.value = 0
+      e.preventDefault()
+    }
+    return
+  }
+  const len = filteredBrands.value.length
+  if (len === 0) return
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    highlightedBrandIdx.value = (highlightedBrandIdx.value + 1) % len
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    highlightedBrandIdx.value = (highlightedBrandIdx.value - 1 + len) % len
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (highlightedBrandIdx.value >= 0 && highlightedBrandIdx.value < len) {
+      handleSelectBrand(filteredBrands.value[highlightedBrandIdx.value])
+      setTimeout(() => motorInputRef.value?.focus(), 60)
+    }
+  } else if (e.key === 'Escape') {
+    isBrandOpen.value = false
+  }
+}
+
+const handleMotorKeydown = (e: KeyboardEvent) => {
+  if (!isMotorOpen.value) {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      if (selectedBrand.value) {
+        isMotorOpen.value = true
+        highlightedMotorIdx.value = 0
+        e.preventDefault()
+      }
+    }
+    return
+  }
+  const len = filteredMotors.value.length
+  if (len === 0) return
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    highlightedMotorIdx.value = (highlightedMotorIdx.value + 1) % len
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    highlightedMotorIdx.value = (highlightedMotorIdx.value - 1 + len) % len
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (highlightedMotorIdx.value >= 0 && highlightedMotorIdx.value < len) {
+      handleSelectMotor(filteredMotors.value[highlightedMotorIdx.value])
+      setTimeout(() => componentInputRef.value?.focus(), 60)
+    }
+  } else if (e.key === 'Escape') {
+    isMotorOpen.value = false
+  }
+}
+
+const handleModelKeydown = (e: KeyboardEvent) => {
+  if (!isModelOpen.value) {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      if (selectedBrand.value) {
+        isModelOpen.value = true
+        highlightedModelIdx.value = 0
+        e.preventDefault()
+      }
+    }
+    return
+  }
+  const len = filteredModels.value.length
+  if (len === 0) return
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    highlightedModelIdx.value = (highlightedModelIdx.value + 1) % len
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    highlightedModelIdx.value = (highlightedModelIdx.value - 1 + len) % len
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (highlightedModelIdx.value >= 0 && highlightedModelIdx.value < len) {
+      handleSelectModel(filteredModels.value[highlightedModelIdx.value])
+      setTimeout(() => componentInputRef.value?.focus(), 60)
+    }
+  } else if (e.key === 'Escape') {
+    isModelOpen.value = false
+  }
+}
+
+const handleComponentKeydown = (e: KeyboardEvent) => {
+  if (!isComponentOpen.value) {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      isComponentOpen.value = true
+      highlightedComponentIdx.value = 0
+      e.preventDefault()
+    }
+    return
+  }
+  const len = filteredComponentGroups.value.length
+  if (len === 0) return
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    highlightedComponentIdx.value = (highlightedComponentIdx.value + 1) % len
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    highlightedComponentIdx.value = (highlightedComponentIdx.value - 1 + len) % len
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (highlightedComponentIdx.value >= 0 && highlightedComponentIdx.value < len) {
+      handleSelectComponent(filteredComponentGroups.value[highlightedComponentIdx.value])
+    }
+  } else if (e.key === 'Escape') {
+    isComponentOpen.value = false
+  }
+}
+
+/**
+ * Resaltado visual reactivo: destaca en verde esmeralda las medidas exactas
+ * y en cian las cotas que entran dentro del rango de tolerancia universal.
+ */
+function getMeasurementMatchClass(partValue: number | undefined | null, filterValue: number | undefined | null, tol: number = 1.0): string {
+  if (filterValue === undefined || filterValue === null || isNaN(Number(filterValue)) || partValue === undefined || partValue === null || isNaN(Number(partValue))) {
+    return 'bg-slate-100 text-slate-800 border-slate-200'
+  }
+  const diff = Math.abs(Number(partValue) - Number(filterValue))
+  if (diff <= 0.05) {
+    return 'bg-emerald-50 text-emerald-900 border-emerald-300 font-bold ring-1 ring-emerald-400/50'
+  }
+  if (diff <= tol) {
+    return 'bg-cyan-50 text-[#038391] border-cyan-300 font-bold'
+  }
+  return 'bg-slate-100 text-slate-600 border-slate-200 opacity-70'
+}
+
 
 // Barra de búsqueda global con debounce
 const searchInput = ref<string>('')
@@ -419,6 +584,7 @@ const handleSelectBrand = async (fab: Fabricante) => {
 
 const handleClearSelectedBrand = async () => {
   brandInput.value = ''
+  setTimeout(() => brandInputRef.value?.focus(), 50)
   selectedBrand.value = null
   selectedModel.value = null
   modelInput.value = ''
@@ -467,6 +633,7 @@ const handleSelectModel = async (mod: Modelo) => {
 
 const handleClearSelectedModel = async () => {
   selectedModel.value = null
+  setTimeout(() => modelInputRef.value?.focus(), 50)
   modelInput.value = ''
   await catalogStore.selectModelo(null)
   if (selectedComponent.value) {
@@ -633,6 +800,7 @@ const handleClearSelectedComponent = async () => {
 // Limpiar todo y restaurar estado
 const handleResetAll = async () => {
   brandInput.value = ''
+  setTimeout(() => brandInputRef.value?.focus(), 50)
   modelInput.value = ''
   motorInput.value = ''
   componentInput.value = ''
@@ -672,8 +840,13 @@ const handleClearSearch = () => {
   searchInput.value = ''
   if (selectedMotor.value) {
     catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+  } else if (selectedComponent.value) {
+    catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
   } else {
     catalogStore.repuestos = []
+    if (selectedBrand.value) {
+      activeViewTab.value = 'motores'
+    }
   }
 }
 
@@ -1053,58 +1226,56 @@ onUnmounted(() => {
     </div>
 
     <!-- ========================================================================= -->
-    <!-- BARRA DE BÚSQUEDA UNIVERSAL CON DEBOUNCE                                   -->
-    <!-- ========================================================================= -->
-    <div class="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200/90 shadow-2xs">
-      <div class="relative flex items-center">
-        <Search class="w-4 h-4 text-slate-400 absolute left-3" />
-        <input
-          v-model="searchInput"
-          @input="handleSearchInput"
-          type="text"
-          placeholder="Buscar por código OEM, cruce alterno o descripción..."
-          class="w-full pl-9 pr-20 py-2 text-xs sm:text-sm font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
-        />
-        <div class="absolute right-2.5 flex items-center gap-1.5">
-          <Loader2 v-if="catalogStore.isSearching" class="w-4 h-4 text-[#04C4D9] animate-spin" />
-          <button
-            v-if="searchInput"
-            type="button"
-            @click="handleClearSearch"
-            class="p-1 text-slate-400 hover:text-slate-600 rounded"
-            title="Limpiar búsqueda"
-          >
-            <X class="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- ========================================================================= -->
-    <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-3.5 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs">
-      <!-- Barra superior de control de cascada e inversión de orden -->
-      <div class="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-100">
-        <div class="flex items-center gap-1.5 text-xs text-slate-600">
-          <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-          <span class="font-bold text-slate-800">Cascada:</span>
-          <span class="text-slate-500 font-medium text-[11px]">
-            Fabricante → 
-            <span class="text-[#038391] font-bold">{{ cascadeOrder === 'motor_modelo' ? 'Motor → Modelo' : 'Modelo → Motor' }}</span>
-            → Componente
-          </span>
+    <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-xs space-y-2">
+      <!-- Barra superior unificada: Cascada + Invertir + Buscador Universal Integrado -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-1.5 text-xs text-slate-600">
+            <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+            <span class="font-bold text-slate-800">Cascada:</span>
+            <span class="text-slate-500 font-medium text-[11px]">
+              Fabricante → 
+              <span class="text-[#038391] font-bold">{{ cascadeOrder === 'motor_modelo' ? 'Motor → Modelo' : 'Modelo → Motor' }}</span>
+              → Componente
+            </span>
+          </div>
+
+          <button
+            type="button"
+            @click="toggleCascadeOrder"
+            class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition active:scale-95"
+            :title="cascadeOrder === 'motor_modelo' ? 'Invertir orden: Seleccionar Modelo antes de Motor' : 'Invertir orden: Seleccionar Motor antes de Modelo'"
+          >
+            <ArrowRightLeft class="w-3 h-3 text-[#04C4D9]" />
+            <span>{{ cascadeOrder === 'motor_modelo' ? 'Invertir (Modelo 2°)' : 'Invertir (Motor 2°)' }}</span>
+          </button>
         </div>
 
-        <button
-          type="button"
-          @click="toggleCascadeOrder"
-          class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition active:scale-95"
-          :title="cascadeOrder === 'motor_modelo' ? 'Invertir orden: Seleccionar Modelo antes de Motor' : 'Invertir orden: Seleccionar Motor antes de Modelo'"
-        >
-          <ArrowRightLeft class="w-3 h-3 text-[#04C4D9]" />
-          <span>{{ cascadeOrder === 'motor_modelo' ? 'Invertir (Modelo 2°)' : 'Invertir (Motor 2°)' }}</span>
-        </button>
+        <!-- Buscador Universal Integrado (Ahorro de espacio vertical) -->
+        <div class="relative w-full sm:w-72 lg:w-80">
+          <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+          <input
+            v-model="searchInput"
+            @input="handleSearchInput"
+            type="text"
+            placeholder="Buscar por código OEM, cruce o descripción..."
+            class="w-full pl-8 pr-16 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
+          />
+          <div class="absolute right-2 top-1.5 flex items-center gap-1">
+            <Loader2 v-if="catalogStore.isSearching" class="w-3.5 h-3.5 text-[#04C4D9] animate-spin" />
+            <button
+              v-if="searchInput"
+              type="button"
+              @click="handleClearSearch"
+              class="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+              title="Limpiar búsqueda"
+            >
+              <X class="w-3 h-3" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
@@ -1117,10 +1288,12 @@ onUnmounted(() => {
 
           <div class="relative flex items-center">
             <input
+              ref="brandInputRef"
               v-model="brandInput"
               @focus="handleFocusBrand"
               @click="handleFocusBrand"
-              @input="isBrandOpen = true"
+              @input="isBrandOpen = true; highlightedBrandIdx = 0"
+              @keydown="handleBrandKeydown"
               type="text"
               placeholder="Buscar fabricante..."
               class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
@@ -1146,12 +1319,13 @@ onUnmounted(() => {
             class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
           >
             <div
-              v-for="fab in filteredBrands"
+              v-for="(fab, fIdx) in filteredBrands"
               :key="fab.id"
               @click="handleSelectBrand(fab)"
+              @mouseenter="highlightedBrandIdx = fIdx"
               :class="[
-                'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
-                selectedBrand?.id === fab.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition brand-item-' + fIdx,
+                highlightedBrandIdx === fIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedBrand?.id === fab.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
               ]"
             >
               <div class="flex items-center gap-2">
@@ -1185,11 +1359,13 @@ onUnmounted(() => {
 
             <div class="relative flex items-center">
               <input
+                ref="motorInputRef"
                 v-model="motorInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusMotor"
                 @click="onFocusMotor"
-                @input="onInputMotor"
+                @input="onInputMotor; highlightedMotorIdx = 0"
+                @keydown="handleMotorKeydown"
                 type="text"
                 :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Código de motor...'"
                 :class="[
@@ -1225,12 +1401,13 @@ onUnmounted(() => {
               class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
-                v-for="mot in filteredMotors"
+                v-for="(mot, mIdx) in filteredMotors"
                 :key="mot.id"
                 @click="handleSelectMotor(mot)"
+                @mouseenter="highlightedMotorIdx = mIdx"
                 :class="[
-                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
-                  selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition motor-item-' + mIdx,
+                  highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
                 ]"
               >
                 <div class="flex items-center gap-2">
@@ -1267,11 +1444,13 @@ onUnmounted(() => {
 
             <div class="relative flex items-center">
               <input
+                ref="modelInputRef"
                 v-model="modelInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusModel"
                 @click="onFocusModel"
-                @input="onInputModel"
+                @input="onInputModel; highlightedModelIdx = 0"
+                @keydown="handleModelKeydown"
                 type="text"
                 :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedMotor ? `Modelos con ${selectedMotor.codigo}...` : 'Modelo compatible...')"
                 :class="[
@@ -1307,12 +1486,13 @@ onUnmounted(() => {
               class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
-                v-for="mod in filteredModels"
+                v-for="(mod, mdIdx) in filteredModels"
                 :key="mod.id"
                 @click="handleSelectModel(mod)"
+                @mouseenter="highlightedModelIdx = mdIdx"
                 :class="[
-                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
-                  selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition model-item-' + mdIdx,
+                  highlightedModelIdx === mdIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
                 ]"
               >
                 <div class="flex items-center gap-2">
@@ -1348,11 +1528,13 @@ onUnmounted(() => {
 
             <div class="relative flex items-center">
               <input
+                ref="modelInputRef"
                 v-model="modelInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusModel"
                 @click="onFocusModel"
-                @input="onInputModel"
+                @input="onInputModel; highlightedModelIdx = 0"
+                @keydown="handleModelKeydown"
                 type="text"
                 :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Buscar modelo...'"
                 :class="[
@@ -1388,12 +1570,13 @@ onUnmounted(() => {
               class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
-                v-for="mod in filteredModels"
+                v-for="(mod, mdIdx) in filteredModels"
                 :key="mod.id"
                 @click="handleSelectModel(mod)"
+                @mouseenter="highlightedModelIdx = mdIdx"
                 :class="[
-                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
-                  selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition model-item-' + mdIdx,
+                  highlightedModelIdx === mdIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
                 ]"
               >
                 <div class="flex items-center gap-2">
@@ -1421,11 +1604,13 @@ onUnmounted(() => {
 
             <div class="relative flex items-center">
               <input
+                ref="motorInputRef"
                 v-model="motorInput"
                 :disabled="!selectedBrand"
                 @focus="onFocusMotor"
                 @click="onFocusMotor"
-                @input="onInputMotor"
+                @input="onInputMotor; highlightedMotorIdx = 0"
+                @keydown="handleMotorKeydown"
                 type="text"
                 :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedModel ? `Motor para ${selectedModel.nombre}...` : 'Código de motor...')"
                 :class="[
@@ -1461,12 +1646,13 @@ onUnmounted(() => {
               class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
             >
               <div
-                v-for="mot in filteredMotors"
+                v-for="(mot, mIdx) in filteredMotors"
                 :key="mot.id"
                 @click="handleSelectMotor(mot)"
+                @mouseenter="highlightedMotorIdx = mIdx"
                 :class="[
-                  'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
-                  selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800'
+                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition motor-item-' + mIdx,
+                  highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
                 ]"
               >
                 <div class="flex items-center gap-2">
@@ -1499,10 +1685,12 @@ onUnmounted(() => {
 
           <div class="relative flex items-center">
             <input
+              ref="componentInputRef"
               v-model="componentInput"
               @focus="handleFocusComponent"
               @click="handleFocusComponent"
-              @input="isComponentOpen = true"
+              @input="isComponentOpen = true; highlightedComponentIdx = 0"
+              @keydown="handleComponentKeydown"
               type="text"
               placeholder="Buscar componente..."
               class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
@@ -1528,12 +1716,13 @@ onUnmounted(() => {
             class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
           >
             <div
-              v-for="grp in filteredComponentGroups"
+              v-for="(grp, cIdx) in filteredComponentGroups"
               :key="grp.id"
               @click="handleSelectComponent(grp)"
+              @mouseenter="highlightedComponentIdx = cIdx"
               :class="[
-                'px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition',
-                selectedComponent?.id === grp.id ? 'bg-cyan-50/60 text-[#038391] font-bold' : 'text-slate-800'
+                'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition component-item-' + cIdx,
+                highlightedComponentIdx === cIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedComponent?.id === grp.id ? 'bg-cyan-50/60 text-[#038391] font-bold' : 'text-slate-800 hover:bg-cyan-50/70')
               ]"
             >
               <div class="flex items-center gap-2.5">
@@ -2641,15 +2830,15 @@ onUnmounted(() => {
                 <td class="py-2.5 px-3 align-middle">
                   
                   <!-- Caso A: Ajuste de válvula -->
-                  <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-slate-800">
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Int: <strong class="text-slate-900">{{ part.diametro_interior_mm || 4.8 }} mm</strong>
+                  <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_interior_mm || 4.8, filterSelloDiamInt, filterToleranciaMm)">
+                      Int: <strong>{{ part.diametro_interior_mm || 4.8 }} mm</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Ext: <strong class="text-slate-900">{{ part.diametro_exterior_mm || 10.8 }} mm</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_exterior_mm || 10.8, filterSelloDiamExt, filterToleranciaMm)">
+                      Ext: <strong>{{ part.diametro_exterior_mm || 10.8 }} mm</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Alt: <strong class="text-slate-900">{{ part.altura_mm || 10 }} mm</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.altura_mm || 10, filterSelloAltura, filterToleranciaMm)">
+                      Alt: <strong>{{ part.altura_mm || 10 }} mm</strong>
                     </span>
                   </div>
 
@@ -2662,14 +2851,14 @@ onUnmounted(() => {
                     >
                       {{ part.dimensiones?.tipo_valvula || (part.dimensiones?.posicion === 'IN' ? 'Admisión' : (part.dimensiones?.posicion === 'EX' ? 'Escape' : part.dimensiones?.posicion)) }}
                     </span>
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Hongo: <strong class="text-slate-900">{{ part.diametro_cabeza_mm ? `${part.diametro_cabeza_mm} mm` : '—' }}</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cabeza_mm, filterValvulaHongo, filterToleranciaMm)">
+                      Hongo: <strong>{{ part.diametro_cabeza_mm ? `${part.diametro_cabeza_mm} mm` : '—' }}</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Vástago: <strong class="text-slate-900">{{ part.diametro_vastago_mm ? `${part.diametro_vastago_mm} mm` : '—' }}</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_vastago_mm, filterValvulaVastago, filterToleranciaMm)">
+                      Vástago: <strong>{{ part.diametro_vastago_mm ? `${part.diametro_vastago_mm} mm` : '—' }}</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Largo: <strong class="text-slate-900">{{ part.longitud_total_mm ? `${part.longitud_total_mm} mm` : '—' }}</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.longitud_total_mm, filterValvulaAltura, filterToleranciaMm)">
+                      Largo: <strong>{{ part.longitud_total_mm ? `${part.longitud_total_mm} mm` : '—' }}</strong>
                     </span>
                     <span v-if="part.angulo_asiento_grados" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] border border-slate-200">
                       Ángulo: <strong>{{ part.angulo_asiento_grados }}°</strong>
@@ -2680,14 +2869,16 @@ onUnmounted(() => {
                   <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="space-y-1 text-xs font-mono text-slate-800">
                     <div class="flex items-center gap-1.5 text-[11px]">
                       <span class="text-slate-500 font-sans">Ø Cilindro:</span>
-                      <strong class="text-slate-900 font-bold">{{ part.diametro_cilindro_mm || 96.0 }} mm</strong>
+                      <span class="px-1.5 py-0.5 rounded border font-bold text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cilindro_mm || 96.0, filterAnilloDiametro, filterToleranciaMm)">
+                        {{ part.diametro_cilindro_mm || 96.0 }} mm
+                      </span>
                     </div>
 
                     <div class="flex flex-wrap items-center gap-1 text-[10px]">
-                      <span class="px-1.5 py-0.2 rounded bg-blue-50 text-blue-900 border border-blue-200 font-bold">
+                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo1_mm || 2.0, filterAnilloGrosor1, filterToleranciaMm)">
                         1°: {{ part.espesor_anillo1_mm || 2.0 }}mm
                       </span>
-                      <span class="px-1.5 py-0.2 rounded bg-cyan-50 text-cyan-900 border border-cyan-200 font-bold">
+                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo2_mm || 2.0, filterAnilloAlturaGrosor, filterToleranciaMm)">
                         2°: {{ part.espesor_anillo2_mm || 2.0 }}mm
                       </span>
                       <span class="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
