@@ -48,6 +48,7 @@ export interface Motor {
   especificaciones_tecnicas?: Record<string, unknown>
   fabricante?: Fabricante
   modelo?: Modelo
+  parts_count?: number
 }
 
 export interface Equivalencia {
@@ -894,9 +895,13 @@ export const catalogService = {
   /**
    * Obtiene motores filtrados por fabricante o modelo directamente desde Supabase
    */
-  async getMotores(fabricanteId?: string, modeloId?: string): Promise<Motor[]> {
+  async getMotores(fabricanteId?: string, modeloId?: string, onlyWithParts: boolean = false): Promise<Motor[]> {
     try {
-      let query = supabase.from('motores').select('*, fabricante:fabricantes(*), modelo:modelos(*)')
+      const selectFields = onlyWithParts
+        ? '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos!inner(id)'
+        : '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos(id)'
+
+      let query = supabase.from('motores').select(selectFields)
       if (fabricanteId) {
         query = query.eq('fabricante_id', fabricanteId)
       }
@@ -904,7 +909,7 @@ export const catalogService = {
         query = query.eq('modelo_id', modeloId)
       }
 
-      const { data, error } = await query.order('codigo', { ascending: true })
+      const { data, error } = await query.order('codigo', { ascending: true }).limit(1000)
 
       if (error || !data || data.length === 0) {
         let filtered = [...mockMotores]
@@ -919,6 +924,7 @@ export const catalogService = {
 
       return data.map((item: Record<string, unknown>) => {
         const espec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
+        const repArray = Array.isArray(item.repuestos_tecnicos) ? item.repuestos_tecnicos : []
         return {
           id: String(item.id),
           fabricante_id: String(item.fabricante_id),
@@ -941,7 +947,8 @@ export const catalogService = {
           anios: item.anios ? String(item.anios) : undefined,
           especificaciones_tecnicas: espec,
           fabricante: item.fabricante as Fabricante | undefined,
-          modelo: item.modelo as Modelo | undefined
+          modelo: item.modelo as Modelo | undefined,
+          parts_count: repArray.length
         }
       })
     } catch {
@@ -1684,6 +1691,131 @@ export const catalogService = {
     saveLocalCustomRepuesto(fallbackPart)
     mockRepuestos.unshift(fallbackPart)
     return fallbackPart
+  },
+
+  /**
+   * Modifica un repuesto técnico existente y actualiza sus equivalencias en Supabase
+   */
+  async updateRepuesto(
+    partId: string,
+    part: Partial<RepuestoTecnico>,
+    equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
+  ): Promise<RepuestoTecnico> {
+    const updatePayload: Record<string, unknown> = {
+      motor_id: part.motor_id !== undefined ? (part.motor_id || null) : undefined,
+      codigo_oem: part.codigo_oem !== undefined ? (part.codigo_oem || '').trim().toUpperCase() : undefined,
+      nombre: part.nombre !== undefined ? (part.nombre || '').trim() : undefined,
+      subsistema: part.subsistema !== undefined ? part.subsistema : undefined,
+      categoria: part.categoria !== undefined ? part.categoria : undefined,
+      precio: part.precio !== undefined ? Number(part.precio || 0) : undefined,
+      stock: part.stock !== undefined ? Number(part.stock || 0) : undefined,
+      estado: part.estado !== undefined ? part.estado : undefined,
+      imagen_url: part.imagen_url !== undefined ? (part.imagen_url || null) : undefined,
+      diametro_cabeza_mm: part.diametro_cabeza_mm !== undefined ? (part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null) : undefined,
+      diametro_vastago_mm: part.diametro_vastago_mm !== undefined ? (part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null) : undefined,
+      longitud_total_mm: part.longitud_total_mm !== undefined ? (part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null) : undefined,
+      angulo_asiento_grados: part.angulo_asiento_grados !== undefined ? (part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null) : undefined,
+      diametro_cilindro_mm: part.diametro_cilindro_mm !== undefined ? (part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null) : undefined,
+      espesor_anillo1_mm: part.espesor_anillo1_mm !== undefined ? (part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null) : undefined,
+      espesor_anillo2_mm: part.espesor_anillo2_mm !== undefined ? (part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null) : undefined,
+      espesor_aceite_mm: part.espesor_aceite_mm !== undefined ? (part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null) : undefined,
+      tipo_cojinete: part.tipo_cojinete !== undefined ? (part.tipo_cojinete || null) : undefined,
+      diametro_munon_mm: part.diametro_munon_mm !== undefined ? (part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null) : undefined,
+      diametro_alojamiento_mm: part.diametro_alojamiento_mm !== undefined ? (part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null) : undefined,
+      ancho_casquete_mm: part.ancho_casquete_mm !== undefined ? (part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null) : undefined,
+      dimensiones: part.dimensiones !== undefined ? part.dimensiones : undefined,
+      especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? part.especificaciones_tecnicas : undefined,
+      updated_at: new Date().toISOString()
+    }
+
+    // Limpiar claves undefined
+    Object.keys(updatePayload).forEach(k => {
+      if (updatePayload[k] === undefined) delete updatePayload[k]
+    })
+
+    try {
+      const { data: updatedPart, error: partError } = await supabase
+        .from('repuestos_tecnicos')
+        .update(updatePayload)
+        .eq('id', partId)
+        .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+        .single()
+
+      if (!partError && updatedPart) {
+        let finalEquivs: Equivalencia[] = []
+
+        if (equivalencias !== undefined) {
+          await supabase.from('equivalencias_repuestos').delete().eq('repuesto_id', partId)
+
+          const validRows = equivalencias
+            .filter(eq => eq.marca_alterna && eq.codigo_alterno && eq.codigo_alterno.trim().length > 0)
+            .map(eq => ({
+              repuesto_id: partId,
+              marca_alterna: eq.marca_alterna.trim(),
+              codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
+              notas: eq.notas || null
+            }))
+
+          if (validRows.length > 0) {
+            const { data: savedEquivs } = await supabase
+              .from('equivalencias_repuestos')
+              .insert(validRows)
+              .select('*')
+            if (savedEquivs) {
+              finalEquivs = savedEquivs as Equivalencia[]
+            }
+          }
+        } else {
+          const { data: currentEquivs } = await supabase
+            .from('equivalencias_repuestos')
+            .select('*')
+            .eq('repuesto_id', partId)
+          if (currentEquivs) {
+            finalEquivs = currentEquivs as Equivalencia[]
+          }
+        }
+
+        const mapped = mapDbRepuestoToFrontend({
+          ...updatedPart,
+          equivalencias: finalEquivs
+        })
+        saveLocalCustomRepuesto(mapped)
+        const mockIdx = mockRepuestos.findIndex(r => r.id === partId)
+        if (mockIdx >= 0) {
+          mockRepuestos[mockIdx] = mapped
+        }
+        return mapped
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Actualización en Supabase falló, usando respaldo local:', err)
+    }
+
+    // Fallback local
+    const localParts = getLocalCustomRepuestos()
+    const foundIdx = localParts.findIndex(p => p.id === partId)
+    const existing = foundIdx >= 0 ? localParts[foundIdx] : mockRepuestos.find(r => r.id === partId)
+
+    const updatedLocalPart: RepuestoTecnico = {
+      ...(existing || ({} as RepuestoTecnico)),
+      ...part,
+      id: partId,
+      equivalencias: equivalencias
+        ? equivalencias.map((eq, i) => ({
+            id: `eq-${Date.now()}-${i}`,
+            repuesto_id: partId,
+            marca_alterna: eq.marca_alterna,
+            codigo_alterno: eq.codigo_alterno,
+            notas: eq.notas
+          }))
+        : existing?.equivalencias || []
+    }
+
+    saveLocalCustomRepuesto(updatedLocalPart)
+    const mIdx = mockRepuestos.findIndex(r => r.id === partId)
+    if (mIdx >= 0) {
+      mockRepuestos[mIdx] = updatedLocalPart
+    }
+    return updatedLocalPart
   },
 
   /**

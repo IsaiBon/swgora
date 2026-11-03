@@ -1141,15 +1141,24 @@ const closeTechnicalSheet = () => {
 const isAdminModalOpen = ref<boolean>(false)
 const adminModalTab = ref<'repuesto' | 'grupo'>('repuesto')
 const adminModalEditGroupId = ref<string | null>(null)
+const adminModalEditPart = ref<RepuestoTecnico | null>(null)
 
 const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroupId?: string | null) => {
   adminModalTab.value = tab
   adminModalEditGroupId.value = editGroupId || null
+  adminModalEditPart.value = null
   isAdminModalOpen.value = true
 }
 
 const handleEditGroup = (grpId: string) => {
   openAdminCatalogModal('grupo', grpId)
+}
+
+const handleEditPart = (part: RepuestoTecnico) => {
+  adminModalTab.value = 'repuesto'
+  adminModalEditGroupId.value = null
+  adminModalEditPart.value = part
+  isAdminModalOpen.value = true
 }
 
 // Retrocompatibilidad con openAddPartModal
@@ -1161,6 +1170,21 @@ const onPartCreated = (newPart: RepuestoTecnico) => {
   showToast(`✓ Repuesto ${newPart.codigo_oem} (${newPart.nombre}) registrado exitosamente`)
   activeViewTab.value = 'repuestos'
   openTechnicalSheet(newPart)
+}
+
+const onPartUpdated = (updatedPart: RepuestoTecnico) => {
+  showToast(`✓ Repuesto ${updatedPart.codigo_oem} modificado exitosamente`)
+  adminModalEditPart.value = null
+  if (modalPart.value && modalPart.value.id === updatedPart.id) {
+    modalPart.value = updatedPart
+  }
+}
+
+const toggleMotorsWithPartsOnly = async () => {
+  await catalogStore.toggleOnlyMotorsWithParts()
+  showToast(catalogStore.onlyMotorsWithParts 
+    ? 'Filtro activado: Omitiendo motores sin repuestos asociados' 
+    : 'Filtro desactivado: Mostrando todos los motores registrados')
 }
 
 const onGroupCreated = (newGroup: GrupoRepuesto) => {
@@ -1416,6 +1440,21 @@ onUnmounted(() => {
               <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
                 <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
               </span>
+              <button
+                v-else
+                type="button"
+                @click="toggleMotorsWithPartsOnly"
+                class="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md transition flex items-center gap-1 cursor-pointer"
+                :class="catalogStore.onlyMotorsWithParts 
+                  ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
+                :title="catalogStore.onlyMotorsWithParts 
+                  ? 'Mostrando solo motores con repuestos en catálogo. Clic para ver todos.' 
+                  : 'Mostrando todos los motores. Clic para filtrar solo los que tienen repuestos.'"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
+                <span>{{ catalogStore.onlyMotorsWithParts ? 'Solo con repuestos' : 'Todos los motores' }}</span>
+              </button>
             </div>
 
             <div class="relative flex items-center">
@@ -1480,6 +1519,9 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5">
+                  <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
+                    {{ mot.parts_count }} pzs
+                  </span>
                   <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                     {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
                   </span>
@@ -1659,9 +1701,26 @@ onUnmounted(() => {
 
           <!-- 3. CÓDIGO DE MOTOR -->
           <div class="relative combobox-motor">
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-              3. Motor
-            </label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                3. Motor
+              </label>
+              <button
+                v-if="selectedBrand"
+                type="button"
+                @click="toggleMotorsWithPartsOnly"
+                class="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md transition flex items-center gap-1 cursor-pointer"
+                :class="catalogStore.onlyMotorsWithParts 
+                  ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
+                :title="catalogStore.onlyMotorsWithParts 
+                  ? 'Mostrando solo motores con repuestos en catálogo. Clic para ver todos.' 
+                  : 'Mostrando todos los motores. Clic para filtrar solo los que tienen repuestos.'"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
+                <span>{{ catalogStore.onlyMotorsWithParts ? 'Solo con repuestos' : 'Todos los motores' }}</span>
+              </button>
+            </div>
 
             <div class="relative flex items-center">
               <input
@@ -1725,6 +1784,9 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5">
+                  <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
+                    {{ mot.parts_count }} pzs
+                  </span>
                   <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                     {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
                   </span>
@@ -1919,8 +1981,22 @@ onUnmounted(() => {
           <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }})</span>
         </div>
 
-        <div class="text-[11px] text-slate-400 font-medium">
-          Haga clic en una fila para consultar repuestos y cotas
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            @click="toggleMotorsWithPartsOnly"
+            class="text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            :class="catalogStore.onlyMotorsWithParts 
+              ? 'bg-[#04C4D9]/15 text-[#038391] border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
+              : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'"
+            :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos. Clic para ver todos.' : 'Mostrando todos los motores. Clic para omitir los que no tienen repuestos.'"
+          >
+            <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
+            <span>{{ catalogStore.onlyMotorsWithParts ? 'Omitiendo motores sin repuestos' : 'Mostrando todos los motores' }}</span>
+          </button>
+          <div class="text-[11px] text-slate-400 font-medium hidden sm:block">
+            Haga clic en una fila para consultar repuestos y cotas
+          </div>
         </div>
       </div>
 
@@ -1947,7 +2023,8 @@ onUnmounted(() => {
                 <th class="py-2 px-2.5 w-20 text-center border-r border-slate-200/80">Cil</th>
                 <th class="py-2 px-3.5 w-36 border-r border-slate-200/80">Cilindrada</th>
                 <th class="py-2 px-2.5 w-16 text-center border-r border-slate-200/80">kW</th>
-                <th class="py-2 px-2.5 w-16 text-center">CV</th>
+                <th class="py-2 px-2.5 w-16 text-center border-r border-slate-200/80">CV</th>
+                <th class="py-2 px-2.5 w-24 text-center">Repuestos</th>
               </tr>
             </thead>
 
@@ -1962,6 +2039,7 @@ onUnmounted(() => {
                 <td class="py-2.5 px-3.5"><div class="h-3 w-20 bg-slate-200 rounded"></div></td>
                 <td class="py-2.5 px-2.5 text-center"><div class="h-3 w-6 bg-slate-200 rounded mx-auto"></div></td>
                 <td class="py-2.5 px-2.5 text-center"><div class="h-3 w-6 bg-slate-200 rounded mx-auto"></div></td>
+                <td class="py-2.5 px-2.5 text-center"><div class="h-3 w-12 bg-slate-200 rounded mx-auto"></div></td>
               </tr>
             </tbody>
 
@@ -2030,13 +2108,23 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 8. CV -->
-                <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle">
+                <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle border-r border-slate-100">
                   {{ mot.cv || '—' }}
+                </td>
+
+                <!-- 9. Repuestos Disponibles -->
+                <td class="py-2 px-2.5 text-center align-middle">
+                  <span 
+                    class="inline-block px-1.5 py-0.5 rounded font-mono font-bold text-[10px]"
+                    :class="(mot.parts_count || 0) > 0 ? 'bg-cyan-50 text-[#038391] border border-cyan-200' : 'bg-slate-100 text-slate-400'"
+                  >
+                    {{ mot.parts_count || 0 }} pzs
+                  </span>
                 </td>
               </tr>
 
               <tr v-if="paginatedMotors.length === 0">
-                <td colspan="8" class="py-8 text-center text-slate-400 bg-white">
+                <td colspan="9" class="py-8 text-center text-slate-400 bg-white">
                   No hay motores que coincidan con la búsqueda.
                 </td>
               </tr>
@@ -2940,6 +3028,16 @@ onUnmounted(() => {
 
                     <button
                       type="button"
+                      @click="handleEditPart(part)"
+                      class="px-2 py-1 rounded-md border border-slate-200 hover:bg-cyan-50 hover:border-cyan-200 text-slate-700 hover:text-[#038391] text-[11px] font-semibold transition flex items-center gap-1"
+                      title="Modificar especificaciones y equivalencias de este repuesto"
+                    >
+                      <Edit3 class="w-3 h-3 text-[#04C4D9]" />
+                      <span>Editar</span>
+                    </button>
+
+                    <button
+                      type="button"
                       @click="addToWorkOrder(part)"
                       :class="[
                         'px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1',
@@ -3244,14 +3342,26 @@ onUnmounted(() => {
               <span>Copiar Ficha</span>
             </button>
 
-            <button
-              type="button"
-              @click="addToWorkOrder(modalPart); closeTechnicalSheet()"
-              class="px-4 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition"
-            >
-              <Plus class="w-4 h-4" />
-              <span>Agregar a Orden</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="handleEditPart(modalPart); closeTechnicalSheet()"
+                class="px-3.5 py-1.5 border border-cyan-200 bg-cyan-50/60 hover:bg-cyan-100 text-[#038391] font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
+                title="Modificar especificaciones y equivalencias de este repuesto"
+              >
+                <Edit3 class="w-3.5 h-3.5" />
+                <span>Modificar Repuesto</span>
+              </button>
+
+              <button
+                type="button"
+                @click="addToWorkOrder(modalPart); closeTechnicalSheet()"
+                class="px-4 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition"
+              >
+                <Plus class="w-4 h-4" />
+                <span>Agregar a Orden</span>
+              </button>
+            </div>
           </div>
 
         </div>
@@ -3267,8 +3377,10 @@ onUnmounted(() => {
       :preselected-group-id="selectedComponent?.id"
       :preselected-motor-id="selectedMotor?.id || null"
       :edit-group-id="adminModalEditGroupId"
-      @close="isAdminModalOpen = false; adminModalEditGroupId = null"
+      :edit-part="adminModalEditPart"
+      @close="isAdminModalOpen = false; adminModalEditGroupId = null; adminModalEditPart = null"
       @part-created="onPartCreated"
+      @part-updated="onPartUpdated"
       @group-created="onGroupCreated"
       @group-updated="onGroupUpdated"
     />

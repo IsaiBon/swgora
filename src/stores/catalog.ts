@@ -23,6 +23,7 @@ export const useCatalogStore = defineStore('catalog', () => {
   const selectedModeloId = ref<string | null>(null)
   const selectedMotorId = ref<string | null>(null)
   const selectedComponentId = ref<string | null>(null) // 'ajuste_valvula' | 'valvula' | 'anillos_motor' | 'tornillos_culata' | null
+  const onlyMotorsWithParts = ref<boolean>(true) // Por defecto: omitir motores sin repuestos asociados en catálogo
 
   // Filtros de búsqueda y catálogo alterno
   const searchQuery = ref<string>('')
@@ -97,6 +98,9 @@ export const useCatalogStore = defineStore('catalog', () => {
         (modName && m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(modName))
       )
     }
+    if (onlyMotorsWithParts.value) {
+      list = list.filter(m => m.parts_count === undefined || m.parts_count > 0)
+    }
     return list
   })
 
@@ -139,17 +143,31 @@ export const useCatalogStore = defineStore('catalog', () => {
   /**
    * Carga motores desde Supabase filtrados por fabricante o modelo
    */
-  async function fetchMotores(fabricanteId?: string, modeloId?: string) {
+  async function fetchMotores(fabricanteId?: string, modeloId?: string, onlyWithParts?: boolean) {
     loadingMotores.value = true
     error.value = null
     try {
-      motores.value = await catalogService.getMotores(fabricanteId, modeloId)
+      const shouldFilter = onlyWithParts !== undefined ? onlyWithParts : onlyMotorsWithParts.value
+      motores.value = await catalogService.getMotores(fabricanteId, modeloId, shouldFilter)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al cargar motores'
       error.value = msg
     } finally {
       loadingMotores.value = false
     }
+  }
+
+  /**
+   * Alternar o configurar la exclusión de motores sin repuestos
+   */
+  async function toggleOnlyMotorsWithParts() {
+    onlyMotorsWithParts.value = !onlyMotorsWithParts.value
+    await fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
+  }
+
+  async function setOnlyMotorsWithParts(val: boolean) {
+    onlyMotorsWithParts.value = val
+    await fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
   }
 
   /**
@@ -337,6 +355,34 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Modifica un repuesto técnico existente y actualiza la lista reactiva
+   */
+  async function updateRepuesto(
+    partId: string,
+    partData: Partial<RepuestoTecnico>,
+    equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
+  ) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const updated = await catalogService.updateRepuesto(partId, partData, equivalencias)
+      const idx = repuestos.value.findIndex(r => r.id === partId)
+      if (idx >= 0) {
+        repuestos.value[idx] = updated
+      } else {
+        repuestos.value.unshift(updated)
+      }
+      return updated
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar el repuesto en Supabase'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
    * Carga los grupos o familias de piezas y sus esquemas paramétricos desde Supabase/local
    */
   async function fetchGrupos() {
@@ -421,6 +467,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     selectedModeloId,
     selectedMotorId,
     selectedComponentId,
+    onlyMotorsWithParts,
     searchQuery,
     activeBrandFilter,
     loadingFabricantes,
@@ -455,6 +502,9 @@ export const useCatalogStore = defineStore('catalog', () => {
     selectMotor,
     resetFilters,
     createRepuesto,
+    updateRepuesto,
+    toggleOnlyMotorsWithParts,
+    setOnlyMotorsWithParts,
     initCatalog
   }
 })

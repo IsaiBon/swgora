@@ -33,11 +33,13 @@ const props = defineProps<{
   preselectedGroupId?: string | null
   preselectedMotorId?: string | null
   editGroupId?: string | null
+  editPart?: RepuestoTecnico | null
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'part-created', part: RepuestoTecnico): void
+  (e: 'part-updated', part: RepuestoTecnico): void
   (e: 'group-created', group: GrupoRepuesto): void
   (e: 'group-updated', group: GrupoRepuesto): void
 }>()
@@ -47,20 +49,31 @@ const catalogStore = useCatalogStore()
 // Pestaña activa ('repuesto' | 'grupo')
 const activeTab = ref<'repuesto' | 'grupo'>(props.initialTab || 'repuesto')
 
+const isEditPartMode = ref<boolean>(false)
+const editingPartId = ref<string | null>(null)
+
 watch(() => props.initialTab, (newTab) => {
   if (newTab) activeTab.value = newTab
 })
 
+watch(() => props.editPart, (newPart) => {
+  if (newPart) {
+    loadPartForEditing(newPart)
+  }
+}, { immediate: true })
+
 watch(() => props.isOpen, (open) => {
   if (open) {
     if (props.initialTab) activeTab.value = props.initialTab
-    if (props.preselectedGroupId) {
+    if (props.editPart) {
+      loadPartForEditing(props.editPart)
+    } else if (props.preselectedGroupId) {
       selectedGroupCode.value = props.preselectedGroupId
     } else if (!selectedGroupCode.value && catalogStore.grupos.length > 0) {
       selectedGroupCode.value = catalogStore.grupos[0].codigo
     }
 
-    if (props.preselectedMotorId) {
+    if (!props.editPart && props.preselectedMotorId) {
       partMotorId.value = props.preselectedMotorId
       const found = catalogStore.motores.find(m => m.id === props.preselectedMotorId)
       if (found) {
@@ -258,6 +271,99 @@ const validatePartForm = (): boolean => {
   return Object.keys(errors).length === 0
 }
 
+const loadPartForEditing = (part: RepuestoTecnico) => {
+  isEditPartMode.value = true
+  editingPartId.value = part.id
+  activeTab.value = 'repuesto'
+
+  partCodigoOem.value = part.codigo_oem || ''
+  partNombre.value = part.nombre || ''
+  partSubsistema.value = part.subsistema || 'Block'
+  partPrecio.value = part.precio != null ? part.precio : null
+  partStock.value = part.stock != null ? part.stock : 12
+  partEstado.value = (part.estado as any) || 'Disponible'
+  partCatalogoOrigen.value = part.catalogo_origen || 'OEM'
+
+  // Motor asociado
+  if (part.motor_id) {
+    partMotorId.value = part.motor_id
+    const mot = part.motor || catalogStore.motores.find(m => m.id === part.motor_id)
+    if (mot) {
+      const brand = getBrandName(mot.fabricante_id)
+      motorSearchQuery.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : (brand ? ` (${brand})` : '')}`
+    } else {
+      motorSearchQuery.value = part.motor_id
+    }
+  } else {
+    partMotorId.value = ''
+    motorSearchQuery.value = ''
+  }
+
+  // Identificar el grupo correspondiente
+  const catLower = (part.categoria || '').toLowerCase()
+  const subLower = (part.subsistema || '').toLowerCase()
+  const matchedGroup = catalogStore.grupos.find(g => 
+    g.categoria.toLowerCase() === catLower ||
+    g.codigo.toLowerCase() === catLower ||
+    g.nombre.toLowerCase().includes(catLower) ||
+    g.subsistema.toLowerCase() === subLower
+  ) || catalogStore.grupos[0]
+
+  if (matchedGroup) {
+    selectedGroupCode.value = matchedGroup.codigo
+  }
+
+  // Cargar parámetros dinámicos y dimensiones
+  const loadedParams: Record<string, any> = {
+    ...(part.dimensiones || {}),
+    ...(part.especificaciones_tecnicas || {})
+  }
+
+  if (part.diametro_cabeza_mm != null) loadedParams.diametro_cabeza_mm = part.diametro_cabeza_mm
+  if (part.diametro_vastago_mm != null) loadedParams.diametro_vastago_mm = part.diametro_vastago_mm
+  if (part.longitud_total_mm != null) loadedParams.longitud_total_mm = part.longitud_total_mm
+  if (part.angulo_asiento_grados != null) loadedParams.angulo_asiento_grados = part.angulo_asiento_grados
+  if (part.tipo_valvula != null) loadedParams.tipo_valvula = part.tipo_valvula
+
+  if (part.diametro_interior_mm != null) loadedParams.diametro_interior_mm = part.diametro_interior_mm
+  if (part.diametro_exterior_mm != null) loadedParams.diametro_exterior_mm = part.diametro_exterior_mm
+  if (part.altura_mm != null) loadedParams.altura_mm = part.altura_mm
+
+  if (part.diametro_cilindro_mm != null) loadedParams.diametro_cilindro_mm = part.diametro_cilindro_mm
+  if (part.espesor_anillo1_mm != null) loadedParams.espesor_anillo1_mm = part.espesor_anillo1_mm
+  if (part.espesor_anillo2_mm != null) loadedParams.espesor_anillo2_mm = part.espesor_anillo2_mm
+  if (part.espesor_aceite_mm != null) loadedParams.espesor_aceite_mm = part.espesor_aceite_mm
+
+  if (part.tipo_cojinete != null) loadedParams.tipo_cojinete = part.tipo_cojinete
+  if (part.diametro_munon_mm != null) loadedParams.diametro_munon_mm = part.diametro_munon_mm
+  if (part.diametro_alojamiento_mm != null) loadedParams.diametro_alojamiento_mm = part.diametro_alojamiento_mm
+  if (part.ancho_casquete_mm != null) loadedParams.ancho_casquete_mm = part.ancho_casquete_mm
+
+  if (part.medida_rosca != null) loadedParams.medida_rosca = part.medida_rosca
+  if (part.paso_rosca_mm != null) loadedParams.paso_rosca_mm = part.paso_rosca_mm
+  if (part.longitud_perno_mm != null) loadedParams.longitud_perno_mm = part.longitud_perno_mm
+  if (part.cantidad_piezas != null) loadedParams.cantidad_piezas = part.cantidad_piezas
+
+  paramValues.value = loadedParams
+
+  // Equivalencias
+  if (part.equivalencias && part.equivalencias.length > 0) {
+    equivalencias.value = part.equivalencias.map(eq => ({
+      marca_alterna: eq.marca_alterna,
+      codigo_alterno: eq.codigo_alterno,
+      notas: eq.notas || ''
+    }))
+  } else {
+    equivalencias.value = [{ marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }]
+  }
+
+  formErrors.value = {}
+}
+
+const switchToCreatePartMode = () => {
+  resetPartForm()
+}
+
 const handleSavePart = async () => {
   if (!validatePartForm()) {
     return
@@ -280,38 +386,49 @@ const handleSavePart = async () => {
       }
     }
 
-    const created = await catalogStore.createRepuesto(
-      {
-        motor_id: partMotorId.value || undefined,
-        codigo_oem: partCodigoOem.value.trim().toUpperCase(),
-        nombre: partNombre.value.trim(),
-        subsistema: partSubsistema.value,
-        categoria: activeGroup.value?.categoria || 'General',
-        precio: Number(partPrecio.value || 0),
-        stock: Number(partStock.value || 0),
-        estado: partEstado.value,
-        catalogo_origen: partCatalogoOrigen.value,
-        dimensiones: dimensionesPayload,
-        // Mapear cotas estándar si coinciden con nombres típicos
-        diametro_cabeza_mm: dimensionesPayload.diametro_cabeza_mm || dimensionesPayload.diametro_cabeza,
-        diametro_vastago_mm: dimensionesPayload.diametro_vastago_mm || dimensionesPayload.diametro_vastago,
-        longitud_total_mm: dimensionesPayload.longitud_total_mm || dimensionesPayload.longitud_total || dimensionesPayload.altura_mm,
-        diametro_interior_mm: dimensionesPayload.diametro_interior_mm || dimensionesPayload.diametro_interior,
-        diametro_exterior_mm: dimensionesPayload.diametro_exterior_mm || dimensionesPayload.diametro_exterior,
-        altura_mm: dimensionesPayload.altura_mm || dimensionesPayload.altura,
-        diametro_cilindro_mm: dimensionesPayload.diametro_cilindro_mm || dimensionesPayload.diametro_cilindro,
-        espesor_anillo1_mm: dimensionesPayload.espesor_anillo1_mm || dimensionesPayload.espesor_anillo1,
-        espesor_anillo2_mm: dimensionesPayload.espesor_anillo2_mm || dimensionesPayload.espesor_anillo2,
-        espesor_aceite_mm: dimensionesPayload.espesor_aceite_mm || dimensionesPayload.espesor_aceite,
-        medida_rosca: dimensionesPayload.medida_rosca,
-        paso_rosca_mm: dimensionesPayload.paso_rosca_mm,
-        longitud_perno_mm: dimensionesPayload.longitud_perno_mm,
-        cantidad_piezas: dimensionesPayload.cantidad_piezas
-      },
-      validEquivs
-    )
+    const partPayload = {
+      motor_id: partMotorId.value || undefined,
+      codigo_oem: partCodigoOem.value.trim().toUpperCase(),
+      nombre: partNombre.value.trim(),
+      subsistema: partSubsistema.value,
+      categoria: activeGroup.value?.categoria || 'General',
+      precio: Number(partPrecio.value || 0),
+      stock: Number(partStock.value || 0),
+      estado: partEstado.value,
+      catalogo_origen: partCatalogoOrigen.value,
+      dimensiones: dimensionesPayload,
+      // Mapear cotas estándar si coinciden con nombres típicos
+      diametro_cabeza_mm: dimensionesPayload.diametro_cabeza_mm || dimensionesPayload.diametro_cabeza,
+      diametro_vastago_mm: dimensionesPayload.diametro_vastago_mm || dimensionesPayload.diametro_vastago,
+      longitud_total_mm: dimensionesPayload.longitud_total_mm || dimensionesPayload.longitud_total || dimensionesPayload.altura_mm,
+      diametro_interior_mm: dimensionesPayload.diametro_interior_mm || dimensionesPayload.diametro_interior,
+      diametro_exterior_mm: dimensionesPayload.diametro_exterior_mm || dimensionesPayload.diametro_exterior,
+      altura_mm: dimensionesPayload.altura_mm || dimensionesPayload.altura,
+      diametro_cilindro_mm: dimensionesPayload.diametro_cilindro_mm || dimensionesPayload.diametro_cilindro,
+      espesor_anillo1_mm: dimensionesPayload.espesor_anillo1_mm || dimensionesPayload.espesor_anillo1,
+      espesor_anillo2_mm: dimensionesPayload.espesor_anillo2_mm || dimensionesPayload.espesor_anillo2,
+      espesor_aceite_mm: dimensionesPayload.espesor_aceite_mm || dimensionesPayload.espesor_aceite,
+      medida_rosca: dimensionesPayload.medida_rosca,
+      paso_rosca_mm: dimensionesPayload.paso_rosca_mm,
+      longitud_perno_mm: dimensionesPayload.longitud_perno_mm,
+      cantidad_piezas: dimensionesPayload.cantidad_piezas
+    }
 
-    emit('part-created', created)
+    if (isEditPartMode.value && editingPartId.value) {
+      const updated = await catalogStore.updateRepuesto(
+        editingPartId.value,
+        partPayload,
+        validEquivs
+      )
+      emit('part-updated', updated)
+    } else {
+      const created = await catalogStore.createRepuesto(
+        partPayload,
+        validEquivs
+      )
+      emit('part-created', created)
+    }
+
     resetPartForm()
     emit('close')
   } catch (err: unknown) {
@@ -322,13 +439,18 @@ const handleSavePart = async () => {
 }
 
 const resetPartForm = () => {
+  isEditPartMode.value = false
+  editingPartId.value = null
   partCodigoOem.value = ''
   partNombre.value = ''
+  partSubsistema.value = activeGroup.value?.subsistema || 'Block'
   partMotorId.value = ''
   motorSearchQuery.value = ''
   isMotorDropdownOpen.value = false
   partPrecio.value = null
   partStock.value = 12
+  partEstado.value = 'Disponible'
+  partCatalogoOrigen.value = 'OEM'
   paramValues.value = {}
   formErrors.value = {}
   equivalencias.value = [{ marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }]
@@ -698,7 +820,7 @@ onUnmounted(() => {
           </div>
           <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
             <SlidersHorizontal class="w-5 h-5 text-[#04C4D9]" />
-            Nuevo Repuesto / Grupo Dinámico
+            {{ isEditPartMode && activeTab === 'repuesto' ? 'Modificar Repuesto Técnico' : (isEditMode && activeTab === 'grupo' ? 'Modificar Familia de Repuestos' : 'Nuevo Repuesto / Grupo Dinámico') }}
           </h2>
         </div>
 
@@ -715,7 +837,7 @@ onUnmounted(() => {
             ]"
           >
             <PackagePlus class="w-4 h-4 text-[#04C4D9]" />
-            <span>Dar de Alta Repuesto</span>
+            <span>{{ isEditPartMode ? 'Modificar Repuesto' : 'Dar de Alta Repuesto' }}</span>
           </button>
 
           <button
@@ -750,9 +872,34 @@ onUnmounted(() => {
       <div class="p-5 sm:p-7 overflow-y-auto space-y-6 flex-1 text-slate-800">
 
         <!-- ----------------------------------------------------------------- -->
-        <!-- PESTAÑA 1: FORMULARIO REACTIVO DE ALTA DE REPUESTO               -->
+        <!-- PESTAÑA 1: FORMULARIO REACTIVO DE ALTA / EDICIÓN DE REPUESTO     -->
         <!-- ----------------------------------------------------------------- -->
         <div v-if="activeTab === 'repuesto'" class="space-y-6">
+
+          <!-- Banner Informativo si está editando un repuesto existente -->
+          <div v-if="isEditPartMode" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-xl bg-cyan-100 flex items-center justify-center shrink-0">
+                <Edit3 class="w-4 h-4 text-[#038391]" />
+              </div>
+              <div>
+                <p class="text-xs font-extrabold text-[#038391]">
+                  Modificando Repuesto Existente: <span class="font-mono text-slate-900 bg-white px-1.5 py-0.5 rounded border border-cyan-200">{{ partCodigoOem || editingPartId }}</span>
+                </p>
+                <p class="text-[11px] text-slate-500">
+                  Puede actualizar el código OEM, motor, cotas dimensionales de maquinado y equivalencias de marcas alternas.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              @click="switchToCreatePartMode"
+              class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition shrink-0 shadow-2xs hover:border-[#04C4D9]"
+              title="Limpiar formulario para dar de alta un repuesto nuevo"
+            >
+              + Nuevo Repuesto
+            </button>
+          </div>
 
           <!-- 1. Selección de Familia / Grupo de Pieza -->
           <div class="bg-cyan-50/40 border border-cyan-200/80 rounded-2xl p-4.5 space-y-3">
@@ -1531,7 +1678,7 @@ onUnmounted(() => {
           >
             <Loader2 v-if="isSubmittingPart" class="w-4 h-4 animate-spin" />
             <Save v-else class="w-4 h-4" />
-            <span>{{ isSubmittingPart ? 'Guardando en Supabase...' : 'Guardar Repuesto en Catálogo' }}</span>
+            <span>{{ isSubmittingPart ? (isEditPartMode ? 'Guardando Cambios...' : 'Guardando en Supabase...') : (isEditPartMode ? 'Guardar Cambios del Repuesto' : 'Guardar Repuesto en Catálogo') }}</span>
           </button>
 
           <button
