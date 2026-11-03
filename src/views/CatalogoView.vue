@@ -29,7 +29,6 @@ import {
   Info, 
   FileText, 
   AlertCircle, 
-  ArrowLeft, 
   SlidersHorizontal,
   Loader2,
   RefreshCw,
@@ -40,7 +39,6 @@ import {
   Ruler,
   Lock,
   ArrowRightLeft,
-  Car
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -240,7 +238,7 @@ const searchInput = ref<string>('')
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // Vista activa ('motores' | 'grupos' | 'repuestos')
-const activeViewTab = ref<'motores' | 'grupos' | 'repuestos'>('motores')
+const activeViewTab = ref<'motores' | 'repuestos'>('motores')
 
 // =============================================================================
 // DEFINICIÓN DE GRUPOS / FAMILIAS DE PIEZAS (BASE + DINÁMICOS)
@@ -666,12 +664,6 @@ const availableMotors = computed(() => {
   return catalogStore.availableMotores
 })
 
-// Modelos compatibles con el motor seleccionado (para visualización directa)
-const compatibleModelsForMotor = computed<Modelo[]>(() => {
-  if (!selectedMotor.value) return []
-  return catalogStore.availableModelos
-})
-
 const filteredMotors = computed(() => {
   const q = motorInput.value.toLowerCase().trim()
   const list = availableMotors.value
@@ -715,11 +707,12 @@ const handleSelectMotor = async (mot: Motor) => {
     }
   }
 
-  // Al seleccionar un motor: mostrar directamente los grupos y NO los demás motores
+  // Al seleccionar un motor: mostrar directamente los repuestos
+  activeViewTab.value = 'repuestos'
   if (selectedComponent.value) {
-    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
   } else {
-    activeViewTab.value = 'grupos'
+    await catalogStore.fetchRepuestosByMotor(mot.id)
   }
 }
 
@@ -1015,10 +1008,19 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
               return Math.abs(numPart - numFilter) <= tol
             }
 
-            // Comparación de texto / selección
+            // Comparación de texto / selección inteligente
             const strPart = String(partVal).toLowerCase().trim()
             const strFilter = String(filterVal).toLowerCase().trim()
-            return strPart.includes(strFilter)
+
+            // Manejo especial de posiciones automotrices (Admisión/IN vs Escape/EX)
+            if (strFilter === 'in' || strFilter.includes('admis')) {
+              return strPart === 'in' || strPart.includes('admis')
+            }
+            if (strFilter === 'ex' || strFilter.includes('escap')) {
+              return strPart === 'ex' || strPart.includes('escap')
+            }
+
+            return strPart.includes(strFilter) || strFilter.includes(strPart)
           })
         }
       }
@@ -1035,13 +1037,40 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     )
   }
 
-  // 4. Filtro de marca de catálogo alterno
+  // 4. Filtro de marca de catálogo alterno (reparado para Dokuro, NPR, Rik, NDC, Ajusa, Pioneer)
   if (tableBrandFilter.value !== 'Todas las marcas') {
-    const b = tableBrandFilter.value.toLowerCase()
-    list = list.filter(r => 
-      (r.catalogo_origen && r.catalogo_origen.toLowerCase() === b) ||
-      r.equivalencias?.some(eq => eq.marca_alterna.toLowerCase() === b)
-    )
+    const b = tableBrandFilter.value.toLowerCase().trim()
+    list = list.filter(r => {
+      // 1. Catálogo origen
+      const origen = String(r.catalogo_origen || '').toLowerCase()
+      if (origen.includes(b)) return true
+
+      // 2. Especificaciones técnicas de catálogo
+      const spec = (r.especificaciones_tecnicas || {}) as Record<string, any>
+      const marcaCat = String(spec.marca_catalogo || '').toLowerCase()
+      if (marcaCat.includes(b)) return true
+
+      const fuenteStr = typeof spec.fuente === 'string' ? spec.fuente.toLowerCase() : JSON.stringify(spec.fuente || '').toLowerCase()
+      if (fuenteStr.includes(b)) return true
+
+      if (b === 'dokuro' && (spec.codigo_dokuro || spec.codigo_catalogo)) return true
+      if (b === 'npr' && (spec.codigo_npr || spec.seccion_catalogo)) return true
+
+      // 3. Equivalencias cruzadas
+      if (r.equivalencias?.some(eq => 
+        eq.marca_alterna.toLowerCase().includes(b) ||
+        eq.codigo_alterno.toLowerCase().includes(b) ||
+        (eq.tipo_referencia && eq.tipo_referencia.toLowerCase().includes(b)) ||
+        (eq.notas && eq.notas.toLowerCase().includes(b))
+      )) {
+        return true
+      }
+
+      // 4. Nombre
+      if (r.nombre.toLowerCase().includes(b)) return true
+
+      return false
+    })
   }
 
   return list
@@ -2077,193 +2106,10 @@ onUnmounted(() => {
     </div>
 
     <!-- ========================================================================= -->
-    <!-- ESTADO 2.B: MOTOR SELECCIONADO -> VISTA DE GRUPOS DIRECTA                 -->
-    <!-- ========================================================================= -->
-    <div 
-      v-else-if="selectedMotor && (activeViewTab === 'grupos' || !selectedComponent) && !searchInput" 
-      class="space-y-3.5"
-    >
-      <!-- Banner del Motor Seleccionado (Minimalista) -->
-      <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-mono font-black text-sm shrink-0">
-            {{ selectedMotor.codigo.slice(0, 3) }}
-          </div>
-          <div>
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <h3 class="text-sm font-black text-slate-900 font-mono">
-                MOTOR {{ selectedMotor.codigo }}
-              </h3>
-              <span class="px-2 py-0.2 rounded-md bg-cyan-50 text-[#038391] border border-cyan-200/80 text-[10px] font-bold uppercase">
-                {{ selectedMotor.combustible }}
-              </span>
-              <span class="px-2 py-0.2 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold font-mono">
-                {{ selectedMotor.cilindros }} Cil / {{ selectedMotor.cilindrada_texto || `${selectedMotor.cilindrada_cc} cc` }}
-              </span>
-              <span v-if="selectedMotor.cv" class="px-2 py-0.2 rounded-md bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold">
-                {{ selectedMotor.cv }} CV
-              </span>
-            </div>
-            <p class="text-[11px] text-slate-500 font-medium mt-0.5">
-              {{ selectedMotor.nombre_comercial }} 
-              <span v-if="selectedMotor.denominacion_venta"> • {{ selectedMotor.denominacion_venta }}</span>
-              <span v-if="selectedBrand"> • <strong class="text-slate-700">{{ selectedBrand.nombre }}</strong></span>
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          @click="activeViewTab = 'motores'"
-          class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 self-start sm:self-auto"
-          title="Ver otros motores del fabricante"
-        >
-          <ArrowLeft class="w-3.5 h-3.5 text-slate-400" />
-          <span>Ver otros motores</span>
-        </button>
-      </div>
-
-      <!-- Cuadro de modelos compatibles -->
-      <div v-if="compatibleModelsForMotor.length > 0" class="bg-slate-50/80 border border-slate-200 rounded-xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div class="flex items-center gap-1.5 text-slate-600">
-          <Car class="w-3.5 h-3.5 text-[#04C4D9]" />
-          <span class="font-bold text-[11px]">Modelos con este motor:</span>
-        </div>
-        <div class="flex flex-wrap items-center gap-1">
-          <button
-            v-for="mod in compatibleModelsForMotor"
-            :key="mod.id"
-            type="button"
-            @click="handleSelectModel(mod)"
-            :class="[
-              'px-2 py-0.5 rounded text-[11px] font-semibold transition',
-              selectedModel?.id === mod.id
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-            ]"
-          >
-            {{ mod.nombre }} <span v-if="mod.anio_inicio" class="text-[9px] opacity-75">({{ mod.anio_inicio }}-{{ mod.anio_fin || 'Act' }})</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Tarjetas de Grupos / Familias del Motor -->
-      <div class="space-y-2.5">
-        <div class="flex items-center justify-between">
-          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
-            <span>Familias de Piezas para Motor {{ selectedMotor.codigo }}</span>
-          </h4>
-
-          <button
-            type="button"
-            @click="openAdminCatalogModal('grupo')"
-            class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-          >
-            <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-            <span>Crear / Modificar Grupo</span>
-          </button>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
-          <div
-            v-for="grp in componentGroups"
-            :key="grp.id"
-            @click="handleSelectComponent(grp)"
-            class="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-2xs cursor-pointer transition flex flex-col justify-between group relative"
-          >
-            <div>
-              <div class="flex items-start justify-between gap-1.5 mb-1.5">
-                <div class="flex items-center gap-2 text-slate-900 group-hover:text-[#038391] font-bold text-xs sm:text-sm">
-                  <CircleDot v-if="grp.id === 'ajuste_valvula'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                  <Wrench v-else-if="grp.id === 'valvula'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                  <Layers v-else-if="grp.id === 'anillos_motor'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                  <FileText v-else class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                  <span>{{ grp.title }}</span>
-                </div>
-
-                <button
-                  type="button"
-                  @click.stop="handleEditGroup(grp.id)"
-                  class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
-                  title="Modificar parámetros del grupo"
-                >
-                  <Edit3 class="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <p class="text-[11px] text-slate-400 leading-relaxed mb-2">
-                {{ grp.sampleMeasurements || grp.description }}
-              </p>
-            </div>
-
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-[#04C4D9]">
-              <span>Ver cotas y piezas</span>
-              <span class="group-hover:translate-x-1 transition-transform">→</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========================================================================= -->
     <!-- ESTADO 3: MOTOR Y/O COMPONENTE / BÚSQUEDA ACTIVA -> TABLA DE REPUESTOS     -->
     <!-- ========================================================================= -->
     <div v-else class="space-y-3.5">
       
-      <!-- Selector Rápido de Componentes (Pills Superiores) -->
-      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1">Grupo:</span>
-          <div class="flex flex-wrap items-center gap-1">
-            <button
-              v-for="grp in componentGroups"
-              :key="grp.id"
-              type="button"
-              @click="handleSelectComponent(grp)"
-              :class="[
-                'px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5',
-                selectedComponent?.id === grp.id
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              ]"
-            >
-              <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3 h-3 text-[#04C4D9]" />
-              <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3 h-3 text-[#04C4D9]" />
-              <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3 h-3 text-[#04C4D9]" />
-              <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3 h-3 text-[#04C4D9]" />
-              <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3 h-3 text-[#04C4D9]" />
-              <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3 h-3 text-[#04C4D9]" />
-              <Layers v-else class="w-3 h-3 text-[#04C4D9]" />
-              <span>{{ grp.title }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Botones para volver -->
-        <div class="flex items-center gap-1.5">
-          <button
-            v-if="selectedMotor"
-            type="button"
-            @click="activeViewTab = 'grupos'; selectedComponent = null"
-            class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
-          >
-            <ArrowLeft class="w-3 h-3 text-slate-400" />
-            <span>Grupos {{ selectedMotor.codigo }}</span>
-          </button>
-
-          <button
-            v-if="selectedBrand"
-            type="button"
-            @click="activeViewTab = 'motores'"
-            class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
-          >
-            <ArrowLeft class="w-3 h-3 text-slate-400" />
-            <span>Motores {{ selectedBrand.nombre }}</span>
-          </button>
-        </div>
-      </div>
-
       <!-- ======================================================================= -->
       <!-- BARRA DE FILTROS DE MEDIDAS TÉCNICAS (MINIMALISTA)                      -->
       <!-- ======================================================================= -->
@@ -2622,35 +2468,59 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 6. FILTROS PARA OTROS GRUPOS PERSONALIZADOS / DINÁMICOS -->
+        <!-- 6. FILTROS PARA OTROS GRUPOS PERSONALIZADOS / DINÁMICOS (SOPORTE SELECT / CASCADA) -->
         <div 
           v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
-          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"
+          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
         >
           <div 
             v-for="param in currentGroupDefinition.parametros" 
             :key="param.clave"
           >
-            <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
-              {{ param.etiqueta }} 
-              <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
-              <span v-if="param.tipo_dato === 'numero'" class="text-[9px] text-[#038391] font-mono ml-0.5">±{{ filterToleranciaMm }}</span>
-            </label>
-            <input
-              v-if="param.tipo_dato === 'numero'"
-              v-model.number="dynamicParamFilters[param.clave]"
-              type="number"
-              step="0.1"
-              :placeholder="`ej. 50 ${param.unidad || ''}`"
-              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-            <input
-              v-else
-              v-model="dynamicParamFilters[param.clave]"
-              type="text"
-              placeholder="Filtrar..."
-              class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
+            <!-- Caso A: Número Decimal con Tolerancia Universal -->
+            <template v-if="param.tipo_dato === 'numero'">
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                {{ param.etiqueta }} 
+                <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+                <span class="text-[9px] text-[#038391] font-mono ml-0.5">±{{ filterToleranciaMm }}</span>
+              </label>
+              <input
+                v-model.number="dynamicParamFilters[param.clave]"
+                type="number"
+                step="0.1"
+                :placeholder="`ej. 50 ${param.unidad || ''}`"
+                class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </template>
+
+            <!-- Caso B: Menú Desplegable / Cascada de Selección (ej. Admisión / Escape, IN / EX) -->
+            <template v-else-if="param.tipo_dato === 'seleccion' || (param.opciones && param.opciones.length > 0)">
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                {{ param.etiqueta }}
+              </label>
+              <select
+                v-model="dynamicParamFilters[param.clave]"
+                class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              >
+                <option value="">Todas las opciones</option>
+                <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">
+                  {{ opt }}
+                </option>
+              </select>
+            </template>
+
+            <!-- Caso C: Texto libre -->
+            <template v-else>
+              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                {{ param.etiqueta }}
+              </label>
+              <input
+                v-model="dynamicParamFilters[param.clave]"
+                type="text"
+                placeholder="Filtrar..."
+                class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </template>
           </div>
         </div>
 
@@ -2679,6 +2549,7 @@ onUnmounted(() => {
               <option value="NDC">NDC</option>
               <option value="Taiho">Taiho</option>
               <option value="Ajusa">Ajusa</option>
+              <option value="Pioneer">Pioneer</option>
             </select>
           </div>
         </div>

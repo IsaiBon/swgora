@@ -751,6 +751,7 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
   }
 
   const dims = (item.dimensiones as Record<string, unknown>) || {}
+  const spec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
 
   return {
     id: String(item.id),
@@ -763,7 +764,15 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     stock: Number(item.stock || 0),
     estado: (item.estado as RepuestoTecnico['estado']) || 'Disponible',
     imagen_url: item.imagen_url ? String(item.imagen_url) : undefined,
-    catalogo_origen: item.catalogo_origen ? String(item.catalogo_origen) : 'OEM',
+    catalogo_origen: item.catalogo_origen 
+      ? String(item.catalogo_origen) 
+      : ((spec as any).marca_catalogo 
+          ? String((spec as any).marca_catalogo) 
+          : ((spec as any).codigo_dokuro 
+              ? 'Dokuro' 
+              : ((spec as any).codigo_npr 
+                  ? 'NPR' 
+                  : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('npr') ? 'NPR' : 'OEM')))),
 
     diametro_cabeza_mm: item.diametro_cabeza_mm != null ? Number(item.diametro_cabeza_mm) : null,
     diametro_vastago_mm: item.diametro_vastago_mm != null ? Number(item.diametro_vastago_mm) : null,

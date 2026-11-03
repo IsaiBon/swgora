@@ -363,7 +363,9 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
     unidad: p.unidad,
     tipo_dato: p.tipo_dato,
     requerido: p.requerido,
-    descripcion: p.descripcion || ''
+    descripcion: p.descripcion || '',
+    opciones: p.opciones || [],
+    opcionesStr: (p.opciones || []).join(', ')
   }))
   groupErrors.value = {}
 }
@@ -429,6 +431,8 @@ const dynamicParams = ref<Array<{
   tipo_dato: 'numero' | 'texto' | 'booleano' | 'seleccion'
   requerido: boolean
   descripcion: string
+  opciones?: string[]
+  opcionesStr?: string
 }>>([
   {
     id: `param-${Date.now()}-1`,
@@ -600,15 +604,26 @@ const handleSaveGroup = async () => {
 
   isSubmittingGroup.value = true
   try {
-    const paramsPayload: ParametroTecnicoDefinicion[] = dynamicParams.value.map(p => ({
-      id: p.id,
-      clave: p.clave.trim(),
-      etiqueta: p.etiqueta.trim(),
-      unidad: p.unidad.trim(),
-      tipo_dato: p.tipo_dato,
-      requerido: p.requerido,
-      descripcion: p.descripcion.trim() || undefined
-    }))
+    const paramsPayload: ParametroTecnicoDefinicion[] = dynamicParams.value.map(p => {
+      let parsedOpciones: string[] | undefined = undefined
+      if (p.tipo_dato === 'seleccion') {
+        if (p.opcionesStr && p.opcionesStr.trim()) {
+          parsedOpciones = p.opcionesStr.split(',').map(s => s.trim()).filter(Boolean)
+        } else if (p.opciones && p.opciones.length > 0) {
+          parsedOpciones = p.opciones
+        }
+      }
+      return {
+        id: p.id,
+        clave: p.clave.trim(),
+        etiqueta: p.etiqueta.trim(),
+        unidad: p.unidad.trim(),
+        tipo_dato: p.tipo_dato,
+        requerido: p.requerido,
+        descripcion: p.descripcion.trim() || undefined,
+        opciones: parsedOpciones
+      }
+    })
 
     if (isEditMode.value && editingGroupId.value) {
       const updated = await catalogStore.updateGrupo(editingGroupId.value, {
@@ -1434,16 +1449,46 @@ onUnmounted(() => {
 
                   <!-- Tipo de Dato -->
                   <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Tipo de Dato</label>
+                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Tipo de Entrada</label>
                     <select
                       v-model="param.tipo_dato"
                       class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                     >
-                      <option value="numero">Número Decimal</option>
-                      <option value="texto">Texto</option>
+                      <option value="numero">Número Decimal (ej. cotas mm)</option>
+                      <option value="seleccion">Menú Desplegable / Opciones (ej. Admisión / Escape)</option>
+                      <option value="texto">Texto Libre</option>
                       <option value="booleano">Booleano (Sí/No)</option>
-                      <option value="seleccion">Selección</option>
                     </select>
+                  </div>
+
+                  <!-- Opciones para Menú Desplegable (Cascada de selección) -->
+                  <div v-if="param.tipo_dato === 'seleccion'" class="sm:col-span-2 lg:col-span-4 bg-cyan-50/70 p-3 rounded-xl border border-cyan-200/80">
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="block text-[11px] font-bold text-[#038391]">
+                        Opciones del Menú Desplegable (separadas por coma)
+                      </label>
+                      <span class="text-[10px] text-slate-500 font-medium">Ej: Admisión, Escape ó IN, EX</span>
+                    </div>
+                    <input
+                      v-model="param.opcionesStr"
+                      type="text"
+                      placeholder="Escribe las opciones separadas por coma (ej. Admisión, Escape)"
+                      class="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
+                    />
+                    <div class="flex items-center gap-1.5 flex-wrap mt-2">
+                      <span class="text-[10px] text-slate-500 font-bold">Vista previa del menú:</span>
+                      <span
+                        v-for="opt in (param.opcionesStr || '').split(',').map(s => s.trim()).filter(Boolean)"
+                        :key="opt"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white text-[#038391] text-[10px] font-bold border border-cyan-300 shadow-2xs"
+                      >
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
+                        {{ opt }}
+                      </span>
+                      <span v-if="!(param.opcionesStr || '').trim()" class="text-[10px] text-slate-400 italic">
+                        Escribe las opciones separadas por coma para definir las alternativas del filtro.
+                      </span>
+                    </div>
                   </div>
 
                   <!-- Descripción -->
