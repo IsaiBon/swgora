@@ -95,17 +95,6 @@ export const useAuthStore = defineStore('auth', () => {
     return isRouteAllowedForRole(path, user.value?.role || 'Consultor')
   }
 
-  function mapSupabaseUser(sbUser: SupabaseUser | null): User | null {
-    if (!sbUser) return null
-    return {
-      id: sbUser.id,
-      name: sbUser.user_metadata?.name || sbUser.email?.split('@')[0] || 'Usuario',
-      email: sbUser.email || '',
-      role: normalizeRole(sbUser.user_metadata?.role || 'Consultor'),
-      avatar: sbUser.user_metadata?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
-    }
-  }
-
   async function syncUserWithProfile(sbUser: SupabaseUser | null) {
     user.value = null
     persistUser(null)
