@@ -810,17 +810,11 @@ onUnmounted(() => {
       <!-- ===================================================================== -->
       <!-- MODAL HEADER CON PESTAÑAS SEGMENTADAS                                 -->
       <!-- ===================================================================== -->
-      <div class="px-5 sm:px-7 py-4.5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+      <div class="px-5 sm:px-7 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>
-          <div class="flex items-center gap-2">
-            <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#04C4D9]/15 text-[#038896] border border-[#04C4D9]/30 flex items-center gap-1">
-              <Sparkles class="w-3 h-3 text-[#04C4D9]" />
-              Gestión Administrativa del Catálogo
-            </span>
-          </div>
-          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
+          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <SlidersHorizontal class="w-5 h-5 text-[#04C4D9]" />
-            {{ isEditPartMode && activeTab === 'repuesto' ? 'Modificar Repuesto Técnico' : (isEditMode && activeTab === 'grupo' ? 'Modificar Familia de Repuestos' : 'Nuevo Repuesto / Grupo Dinámico') }}
+            {{ isEditPartMode && activeTab === 'repuesto' ? 'Editar Repuesto' : (isEditMode && activeTab === 'grupo' ? 'Editar Familia' : (activeTab === 'repuesto' ? 'Nuevo Repuesto' : 'Nueva Familia')) }}
           </h2>
         </div>
 
@@ -837,7 +831,7 @@ onUnmounted(() => {
             ]"
           >
             <PackagePlus class="w-4 h-4 text-[#04C4D9]" />
-            <span>{{ isEditPartMode ? 'Modificar Repuesto' : 'Dar de Alta Repuesto' }}</span>
+            <span>Repuesto</span>
           </button>
 
           <button
@@ -851,7 +845,7 @@ onUnmounted(() => {
             ]"
           >
             <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-            <span>Nueva Familia / Grupo</span>
+            <span>Familia</span>
           </button>
         </div>
 
@@ -901,17 +895,12 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- 1. Selección de Familia / Grupo de Pieza -->
+          <!-- 1. Familia de Repuesto -->
           <div class="bg-cyan-50/40 border border-cyan-200/80 rounded-2xl p-4.5 space-y-3">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-900">
-                  1. Seleccionar Familia / Grupo de Pieza
-                </label>
-                <p class="text-[11px] text-slate-500">
-                  El grupo seleccionado define las reglas paramétricas y medidas obligatorias que se deben validar.
-                </p>
-              </div>
+              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-900">
+                Familia de Repuesto
+              </label>
 
               <button
                 type="button"
@@ -919,7 +908,7 @@ onUnmounted(() => {
                 class="text-xs font-bold text-[#038896] hover:text-[#04C4D9] flex items-center gap-1 transition"
               >
                 <Plus class="w-3.5 h-3.5" />
-                <span>¿No encuentras el grupo? Crear nuevo</span>
+                <span>+ Nueva Familia</span>
               </button>
             </div>
 
@@ -964,7 +953,7 @@ onUnmounted(() => {
           <div class="space-y-4">
             <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <Tag class="w-4 h-4 text-[#04C4D9]" />
-              2. Identificación Técnica del Repuesto
+              Datos del Repuesto
             </h3>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1166,12 +1155,12 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 3. Constructor Reactivo de Parámetros y Medidas del Grupo -->
+          <!-- 3. Parámetros Técnicos -->
           <div class="space-y-4">
             <div class="flex items-center justify-between border-b pb-2 border-slate-200">
               <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <Ruler class="w-4 h-4 text-[#04C4D9]" />
-                3. Parámetros Técnicos y Medidas Requeridas por el Grupo
+                Cotas Técnicas
               </h3>
               <span v-if="activeGroup" class="text-[11px] font-bold text-cyan-800 bg-cyan-100 px-2 py-0.5 rounded-full">
                 {{ activeGroup.parametros.filter(p => p.requerido).length }} Obligatorios
@@ -1266,12 +1255,12 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 4. Cruces y Equivalencias Técnicas -->
+          <!-- 4. Cruces y Marcas Alternas -->
           <div class="space-y-3">
             <div class="flex items-center justify-between border-b pb-2 border-slate-200">
               <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <Hash class="w-4 h-4 text-[#04C4D9]" />
-                4. Equivalencias Técnicas Multimarca (Dokuro, Rik, NPR, NDC, etc.)
+                Marcas Alternas
               </h3>
               <button
                 type="button"
@@ -1279,7 +1268,7 @@ onUnmounted(() => {
                 class="text-xs font-bold text-[#038896] hover:text-[#04C4D9] flex items-center gap-1"
               >
                 <Plus class="w-3.5 h-3.5" />
-                <span>Añadir Cruce Alterno</span>
+                <span>+ Cruce Alterno</span>
               </button>
             </div>
 
@@ -1348,7 +1337,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                <span>+ Crear Nueva Familia</span>
+                <span>+ Nueva Familia</span>
               </button>
               <button
                 type="button"
@@ -1359,7 +1348,7 @@ onUnmounted(() => {
                 ]"
               >
                 <Edit3 class="w-3.5 h-3.5" />
-                <span>✏️ Modificar Familia Existente</span>
+                <span>Modificar Existente</span>
               </button>
             </div>
 
@@ -1397,30 +1386,25 @@ onUnmounted(() => {
           </div>
 
           <!-- Plantillas rápidas de taller (solo en modo creación) -->
-          <div v-if="!isEditMode" class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <strong class="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
-                <Sparkles class="w-4 h-4 text-amber-600" />
-                Plantillas Rápidas para Rectificadora
-              </strong>
-              <p class="text-[11px] text-amber-800">
-                Puedes rellenar al instante grupos típicos con sus 3 cotas obligatorias para encamisado o maquinado:
-              </p>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
+          <div v-if="!isEditMode" class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <span class="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+              <Sparkles class="w-4 h-4 text-amber-600" />
+              Plantillas Rápidas:
+            </span>
+            <div class="flex items-center gap-2 flex-wrap shrink-0">
               <button
                 type="button"
                 @click="loadTemplateCamisas"
-                class="px-3 py-1.5 rounded-xl bg-white text-amber-900 border border-amber-300 text-xs font-extrabold hover:bg-amber-100/70 transition shadow-2xs"
+                class="px-3 py-1 rounded-xl bg-white text-amber-900 border border-amber-300 text-xs font-bold hover:bg-amber-100/70 transition shadow-2xs"
               >
-                ⚡ Camisas de Cilindro (3 medidas)
+                Camisas de Cilindro
               </button>
               <button
                 type="button"
                 @click="loadTemplatePistones"
-                class="px-3 py-1.5 rounded-xl bg-white text-amber-900 border border-amber-300 text-xs font-extrabold hover:bg-amber-100/70 transition shadow-2xs"
+                class="px-3 py-1 rounded-xl bg-white text-amber-900 border border-amber-300 text-xs font-bold hover:bg-amber-100/70 transition shadow-2xs"
               >
-                ⚡ Pistones de Motor (3 medidas)
+                Pistones de Motor
               </button>
             </div>
           </div>
@@ -1429,7 +1413,7 @@ onUnmounted(() => {
           <div class="space-y-4">
             <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
               <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-              {{ isEditMode ? `1. Modificar Datos de la Familia: ${groupNombre || ''}` : '1. Datos de la Nueva Familia / Grupo de Repuestos' }}
+              {{ isEditMode ? `Datos de la Familia: ${groupNombre || ''}` : 'Datos de la Familia' }}
             </h3>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1495,15 +1479,10 @@ onUnmounted(() => {
           <!-- 2. Constructor Dinámico de Parámetros -->
           <div class="space-y-4">
             <div class="flex items-center justify-between border-b pb-2 border-slate-200">
-              <div>
-                <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-                  2. Constructor Dinámico de Medidas y Reglas Paramétricas
-                </h3>
-                <p class="text-[11px] text-slate-500 mt-0.5">
-                  Agrega las medidas que los repuestos de este grupo deberán cumplir. Marca cuáles son obligatorias.
-                </p>
-              </div>
+              <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
+                Parámetros y Medidas
+              </h3>
 
               <button
                 type="button"
@@ -1511,7 +1490,7 @@ onUnmounted(() => {
                 class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0"
               >
                 <Plus class="w-4 h-4" />
-                <span>+ Agregar Medida</span>
+                <span>+ Medida</span>
               </button>
             </div>
 
@@ -1678,7 +1657,7 @@ onUnmounted(() => {
           >
             <Loader2 v-if="isSubmittingPart" class="w-4 h-4 animate-spin" />
             <Save v-else class="w-4 h-4" />
-            <span>{{ isSubmittingPart ? (isEditPartMode ? 'Guardando Cambios...' : 'Guardando en Supabase...') : (isEditPartMode ? 'Guardar Cambios del Repuesto' : 'Guardar Repuesto en Catálogo') }}</span>
+            <span>{{ isSubmittingPart ? 'Guardando...' : (isEditPartMode ? 'Guardar Cambios' : 'Guardar Repuesto') }}</span>
           </button>
 
           <button
@@ -1690,7 +1669,7 @@ onUnmounted(() => {
           >
             <Loader2 v-if="isSubmittingGroup" class="w-4 h-4 animate-spin" />
             <Save v-else class="w-4 h-4" />
-            <span>{{ isSubmittingGroup ? (isEditMode ? 'Guardando Modificaciones...' : 'Guardando Familia...') : (isEditMode ? 'Guardar Cambios de la Familia' : 'Guardar Familia y Esquema') }}</span>
+            <span>{{ isSubmittingGroup ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Guardar Familia') }}</span>
           </button>
         </div>
       </div>

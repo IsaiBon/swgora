@@ -10,10 +10,8 @@ import {
   ShoppingCart,
   Package,
   Users,
-  LogIn,
   X,
   ChevronRight,
-  Sparkles,
 } from 'lucide-vue-next'
 
 const uiStore = useUiStore()
@@ -24,16 +22,14 @@ interface NavItem {
   name: string
   path: string
   icon: any
-  badge?: string
 }
 
 const navItems: NavItem[] = [
-  { name: 'Usuarios', path: '/usuarios', icon: Users },
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Clientes', path: '/clientes', icon: Users, badge: '6' },
-  { name: 'Órdenes', path: '/ordenes', icon: ShoppingCart, badge: '4' },
+  { name: 'Órdenes', path: '/ordenes', icon: ShoppingCart },
   { name: 'Catálogo', path: '/catalogo', icon: Package },
-  { name: 'Login / Acceso', path: '/login', icon: LogIn },
+  { name: 'Clientes', path: '/clientes', icon: Users },
+  { name: 'Usuarios', path: '/usuarios', icon: Users },
 ]
 
 const visibleNavItems = computed(() => {
@@ -87,72 +83,44 @@ const isActive = (path: string) => {
       </div>
 
       <!-- Navigation Links -->
-      <nav class="flex-1 px-3 py-5 space-y-1.5 overflow-y-auto">
-        <div class="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-          Módulos Principales
-        </div>
-
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <router-link
           v-for="item in visibleNavItems"
           :key="item.path"
           :to="item.path"
           @click="uiStore.closeMobileSidebar"
           :class="[
-            'group flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+            'group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150',
             isActive(item.path)
-              ? 'bg-[#05C7F2]/15 text-[#05F2F2] border border-[#05C7F2]/40 shadow-sm'
-              : 'text-neutral-300 hover:bg-neutral-800/80 hover:text-white',
+              ? 'bg-[#05C7F2]/15 text-[#05F2F2] border border-[#05C7F2]/30 shadow-xs'
+              : 'text-neutral-300 hover:bg-neutral-800/70 hover:text-white',
           ]"
         >
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2.5">
             <component
               :is="item.icon"
               :class="[
-                'w-5 h-5 transition-transform group-hover:scale-110',
+                'w-4 h-4 transition-transform group-hover:scale-105',
                 isActive(item.path) ? 'text-[#05C7F2]' : 'text-neutral-400 group-hover:text-[#05C7F2]',
               ]"
             />
             <span>{{ item.name }}</span>
           </div>
 
-          <div class="flex items-center gap-1.5">
-            <span
-              v-if="item.badge"
-              :class="[
-                'text-[11px] px-2 py-0.5 rounded-full font-semibold',
-                isActive(item.path)
-                  ? 'bg-[#05C7F2] text-black'
-                  : 'bg-neutral-800 text-[#05C7F2]',
-              ]"
-            >
-              {{ item.badge }}
-            </span>
-            <ChevronRight
-              :class="[
-                'w-4 h-4 transition-transform opacity-0 group-hover:opacity-100',
-                isActive(item.path) && 'opacity-100 text-[#05C7F2]',
-              ]"
-            />
-          </div>
+          <ChevronRight
+            :class="[
+              'w-3.5 h-3.5 transition-transform opacity-0 group-hover:opacity-100',
+              isActive(item.path) && 'opacity-100 text-[#05C7F2]',
+            ]"
+          />
         </router-link>
       </nav>
 
-      <!-- Sidebar Footer / Role & Sprint -->
-      <div class="p-3.5 border-t border-neutral-800 space-y-2">
-        <!-- Active User Role Indicator -->
-        <div class="bg-neutral-900/90 rounded-xl p-2.5 border border-neutral-800 flex items-center justify-between">
-          <div class="text-[11px] text-neutral-400 font-medium">Rol Activo:</div>
+      <!-- Sidebar Footer / Role -->
+      <div class="p-3 border-t border-neutral-800">
+        <div class="bg-neutral-900/90 rounded-xl p-2 border border-neutral-800/80 flex items-center justify-between">
+          <span class="text-[10px] text-neutral-400 font-medium">Rol</span>
           <RoleBadge :role="authStore.user?.role || 'Administrador'" size="sm" />
-        </div>
-
-        <div class="p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800 flex items-center gap-2.5">
-          <div class="p-1.5 rounded-lg bg-[#05C7F2]/10 text-[#05C7F2]">
-            <Sparkles class="w-3.5 h-3.5" />
-          </div>
-          <div class="text-xs">
-            <div class="font-semibold text-neutral-200 text-[11px]">Sprint 2</div>
-            <div class="text-neutral-400 text-[10px]">Autenticación, Roles y Clientes</div>
-          </div>
         </div>
       </div>
     </aside>

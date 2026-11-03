@@ -39,13 +39,12 @@ import {
   Edit3,
   Ruler,
   Lock,
-  ArrowRightLeft,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
 
 // =============================================================================
-// ESTADO DE SELECCIÓN EN CASCADA (FABRICANTE -> MODELO -> MOTOR + COMPONENTE)
+// ESTADO DE SELECCIÓN EN CASCADA (FABRICANTE -> MOTOR -> MODELO -> COMPONENTE)
 // =============================================================================
 const brandInput = ref<string>('')
 const modelInput = ref<string>('')
@@ -61,13 +60,6 @@ const selectedBrand = ref<Fabricante | null>(null)
 const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
-
-// Orden en cascada intercambiable: 'modelo_motor' (Fabricante -> Modelo -> Motor) o 'motor_modelo' (Fabricante -> Motor -> Modelo)
-const cascadeOrder = ref<'motor_modelo' | 'modelo_motor'>('motor_modelo')
-const toggleCascadeOrder = () => {
-  cascadeOrder.value = cascadeOrder.value === 'motor_modelo' ? 'modelo_motor' : 'motor_modelo'
-  showToast(cascadeOrder.value === 'motor_modelo' ? 'Orden: Fabricante → Motor → Modelo' : 'Orden: Fabricante → Modelo → Motor')
-}
 
 // =============================================================================
 // ACCESIBILIDAD Y CONTROL POR TECLADO EN SELECTORES DE COMBOBOX
@@ -633,9 +625,11 @@ const handleSelectModel = async (mod: Modelo) => {
   isModelOpen.value = false
   motorCurrentPage.value = 1
 
-  // Reiniciar motor subordinado
-  selectedMotor.value = null
-  motorInput.value = ''
+  // Reiniciar motor subordinado solo si no coincide con el modelo
+  if (selectedMotor.value && selectedMotor.value.modelo_id && selectedMotor.value.modelo_id !== mod.id) {
+    selectedMotor.value = null
+    motorInput.value = ''
+  }
 
   await catalogStore.selectModelo(mod.id)
 
@@ -1245,16 +1239,9 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h1 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-          <span>Catálogo de Taller</span>
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-bold">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            En línea
-          </span>
+        <h1 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+          Catálogo
         </h1>
-        <p class="text-xs text-slate-500 mt-0.5">
-          Consulta reactiva de motores, componentes y tolerancias dimensionales.
-        </p>
       </div>
 
       <!-- Action Buttons -->
@@ -1266,7 +1253,7 @@ onUnmounted(() => {
           title="Dar de alta repuesto en catálogo"
         >
           <Plus class="w-4 h-4" />
-          <span>+ Repuesto / Grupo</span>
+          <span>+ Repuesto</span>
         </button>
 
         <button
@@ -1314,61 +1301,36 @@ onUnmounted(() => {
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- ========================================================================= -->
     <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-xs space-y-2">
-      <!-- Barra superior unificada: Cascada + Invertir + Buscador Universal Integrado -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
-        <div class="flex items-center gap-2 flex-wrap">
-          <div class="flex items-center gap-1.5 text-xs text-slate-600">
-            <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-            <span class="font-bold text-slate-800">Cascada:</span>
-            <span class="text-slate-500 font-medium text-[11px]">
-              Fabricante → 
-              <span class="text-[#038391] font-bold">{{ cascadeOrder === 'motor_modelo' ? 'Motor → Modelo' : 'Modelo → Motor' }}</span>
-              → Componente
-            </span>
-          </div>
-
+      <!-- Buscador Universal Integrado -->
+      <div class="relative w-full pb-1">
+        <Search class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+        <input
+          v-model="searchInput"
+          @input="handleSearchInput"
+          type="text"
+          placeholder="Buscar por código OEM, cruce o descripción..."
+          class="w-full pl-9 pr-16 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
+        />
+        <div class="absolute right-2.5 top-2 flex items-center gap-1">
+          <Loader2 v-if="catalogStore.isSearching" class="w-4 h-4 text-[#04C4D9] animate-spin" />
           <button
+            v-if="searchInput"
             type="button"
-            @click="toggleCascadeOrder"
-            class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition active:scale-95"
-            :title="cascadeOrder === 'motor_modelo' ? 'Invertir orden: Seleccionar Modelo antes de Motor' : 'Invertir orden: Seleccionar Motor antes de Modelo'"
+            @click="handleClearSearch"
+            class="p-1 text-slate-400 hover:text-slate-600 rounded"
+            title="Limpiar búsqueda"
           >
-            <ArrowRightLeft class="w-3 h-3 text-[#04C4D9]" />
-            <span>{{ cascadeOrder === 'motor_modelo' ? 'Invertir (Modelo 2°)' : 'Invertir (Motor 2°)' }}</span>
+            <X class="w-3.5 h-3.5" />
           </button>
-        </div>
-
-        <!-- Buscador Universal Integrado (Ahorro de espacio vertical) -->
-        <div class="relative w-full sm:w-72 lg:w-80">
-          <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-          <input
-            v-model="searchInput"
-            @input="handleSearchInput"
-            type="text"
-            placeholder="Buscar por código OEM, cruce o descripción..."
-            class="w-full pl-8 pr-16 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
-          />
-          <div class="absolute right-2 top-1.5 flex items-center gap-1">
-            <Loader2 v-if="catalogStore.isSearching" class="w-3.5 h-3.5 text-[#04C4D9] animate-spin" />
-            <button
-              v-if="searchInput"
-              type="button"
-              @click="handleClearSearch"
-              class="p-0.5 text-slate-400 hover:text-slate-600 rounded"
-              title="Limpiar búsqueda"
-            >
-              <X class="w-3 h-3" />
-            </button>
-          </div>
         </div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
         
-        <!-- 1. CASCADA NIVEL 1: MARCA / FABRICANTE -->
+        <!-- 1. FABRICANTE -->
         <div class="relative combobox-brand">
           <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            1. Fabricante
+            Fabricante
           </label>
 
           <div class="relative flex items-center">
@@ -1429,381 +1391,192 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- ORDEN PRINCIPAL: MOTOR SEGUNDO (DEFECTO), MODELO TERCERO -->
-        <template v-if="cascadeOrder === 'motor_modelo'">
-          <!-- 2. CÓDIGO DE MOTOR -->
-          <div class="relative combobox-motor">
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                2. Motor
-              </label>
-              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
-                <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
-              </span>
+        <!-- 2. MOTOR -->
+        <div class="relative combobox-motor">
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Motor
+            </label>
+            <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
+              <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
+            </span>
+            <button
+              v-else
+              type="button"
+              @click="toggleMotorsWithPartsOnly"
+              class="text-[10px] font-bold px-1.5 py-0.5 rounded transition flex items-center gap-1 cursor-pointer"
+              :class="catalogStore.onlyMotorsWithParts 
+                ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40' 
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
+              :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
+            >
+              <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
+              <span>{{ catalogStore.onlyMotorsWithParts ? 'Con repuestos' : 'Todos' }}</span>
+            </button>
+          </div>
+
+          <div class="relative flex items-center">
+            <input
+              ref="motorInputRef"
+              v-model="motorInput"
+              :disabled="!selectedBrand"
+              @focus="onFocusMotor"
+              @click="onFocusMotor"
+              @input="onInputMotor; highlightedMotorIdx = 0"
+              @keydown="handleMotorKeydown"
+              type="text"
+              :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Código de motor...'"
+              :class="[
+                'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold rounded-lg focus:outline-none min-h-[40px] transition',
+                !selectedBrand 
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                  : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
+              ]"
+            />
+            <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
+              <Lock class="w-3.5 h-3.5" />
+            </div>
+            <template v-else>
               <button
-                v-else
+                v-if="motorInput"
                 type="button"
-                @click="toggleMotorsWithPartsOnly"
-                class="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md transition flex items-center gap-1 cursor-pointer"
-                :class="catalogStore.onlyMotorsWithParts 
-                  ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
-                :title="catalogStore.onlyMotorsWithParts 
-                  ? 'Mostrando solo motores con repuestos en catálogo. Clic para ver todos.' 
-                  : 'Mostrando todos los motores. Clic para filtrar solo los que tienen repuestos.'"
+                @click="handleClearSelectedMotor"
+                class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+                title="Limpiar motor"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-                <span>{{ catalogStore.onlyMotorsWithParts ? 'Solo con repuestos' : 'Todos los motores' }}</span>
+                <X class="w-3.5 h-3.5" />
               </button>
-            </div>
-
-            <div class="relative flex items-center">
-              <input
-                ref="motorInputRef"
-                v-model="motorInput"
-                :disabled="!selectedBrand"
-                @focus="onFocusMotor"
-                @click="onFocusMotor"
-                @input="onInputMotor; highlightedMotorIdx = 0"
-                @keydown="handleMotorKeydown"
-                type="text"
-                :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Código de motor...'"
-                :class="[
-                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold rounded-lg focus:outline-none min-h-[40px] transition',
-                  !selectedBrand 
-                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
-                ]"
+              <ChevronDown
+                @click="isMotorOpen = !isMotorOpen"
+                class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
               />
-              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-3.5 h-3.5" />
-              </div>
-              <template v-else>
-                <button
-                  v-if="motorInput"
-                  type="button"
-                  @click="handleClearSelectedMotor"
-                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-                  title="Limpiar motor"
-                >
-                  <X class="w-3.5 h-3.5" />
-                </button>
-                <ChevronDown
-                  @click="isMotorOpen = !isMotorOpen"
-                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-                />
-              </template>
-            </div>
-
-            <!-- Dropdown Motores -->
-            <div
-              v-if="isMotorOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
-            >
-              <div
-                v-for="(mot, mIdx) in filteredMotors"
-                :key="mot.id"
-                @click="handleSelectMotor(mot)"
-                @mouseenter="highlightedMotorIdx = mIdx"
-                :class="[
-                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition motor-item-' + mIdx,
-                  highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
-                ]"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                  <div>
-                    <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
-                    <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
-                    <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
-                  </div>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
-                    {{ mot.parts_count }} pzs
-                  </span>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                    {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
-                  </span>
-                  <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
-                </div>
-              </div>
-              <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
-                No hay motores coincidentes
-              </div>
-            </div>
+            </template>
           </div>
 
-          <!-- 3. MODELO DE VEHÍCULO (FILTRADO POR MOTOR O FABRICANTE) -->
-          <div class="relative combobox-model">
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                3. Modelo
-              </label>
-              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
-                <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
-              </span>
-            </div>
-
-            <div class="relative flex items-center">
-              <input
-                ref="modelInputRef"
-                v-model="modelInput"
-                :disabled="!selectedBrand"
-                @focus="onFocusModel"
-                @click="onFocusModel"
-                @input="onInputModel; highlightedModelIdx = 0"
-                @keydown="handleModelKeydown"
-                type="text"
-                :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedMotor ? `Modelos con ${selectedMotor.codigo}...` : 'Modelo compatible...')"
-                :class="[
-                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-lg focus:outline-none min-h-[40px] transition',
-                  !selectedBrand 
-                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
-                ]"
-              />
-              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-3.5 h-3.5" />
-              </div>
-              <template v-else>
-                <button
-                  v-if="modelInput"
-                  type="button"
-                  @click="handleClearSelectedModel"
-                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-                  title="Limpiar modelo"
-                >
-                  <X class="w-3.5 h-3.5" />
-                </button>
-                <ChevronDown
-                  @click="isModelOpen = !isModelOpen"
-                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-                />
-              </template>
-            </div>
-
-            <!-- Dropdown Modelos -->
+          <!-- Dropdown Motores -->
+          <div
+            v-if="isMotorOpen && selectedBrand"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+          >
             <div
-              v-if="isModelOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+              v-for="(mot, mIdx) in filteredMotors"
+              :key="mot.id"
+              @click="handleSelectMotor(mot)"
+              @mouseenter="highlightedMotorIdx = mIdx"
+              :class="[
+                'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition motor-item-' + mIdx,
+                highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
+              ]"
             >
-              <div
-                v-for="(mod, mdIdx) in filteredModels"
-                :key="mod.id"
-                @click="handleSelectModel(mod)"
-                @mouseenter="highlightedModelIdx = mdIdx"
-                :class="[
-                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition model-item-' + mdIdx,
-                  highlightedModelIdx === mdIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
-                ]"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedModel?.id === mod.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                  <strong class="font-bold">{{ mod.nombre }}</strong>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
-                    {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
-                  </span>
-                  <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                <div>
+                  <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
+                  <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
+                  <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
                 </div>
               </div>
-              <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
-                No hay modelos para esta selección
+              <div class="flex items-center gap-1.5">
+                <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
+                  {{ mot.parts_count }} pzs
+                </span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || (mot.cilindrada_cc + ' cc') }}
+                </span>
+                <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
+            </div>
+            <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
+              No hay motores coincidentes
             </div>
           </div>
-        </template>
+        </div>
 
-        <!-- ORDEN ALTERNO: MODELO SEGUNDO, MOTOR TERCERO -->
-        <template v-else>
-          <!-- 2. MODELO DE VEHÍCULO (BLOQUEADO HASTA ELEGIR FABRICANTE) -->
-          <div class="relative combobox-model">
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                2. Modelo
-              </label>
-              <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
-                <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
-              </span>
-            </div>
-
-            <div class="relative flex items-center">
-              <input
-                ref="modelInputRef"
-                v-model="modelInput"
-                :disabled="!selectedBrand"
-                @focus="onFocusModel"
-                @click="onFocusModel"
-                @input="onInputModel; highlightedModelIdx = 0"
-                @keydown="handleModelKeydown"
-                type="text"
-                :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Buscar modelo...'"
-                :class="[
-                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-lg focus:outline-none min-h-[40px] transition',
-                  !selectedBrand 
-                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
-                ]"
-              />
-              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-3.5 h-3.5" />
-              </div>
-              <template v-else>
-                <button
-                  v-if="modelInput"
-                  type="button"
-                  @click="handleClearSelectedModel"
-                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-                  title="Limpiar modelo"
-                >
-                  <X class="w-3.5 h-3.5" />
-                </button>
-                <ChevronDown
-                  @click="isModelOpen = !isModelOpen"
-                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-                />
-              </template>
-            </div>
-
-            <!-- Dropdown Modelos -->
-            <div
-              v-if="isModelOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
-            >
-              <div
-                v-for="(mod, mdIdx) in filteredModels"
-                :key="mod.id"
-                @click="handleSelectModel(mod)"
-                @mouseenter="highlightedModelIdx = mdIdx"
-                :class="[
-                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition model-item-' + mdIdx,
-                  highlightedModelIdx === mdIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
-                ]"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedModel?.id === mod.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                  <strong class="font-bold">{{ mod.nombre }}</strong>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
-                    {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
-                  </span>
-                  <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
-                </div>
-              </div>
-              <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
-                No hay modelos para esta selección
-              </div>
-            </div>
+        <!-- 3. MODELO -->
+        <div class="relative combobox-model">
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Modelo
+            </label>
+            <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
+              <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
+            </span>
           </div>
 
-          <!-- 3. CÓDIGO DE MOTOR -->
-          <div class="relative combobox-motor">
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                3. Motor
-              </label>
+          <div class="relative flex items-center">
+            <input
+              ref="modelInputRef"
+              v-model="modelInput"
+              :disabled="!selectedBrand"
+              @focus="onFocusModel"
+              @click="onFocusModel"
+              @input="onInputModel; highlightedModelIdx = 0"
+              @keydown="handleModelKeydown"
+              type="text"
+              :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Modelo compatible...')"
+              :class="[
+                'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-lg focus:outline-none min-h-[40px] transition',
+                !selectedBrand 
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
+                  : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
+              ]"
+            />
+            <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
+              <Lock class="w-3.5 h-3.5" />
+            </div>
+            <template v-else>
               <button
-                v-if="selectedBrand"
+                v-if="modelInput"
                 type="button"
-                @click="toggleMotorsWithPartsOnly"
-                class="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md transition flex items-center gap-1 cursor-pointer"
-                :class="catalogStore.onlyMotorsWithParts 
-                  ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
-                :title="catalogStore.onlyMotorsWithParts 
-                  ? 'Mostrando solo motores con repuestos en catálogo. Clic para ver todos.' 
-                  : 'Mostrando todos los motores. Clic para filtrar solo los que tienen repuestos.'"
+                @click="handleClearSelectedModel"
+                class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+                title="Limpiar modelo"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-                <span>{{ catalogStore.onlyMotorsWithParts ? 'Solo con repuestos' : 'Todos los motores' }}</span>
+                <X class="w-3.5 h-3.5" />
               </button>
-            </div>
-
-            <div class="relative flex items-center">
-              <input
-                ref="motorInputRef"
-                v-model="motorInput"
-                :disabled="!selectedBrand"
-                @focus="onFocusMotor"
-                @click="onFocusMotor"
-                @input="onInputMotor; highlightedMotorIdx = 0"
-                @keydown="handleMotorKeydown"
-                type="text"
-                :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedModel ? `Motor para ${selectedModel.nombre}...` : 'Código de motor...')"
-                :class="[
-                  'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold rounded-lg focus:outline-none min-h-[40px] transition',
-                  !selectedBrand 
-                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                    : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
-                ]"
+              <ChevronDown
+                @click="isModelOpen = !isModelOpen"
+                class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
               />
-              <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-                <Lock class="w-3.5 h-3.5" />
-              </div>
-              <template v-else>
-                <button
-                  v-if="motorInput"
-                  type="button"
-                  @click="handleClearSelectedMotor"
-                  class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-                  title="Limpiar motor"
-                >
-                  <X class="w-3.5 h-3.5" />
-                </button>
-                <ChevronDown
-                  @click="isMotorOpen = !isMotorOpen"
-                  class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-                />
-              </template>
-            </div>
+            </template>
+          </div>
 
-            <!-- Dropdown Motores -->
+          <!-- Dropdown Modelos -->
+          <div
+            v-if="isModelOpen && selectedBrand"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+          >
             <div
-              v-if="isMotorOpen && selectedBrand"
-              class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+              v-for="(mod, mdIdx) in filteredModels"
+              :key="mod.id"
+              @click="handleSelectModel(mod)"
+              @mouseenter="highlightedModelIdx = mdIdx"
+              :class="[
+                'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition model-item-' + mdIdx,
+                highlightedModelIdx === mdIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedModel?.id === mod.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
+              ]"
             >
-              <div
-                v-for="(mot, mIdx) in filteredMotors"
-                :key="mot.id"
-                @click="handleSelectMotor(mot)"
-                @mouseenter="highlightedMotorIdx = mIdx"
-                :class="[
-                  'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition motor-item-' + mIdx,
-                  highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
-                ]"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                  <div>
-                    <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
-                    <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
-                    <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
-                  </div>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
-                    {{ mot.parts_count }} pzs
-                  </span>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                    {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
-                  </span>
-                  <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
-                </div>
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full" :class="selectedModel?.id === mod.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                <strong class="font-bold">{{ mod.nombre }}</strong>
               </div>
-              <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
-                No hay motores coincidentes
+              <div class="flex items-center gap-1.5">
+                <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
+                  {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
+                </span>
+                <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
+            </div>
+            <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
+              No hay modelos para esta selección
             </div>
           </div>
-        </template>
+        </div>
 
-        <!-- 4. CAMPO: TIPO DE COMPONENTE -->
+        <!-- 4. COMPONENTE -->
         <div class="relative combobox-component">
           <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            4. Componente
+            Componente
           </label>
 
           <div class="relative flex items-center">
@@ -1856,10 +1629,7 @@ onUnmounted(() => {
                 <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <Layers v-else class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <div>
-                  <div class="font-bold text-slate-900">{{ grp.title }}</div>
-                  <div class="text-[10px] text-slate-400 font-normal truncate max-w-xs">{{ grp.sampleMeasurements }}</div>
-                </div>
+                <span class="font-bold text-slate-900 text-xs">{{ grp.title }}</span>
               </div>
               <Check v-if="selectedComponent?.id === grp.id" class="w-4 h-4 text-[#04C4D9] shrink-0 ml-2" />
             </div>
@@ -1981,7 +1751,7 @@ onUnmounted(() => {
           <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }})</span>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
           <button
             type="button"
             @click="toggleMotorsWithPartsOnly"
@@ -1989,14 +1759,11 @@ onUnmounted(() => {
             :class="catalogStore.onlyMotorsWithParts 
               ? 'bg-[#04C4D9]/15 text-[#038391] border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'"
-            :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos. Clic para ver todos.' : 'Mostrando todos los motores. Clic para omitir los que no tienen repuestos.'"
+            :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
           >
             <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-            <span>{{ catalogStore.onlyMotorsWithParts ? 'Omitiendo motores sin repuestos' : 'Mostrando todos los motores' }}</span>
+            <span>{{ catalogStore.onlyMotorsWithParts ? 'Solo con repuestos' : 'Todos los motores' }}</span>
           </button>
-          <div class="text-[11px] text-slate-400 font-medium hidden sm:block">
-            Haga clic en una fila para consultar repuestos y cotas
-          </div>
         </div>
       </div>
 
@@ -2185,42 +1952,25 @@ onUnmounted(() => {
 
       </div>
 
-      <!-- Tarjetas de acceso directo a tipos de componente -->
-      <div class="pt-1">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-            O elija un componente directamente:
-          </span>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
-          <div
-            v-for="grp in componentGroups"
-            :key="grp.id"
-            @click="handleSelectComponent(grp)"
-            class="bg-white p-3 rounded-xl border border-slate-200 hover:border-[#04C4D9] hover:shadow-2xs cursor-pointer transition flex flex-col justify-between group"
-          >
-            <div>
-              <div class="flex items-center gap-1.5 text-slate-900 group-hover:text-[#038391] font-bold text-xs">
-                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <Layers v-else class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
-                <span class="truncate">{{ grp.title }}</span>
-              </div>
-              <p class="text-[10px] text-slate-400 mt-1 line-clamp-2 leading-tight">
-                {{ grp.sampleMeasurements }}
-              </p>
-            </div>
-            <div class="mt-2 pt-1 border-t border-slate-50 text-[10px] font-bold text-[#04C4D9] flex items-center justify-between">
-              <span>Ver piezas</span>
-              <span>→</span>
-            </div>
-          </div>
-        </div>
+      <!-- Acceso directo a componentes -->
+      <div class="flex items-center gap-1.5 flex-wrap pt-1">
+        <span class="text-[11px] font-bold text-slate-500 mr-1">Componentes:</span>
+        <button
+          v-for="grp in componentGroups"
+          :key="grp.id"
+          type="button"
+          @click="handleSelectComponent(grp)"
+          class="px-2.5 py-1 rounded-lg text-xs font-semibold border border-slate-200 bg-white hover:border-[#04C4D9] hover:text-[#038391] transition flex items-center gap-1.5 shadow-2xs"
+        >
+          <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <Layers v-else class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+          <span>{{ grp.title }}</span>
+        </button>
       </div>
 
     </div>
@@ -2294,7 +2044,7 @@ onUnmounted(() => {
 
           <div class="flex items-center gap-1 flex-wrap">
             <button
-              v-for="tolOption in [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]"
+              v-for="tolOption in [0.2, 0.5, 1.0]"
               :key="tolOption"
               type="button"
               @click="filterToleranciaMm = tolOption"

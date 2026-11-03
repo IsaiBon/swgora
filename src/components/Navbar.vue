@@ -21,17 +21,19 @@ const route = useRoute()
 const currentRouteTitle = computed(() => {
   switch (route.path) {
     case '/dashboard':
-      return 'Dashboard Operativo'
+      return 'Dashboard'
     case '/ordenes':
-      return 'Órdenes de Trabajo y Cotizaciones'
+      return 'Órdenes'
     case '/clientes':
-      return 'Directorio de Clientes'
+      return 'Clientes'
     case '/catalogo':
-      return 'Catálogo Técnico de Repuestos'
+      return 'Catálogo'
+    case '/usuarios':
+      return 'Usuarios'
     case '/login':
-      return 'Acceso al Sistema'
+      return 'Acceso'
     default:
-      return 'Gestión de Taller'
+      return 'Taller'
   }
 })
 
@@ -63,24 +65,22 @@ const handleLogout = () => {
         </div>
       </div>
 
-      <!-- Breadcrumb dinámico en Desktop (evita duplicar el logo con el Sidebar) -->
-      <div class="hidden lg:flex items-center gap-2.5">
-        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">SWGORA</span>
-        <span class="text-slate-300 font-light">/</span>
+      <!-- Título de sección en Desktop -->
+      <div class="hidden lg:flex items-center">
         <h1 class="text-sm font-extrabold text-slate-900 tracking-tight">{{ currentRouteTitle }}</h1>
       </div>
     </div>
 
     <!-- Center: Search input (desktop) -->
-    <div class="hidden md:flex items-center flex-1 max-w-md mx-4 lg:mx-6">
+    <div class="hidden md:flex items-center flex-1 max-w-sm mx-4 lg:mx-6">
       <div class="relative w-full">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-          <Search class="w-4 h-4" />
+          <Search class="w-3.5 h-3.5" />
         </div>
         <input
           type="text"
-          placeholder="Buscar clientes, órdenes de taller, refacciones..."
-          class="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-full text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#05C7F2] focus:border-transparent transition shadow-2xs"
+          placeholder="Buscar..."
+          class="w-full pl-8 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#05C7F2] focus:border-transparent transition"
         />
       </div>
     </div>
