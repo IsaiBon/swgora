@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useUiStore } from '@/stores/ui'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 import JrLogo from '@/components/JrLogo.vue'
-import RoleBadge from '@/components/RoleBadge.vue'
 import { 
   Menu, 
-  Bell, 
-  Search, 
   LogOut, 
   User as UserIcon,
+  ChevronRight,
+  ShieldCheck,
+  Wrench,
+  Eye,
 } from 'lucide-vue-next'
 
 const uiStore = useUiStore()
@@ -41,90 +42,101 @@ const handleLogout = () => {
   authStore.logout()
   router.push('/login')
 }
+
+const cycleRole = () => {
+  const current = normalizeRole(authStore.user?.role)
+  let nextRole: 'Administrador' | 'Operador' | 'Consultor' = 'Administrador'
+  if (current === 'Administrador') nextRole = 'Operador'
+  else if (current === 'Operador') nextRole = 'Consultor'
+  else nextRole = 'Administrador'
+
+  authStore.setRole(nextRole)
+
+  if (!authStore.canAccess(route.path)) {
+    router.push(authStore.defaultRoute)
+  }
+}
+
+const roleIcon = computed(() => {
+  const r = normalizeRole(authStore.user?.role)
+  if (r === 'Administrador') return ShieldCheck
+  if (r === 'Operador') return Wrench
+  return Eye
+})
+
+const roleBadgeClass = computed(() => {
+  const r = normalizeRole(authStore.user?.role)
+  if (r === 'Administrador') return 'bg-[#05C7F2]/15 text-[#038896] border-[#05C7F2]/40 hover:bg-[#05C7F2]/25'
+  if (r === 'Operador') return 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+  return 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100'
+})
 </script>
 
 <template>
-  <header class="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 w-full flex items-center justify-between px-3 sm:px-6 shadow-xs">
-    <!-- Left: Hamburger (Mobile) + Brand / Breadcrumb -->
-    <div class="flex items-center gap-2.5 sm:gap-4">
+  <header class="h-12 bg-white/95 backdrop-blur-md border-b border-slate-200/90 sticky top-0 z-30 w-full flex items-center justify-between px-3 sm:px-6 shadow-2xs">
+    <!-- Left: Hamburger (Mobile) + Breadcrumb -->
+    <div class="flex items-center gap-2.5">
       <button
         type="button"
         @click="uiStore.toggleMobileSidebar"
-        class="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 lg:hidden focus:outline-none focus:ring-2 focus:ring-[#05C7F2]"
-        aria-label="Abrir menú de navegación"
+        class="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 lg:hidden focus:outline-none"
+        aria-label="Abrir menú"
       >
-        <Menu class="w-5 h-5 sm:w-6 sm:h-6" />
+        <Menu class="w-5 h-5" />
       </button>
 
-      <!-- Logo e Identidad visible en Mobile (en Desktop ya está en el Sidebar) -->
-      <div class="flex items-center gap-2 lg:hidden">
-        <JrLogo :size="30" />
-        <div class="flex flex-col leading-none">
-          <span class="text-xs font-black tracking-tight text-slate-900">JR BLANCO</span>
-          <span class="text-[9px] text-[#038896] font-bold">SWGORA</span>
-        </div>
+      <!-- Mobile Brand Logo -->
+      <div class="flex items-center gap-1.5 lg:hidden">
+        <JrLogo :size="24" />
+        <span class="text-xs font-black tracking-tight text-slate-900">JR BLANCO</span>
       </div>
 
-      <!-- Título de sección en Desktop -->
-      <div class="hidden lg:flex items-center">
-        <h1 class="text-sm font-extrabold text-slate-900 tracking-tight">{{ currentRouteTitle }}</h1>
+      <!-- Desktop Breadcrumb -->
+      <div class="hidden lg:flex items-center gap-1.5 text-xs text-slate-500">
+        <span class="font-bold text-slate-400">JR Blanco</span>
+        <ChevronRight class="w-3.5 h-3.5 text-slate-300" />
+        <h1 class="text-xs font-black text-slate-900 tracking-tight">{{ currentRouteTitle }}</h1>
       </div>
     </div>
 
-    <!-- Center: Search input (desktop) -->
-    <div class="hidden md:flex items-center flex-1 max-w-sm mx-4 lg:mx-6">
-      <div class="relative w-full">
-        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-          <Search class="w-3.5 h-3.5" />
-        </div>
-        <input
-          type="text"
-          placeholder="Buscar..."
-          class="w-full pl-8 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#05C7F2] focus:border-transparent transition"
-        />
-      </div>
-    </div>
-
-    <!-- Right: Notifications & User Profile -->
-    <div class="flex items-center gap-1.5 sm:gap-3">
-      <!-- Notification Icon -->
-      <button 
-        type="button"
-        class="relative p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full transition"
-        title="Notificaciones"
-      >
-        <Bell class="w-4 h-4 sm:w-5 sm:h-5" />
-        <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-[#05C7F2] rounded-full ring-2 ring-white"></span>
-      </button>
-
-      <div class="h-5 w-px bg-slate-200"></div>
-
-      <!-- User Profile / Auth Actions -->
+    <!-- Right: User Profile & Actions -->
+    <div class="flex items-center gap-2 sm:gap-3">
       <div v-if="authStore.isAuthenticated" class="flex items-center gap-2">
-        <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center shadow-xs">
+        <!-- Rol Interactivo con Clic para Alternar (Admin → Operador → Consultor) -->
+        <button
+          type="button"
+          @click="cycleRole"
+          class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition cursor-pointer select-none"
+          :class="roleBadgeClass"
+          title="Alternar rol en vivo para probar permisos (Admin → Operador → Consultor)"
+        >
+          <component :is="roleIcon" class="w-3 h-3 shrink-0" />
+          <span>{{ authStore.user?.role || 'Consultor' }}</span>
+        </button>
+
+        <div class="h-4 w-px bg-slate-200 hidden sm:block"></div>
+
+        <!-- Usuario -->
+        <div class="flex items-center gap-1.5">
+          <div class="w-7 h-7 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
             <img 
               v-if="authStore.user?.avatar" 
               :src="authStore.user.avatar" 
               :alt="authStore.user.name"
               class="w-full h-full object-cover" 
             />
-            <UserIcon v-else class="w-4 h-4 text-slate-500" />
+            <UserIcon v-else class="w-3.5 h-3.5 text-slate-500" />
           </div>
-          <div class="hidden md:block text-left leading-tight">
-            <div class="text-xs font-bold text-slate-800">
-              {{ authStore.user?.name }}
-            </div>
-            <div class="mt-0.5">
-              <RoleBadge :role="authStore.user?.role || 'Administrador'" size="sm" :showIcon="false" />
-            </div>
-          </div>
+          <span class="hidden sm:inline text-xs font-bold text-slate-800 truncate max-w-[130px]">
+            {{ authStore.user?.name }}
+          </span>
         </div>
 
+        <!-- Botón Logout -->
         <button
           type="button"
           @click="handleLogout"
-          class="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition"
+          class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
           title="Cerrar sesión"
         >
           <LogOut class="w-4 h-4" />
@@ -134,7 +146,7 @@ const handleLogout = () => {
       <router-link
         v-else
         to="/login"
-        class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#0D0D0D] hover:bg-black rounded-full shadow-xs transition"
+        class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-lg shadow-2xs transition"
       >
         <UserIcon class="w-3.5 h-3.5" />
         <span>Acceso</span>
@@ -142,4 +154,3 @@ const handleLogout = () => {
     </div>
   </header>
 </template>
-
