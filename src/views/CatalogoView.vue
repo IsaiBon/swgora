@@ -9,6 +9,7 @@ import {
   type GrupoRepuesto
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
+import ToleranceBadge from '@/components/ToleranceBadge.vue'
 import { 
   Search, 
   X, 
@@ -362,8 +363,24 @@ const componentGroups = computed<ComponentGroup[]>(() => {
 // FILTROS DE MEDIDAS TÉCNICAS Y TOLERANCIA UNIVERSAL (± mm)
 // =============================================================================
 
-// Filtro de Tolerancia Universal (± mm) aplicable a todas las cotas
+// Filtro de Tolerancia Universal (± mm) aplicable a todas las cotas por defecto
 const filterToleranciaMm = ref<number>(1.0)
+
+// Diccionario reactivo de tolerancias específicas por cota individual (ej. 'selloDiamInt': 0.1)
+const filterTolerancias = ref<Record<string, number | undefined>>({})
+
+// Helper para obtener la tolerancia efectiva de un filtro específico (custom o fallback general)
+function getTol(key: string): number {
+  const custom = filterTolerancias.value[key]
+  if (custom !== undefined && custom !== null && !isNaN(Number(custom)) && Number(custom) >= 0) {
+    return Number(custom)
+  }
+  return filterToleranciaMm.value !== undefined && filterToleranciaMm.value !== null ? Number(filterToleranciaMm.value) : 1.0
+}
+
+const customTolerancesCount = computed(() => {
+  return Object.values(filterTolerancias.value).filter(v => v !== undefined && v !== null && !isNaN(Number(v))).length
+})
 
 // Filtros para parámetros dinámicos de nuevos grupos
 const dynamicParamFilters = ref<Record<string, any>>({})
@@ -446,6 +463,7 @@ const resetMeasurementsFilters = () => {
   filterPernoLongitud2.value = undefined
 
   dynamicParamFilters.value = {}
+  filterTolerancias.value = {}
 
   showToast('Filtros de medidas restablecidos')
 }
@@ -932,41 +950,49 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       })
     }
 
-    // 2. Filtros de medidas dimensionales específicas (con Tolerancia Universal Configurable)
-    const tol = filterToleranciaMm.value !== undefined && filterToleranciaMm.value !== null ? Number(filterToleranciaMm.value) : 1.0
+    // 2. Filtros de medidas dimensionales específicas (con Tolerancia por filtro o universal)
     if (compId === 'ajuste_valvula') {
       if (filterSelloDiamInt.value !== undefined && filterSelloDiamInt.value !== null) {
-        list = list.filter(r => r.diametro_interior_mm && Math.abs(r.diametro_interior_mm - (filterSelloDiamInt.value || 0)) <= tol)
+        const tolSelloDiamInt = getTol('selloDiamInt')
+        list = list.filter(r => r.diametro_interior_mm && Math.abs(r.diametro_interior_mm - (filterSelloDiamInt.value || 0)) <= tolSelloDiamInt)
       }
       if (filterSelloDiamExt.value !== undefined && filterSelloDiamExt.value !== null) {
-        list = list.filter(r => r.diametro_exterior_mm && Math.abs(r.diametro_exterior_mm - (filterSelloDiamExt.value || 0)) <= tol)
+        const tolSelloDiamExt = getTol('selloDiamExt')
+        list = list.filter(r => r.diametro_exterior_mm && Math.abs(r.diametro_exterior_mm - (filterSelloDiamExt.value || 0)) <= tolSelloDiamExt)
       }
       if (filterSelloAltura.value !== undefined && filterSelloAltura.value !== null) {
-        list = list.filter(r => r.altura_mm && Math.abs(r.altura_mm - (filterSelloAltura.value || 0)) <= tol)
+        const tolSelloAltura = getTol('selloAltura')
+        list = list.filter(r => r.altura_mm && Math.abs(r.altura_mm - (filterSelloAltura.value || 0)) <= tolSelloAltura)
       }
     } else if (compId === 'valvula') {
       if (filterValvulaHongo.value !== undefined && filterValvulaHongo.value !== null) {
-        list = list.filter(r => r.diametro_cabeza_mm && Math.abs(r.diametro_cabeza_mm - (filterValvulaHongo.value || 0)) <= tol)
+        const tolValvulaHongo = getTol('valvulaHongo')
+        list = list.filter(r => r.diametro_cabeza_mm && Math.abs(r.diametro_cabeza_mm - (filterValvulaHongo.value || 0)) <= tolValvulaHongo)
       }
       if (filterValvulaVastago.value !== undefined && filterValvulaVastago.value !== null) {
-        list = list.filter(r => r.diametro_vastago_mm && Math.abs(r.diametro_vastago_mm - (filterValvulaVastago.value || 0)) <= tol)
+        const tolValvulaVastago = getTol('valvulaVastago')
+        list = list.filter(r => r.diametro_vastago_mm && Math.abs(r.diametro_vastago_mm - (filterValvulaVastago.value || 0)) <= tolValvulaVastago)
       }
       if (filterValvulaAltura.value !== undefined && filterValvulaAltura.value !== null) {
-        list = list.filter(r => r.longitud_total_mm && Math.abs(r.longitud_total_mm - (filterValvulaAltura.value || 0)) <= tol)
+        const tolValvulaAltura = getTol('valvulaAltura')
+        list = list.filter(r => r.longitud_total_mm && Math.abs(r.longitud_total_mm - (filterValvulaAltura.value || 0)) <= tolValvulaAltura)
       }
     } else if (compId === 'anillos_motor') {
       if (filterAnilloDiametro.value !== undefined && filterAnilloDiametro.value !== null) {
-        list = list.filter(r => r.diametro_cilindro_mm && Math.abs(r.diametro_cilindro_mm - (filterAnilloDiametro.value || 0)) <= tol)
+        const tolAnilloDiametro = getTol('anilloDiametro')
+        list = list.filter(r => r.diametro_cilindro_mm && Math.abs(r.diametro_cilindro_mm - (filterAnilloDiametro.value || 0)) <= tolAnilloDiametro)
       }
       if (filterAnilloGrosor1.value !== undefined && filterAnilloGrosor1.value !== null) {
-        list = list.filter(r => r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - (filterAnilloGrosor1.value || 0)) <= tol)
+        const tolAnilloGrosor1 = getTol('anilloGrosor1')
+        list = list.filter(r => r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - (filterAnilloGrosor1.value || 0)) <= tolAnilloGrosor1)
       }
       if (filterAnilloAlturaGrosor.value !== undefined && filterAnilloAlturaGrosor.value !== null) {
+        const tolAnilloAlturaGrosor = getTol('anilloAlturaGrosor')
         const val = filterAnilloAlturaGrosor.value || 0
         list = list.filter(r => 
-          (r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - val) <= tol) ||
-          (r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - val) <= tol) ||
-          (r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - val) <= tol)
+          (r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - val) <= tolAnilloAlturaGrosor) ||
+          (r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - val) <= tolAnilloAlturaGrosor) ||
+          (r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - val) <= tolAnilloAlturaGrosor)
         )
       }
     } else if (compId === 'tornillos_culata') {
@@ -974,22 +1000,27 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         list = list.filter(r => r.medida_rosca?.toLowerCase() === filterPernoMedidaRosca.value.toLowerCase())
       }
       if (filterPernoPasoRosca.value !== undefined && filterPernoPasoRosca.value !== null) {
-        list = list.filter(r => r.paso_rosca_mm && Math.abs(r.paso_rosca_mm - (filterPernoPasoRosca.value || 0)) <= tol)
+        const tolPernoPasoRosca = getTol('pernoPasoRosca')
+        list = list.filter(r => r.paso_rosca_mm && Math.abs(r.paso_rosca_mm - (filterPernoPasoRosca.value || 0)) <= tolPernoPasoRosca)
       }
       if (filterPernoLongitud.value !== undefined && filterPernoLongitud.value !== null) {
-        list = list.filter(r => (r.longitud_perno_mm || r.longitud_total_mm) && Math.abs(((r.longitud_perno_mm || r.longitud_total_mm) || 0) - (filterPernoLongitud.value || 0)) <= tol)
+        const tolPernoLongitud = getTol('pernoLongitud')
+        list = list.filter(r => (r.longitud_perno_mm || r.longitud_total_mm) && Math.abs(((r.longitud_perno_mm || r.longitud_total_mm) || 0) - (filterPernoLongitud.value || 0)) <= tolPernoLongitud)
       }
       if (filterPernoCantidad.value !== undefined && filterPernoCantidad.value !== null) {
         list = list.filter(r => r.cantidad_piezas === filterPernoCantidad.value)
       }
       if (filterPernoPasoRosca1.value !== undefined && filterPernoPasoRosca1.value !== null) {
-        list = list.filter(r => r.paso_rosca1_mm && Math.abs(r.paso_rosca1_mm - (filterPernoPasoRosca1.value || 0)) <= tol)
+        const tolPernoPasoRosca1 = getTol('pernoPasoRosca1')
+        list = list.filter(r => r.paso_rosca1_mm && Math.abs(r.paso_rosca1_mm - (filterPernoPasoRosca1.value || 0)) <= tolPernoPasoRosca1)
       }
       if (filterPernoLongitud1.value !== undefined && filterPernoLongitud1.value !== null) {
-        list = list.filter(r => r.longitud1_mm && Math.abs(r.longitud1_mm - (filterPernoLongitud1.value || 0)) <= tol)
+        const tolPernoLongitud1 = getTol('pernoLongitud1')
+        list = list.filter(r => r.longitud1_mm && Math.abs(r.longitud1_mm - (filterPernoLongitud1.value || 0)) <= tolPernoLongitud1)
       }
       if (filterPernoLongitud2.value !== undefined && filterPernoLongitud2.value !== null) {
-        list = list.filter(r => r.longitud2_mm && Math.abs(r.longitud2_mm - (filterPernoLongitud2.value || 0)) <= tol)
+        const tolPernoLongitud2 = getTol('pernoLongitud2')
+        list = list.filter(r => r.longitud2_mm && Math.abs(r.longitud2_mm - (filterPernoLongitud2.value || 0)) <= tolPernoLongitud2)
       }
     }
 
@@ -997,15 +1028,16 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     if (Object.keys(dynamicParamFilters.value).length > 0) {
       for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
         if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
+          const tolParam = getTol(key)
           list = list.filter(r => {
             const partVal = r.dimensiones?.[key] ?? (r as any)[key]
             if (partVal === undefined || partVal === null) return false
 
-            // Comparación numérica con tolerancia
+            // Comparación numérica con tolerancia individual de este parámetro
             if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(partVal)))) {
               const numPart = Number(partVal)
               const numFilter = Number(filterVal)
-              return Math.abs(numPart - numFilter) <= tol
+              return Math.abs(numPart - numFilter) <= tolParam
             }
 
             // Comparación de texto / selección inteligente
@@ -2151,9 +2183,25 @@ onUnmounted(() => {
 
         <!-- CONTROL DE TOLERANCIA UNIVERSAL (± mm) -->
         <div class="p-2 bg-slate-50 rounded-lg border border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5">
-            <Ruler class="w-3.5 h-3.5 text-[#04C4D9]" />
-            <span class="text-xs font-bold text-slate-700">Tolerancia:</span>
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5">
+              <Ruler class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <span class="text-xs font-bold text-slate-700">Tolerancia General:</span>
+            </div>
+            <span 
+              v-if="customTolerancesCount > 0" 
+              class="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 bg-cyan-100 text-[#004b97] rounded-full font-bold border border-cyan-200"
+            >
+              <span>{{ customTolerancesCount }} personalizada{{ customTolerancesCount > 1 ? 's' : '' }}</span>
+              <button 
+                type="button" 
+                @click="filterTolerancias = {}" 
+                title="Restablecer todas las tolerancias a la general"
+                class="hover:text-red-600 font-black ml-0.5 text-xs transition"
+              >
+                ✕
+              </button>
+            </span>
           </div>
 
           <div class="flex items-center gap-1 flex-wrap">
@@ -2191,9 +2239,12 @@ onUnmounted(() => {
         <!-- 1. FILTROS PARA: AJUSTE DE VÁLVULA -->
         <div v-if="selectedComponent.id === 'ajuste_valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Diám. interior (mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Diám. interior (mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['selloDiamInt']" :fallback="filterToleranciaMm" />
+            </div>
             <input
               v-model.number="filterSelloDiamInt"
               type="number"
@@ -2204,9 +2255,12 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Diám. exterior (mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Diám. exterior (mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['selloDiamExt']" :fallback="filterToleranciaMm" />
+            </div>
             <input
               v-model.number="filterSelloDiamExt"
               type="number"
@@ -2217,9 +2271,12 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Altura (mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Altura (mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['selloAltura']" :fallback="filterToleranciaMm" />
+            </div>
             <input
               v-model.number="filterSelloAltura"
               type="number"
@@ -2233,9 +2290,12 @@ onUnmounted(() => {
         <!-- 2. FILTROS PARA: VÁLVULA -->
         <div v-else-if="selectedComponent.id === 'valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Hongo (Ø cabeza mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Hongo (Ø cabeza mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['valvulaHongo']" :fallback="filterToleranciaMm" />
+            </div>
             <input
               v-model.number="filterValvulaHongo"
               type="number"
@@ -2246,9 +2306,12 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Vástago (Ø vástago mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Vástago (Ø vástago mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['valvulaVastago']" :fallback="filterToleranciaMm" :step="0.01" />
+            </div>
             <input
               v-model.number="filterValvulaVastago"
               type="number"
@@ -2259,9 +2322,12 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Altura (Longitud mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Altura (Longitud mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['valvulaAltura']" :fallback="filterToleranciaMm" />
+            </div>
             <input
               v-model.number="filterValvulaAltura"
               type="number"
@@ -2275,9 +2341,12 @@ onUnmounted(() => {
         <!-- 3. FILTROS PARA: ANILLOS DE MOTOR -->
         <div v-else-if="selectedComponent.id === 'anillos_motor'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Diámetro (Ø Cilindro mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Diámetro (Ø Cilindro mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+            </div>
             <input
               v-model.number="filterAnilloDiametro"
               type="number"
@@ -2288,9 +2357,12 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Grosor 1° Anillo (mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Grosor 1° Anillo (mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
+            </div>
             <input
               v-model.number="filterAnilloGrosor1"
               type="number"
@@ -2301,9 +2373,12 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-              Altura grosor (mm)
-            </label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
+                Altura grosor (mm)
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['anilloAlturaGrosor']" :fallback="filterToleranciaMm" :step="0.02" />
+            </div>
             <input
               v-model.number="filterAnilloAlturaGrosor"
               type="number"
@@ -2331,7 +2406,10 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Paso (mm)</label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Paso (mm)</label>
+              <ToleranceBadge v-model="filterTolerancias['pernoPasoRosca']" :fallback="filterToleranciaMm" :step="0.05" />
+            </div>
             <input
               v-model.number="filterPernoPasoRosca"
               type="number"
@@ -2342,7 +2420,10 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Long. (mm)</label>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Long. (mm)</label>
+              <ToleranceBadge v-model="filterTolerancias['pernoLongitud']" :fallback="filterToleranciaMm" :step="1.0" />
+            </div>
             <input
               v-model.number="filterPernoLongitud"
               type="number"
@@ -2373,10 +2454,10 @@ onUnmounted(() => {
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight">
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
                   Ø Int (A) Bore
                 </label>
-                <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
+                <ToleranceBadge v-model="filterTolerancias['diametro_interior_mm']" :fallback="filterToleranciaMm" />
               </div>
               <input
                 v-model.number="dynamicParamFilters['diametro_interior_mm']"
@@ -2389,10 +2470,10 @@ onUnmounted(() => {
 
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight">
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
                   Ø Ext (B) Encastre
                 </label>
-                <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
+                <ToleranceBadge v-model="filterTolerancias['diametro_exterior_mm']" :fallback="filterToleranciaMm" />
               </div>
               <input
                 v-model.number="dynamicParamFilters['diametro_exterior_mm']"
@@ -2405,10 +2486,10 @@ onUnmounted(() => {
 
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight">
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
                   Largo (C) Altura
                 </label>
-                <span class="text-[9px] text-[#038391] font-mono font-bold">±{{ filterToleranciaMm }}mm</span>
+                <ToleranceBadge v-model="filterTolerancias['longitud_total_mm']" :fallback="filterToleranciaMm" />
               </div>
               <input
                 v-model.number="dynamicParamFilters['longitud_total_mm']"
@@ -2477,13 +2558,15 @@ onUnmounted(() => {
             v-for="param in currentGroupDefinition.parametros" 
             :key="param.clave"
           >
-            <!-- Caso A: Número Decimal con Tolerancia Universal -->
+            <!-- Caso A: Número Decimal con Tolerancia Específica / Universal -->
             <template v-if="param.tipo_dato === 'numero'">
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
-                {{ param.etiqueta }} 
-                <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
-                <span class="text-[9px] text-[#038391] font-mono ml-0.5">±{{ filterToleranciaMm }}</span>
-              </label>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold text-slate-600 truncate">
+                  {{ param.etiqueta }} 
+                  <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+                </label>
+                <ToleranceBadge v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+              </div>
               <input
                 v-model.number="dynamicParamFilters[param.clave]"
                 type="number"
@@ -2702,13 +2785,13 @@ onUnmounted(() => {
                   
                   <!-- Caso A: Ajuste de válvula -->
                   <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_interior_mm || 4.8, filterSelloDiamInt, filterToleranciaMm)">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_interior_mm || 4.8, filterSelloDiamInt, getTol('selloDiamInt'))">
                       Int: <strong>{{ part.diametro_interior_mm || 4.8 }} mm</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_exterior_mm || 10.8, filterSelloDiamExt, filterToleranciaMm)">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_exterior_mm || 10.8, filterSelloDiamExt, getTol('selloDiamExt'))">
                       Ext: <strong>{{ part.diametro_exterior_mm || 10.8 }} mm</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.altura_mm || 10, filterSelloAltura, filterToleranciaMm)">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.altura_mm || 10, filterSelloAltura, getTol('selloAltura'))">
                       Alt: <strong>{{ part.altura_mm || 10 }} mm</strong>
                     </span>
                   </div>
@@ -2722,13 +2805,13 @@ onUnmounted(() => {
                     >
                       {{ part.dimensiones?.tipo_valvula || (part.dimensiones?.posicion === 'IN' ? 'Admisión' : (part.dimensiones?.posicion === 'EX' ? 'Escape' : part.dimensiones?.posicion)) }}
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cabeza_mm, filterValvulaHongo, filterToleranciaMm)">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cabeza_mm, filterValvulaHongo, getTol('valvulaHongo'))">
                       Hongo: <strong>{{ part.diametro_cabeza_mm ? `${part.diametro_cabeza_mm} mm` : '—' }}</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_vastago_mm, filterValvulaVastago, filterToleranciaMm)">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_vastago_mm, filterValvulaVastago, getTol('valvulaVastago'))">
                       Vástago: <strong>{{ part.diametro_vastago_mm ? `${part.diametro_vastago_mm} mm` : '—' }}</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.longitud_total_mm, filterValvulaAltura, filterToleranciaMm)">
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.longitud_total_mm, filterValvulaAltura, getTol('valvulaAltura'))">
                       Largo: <strong>{{ part.longitud_total_mm ? `${part.longitud_total_mm} mm` : '—' }}</strong>
                     </span>
                     <span v-if="part.angulo_asiento_grados" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] border border-slate-200">
@@ -2740,16 +2823,16 @@ onUnmounted(() => {
                   <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="space-y-1 text-xs font-mono text-slate-800">
                     <div class="flex items-center gap-1.5 text-[11px]">
                       <span class="text-slate-500 font-sans">Ø Cilindro:</span>
-                      <span class="px-1.5 py-0.5 rounded border font-bold text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cilindro_mm || 96.0, filterAnilloDiametro, filterToleranciaMm)">
+                      <span class="px-1.5 py-0.5 rounded border font-bold text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cilindro_mm || 96.0, filterAnilloDiametro, getTol('anilloDiametro'))">
                         {{ part.diametro_cilindro_mm || 96.0 }} mm
                       </span>
                     </div>
 
                     <div class="flex flex-wrap items-center gap-1 text-[10px]">
-                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo1_mm || 2.0, filterAnilloGrosor1, filterToleranciaMm)">
+                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo1_mm || 2.0, filterAnilloGrosor1, getTol('anilloGrosor1'))">
                         1°: {{ part.espesor_anillo1_mm || 2.0 }}mm
                       </span>
-                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo2_mm || 2.0, filterAnilloAlturaGrosor, filterToleranciaMm)">
+                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo2_mm || 2.0, filterAnilloAlturaGrosor, getTol('anilloAlturaGrosor'))">
                         2°: {{ part.espesor_anillo2_mm || 2.0 }}mm
                       </span>
                       <span class="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
