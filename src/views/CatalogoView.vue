@@ -9,6 +9,7 @@ import {
   type GrupoRepuesto
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
+import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
 import ToleranceBadge from '@/components/ToleranceBadge.vue'
 import { 
   Search, 
@@ -39,6 +40,7 @@ import {
   Edit3,
   Ruler,
   Lock,
+  Maximize2,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -1117,6 +1119,20 @@ const getBrandBadgeClass = (brand: string): string => {
 // Modal de Ficha Técnica
 const isTechnicalModalOpen = ref<boolean>(false)
 const modalPart = ref<RepuestoTecnico | null>(null)
+
+const isLightboxOpen = ref<boolean>(false)
+const lightboxPart = ref<RepuestoTecnico | null>(null)
+
+const openLightbox = (part: RepuestoTecnico) => {
+  if (!part || !part.imagen_url) return
+  lightboxPart.value = part
+  isLightboxOpen.value = true
+}
+
+const closeLightbox = () => {
+  isLightboxOpen.value = false
+  lightboxPart.value = null
+}
 
 const openTechnicalSheet = (part: RepuestoTecnico) => {
   modalPart.value = part
@@ -2553,19 +2569,43 @@ onUnmounted(() => {
                 :key="part.id"
                 class="hover:bg-slate-50 transition group"
               >
-                <!-- 1. Componente -->
+                <!-- 1. Componente con Miniatura Técnica y Lightbox -->
                 <td class="py-2.5 px-3 align-middle">
-                  <div class="flex items-center gap-2">
-                    <span class="p-1 bg-slate-100 text-slate-700 rounded group-hover:bg-[#04C4D9] group-hover:text-white transition">
-                      <CircleDot v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="w-3.5 h-3.5" />
-                      <Wrench v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="w-3.5 h-3.5" />
-                      <Layers v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="w-3.5 h-3.5" />
-                      <FileText v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="w-3.5 h-3.5" />
-                      <CircleDot v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="w-3.5 h-3.5" />
-                      <Layers v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="w-3.5 h-3.5" />
-                      <Layers v-else class="w-3.5 h-3.5" />
-                    </span>
-                    <div>
+                  <div class="flex items-center gap-2.5">
+                    <!-- Miniatura técnica interactiva -->
+                    <div
+                      class="relative w-11 h-11 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center shrink-0 transition"
+                      :class="part.imagen_url ? 'cursor-pointer hover:ring-2 hover:ring-[#04C4D9] group/thumb bg-white shadow-2xs' : ''"
+                      @click="part.imagen_url && openLightbox(part)"
+                      :title="part.imagen_url ? 'Clic para ampliar diagrama / imagen técnica' : 'Sin diagrama cargado'"
+                    >
+                      <img
+                        v-if="part.imagen_url"
+                        :src="part.imagen_url"
+                        :alt="part.nombre"
+                        class="w-full h-full object-cover transition duration-200 group-hover/thumb:scale-110"
+                        loading="lazy"
+                      />
+                      <span v-else class="p-1 text-slate-400 group-hover:text-slate-600 transition">
+                        <CircleDot v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="w-4 h-4" />
+                        <Wrench v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="w-4 h-4" />
+                        <Layers v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="w-4 h-4" />
+                        <FileText v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="w-4 h-4" />
+                        <CircleDot v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="w-4 h-4" />
+                        <Layers v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="w-4 h-4" />
+                        <Layers v-else class="w-4 h-4" />
+                      </span>
+
+                      <!-- Overlay de zoom en hover cuando hay imagen -->
+                      <div
+                        v-if="part.imagen_url"
+                        class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition duration-150"
+                      >
+                        <Maximize2 class="w-3.5 h-3.5 text-white drop-shadow" />
+                      </div>
+                    </div>
+
+                    <div class="min-w-0">
                       <div class="font-bold text-slate-900 text-xs leading-tight">
                         {{ part.nombre }}
                       </div>
@@ -2969,6 +3009,24 @@ onUnmounted(() => {
 
           <div class="p-5 overflow-y-auto space-y-3.5 text-xs">
             
+            <!-- Imagen Técnica / Diagrama en la Ficha -->
+            <div 
+              v-if="modalPart.imagen_url"
+              class="relative bg-slate-900/5 border border-slate-200 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer group hover:border-[#04C4D9] transition"
+              @click="openLightbox(modalPart)"
+              title="Clic para ampliar diagrama técnico"
+            >
+              <img 
+                :src="modalPart.imagen_url" 
+                :alt="modalPart.nombre" 
+                class="max-h-48 object-contain rounded-lg"
+              />
+              <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-bold group-hover:bg-[#04C4D9] transition shadow-xs">
+                <Maximize2 class="w-3 h-3" />
+                <span>Ampliar Diagrama en Pantalla Completa</span>
+              </div>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Código OEM</span>
@@ -3121,6 +3179,15 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <!-- MODAL ADMINISTRATIVO: NUEVO REPUESTO / GRUPO DINÁMICO                     -->
     <!-- ========================================================================= -->
+    <!-- ========================================================================= -->
+    <!-- LIGHTBOX MODAL: VISOR DE DIAGRAMAS / IMÁGENES TÉCNICAS EN ALTA DEFINICIÓN -->
+    <!-- ========================================================================= -->
+    <PartImageLightbox
+      :is-open="isLightboxOpen"
+      :part="lightboxPart"
+      @close="closeLightbox"
+    />
+
     <AdminCatalogModal
       :is-open="isAdminModalOpen"
       :initial-tab="adminModalTab"
