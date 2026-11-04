@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import { ordersService, type Order } from '@/services/ordersService'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
@@ -23,21 +24,43 @@ import {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const uiStore = useUiStore()
 
-// Abrir formulario automáticamente si se solicita desde el Navbar con ?nueva=...
+// Vistas: 'list' (listado) o 'form' (formulario de creación/edición)
+const currentView = ref<'list' | 'form'>('list')
+const selectedOrderId = ref<string | null>(null)
+
+// Acciones de apertura del formulario
+const openNewOrder = () => {
+  selectedOrderId.value = null
+  currentView.value = 'form'
+}
+
+const openEditOrder = (id: string) => {
+  selectedOrderId.value = id
+  currentView.value = 'form'
+}
+
+// Abrir formulario reactivamente si se solicita desde el Navbar
 watch(
-  () => route.query.nueva,
+  () => uiStore.newOrderTrigger,
   (val) => {
-    if (val) {
+    if (val > 0) {
+      openNewOrder()
+    }
+  }
+)
+
+// Abrir formulario automáticamente si se solicita por parámetros de ruta
+watch(
+  () => [route.query.nueva, route.query.clienteId, route.query.cliente],
+  ([nueva, clienteId, cliente]) => {
+    if (nueva || clienteId || cliente) {
       openNewOrder()
     }
   },
   { immediate: true }
 )
-
-// Vistas: 'list' (listado) o 'form' (formulario de creación/edición)
-const currentView = ref<'list' | 'form'>('list')
-const selectedOrderId = ref<string | null>(null)
 
 // Lista de órdenes
 const orders = ref<Order[]>([])
@@ -84,17 +107,6 @@ const filteredOrders = computed(() => {
   })
 })
 
-// Acciones
-const openNewOrder = () => {
-  selectedOrderId.value = null
-  currentView.value = 'form'
-}
-
-const openEditOrder = (id: string) => {
-  selectedOrderId.value = id
-  currentView.value = 'form'
-}
-
 const openPrintOrder = (order: Order) => {
   orderToPrint.value = order
   printModalOpen.value = true
@@ -110,14 +122,16 @@ const handleDeleteOrder = async (id: string) => {
 const handleOrderSaved = async () => {
   await loadOrders()
   currentView.value = 'list'
-  if (route.query.nueva) {
+  selectedOrderId.value = null
+  if (route.query.nueva || route.query.clienteId || route.query.cliente) {
     router.replace({ path: '/ordenes' })
   }
 }
 
 const handleCloseForm = () => {
   currentView.value = 'list'
-  if (route.query.nueva) {
+  selectedOrderId.value = null
+  if (route.query.nueva || route.query.clienteId || route.query.cliente) {
     router.replace({ path: '/ordenes' })
   }
 }

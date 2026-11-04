@@ -203,7 +203,7 @@ const getStatusBadgeConfig = (status: Order['status']) => {
         <!-- Botones de Acción Rápida -->
         <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
           <router-link
-            to="/ordenes"
+            to="/ordenes?nueva=true"
             class="inline-flex items-center justify-center px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-white bg-[#0D0D0D] hover:bg-neutral-900 active:scale-95 rounded-xl sm:rounded-2xl shadow-md transition-all border border-neutral-800"
           >
             <Plus class="w-4 h-4 mr-1.5 text-[#05F2F2]" />
@@ -576,7 +576,7 @@ const getStatusBadgeConfig = (status: Order['status']) => {
 
         <div class="flex items-center gap-3 flex-wrap">
           <router-link
-            to="/ordenes"
+            to="/ordenes?nueva=true"
             class="inline-flex items-center px-4 py-2.5 rounded-xl bg-[#05C7F2] text-neutral-950 font-bold text-xs sm:text-sm hover:bg-[#04C4D9] active:scale-95 transition"
           >
             <Plus class="w-4 h-4 mr-1.5" />

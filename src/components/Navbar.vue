@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
+const uiStore = useUiStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -109,10 +111,9 @@ const roleBadgeClass = computed(() => {
 const handleNewOrder = () => {
   mobileMenuOpen.value = false
   userMenuOpen.value = false
-  if (route.path === '/ordenes') {
-    router.push({ path: '/ordenes', query: { nueva: Date.now().toString() } })
-  } else {
-    router.push({ path: '/ordenes', query: { nueva: 'true' } })
+  uiStore.requestNewOrder()
+  if (route.path !== '/ordenes') {
+    router.push({ path: '/ordenes', query: { nueva: '1' } })
   }
 }
 </script>
@@ -371,6 +372,18 @@ const handleNewOrder = () => {
             </div>
             <ChevronRight class="w-3.5 h-3.5 text-neutral-500" />
           </router-link>
+        </div>
+
+        <!-- Botón Nueva Orden Móvil -->
+        <div v-if="authStore.canAccess('/ordenes')" class="pt-1">
+          <button
+            type="button"
+            @click="handleNewOrder"
+            class="w-full bg-white hover:bg-neutral-100 text-neutral-950 font-bold text-xs py-2.5 rounded-xl shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Plus class="w-4 h-4 stroke-[2.5]" />
+            <span>+ Nueva Orden de Trabajo</span>
+          </button>
         </div>
 
         <div class="pt-3 border-t border-neutral-800 space-y-2.5">
