@@ -135,7 +135,7 @@ const handleNewOrder = () => {
   <header class="sticky top-0 z-40 w-full flex justify-center pointer-events-none px-2 sm:px-4">
     <!-- Notch Container Compacto Estilo Supaste / Dynamic Island -->
     <div
-      class="pointer-events-auto relative w-full sm:w-auto max-w-5xl h-12 bg-[#0a0a0a] text-white rounded-b-[20px] border-b border-x border-neutral-800/90 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.6)] px-3 sm:px-4 flex items-center justify-between sm:justify-center gap-3 sm:gap-6 lg:gap-8 transition-all"
+      class="pointer-events-auto relative w-full sm:w-auto max-w-5xl h-12 bg-[#0a0a0a] text-white rounded-b-[20px] border-b border-x border-neutral-800/90 px-3 sm:px-4 flex items-center justify-between sm:justify-center gap-3 sm:gap-6 lg:gap-8 transition-all"
     >
       <!-- Oreja Izquierda Curva Cóncava (Inverted Fillet Ear) -->
       <svg
@@ -267,7 +267,7 @@ const handleNewOrder = () => {
           >
             <div
               v-if="userMenuOpen"
-              class="absolute top-full right-0 mt-2 w-72 bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 shadow-2xl shadow-black/95 text-white z-50 pointer-events-auto"
+              class="absolute top-full right-0 mt-2 w-72 bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 text-white z-50 pointer-events-auto"
               @mouseenter="openUserMenu"
               @mouseleave="scheduleCloseUserMenu"
             >
@@ -362,7 +362,7 @@ const handleNewOrder = () => {
     >
       <div
         v-if="mobileMenuOpen"
-        class="pointer-events-auto absolute top-14 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 shadow-2xl shadow-black/95 space-y-3 z-50 lg:hidden"
+        class="pointer-events-auto absolute top-14 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 space-y-3 z-50 lg:hidden"
       >
         <div class="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-2">
           Navegación
