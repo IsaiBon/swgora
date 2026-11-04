@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useCatalogStore } from '@/stores/catalog'
+import PartImageUploader from '@/components/catalog/PartImageUploader.vue'
 import { 
   type GrupoRepuesto, 
   type ParametroTecnicoDefinicion,
@@ -194,6 +195,7 @@ const partPrecio = ref<number | null>(null)
 const partStock = ref<number>(12)
 const partEstado = ref<'Disponible' | 'Bajo Stock' | 'Agotado'>('Disponible')
 const partCatalogoOrigen = ref<string>('OEM')
+const partImagenUrl = ref<string>('')
 
 // Valores dinámicos de parámetros técnicos: clave -> valor
 const paramValues = ref<Record<string, any>>({})
@@ -283,6 +285,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   partStock.value = part.stock != null ? part.stock : 12
   partEstado.value = (part.estado as any) || 'Disponible'
   partCatalogoOrigen.value = part.catalogo_origen || 'OEM'
+  partImagenUrl.value = part.imagen_url || ''
 
   // Motor asociado
   if (part.motor_id) {
@@ -396,6 +399,7 @@ const handleSavePart = async () => {
       stock: Number(partStock.value || 0),
       estado: partEstado.value,
       catalogo_origen: partCatalogoOrigen.value,
+      imagen_url: partImagenUrl.value ? partImagenUrl.value.trim() : undefined,
       dimensiones: dimensionesPayload,
       // Mapear cotas estándar si coinciden con nombres típicos
       diametro_cabeza_mm: dimensionesPayload.diametro_cabeza_mm || dimensionesPayload.diametro_cabeza,
@@ -451,6 +455,7 @@ const resetPartForm = () => {
   partStock.value = 12
   partEstado.value = 'Disponible'
   partCatalogoOrigen.value = 'OEM'
+  partImagenUrl.value = ''
   paramValues.value = {}
   formErrors.value = {}
   equivalencias.value = [{ marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }]
@@ -1151,6 +1156,16 @@ onUnmounted(() => {
                     class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                   />
                 </div>
+              </div>
+
+              <!-- Selector y subida de Imagen Técnica / Diagrama de explosión -->
+              <div class="sm:col-span-2 lg:col-span-3 pt-2 border-t border-slate-200">
+                <PartImageUploader
+                  v-model="partImagenUrl"
+                  :part-code="partCodigoOem"
+                  label="Imagen Técnica / Diagrama de Explosión"
+                  hint="Sube la foto del repuesto, plano de despiece o cota CAD. Se optimizará automáticamente para carga rápida en taller."
+                />
               </div>
             </div>
           </div>

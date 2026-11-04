@@ -8,20 +8,19 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
-  ShieldCheck,
-  Wrench,
   Eye,
   EyeOff,
-  User,
+  Mail,
   Lock,
+  Loader2,
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
 // State
-const username = ref('admin@jrblanco.com')
-const password = ref('admin123')
+const email = ref('')
+const password = ref('')
 const showPassword = ref(false)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
@@ -32,23 +31,12 @@ const recoveryInput = ref('')
 const isRecoverySubmitting = ref(false)
 const recoverySent = ref(false)
 
-const fillDemo = (role: 'Administrador' | 'Operador' | 'Consultor') => {
-  if (role === 'Administrador') {
-    username.value = 'admin@jrblanco.com'
-    password.value = 'admin123'
-  } else if (role === 'Operador') {
-    username.value = 'operador@jrblanco.com'
-    password.value = 'operador123'
-  } else {
-    username.value = 'consultor@jrblanco.com'
-    password.value = 'consultor123'
-  }
-}
-
 const handleLogin = async () => {
   errorMessage.value = ''
-  if (!username.value.trim()) {
-    errorMessage.value = 'Por favor ingresa tu usuario o correo.'
+  const cleanEmail = email.value.trim()
+
+  if (!cleanEmail) {
+    errorMessage.value = 'Por favor ingresa tu correo electrónico.'
     return
   }
   if (!password.value) {
@@ -58,12 +46,20 @@ const handleLogin = async () => {
 
   isSubmitting.value = true
   try {
-    await authStore.login(username.value, password.value)
-    router.push(authStore.defaultRoute)
-  } catch (err: any) {
-    errorMessage.value = err?.message || 'Error al procesar el ingreso.'
+    await authStore.login(cleanEmail, password.value)
+    await router.replace(authStore.defaultRoute)
+  } catch (err: unknown) {
+    errorMessage.value =
+      err instanceof Error ? err.message : 'Error al procesar el ingreso.'
   } finally {
     isSubmitting.value = false
+  }
+}
+
+const handleLogoError = (e: Event) => {
+  const target = e.target as HTMLImageElement | null
+  if (target) {
+    target.style.display = 'none'
   }
 }
 
@@ -90,13 +86,13 @@ const closeRecoveryModal = () => {
       class="bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl p-6 sm:p-8 border border-white/80 transition-all duration-300"
     >
       <!-- Branding Corporativo Oficial: Logo Taller JR Blanco -->
-      <div class="flex flex-col items-center justify-center mb-5 text-center">
+      <div class="flex flex-col items-center justify-center mb-6 text-center">
         <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-950 p-1.5 shadow-xl ring-4 ring-[#04c4d9]/30 flex items-center justify-center overflow-hidden transition-transform duration-300 hover:scale-105">
           <img
             src="/logo-taller.png"
             alt="Logo Oficial Taller JR Blanco"
             class="w-full h-full object-contain select-none"
-            @error="(e: any) => { e.target.style.display = 'none' }"
+            @error="handleLogoError"
           />
         </div>
         <h1 class="text-base sm:text-lg font-black text-slate-900 tracking-tight mt-3 uppercase">
@@ -110,74 +106,51 @@ const closeRecoveryModal = () => {
         </p>
       </div>
 
-      <!-- Selector Rápido de Roles para Pruebas / Demostración -->
-      <div class="mb-4 bg-slate-100 p-1 rounded-2xl border border-slate-200/90 flex items-center justify-between gap-1 text-[11px]">
-        <button
-          type="button"
-          @click="fillDemo('Administrador')"
-          class="flex-1 py-1.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all text-slate-600 hover:text-slate-900 cursor-pointer"
-          :class="username.includes('admin') ? 'bg-slate-900 text-white shadow-sm' : 'hover:bg-white/80'"
-          title="Acceso total (Dashboard, Clientes, Órdenes, Catálogo)"
-        >
-          <ShieldCheck class="w-3.5 h-3.5 text-[#04c4d9]" />
-          <span>Admin</span>
-        </button>
-        <button
-          type="button"
-          @click="fillDemo('Operador')"
-          class="flex-1 py-1.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all text-slate-600 hover:text-slate-900 cursor-pointer"
-          :class="username.includes('operador') ? 'bg-slate-900 text-white shadow-sm' : 'hover:bg-white/80'"
-          title="Órdenes de Trabajo y Catálogo de Repuestos"
-        >
-          <Wrench class="w-3.5 h-3.5 text-amber-500" />
-          <span>Operador</span>
-        </button>
-        <button
-          type="button"
-          @click="fillDemo('Consultor')"
-          class="flex-1 py-1.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1 transition-all text-slate-600 hover:text-slate-900 cursor-pointer"
-          :class="username.includes('consultor') ? 'bg-slate-900 text-white shadow-sm' : 'hover:bg-white/80'"
-          title="Consulta exclusiva de Catálogo de Repuestos"
-        >
-          <Eye class="w-3.5 h-3.5 text-emerald-500" />
-          <span>Consultor</span>
-        </button>
-      </div>
-
       <!-- Mensaje de Error -->
       <div
         v-if="errorMessage"
-        class="mb-4 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2"
+        role="alert"
+        class="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2"
       >
-        <AlertCircle class="w-4 h-4 shrink-0" />
+        <AlertCircle class="w-4 h-4 shrink-0 text-rose-600" />
         <span>{{ errorMessage }}</span>
       </div>
 
-      <!-- Formulario -->
-      <form @submit.prevent="handleLogin" class="space-y-3.5">
-        <!-- Campo Usuario -->
+      <!-- Formulario de Autenticación Directa -->
+      <form @submit.prevent="handleLogin" novalidate class="space-y-4">
+        <!-- Campo Correo Electrónico -->
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1 pl-1">
-            Usuario o Correo
+          <label
+            for="login-email"
+            class="block text-xs font-bold text-slate-700 mb-1.5 pl-1"
+          >
+            Correo Electrónico
           </label>
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-              <User class="w-4 h-4" />
+              <Mail class="w-4 h-4" />
             </div>
             <input
-              v-model="username"
-              type="text"
-              autocomplete="username"
-              placeholder="admin@jrblanco.com"
+              id="login-email"
+              v-model="email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              placeholder="correo@ejemplo.com"
+              :disabled="isSubmitting"
+              @input="errorMessage = ''"
               required
-              class="w-full bg-slate-50 border border-slate-200 rounded-full pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04c4d9] focus:ring-2 focus:ring-[#04c4d9]/30"
+              class="w-full bg-slate-50 border border-slate-200 rounded-full pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04c4d9] focus:ring-2 focus:ring-[#04c4d9]/30 disabled:opacity-60"
             />
           </div>
         </div>
 
         <!-- Campo Contraseña -->
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1 pl-1">
+          <label
+            for="login-password"
+            class="block text-xs font-bold text-slate-700 mb-1.5 pl-1"
+          >
             Contraseña
           </label>
           <div class="relative">
@@ -185,17 +158,20 @@ const closeRecoveryModal = () => {
               <Lock class="w-4 h-4" />
             </div>
             <input
+              id="login-password"
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
-              placeholder="••••••••"
+              placeholder="Ingresa tu contraseña"
+              :disabled="isSubmitting"
+              @input="errorMessage = ''"
               required
-              class="w-full bg-slate-50 border border-slate-200 rounded-full pl-10 pr-10 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04c4d9] focus:ring-2 focus:ring-[#04c4d9]/30"
+              class="w-full bg-slate-50 border border-slate-200 rounded-full pl-10 pr-10 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04c4d9] focus:ring-2 focus:ring-[#04c4d9]/30 disabled:opacity-60"
             />
             <button
               type="button"
               @click="showPassword = !showPassword"
-              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition"
+              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
               tabindex="-1"
               title="Mostrar / ocultar contraseña"
             >
@@ -212,17 +188,18 @@ const closeRecoveryModal = () => {
             :disabled="isSubmitting"
             class="w-full bg-[#04c4d9] hover:bg-[#03a9bc] active:scale-[0.99] text-white font-bold py-3 px-6 rounded-full text-center text-sm tracking-wide transition-all shadow-lg shadow-[#04c4d9]/25 disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>{{ isSubmitting ? 'Ingresando...' : 'Iniciar Sesión' }}</span>
+            <Loader2 v-if="isSubmitting" class="w-4 h-4 animate-spin" />
+            <span>{{ isSubmitting ? 'Validando acceso...' : 'Iniciar Sesión' }}</span>
             <ArrowRight v-if="!isSubmitting" class="w-4 h-4" />
           </button>
         </div>
 
         <!-- Enlaces Secundarios: Recuperar Acceso -->
-        <div class="pt-2 text-center">
+        <div class="pt-1 text-center">
           <button
             type="button"
             @click="isRecoveryOpen = true"
-            class="text-xs text-slate-500 hover:text-slate-900 font-medium transition underline-offset-4 hover:underline"
+            class="text-xs text-slate-500 hover:text-slate-900 font-medium transition underline-offset-4 hover:underline cursor-pointer"
           >
             ¿Olvidaste tu contraseña? Recuperar acceso
           </button>
@@ -261,18 +238,18 @@ const closeRecoveryModal = () => {
           </div>
 
           <p class="text-xs text-slate-600 mb-5 leading-relaxed">
-            Ingresa tu correo electrónico corporativo o usuario registrado. Te enviaremos un código de seguridad para restablecer tu contraseña.
+            Ingresa tu correo electrónico registrado. Te enviaremos las instrucciones para restablecer tu contraseña.
           </p>
 
           <form @submit.prevent="handleRecoverySubmit" class="space-y-4">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1 pl-1">
-                Correo o Teléfono
+                Correo Electrónico
               </label>
               <input
                 v-model="recoveryInput"
-                type="text"
-                placeholder="ejemplo@jrblanco.com o 7831-2641"
+                type="email"
+                placeholder="correo@ejemplo.com"
                 required
                 class="w-full bg-slate-50 border border-slate-300 rounded-full px-5 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[#04c4d9] focus:bg-white"
               />
@@ -305,7 +282,7 @@ const closeRecoveryModal = () => {
           <div>
             <h4 class="text-base font-bold text-slate-900">¡Enlace Enviado!</h4>
             <p class="text-xs text-slate-500 mt-1">
-              Hemos enviado las instrucciones a <strong>{{ recoveryInput }}</strong>. Revisa tu bandeja de entrada o mensajes.
+              Hemos enviado las instrucciones a <strong>{{ recoveryInput }}</strong>. Revisa tu bandeja de entrada.
             </p>
           </div>
           <button

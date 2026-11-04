@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { 
   ordersService, 
+  type FormOperationItem,
   type Order, 
   type OrderPartItem, 
   type OrderMaterialItem, 
@@ -89,98 +90,11 @@ const engineNumber = ref('')
 const engineType = ref('')
 const observations = ref('')
 
-// Interfaz para el listado unificado de operaciones
-interface FormOperationItem {
-  id: string
-  category: RectificationBlock
-  operation: string
-  selected: boolean
-  quantity: number | null
-  unitPrice: number | null
-  subtotal: number | null
-  lastEdited?: 'price' | 'subtotal'
-  isCustom?: boolean
-  measure?: string
-  measureBanco?: string
-  measureBiela?: string
-}
-
 // Opciones estándar de medidas de rectificación (STD, 0.25, 0.50, 0.75, 1.00)
 const MEASURE_OPTIONS = ['STD', '0.25', '0.50', '0.75', '1.00'] as const
 
 // Opciones de tipo de válvula para guías (EX: Escape, AD: Admisión, EX Y AD: Ambas)
 const VALVE_TYPE_OPTIONS = ['EX', 'AD', 'EX Y AD'] as const
-
-// Catálogo base unificado de operaciones extraído de Diego/ORDEN DE TRABAJO.xlsx
-// Todas las opciones inician con cantidad y precio vacíos (null)
-const defaultOperationsCatalog: FormOperationItem[] = [
-  // BIELAS (4 operaciones)
-  { id: 'op-bie-1', category: 'Bielas', operation: 'Rectificar Housing', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-bie-2', category: 'Bielas', operation: 'Cambio de Pistones a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-bie-3', category: 'Bielas', operation: 'Cambio de Bujes a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-bie-4', category: 'Bielas', operation: 'Adapte de Bujes', selected: false, quantity: null, unitPrice: null, subtotal: null },
-
-  // BANCADAS (3 operaciones)
-  { id: 'op-ban-1', category: 'Bancadas', operation: 'Revisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-ban-2', category: 'Bancadas', operation: 'Alineado y Rectificado', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-ban-3', category: 'Bancadas', operation: 'Metalizado', selected: false, quantity: null, unitPrice: null, subtotal: null },
-
-  // CIGÜEÑAL (8 operaciones)
-  { id: 'op-cig-1', category: 'Cigüeñal', operation: 'Enderezar', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cig-2', category: 'Cigüeñal', operation: 'Rectificar Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
-  { id: 'op-cig-3', category: 'Cigüeñal', operation: 'Pulir Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
-  { id: 'op-cig-4', category: 'Cigüeñal', operation: 'Pista Sello Delantero', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cig-5', category: 'Cigüeñal', operation: 'Pista Sello Trasero', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cig-6', category: 'Cigüeñal', operation: 'Cambio de Balero', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cig-7', category: 'Cigüeñal', operation: 'Metalizar', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cig-8', category: 'Cigüeñal', operation: 'Polea', selected: false, quantity: null, unitPrice: null, subtotal: null },
-
-  // CULATA (13 operaciones)
-  { id: 'op-cul-1', category: 'Culata', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-2', category: 'Culata', operation: 'Rectificar Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-3', category: 'Culata', operation: 'Rectificar Válvulas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-4', category: 'Culata', operation: 'Cambio de Guías y Adapte', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-5', category: 'Culata', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-6', category: 'Culata', operation: 'Reconstruir Pasos de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-7', category: 'Culata', operation: 'Hacer Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-8', category: 'Culata', operation: 'Sacar y Colocar Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-9', category: 'Culata', operation: 'Ajustar Eje de Leva', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-10', category: 'Culata', operation: 'Extraer Perno Roto', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-11', category: 'Culata', operation: 'Cambio de Sellos', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-12', category: 'Culata', operation: 'Armar', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-cul-13', category: 'Culata', operation: 'Calibrar', selected: false, quantity: null, unitPrice: null, subtotal: null },
-
-  // BLOCKS (10 operaciones)
-  { id: 'op-blo-1', category: 'Block', operation: 'Rectificar Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
-  { id: 'op-blo-2', category: 'Block', operation: 'Bruñir Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
-  { id: 'op-blo-3', category: 'Block', operation: 'Sacar y Colocar Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-4', category: 'Block', operation: 'Cambio de Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-5', category: 'Block', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-6', category: 'Block', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-7', category: 'Block', operation: 'Reparar 1 Cilindro', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-8', category: 'Block', operation: 'Adapte de Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-9', category: 'Block', operation: 'Extraer Pernos Rotos', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-blo-10', category: 'Block', operation: 'Tapón de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
-
-  // REPUESTOS (17 ítems extraídos de Diego/ORDEN DE TRABAJO.xlsx)
-  { id: 'op-rep-1', category: 'Repuestos', operation: 'Válvulas de Escape', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-2', category: 'Repuestos', operation: 'Válvulas de Admisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-3', category: 'Repuestos', operation: 'Guías de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-4', category: 'Repuestos', operation: 'Sellos de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-5', category: 'Repuestos', operation: 'Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-6', category: 'Repuestos', operation: 'Casquetes de Banco', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
-  { id: 'op-rep-7', category: 'Repuestos', operation: 'Casquetes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
-  { id: 'op-rep-8', category: 'Repuestos', operation: 'Lainas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-9', category: 'Repuestos', operation: 'Bujes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-10', category: 'Repuestos', operation: 'Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-11', category: 'Repuestos', operation: 'Jgo de Empaque', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-12', category: 'Repuestos', operation: 'Descarbonado', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-13', category: 'Repuestos', operation: 'Empaque de Culata Ajusa', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-14', category: 'Repuestos', operation: 'Pistones', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-15', category: 'Repuestos', operation: 'Anillos', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-16', category: 'Repuestos', operation: 'Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
-  { id: 'op-rep-17', category: 'Repuestos', operation: 'Culata', selected: false, quantity: null, unitPrice: null, subtotal: null }
-]
 
 // Lista estándar de repuestos comunes de rectificadora del Excel
 const excelStandardParts = [
@@ -204,7 +118,7 @@ const excelStandardParts = [
 ]
 
 // Lista unificada de todas las operaciones disponibles en el formulario
-const allOperations = ref<FormOperationItem[]>(JSON.parse(JSON.stringify(defaultOperationsCatalog)))
+const allOperations = ref<FormOperationItem[]>(ordersService.getOperationsCatalog())
 
 // Filtro rápido de vista para las operaciones
 const operationFilterCategory = ref<string>('Todos')
@@ -321,23 +235,32 @@ const displayedOperations = computed(() => {
 })
 
 // Helpers de detección de operaciones y repuestos con medidas dimensionales
-const isDualMeasureOperation = (opName: string) => {
-  const lower = opName.toLowerCase()
+const isDualMeasureOperation = (item: FormOperationItem | string) => {
+  if (typeof item === 'object' && item) {
+    if (item.measureBanco !== undefined || item.measureBiela !== undefined) return true
+    return isDualMeasureOperation(item.operation || '')
+  }
+  const lower = (item || '').toLowerCase()
   const isCrankAction = lower.includes('rectificar') || lower.includes('pulir')
   return isCrankAction && lower.includes('banco') && lower.includes('biela')
 }
 
-const isSingleMeasureOperation = (opName: string) => {
+const isValveTypeOperation = (item: FormOperationItem | string) => {
+  const opName = typeof item === 'object' && item ? (item.operation || '') : (item || '')
   const lower = opName.toLowerCase()
-  if (isDualMeasureOperation(opName) || isValveTypeOperation(opName)) return false
+  return (lower.includes('guías') || lower.includes('guias')) && (lower.includes('adapte') || lower.includes('válvula') || lower.includes('valvula'))
+}
+
+const isSingleMeasureOperation = (item: FormOperationItem | string) => {
+  if (isDualMeasureOperation(item) || isValveTypeOperation(item)) return false
+  if (typeof item === 'object' && item) {
+    if (item.measure !== undefined) return true
+    return isSingleMeasureOperation(item.operation || '')
+  }
+  const lower = (item || '').toLowerCase()
   const isCilindro = (lower.includes('rectificar') || lower.includes('bruñir') || lower.includes('brunir')) && lower.includes('cilindro')
   const isCasquetes = lower.includes('casquete') && (lower.includes('banco') || lower.includes('biela'))
   return isCilindro || isCasquetes
-}
-
-const isValveTypeOperation = (opName: string) => {
-  const lower = opName.toLowerCase()
-  return (lower.includes('guías') || lower.includes('guias')) && (lower.includes('adapte') || lower.includes('válvula') || lower.includes('valvula'))
 }
 
 const isPartWithMeasure = (partName: string) => {
@@ -617,15 +540,19 @@ const addExcelPart = (partName: string) => {
 // Inicialización de la orden
 onMounted(async () => {
   document.addEventListener('click', handleClickOutsideClientSearch)
+  const freshCatalog = await ordersService.getOperationsCatalogAsync()
   catalogProducts.value = await catalogService.getProducts()
   await loadAllClients()
 
   if (props.initialOrderId) {
     const existing = await ordersService.getOrderById(props.initialOrderId)
     if (existing) {
+      allOperations.value = JSON.parse(JSON.stringify(freshCatalog))
       loadExistingOrder(existing)
       return
     }
+  } else {
+    allOperations.value = JSON.parse(JSON.stringify(freshCatalog))
   }
 
   // Pre-seleccionar cliente si viene en la query (desde historial o clientes)
@@ -685,10 +612,11 @@ const loadExistingOrder = (order: Order) => {
   // Sincronizar las operaciones existentes en la lista unificada
   if (order.operations && order.operations.length > 0) {
     order.operations.forEach(savedOp => {
-      const match = allOperations.value.find(
+      const match = allOperations.value.find(o => o.id === savedOp.id) || allOperations.value.find(
         o => o.category === savedOp.category && o.operation.toLowerCase() === savedOp.operation.toLowerCase()
       )
       if (match) {
+        match.operation = savedOp.operation // Conservar nombre personalizado de esta orden
         match.selected = true
         match.quantity = savedOp.quantity
         match.unitPrice = savedOp.unitPrice
@@ -1490,7 +1418,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 <tr>
                   <th class="px-3 py-2.5 text-center w-10">Act.</th>
                   <th class="px-4 py-2.5 text-left w-24">Componente</th>
-                  <th class="px-4 py-2.5 text-left">Operación de Rectificación</th>
+                  <th class="px-4 py-2.5 text-left">
+                    Operación de Rectificación
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">editable en esta orden</span>
+                  </th>
                   <th class="px-3 py-2.5 text-center w-24">Cantidad</th>
                   <th class="px-4 py-2.5 text-right w-28">
                     Precio U. ($)
@@ -1534,10 +1465,18 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <!-- Nombre de la operación y selectores de medida -->
                   <td class="px-4 py-2.5">
                     <!-- Operaciones con Medida Dual (Rectificar / Pulir Banco-Biela) -->
-                    <div v-if="isDualMeasureOperation(op.operation)" class="space-y-1.5 py-0.5">
-                      <div :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                        {{ op.operation }}
-                      </div>
+                    <div v-if="isDualMeasureOperation(op)" class="space-y-1.5 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="w-full px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
                       <div class="flex flex-wrap items-center gap-2">
                         <!-- Selector Banco -->
                         <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
@@ -1567,11 +1506,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
 
                     <!-- Operaciones con Tipo de Válvula (Cambio de Guías y Adapte, Guías de Válvula) -->
-                    <div v-else-if="isValveTypeOperation(op.operation)" class="flex flex-wrap items-center justify-between gap-2 py-0.5">
-                      <div :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                        {{ op.operation }}
-                      </div>
-                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
+                    <div v-else-if="isValveTypeOperation(op)" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
+                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
                         <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Tipo:</span>
                         <select
                           v-model="op.measure"
@@ -1585,11 +1532,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
 
                     <!-- Operaciones con Medida Simple (Rectificar Cilindros, Bruñir Cilindros, Casquetes de Bancos, Casquetes de Biela) -->
-                    <div v-else-if="isSingleMeasureOperation(op.operation)" class="flex flex-wrap items-center justify-between gap-2 py-0.5">
-                      <div :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                        {{ op.operation }}
-                      </div>
-                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
+                    <div v-else-if="isSingleMeasureOperation(op)" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
+                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
                         <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Medida:</span>
                         <select
                           v-model="op.measure"
@@ -1603,9 +1558,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
 
                     <!-- Operaciones estándar o personalizadas -->
-                    <div v-else :class="['font-medium text-slate-900 flex items-center gap-1.5', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                      <span>{{ op.operation }}</span>
-                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    <div v-else class="flex items-center gap-2 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
+                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
                         Especial
                       </span>
                     </div>

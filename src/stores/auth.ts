@@ -96,40 +96,51 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function syncUserWithProfile(sbUser: SupabaseUser | null) {
-    user.value = null
-    persistUser(null)
-
-    if (!sbUser) return
+    if (!sbUser) {
+      user.value = null
+      persistUser(null)
+      return
+    }
 
     const perfil = await perfilesService.getPerfilById(sbUser.id)
 
     if (!perfil) {
+      session.value = null
+      user.value = null
+      persistUser(null)
+
+      try {
+        await authService.signOutLocal()
+      } catch (err) {
+        console.error('[AuthStore] Error cerrando la sesión:', err)
+      }
+
       throw new Error(
-        'Tu cuenta no tiene un perfil. Contacta al administrador.'
+        'Tu cuenta no tiene un perfil asignado. Contacta al administrador.'
       )
     }
 
-    if (perfil.estado !== 'Activo') {
-  session.value = null
-  user.value = null
-  persistUser(null)
+    if (perfil.estado && perfil.estado !== 'Activo') {
+      session.value = null
+      user.value = null
+      persistUser(null)
 
-  try {
-    await authService.signOutLocal()
-  } catch (err) {
-    console.error('[AuthStore] Error cerrando la sesión:', err)
-  }
+      try {
+        await authService.signOutLocal()
+      } catch (err) {
+        console.error('[AuthStore] Error cerrando la sesión:', err)
+      }
 
-  throw new Error(
-    'Tu cuenta está desactivada. Contacta al administrador.'
-  )
-}
+      throw new Error(
+        'Tu cuenta está desactivada. Contacta al administrador.'
+      )
+    }
 
     const u: User = {
       id: perfil.id,
       name: perfil.nombre,
       email: perfil.email,
-      role: normalizeRole(perfil.rol),
+      role: normalizeRole(perfil.rol || sbUser.user_metadata?.role),
       avatar: perfil.avatar_url ||
         'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
     }
@@ -149,22 +160,25 @@ export const useAuthStore = defineStore('auth', () => {
       }
 
       authService.onAuthStateChange((_event, newSession) => {
-  session.value = newSession
+        session.value = newSession
 
-  if (!newSession) {
-    user.value = null
-    persistUser(null)
-    return
-  }
+        if (!newSession) {
+          user.value = null
+          persistUser(null)
+          return
+        }
 
-  setTimeout(() => {
-    if (session.value !== newSession) return
+        // Evitar sincronización duplicada mientras login() ya está resolviendo el perfil
+        if (loading.value) return
 
-    void syncUserWithProfile(newSession.user).catch((err: unknown) => {
-      console.error('[AuthStore] Error verificando el perfil:', err)
-    })
-  }, 0)
-})
+        setTimeout(() => {
+          if (session.value !== newSession) return
+
+          void syncUserWithProfile(newSession.user).catch((err: unknown) => {
+            console.error('[AuthStore] Error verificando el perfil:', err)
+          })
+        }, 0)
+      })
     } catch (err) {
       console.error('[AuthStore] Error inicializando sesión:', err)
     } finally {
@@ -208,7 +222,7 @@ export const useAuthStore = defineStore('auth', () => {
     persistUser(newUser)
   }
 
-   async function login(
+  async function login(
     email: string,
     password: string
   ): Promise<void> {
@@ -219,18 +233,37 @@ export const useAuthStore = defineStore('auth', () => {
 
       session.value = data.session
       await syncUserWithProfile(data.user)
-    } catch {
+    } catch (err: unknown) {
       session.value = null
       user.value = null
       persistUser(null)
 
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (
+          err.message.includes('perfil') ||
+          err.message.includes('desactivada')
+        ) {
+          throw err
+        }
+        if (
+          msg.includes('invalid login credentials') ||
+          msg.includes('invalid_credentials')
+        ) {
+          throw new Error('Correo electrónico o contraseña incorrectos.')
+        }
+        if (msg.includes('email not confirmed')) {
+          throw new Error('Debes confirmar tu correo electrónico antes de ingresar.')
+        }
+      }
+
       throw new Error(
-        'No se pudo iniciar sesión. Revisa tu correo, contraseña y conexión.'
+        'No se pudo iniciar sesión. Revisa tus credenciales y conexión.'
       )
     } finally {
       loading.value = false
     }
-  }           
+  }
 
   async function register(email: string, password: string, name?: string): Promise<void> {
     loading.value = true

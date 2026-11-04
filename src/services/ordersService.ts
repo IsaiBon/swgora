@@ -84,6 +84,90 @@ export interface Order {
   updatedAt?: string
 }
 
+export interface FormOperationItem {
+  id: string
+  category: RectificationBlock
+  operation: string
+  selected: boolean
+  quantity: number | null
+  unitPrice: number | null
+  subtotal: number | null
+  lastEdited?: 'price' | 'subtotal'
+  isCustom?: boolean
+  measure?: string
+  measureBanco?: string
+  measureBiela?: string
+}
+
+export const DEFAULT_OPERATIONS_CATALOG: FormOperationItem[] = [
+  // BIELAS (4 operaciones)
+  { id: 'op-bie-1', category: 'Bielas', operation: 'Rectificar Housing', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-2', category: 'Bielas', operation: 'Cambio de Pistones a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-3', category: 'Bielas', operation: 'Cambio de Bujes a Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-bie-4', category: 'Bielas', operation: 'Adapte de Bujes', selected: false, quantity: null, unitPrice: null, subtotal: null },
+
+  // BANCADAS (3 operaciones)
+  { id: 'op-ban-1', category: 'Bancadas', operation: 'Revisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-ban-2', category: 'Bancadas', operation: 'Alineado y Rectificado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-ban-3', category: 'Bancadas', operation: 'Metalizado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+
+  // CIGÜEÑAL (8 operaciones)
+  { id: 'op-cig-1', category: 'Cigüeñal', operation: 'Enderezar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-2', category: 'Cigüeñal', operation: 'Rectificar Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
+  { id: 'op-cig-3', category: 'Cigüeñal', operation: 'Pulir Banco / Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measureBanco: '', measureBiela: '' },
+  { id: 'op-cig-4', category: 'Cigüeñal', operation: 'Pista Sello Delantero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-5', category: 'Cigüeñal', operation: 'Pista Sello Trasero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-6', category: 'Cigüeñal', operation: 'Cambio de Balero', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-7', category: 'Cigüeñal', operation: 'Metalizar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cig-8', category: 'Cigüeñal', operation: 'Polea', selected: false, quantity: null, unitPrice: null, subtotal: null },
+
+  // CULATA (13 operaciones)
+  { id: 'op-cul-1', category: 'Culata', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-2', category: 'Culata', operation: 'Rectificar Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-3', category: 'Culata', operation: 'Rectificar Válvulas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-4', category: 'Culata', operation: 'Cambio de Guías y Adapte', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-5', category: 'Culata', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-6', category: 'Culata', operation: 'Reconstruir Pasos de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-7', category: 'Culata', operation: 'Hacer Asientos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-8', category: 'Culata', operation: 'Sacar y Colocar Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-9', category: 'Culata', operation: 'Ajustar Eje de Leva', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-10', category: 'Culata', operation: 'Extraer Perno Roto', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-11', category: 'Culata', operation: 'Cambio de Sellos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-12', category: 'Culata', operation: 'Armar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-cul-13', category: 'Culata', operation: 'Calibrar', selected: false, quantity: null, unitPrice: null, subtotal: null },
+
+  // BLOCKS (10 operaciones)
+  { id: 'op-blo-1', category: 'Block', operation: 'Rectificar Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-blo-2', category: 'Block', operation: 'Bruñir Cilindros', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-blo-3', category: 'Block', operation: 'Sacar y Colocar Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-4', category: 'Block', operation: 'Cambio de Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-5', category: 'Block', operation: 'Prueba a Presión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-6', category: 'Block', operation: 'Rectificar Superficie', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-7', category: 'Block', operation: 'Reparar 1 Cilindro', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-8', category: 'Block', operation: 'Adapte de Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-9', category: 'Block', operation: 'Extraer Pernos Rotos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-blo-10', category: 'Block', operation: 'Tapón de Agua', selected: false, quantity: null, unitPrice: null, subtotal: null },
+
+  // REPUESTOS (17 ítems extraídos de Diego/ORDEN DE TRABAJO.xlsx)
+  { id: 'op-rep-1', category: 'Repuestos', operation: 'Válvulas de Escape', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-2', category: 'Repuestos', operation: 'Válvulas de Admisión', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-3', category: 'Repuestos', operation: 'Guías de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-4', category: 'Repuestos', operation: 'Sellos de Válvula', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-5', category: 'Repuestos', operation: 'Precámaras', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-6', category: 'Repuestos', operation: 'Casquetes de Banco', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-rep-7', category: 'Repuestos', operation: 'Casquetes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null, measure: '' },
+  { id: 'op-rep-8', category: 'Repuestos', operation: 'Lainas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-9', category: 'Repuestos', operation: 'Bujes de Biela', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-10', category: 'Repuestos', operation: 'Bujes de Levas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-11', category: 'Repuestos', operation: 'Jgo de Empaque', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-12', category: 'Repuestos', operation: 'Descarbonado', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-13', category: 'Repuestos', operation: 'Empaque de Culata Ajusa', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-14', category: 'Repuestos', operation: 'Pistones', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-15', category: 'Repuestos', operation: 'Anillos', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-16', category: 'Repuestos', operation: 'Camisas', selected: false, quantity: null, unitPrice: null, subtotal: null },
+  { id: 'op-rep-17', category: 'Repuestos', operation: 'Culata', selected: false, quantity: null, unitPrice: null, subtotal: null }
+]
+
 export const PRESET_OPERATIONS: Record<RectificationBlock, Array<{ name: string; defaultPrice: number }>> = {
   Bielas: [
     { name: 'Rectificar Housing', defaultPrice: 0 },
@@ -288,6 +372,36 @@ function saveStoredOrders(orders: Order[]): void {
   }
 }
 
+const OPERATIONS_CATALOG_STORAGE_KEY = 'swgora_operations_catalog_v2'
+
+function getStoredOperationsCatalog(): FormOperationItem[] {
+  if (typeof window === 'undefined') return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+  try {
+    const raw = localStorage.getItem(OPERATIONS_CATALOG_STORAGE_KEY)
+    if (!raw) {
+      localStorage.setItem(OPERATIONS_CATALOG_STORAGE_KEY, JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+      return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+    }
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+  } catch (e) {
+    console.warn('[OrdersService] Error leyendo catálogo de operaciones de localStorage:', e)
+    return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+  }
+}
+
+function saveStoredOperationsCatalog(catalog: FormOperationItem[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(OPERATIONS_CATALOG_STORAGE_KEY, JSON.stringify(catalog))
+  } catch (e) {
+    console.error('[OrdersService] Error guardando catálogo de operaciones:', e)
+  }
+}
+
 export const ordersService = {
   async getOrders(): Promise<Order[]> {
     return Promise.resolve(getStoredOrders())
@@ -371,5 +485,75 @@ export const ordersService = {
       return Promise.resolve(true)
     }
     return Promise.resolve(false)
+  },
+
+  getOperationsCatalog(): FormOperationItem[] {
+    return getStoredOperationsCatalog()
+  },
+
+  async getOperationsCatalogAsync(): Promise<FormOperationItem[]> {
+    return Promise.resolve(getStoredOperationsCatalog())
+  },
+
+  async saveOperationsCatalog(catalog: FormOperationItem[]): Promise<FormOperationItem[]> {
+    saveStoredOperationsCatalog(catalog)
+    return Promise.resolve(catalog)
+  },
+
+  async addOperationToCatalog(item: {
+    category: RectificationBlock
+    operation: string
+    measure?: string
+    measureBanco?: string
+    measureBiela?: string
+  }): Promise<FormOperationItem> {
+    const catalog = getStoredOperationsCatalog()
+    const newItem: FormOperationItem = {
+      id: `op-custom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      category: item.category,
+      operation: item.operation.trim(),
+      selected: false,
+      quantity: null,
+      unitPrice: null,
+      subtotal: null,
+      measure: item.measure ?? '',
+      measureBanco: item.measureBanco ?? '',
+      measureBiela: item.measureBiela ?? '',
+      isCustom: true
+    }
+    catalog.push(newItem)
+    saveStoredOperationsCatalog(catalog)
+    return Promise.resolve(newItem)
+  },
+
+  async updateOperationInCatalog(id: string, updates: Partial<FormOperationItem>): Promise<FormOperationItem | null> {
+    const catalog = getStoredOperationsCatalog()
+    const index = catalog.findIndex(o => o.id === id)
+    if (index === -1) return null
+
+    catalog[index] = {
+      ...catalog[index],
+      ...updates,
+      operation: updates.operation ? updates.operation.trim() : catalog[index].operation
+    }
+    saveStoredOperationsCatalog(catalog)
+    return Promise.resolve(catalog[index])
+  },
+
+  async deleteOperationFromCatalog(id: string): Promise<boolean> {
+    let catalog = getStoredOperationsCatalog()
+    const initialLen = catalog.length
+    catalog = catalog.filter(o => o.id !== id)
+    if (catalog.length !== initialLen) {
+      saveStoredOperationsCatalog(catalog)
+      return Promise.resolve(true)
+    }
+    return Promise.resolve(false)
+  },
+
+  async resetOperationsCatalog(): Promise<FormOperationItem[]> {
+    const resetList = JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+    saveStoredOperationsCatalog(resetList)
+    return Promise.resolve(resetList)
   },
 }
