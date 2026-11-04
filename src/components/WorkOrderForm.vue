@@ -235,23 +235,32 @@ const displayedOperations = computed(() => {
 })
 
 // Helpers de detección de operaciones y repuestos con medidas dimensionales
-const isDualMeasureOperation = (opName: string) => {
-  const lower = opName.toLowerCase()
+const isDualMeasureOperation = (item: FormOperationItem | string) => {
+  if (typeof item === 'object' && item) {
+    if (item.measureBanco !== undefined || item.measureBiela !== undefined) return true
+    return isDualMeasureOperation(item.operation || '')
+  }
+  const lower = (item || '').toLowerCase()
   const isCrankAction = lower.includes('rectificar') || lower.includes('pulir')
   return isCrankAction && lower.includes('banco') && lower.includes('biela')
 }
 
-const isSingleMeasureOperation = (opName: string) => {
+const isValveTypeOperation = (item: FormOperationItem | string) => {
+  const opName = typeof item === 'object' && item ? (item.operation || '') : (item || '')
   const lower = opName.toLowerCase()
-  if (isDualMeasureOperation(opName) || isValveTypeOperation(opName)) return false
+  return (lower.includes('guías') || lower.includes('guias')) && (lower.includes('adapte') || lower.includes('válvula') || lower.includes('valvula'))
+}
+
+const isSingleMeasureOperation = (item: FormOperationItem | string) => {
+  if (isDualMeasureOperation(item) || isValveTypeOperation(item)) return false
+  if (typeof item === 'object' && item) {
+    if (item.measure !== undefined) return true
+    return isSingleMeasureOperation(item.operation || '')
+  }
+  const lower = (item || '').toLowerCase()
   const isCilindro = (lower.includes('rectificar') || lower.includes('bruñir') || lower.includes('brunir')) && lower.includes('cilindro')
   const isCasquetes = lower.includes('casquete') && (lower.includes('banco') || lower.includes('biela'))
   return isCilindro || isCasquetes
-}
-
-const isValveTypeOperation = (opName: string) => {
-  const lower = opName.toLowerCase()
-  return (lower.includes('guías') || lower.includes('guias')) && (lower.includes('adapte') || lower.includes('válvula') || lower.includes('valvula'))
 }
 
 const isPartWithMeasure = (partName: string) => {
@@ -603,10 +612,11 @@ const loadExistingOrder = (order: Order) => {
   // Sincronizar las operaciones existentes en la lista unificada
   if (order.operations && order.operations.length > 0) {
     order.operations.forEach(savedOp => {
-      const match = allOperations.value.find(
+      const match = allOperations.value.find(o => o.id === savedOp.id) || allOperations.value.find(
         o => o.category === savedOp.category && o.operation.toLowerCase() === savedOp.operation.toLowerCase()
       )
       if (match) {
+        match.operation = savedOp.operation // Conservar nombre personalizado de esta orden
         match.selected = true
         match.quantity = savedOp.quantity
         match.unitPrice = savedOp.unitPrice
@@ -1408,7 +1418,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 <tr>
                   <th class="px-3 py-2.5 text-center w-10">Act.</th>
                   <th class="px-4 py-2.5 text-left w-24">Componente</th>
-                  <th class="px-4 py-2.5 text-left">Operación de Rectificación</th>
+                  <th class="px-4 py-2.5 text-left">
+                    Operación de Rectificación
+                    <span class="block text-[9px] font-normal text-slate-500 lowercase">editable en esta orden</span>
+                  </th>
                   <th class="px-3 py-2.5 text-center w-24">Cantidad</th>
                   <th class="px-4 py-2.5 text-right w-28">
                     Precio U. ($)
@@ -1452,10 +1465,18 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <!-- Nombre de la operación y selectores de medida -->
                   <td class="px-4 py-2.5">
                     <!-- Operaciones con Medida Dual (Rectificar / Pulir Banco-Biela) -->
-                    <div v-if="isDualMeasureOperation(op.operation)" class="space-y-1.5 py-0.5">
-                      <div :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                        {{ op.operation }}
-                      </div>
+                    <div v-if="isDualMeasureOperation(op)" class="space-y-1.5 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="w-full px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
                       <div class="flex flex-wrap items-center gap-2">
                         <!-- Selector Banco -->
                         <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
@@ -1485,11 +1506,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
 
                     <!-- Operaciones con Tipo de Válvula (Cambio de Guías y Adapte, Guías de Válvula) -->
-                    <div v-else-if="isValveTypeOperation(op.operation)" class="flex flex-wrap items-center justify-between gap-2 py-0.5">
-                      <div :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                        {{ op.operation }}
-                      </div>
-                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
+                    <div v-else-if="isValveTypeOperation(op)" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
+                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
                         <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Tipo:</span>
                         <select
                           v-model="op.measure"
@@ -1503,11 +1532,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
 
                     <!-- Operaciones con Medida Simple (Rectificar Cilindros, Bruñir Cilindros, Casquetes de Bancos, Casquetes de Biela) -->
-                    <div v-else-if="isSingleMeasureOperation(op.operation)" class="flex flex-wrap items-center justify-between gap-2 py-0.5">
-                      <div :class="['font-medium text-slate-900', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                        {{ op.operation }}
-                      </div>
-                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
+                    <div v-else-if="isSingleMeasureOperation(op)" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
+                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
                         <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Medida:</span>
                         <select
                           v-model="op.measure"
@@ -1521,9 +1558,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
 
                     <!-- Operaciones estándar o personalizadas -->
-                    <div v-else :class="['font-medium text-slate-900 flex items-center gap-1.5', op.selected ? 'font-bold text-cyan-950' : 'text-slate-700']">
-                      <span>{{ op.operation }}</span>
-                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    <div v-else class="flex items-center gap-2 py-0.5">
+                      <input
+                        v-model="op.operation"
+                        type="text"
+                        placeholder="Descripción de la operación..."
+                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        :class="[
+                          op.selected 
+                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                        ]"
+                      />
+                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
                         Especial
                       </span>
                     </div>
