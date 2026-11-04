@@ -43,3 +43,4 @@ WITH CHECK (bucket_id = 'repuestos');
 CREATE POLICY "Permitir eliminacion en bucket repuestos"
 ON storage.objects FOR DELETE
 USING (bucket_id = 'repuestos');
+
