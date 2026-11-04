@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ordersService, type Order } from '@/services/ordersService'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
@@ -21,7 +21,19 @@ import {
 } from 'lucide-vue-next'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+
+// Abrir formulario automáticamente si se solicita desde el Navbar con ?nueva=...
+watch(
+  () => route.query.nueva,
+  (val) => {
+    if (val) {
+      openNewOrder()
+    }
+  },
+  { immediate: true }
+)
 
 // Vistas: 'list' (listado) o 'form' (formulario de creación/edición)
 const currentView = ref<'list' | 'form'>('list')
@@ -98,6 +110,16 @@ const handleDeleteOrder = async (id: string) => {
 const handleOrderSaved = async () => {
   await loadOrders()
   currentView.value = 'list'
+  if (route.query.nueva) {
+    router.replace({ path: '/ordenes' })
+  }
+}
+
+const handleCloseForm = () => {
+  currentView.value = 'list'
+  if (route.query.nueva) {
+    router.replace({ path: '/ordenes' })
+  }
 }
 
 const getStatusBadge = (status: Order['status']) => {
@@ -136,7 +158,7 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
     <div v-if="currentView === 'form'">
       <WorkOrderForm
         :initial-order-id="selectedOrderId"
-        @close="currentView = 'list'"
+        @close="handleCloseForm"
         @saved="handleOrderSaved"
       />
     </div>
