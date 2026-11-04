@@ -49,79 +49,63 @@ async function main() {
     const nprItem = nprMap.get(nprCode);
     if (!nprItem) continue;
 
-    const r1 = nprItem.anillos?.[0] || {};
-    const r2 = nprItem.anillos?.[1] || {};
-    const rOil = nprItem.anillos?.[2] || {};
+    const rawAnillos = Array.isArray(nprItem.anillos) && nprItem.anillos.length > 0
+      ? nprItem.anillos
+      : [
+          { posicion: '1', diametro_mm: dbRing.diametro_cilindro_mm, altura_mm: dbRing.espesor_anillo1_mm, espesor_radial_mm: dbRing.dimensiones?.espesor_radial1_mm },
+          { posicion: '2', diametro_mm: dbRing.diametro_cilindro_mm, altura_mm: dbRing.espesor_anillo2_mm, espesor_radial_mm: dbRing.dimensiones?.espesor_radial2_mm },
+          { posicion: 'Anillo de aceite', diametro_mm: dbRing.diametro_cilindro_mm, altura_mm: dbRing.espesor_aceite_mm, espesor_radial_mm: dbRing.dimensiones?.espesor_radial_aceite_mm }
+        ];
 
-    const d1 = Number(r1.diametro_mm || dbRing.diametro_cilindro_mm || 0);
-    const h1 = Number(r1.altura_mm || dbRing.espesor_anillo1_mm || 0);
-    const a1 = Number(r1.espesor_radial_mm || dbRing.dimensiones?.espesor_radial1_mm || 0);
+    const totalRings = rawAnillos.length;
+    const anillosDetalle = rawAnillos.map((r, idx) => {
+      const isLast = idx === totalRings - 1;
+      const isOil = String(r.posicion || '').toLowerCase().includes('oil') || isLast;
+      const posLabel = isOil ? 'Anillo de aceite' : `${idx + 1}`;
+      const d = Number(r.diametro_mm || dbRing.diametro_cilindro_mm || 0);
+      const h = Number(r.altura_mm || 0);
+      const a = Number(r.espesor_radial_mm || 0);
+      return {
+        posicion: posLabel,
+        d1: d > 0 ? d : null,
+        h1: h > 0 ? h : null,
+        a1: a > 0 ? a : null,
+        forma: r.forma || null,
+        material: r.material || null,
+        tratamiento_ext: r.tratamiento_exterior || null,
+        tratamiento_int: r.tratamiento_superior_inferior || null
+      };
+    });
 
-    const d2 = Number(r2.diametro_mm || d1 || 0);
-    const h2 = Number(r2.altura_mm || dbRing.espesor_anillo2_mm || 0);
-    const a2 = Number(r2.espesor_radial_mm || dbRing.dimensiones?.espesor_radial2_mm || 0);
-
-    const dOil = Number(rOil.diametro_mm || d1 || 0);
-    const hOil = Number(rOil.altura_mm || dbRing.espesor_aceite_mm || 0);
-    const aOil = Number(rOil.espesor_radial_mm || dbRing.dimensiones?.espesor_radial_aceite_mm || 0);
-
-    const anillosDetalle = [
-      {
-        posicion: '1st',
-        d1: d1 > 0 ? d1 : null,
-        h1: h1 > 0 ? h1 : null,
-        a1: a1 > 0 ? a1 : null,
-        forma: r1.forma || dbRing.dimensiones?.forma1 || null,
-        material: r1.material || dbRing.dimensiones?.material1 || null,
-        tratamiento_ext: r1.tratamiento_exterior || null,
-        tratamiento_int: r1.tratamiento_superior_inferior || null
-      },
-      {
-        posicion: '2nd',
-        d1: d2 > 0 ? d2 : null,
-        h1: h2 > 0 ? h2 : null,
-        a1: a2 > 0 ? a2 : null,
-        forma: r2.forma || null,
-        material: r2.material || null,
-        tratamiento_ext: r2.tratamiento_exterior || null,
-        tratamiento_int: r2.tratamiento_superior_inferior || null
-      },
-      {
-        posicion: 'Oil',
-        d1: dOil > 0 ? dOil : null,
-        h1: hOil > 0 ? hOil : null,
-        a1: aOil > 0 ? aOil : null,
-        forma: rOil.forma || null,
-        material: rOil.material || null,
-        tratamiento_ext: rOil.tratamiento_exterior || null,
-        tratamiento_int: rOil.tratamiento_superior_inferior || null
-      }
-    ];
+    const dMain = anillosDetalle[0]?.d1 || dbRing.diametro_cilindro_mm;
+    const h1 = anillosDetalle[0]?.h1 || dbRing.espesor_anillo1_mm;
+    const h2 = anillosDetalle[1]?.h1 || dbRing.espesor_anillo2_mm;
+    const hOil = anillosDetalle[totalRings - 1]?.h1 || dbRing.espesor_aceite_mm;
 
     const newDimensiones = {
       ...(dbRing.dimensiones || {}),
-      diametro_cilindro_mm: d1 > 0 ? d1 : dbRing.diametro_cilindro_mm,
-      espesor_anillo1_mm: h1 > 0 ? h1 : dbRing.espesor_anillo1_mm,
-      espesor_anillo2_mm: h2 > 0 ? h2 : dbRing.espesor_anillo2_mm,
-      espesor_aceite_mm: hOil > 0 ? hOil : dbRing.espesor_aceite_mm,
-      espesor_radial1_mm: a1 > 0 ? a1 : dbRing.dimensiones?.espesor_radial1_mm,
-      espesor_radial2_mm: a2 > 0 ? a2 : dbRing.dimensiones?.espesor_radial2_mm,
-      espesor_radial_aceite_mm: aOil > 0 ? aOil : dbRing.dimensiones?.espesor_radial_aceite_mm,
-      forma1: r1.forma || dbRing.dimensiones?.forma1,
-      forma2: r2.forma || null,
-      forma_oil: rOil.forma || null,
-      material1: r1.material || dbRing.dimensiones?.material1,
-      material2: r2.material || null,
-      material_oil: rOil.material || null,
+      diametro_cilindro_mm: dMain,
+      espesor_anillo1_mm: h1,
+      espesor_anillo2_mm: h2,
+      espesor_aceite_mm: hOil,
+      espesor_radial1_mm: anillosDetalle[0]?.a1 || dbRing.dimensiones?.espesor_radial1_mm,
+      espesor_radial2_mm: anillosDetalle[1]?.a1 || dbRing.dimensiones?.espesor_radial2_mm,
+      espesor_radial_aceite_mm: anillosDetalle[totalRings - 1]?.a1 || dbRing.dimensiones?.espesor_radial_aceite_mm,
+      forma1: anillosDetalle[0]?.forma || dbRing.dimensiones?.forma1 || null,
+      forma2: anillosDetalle[1]?.forma || null,
+      forma_oil: anillosDetalle[totalRings - 1]?.forma || null,
+      material1: anillosDetalle[0]?.material || dbRing.dimensiones?.material1 || null,
+      material2: anillosDetalle[1]?.material || null,
+      material_oil: anillosDetalle[totalRings - 1]?.material || null,
       anillos: anillosDetalle
     };
 
     updates.push({
       id: dbRing.id,
-      diametro_cilindro_mm: d1 > 0 ? d1 : dbRing.diametro_cilindro_mm,
-      espesor_anillo1_mm: h1 > 0 ? h1 : dbRing.espesor_anillo1_mm,
-      espesor_anillo2_mm: h2 > 0 ? h2 : dbRing.espesor_anillo2_mm,
-      espesor_aceite_mm: hOil > 0 ? hOil : dbRing.espesor_aceite_mm,
+      diametro_cilindro_mm: dMain,
+      espesor_anillo1_mm: h1,
+      espesor_anillo2_mm: h2,
+      espesor_aceite_mm: hOil,
       dimensiones: newDimensiones
     });
   }
@@ -154,4 +138,3 @@ main().catch(err => {
   console.error('❌ Error:', err);
   process.exit(1);
 });
-
