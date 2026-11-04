@@ -389,12 +389,15 @@ const filterValvulaVastago = ref<number | undefined>(undefined)
 const filterValvulaAltura = ref<number | undefined>(undefined)
 const filterValvulaCunero = ref<string>('')
 
-// 3. Anillos de motor (Nomenclatura y Cotas Oficiales NPR)
-const filterAnilloDiametro = ref<number | undefined>(undefined) // d1 (D)
-const filterAnilloGrosor1 = ref<number | undefined>(undefined)   // 1st h1 (B)
-const filterAnilloGrosor2 = ref<number | undefined>(undefined)   // 2nd h1 (B)
-const filterAnilloGrosorAceite = ref<number | undefined>(undefined) // Oil h1 (B)
-const filterAnilloRadial1 = ref<number | undefined>(undefined)   // a1 (T)
+// 3. Anillos de motor (Nomenclatura Oficial: D = Diám. Pistón, B = Grosor, T = Altura)
+const filterAnilloTab = ref<'todos' | '1st' | '2nd' | 'oil'>('todos')
+const filterAnilloDiametro = ref<number | undefined>(undefined)      // D (Diámetro pistón)
+const filterAnilloGrosor1 = ref<number | undefined>(undefined)        // B Anillo 1 (Grosor)
+const filterAnilloRadial1 = ref<number | undefined>(undefined)        // T Anillo 1 (Altura)
+const filterAnilloGrosor2 = ref<number | undefined>(undefined)        // B Anillo 2 (Grosor)
+const filterAnilloRadial2 = ref<number | undefined>(undefined)        // T Anillo 2 (Altura)
+const filterAnilloGrosorAceite = ref<number | undefined>(undefined)   // B Anillo Aceite (Grosor)
+const filterAnilloRadialAceite = ref<number | undefined>(undefined)   // T Anillo Aceite (Altura)
 
 // 4. Juego de tornillos de culata
 const filterPernoMedidaRosca = ref<string>('')
@@ -437,9 +440,11 @@ const activeMeasurementsCount = computed(() => {
       count += [
         filterAnilloDiametro.value, 
         filterAnilloGrosor1.value, 
+        filterAnilloRadial1.value,
         filterAnilloGrosor2.value, 
+        filterAnilloRadial2.value,
         filterAnilloGrosorAceite.value, 
-        filterAnilloRadial1.value
+        filterAnilloRadialAceite.value
       ].filter(v => v !== undefined && v !== null).length
     } else if (selectedComponent.value.id === 'tornillos_culata') {
       count += [
@@ -485,11 +490,14 @@ const resetMeasurementsFilters = () => {
   filterValvulaAltura.value = undefined
   filterValvulaCunero.value = ''
 
+  filterAnilloTab.value = 'todos'
   filterAnilloDiametro.value = undefined
   filterAnilloGrosor1.value = undefined
-  filterAnilloGrosor2.value = undefined
-  filterAnilloGrosorAceite.value = undefined
   filterAnilloRadial1.value = undefined
+  filterAnilloGrosor2.value = undefined
+  filterAnilloRadial2.value = undefined
+  filterAnilloGrosorAceite.value = undefined
+  filterAnilloRadialAceite.value = undefined
 
   filterPernoMedidaRosca.value = ''
   filterPernoGrosor.value = undefined
@@ -1124,27 +1132,57 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         })
       }
     } else if (compId === 'anillos_motor') {
+      // D: Diámetro de Pistón
       if (filterAnilloDiametro.value !== undefined && filterAnilloDiametro.value !== null) {
         const tolAnilloDiametro = getTol('anilloDiametro')
-        list = list.filter(r => r.diametro_cilindro_mm && Math.abs(r.diametro_cilindro_mm - (filterAnilloDiametro.value || 0)) <= tolAnilloDiametro)
+        list = list.filter(r => {
+          const d1 = getRingD1(r, 0)
+          return d1 != null && Math.abs(d1 - (filterAnilloDiametro.value || 0)) <= tolAnilloDiametro
+        })
       }
+      // 1° Anillo: B (Grosor) y T (Altura)
       if (filterAnilloGrosor1.value !== undefined && filterAnilloGrosor1.value !== null) {
         const tolAnilloGrosor1 = getTol('anilloGrosor1')
-        list = list.filter(r => r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - (filterAnilloGrosor1.value || 0)) <= tolAnilloGrosor1)
-      }
-      if (filterAnilloGrosor2.value !== undefined && filterAnilloGrosor2.value !== null) {
-        const tolAnilloGrosor2 = getTol('anilloGrosor2')
-        list = list.filter(r => r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - (filterAnilloGrosor2.value || 0)) <= tolAnilloGrosor2)
-      }
-      if (filterAnilloGrosorAceite.value !== undefined && filterAnilloGrosorAceite.value !== null) {
-        const tolAnilloGrosorAceite = getTol('anilloGrosorAceite')
-        list = list.filter(r => r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - (filterAnilloGrosorAceite.value || 0)) <= tolAnilloGrosorAceite)
+        list = list.filter(r => {
+          const h1 = getRingH1(r, 0)
+          return h1 != null && Math.abs(h1 - (filterAnilloGrosor1.value || 0)) <= tolAnilloGrosor1
+        })
       }
       if (filterAnilloRadial1.value !== undefined && filterAnilloRadial1.value !== null) {
         const tolAnilloRadial1 = getTol('anilloRadial1')
         list = list.filter(r => {
-          const a1 = (r.dimensiones as any)?.espesor_radial1_mm ?? (r.dimensiones as any)?.anillos?.[0]?.a1
-          return a1 && Math.abs(a1 - (filterAnilloRadial1.value || 0)) <= tolAnilloRadial1
+          const a1 = getRingA1(r, 0)
+          return a1 != null && Math.abs(a1 - (filterAnilloRadial1.value || 0)) <= tolAnilloRadial1
+        })
+      }
+      // 2° Anillo: B (Grosor) y T (Altura)
+      if (filterAnilloGrosor2.value !== undefined && filterAnilloGrosor2.value !== null) {
+        const tolAnilloGrosor2 = getTol('anilloGrosor2')
+        list = list.filter(r => {
+          const h1 = getRingH1(r, 1)
+          return h1 != null && Math.abs(h1 - (filterAnilloGrosor2.value || 0)) <= tolAnilloGrosor2
+        })
+      }
+      if (filterAnilloRadial2.value !== undefined && filterAnilloRadial2.value !== null) {
+        const tolAnilloRadial2 = getTol('anilloRadial2')
+        list = list.filter(r => {
+          const a1 = getRingA1(r, 1)
+          return a1 != null && Math.abs(a1 - (filterAnilloRadial2.value || 0)) <= tolAnilloRadial2
+        })
+      }
+      // Anillo de Aceite: B (Grosor) y T (Altura)
+      if (filterAnilloGrosorAceite.value !== undefined && filterAnilloGrosorAceite.value !== null) {
+        const tolAnilloGrosorAceite = getTol('anilloGrosorAceite')
+        list = list.filter(r => {
+          const h1 = getRingH1(r, 2)
+          return h1 != null && Math.abs(h1 - (filterAnilloGrosorAceite.value || 0)) <= tolAnilloGrosorAceite
+        })
+      }
+      if (filterAnilloRadialAceite.value !== undefined && filterAnilloRadialAceite.value !== null) {
+        const tolAnilloRadialAceite = getTol('anilloRadialAceite')
+        list = list.filter(r => {
+          const a1 = getRingA1(r, 2)
+          return a1 != null && Math.abs(a1 - (filterAnilloRadialAceite.value || 0)) <= tolAnilloRadialAceite
         })
       }
     } else if (compId === 'tornillos_culata') {
@@ -2428,86 +2466,342 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR (NOMENCLATURA OFICIAL NPR) -->
-        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Diámetro nominal del cilindro / d1 (D)">
-                d 1 (D) Ø Cilindro
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR (NOMENCLATURA OFICIAL NPR / TALLER) -->
+        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="space-y-2.5">
+          <!-- Barra superior de selección de Anillo y Nota Técnica -->
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+            <!-- Tabs de navegación: Todos, 1° Anillo, 2° Anillo, Anillo Aceite -->
+            <div class="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-bold">
+              <button
+                type="button"
+                @click="filterAnilloTab = 'todos'"
+                class="px-2.5 py-1 rounded-md transition"
+                :class="filterAnilloTab === 'todos' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+              >
+                Todos los aros
+              </button>
+              <button
+                type="button"
+                @click="filterAnilloTab = '1st'"
+                class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
+                :class="filterAnilloTab === '1st' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+              >
+                <span>1° Anillo</span>
+                <span v-if="filterAnilloGrosor1 !== undefined || filterAnilloRadial1 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              </button>
+              <button
+                type="button"
+                @click="filterAnilloTab = '2nd'"
+                class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
+                :class="filterAnilloTab === '2nd' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+              >
+                <span>2° Anillo</span>
+                <span v-if="filterAnilloGrosor2 !== undefined || filterAnilloRadial2 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              </button>
+              <button
+                type="button"
+                @click="filterAnilloTab = 'oil'"
+                class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
+                :class="filterAnilloTab === 'oil' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+              >
+                <span>Aceite</span>
+                <span v-if="filterAnilloGrosorAceite !== undefined || filterAnilloRadialAceite !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              </button>
             </div>
-            <input
-              v-model.number="filterAnilloDiametro"
-              type="number"
-              step="0.1"
-              placeholder="ej. 62.0"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
+
+            <!-- Información técnica informativa (no búsqueda) -->
+            <div class="flex items-center gap-1.5 text-[10px] text-cyan-800 bg-cyan-50/80 px-2.5 py-1 rounded-md border border-cyan-200/70 font-medium">
+              <span class="font-bold text-[#038391]">4 Cilindros</span>
+              <span class="text-slate-400">|</span>
+              <span class="text-slate-600">Dato informativo en tabla (no filtra)</span>
+            </div>
           </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Grosor axial 1er anillo / 1st h1 (B)">
-                1st h 1 (B) Fuego
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
+          <!-- Campos de búsqueda: D Diámetro Pistón + Pares B (Grosor) y T (Altura) -->
+          <!-- Modo 'todos': muestra D y cada anillo con sus campos B y T a la par -->
+          <div v-if="filterAnilloTab === 'todos'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <!-- D: Diámetro Pistón -->
+            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90 flex flex-col justify-between">
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate" title="Diámetro nominal del cilindro / d1 (D)">
+                  d 1 (D) Ø Pistón
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+              </div>
+              <input
+                v-model.number="filterAnilloDiametro"
+                type="number"
+                step="0.1"
+                placeholder="ej. 62.0"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+              />
+              <span class="text-[9px] text-slate-600 mt-1 block">Nominal pistón (mm)</span>
             </div>
-            <input
-              v-model.number="filterAnilloGrosor1"
-              type="number"
-              step="0.05"
-              placeholder="ej. 1.2"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
+
+            <!-- 1° Anillo: B1 y T1 a la par -->
+            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
+                <span>1° Anillo (Fuego)</span>
+                <span class="text-[9px] text-[#038391] font-mono font-bold">1st</span>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <div>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-600 truncate" title="Grosor B (h1 mm)">
+                      B Grosor
+                    </label>
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
+                  </div>
+                  <input
+                    v-model.number="filterAnilloGrosor1"
+                    type="number"
+                    step="0.05"
+                    placeholder="1.2"
+                    class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-600 truncate" title="Altura T (a1 mm)">
+                      T Altura
+                    </label>
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" />
+                  </div>
+                  <input
+                    v-model.number="filterAnilloRadial1"
+                    type="number"
+                    step="0.05"
+                    placeholder="2.5"
+                    class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- 2° Anillo: B2 y T2 a la par -->
+            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
+                <span>2° Anillo (Compresión)</span>
+                <span class="text-[9px] text-[#038391] font-mono font-bold">2nd</span>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <div>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-600 truncate" title="Grosor B (h1 mm)">
+                      B Grosor
+                    </label>
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" />
+                  </div>
+                  <input
+                    v-model.number="filterAnilloGrosor2"
+                    type="number"
+                    step="0.05"
+                    placeholder="1.5"
+                    class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-600 truncate" title="Altura T (a1 mm)">
+                      T Altura
+                    </label>
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.05" />
+                  </div>
+                  <input
+                    v-model.number="filterAnilloRadial2"
+                    type="number"
+                    step="0.05"
+                    placeholder="2.5"
+                    class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Anillo Aceite: B Aceite y T Aceite a la par -->
+            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
+              <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
+                <span>Aceite (Rascador)</span>
+                <span class="text-[9px] text-[#038391] font-mono font-bold">Oil</span>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <div>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-600 truncate" title="Grosor B (h1 mm)">
+                      B Grosor
+                    </label>
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" />
+                  </div>
+                  <input
+                    v-model.number="filterAnilloGrosorAceite"
+                    type="number"
+                    step="0.05"
+                    placeholder="2.8"
+                    class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-600 truncate" title="Altura T (a1 mm)">
+                      T Altura
+                    </label>
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadialAceite']" :fallback="filterToleranciaMm" :step="0.05" />
+                  </div>
+                  <input
+                    v-model.number="filterAnilloRadialAceite"
+                    type="number"
+                    step="0.05"
+                    placeholder="2.8"
+                    class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Grosor axial 2do anillo / 2nd h1 (B)">
-                2nd h 1 (B) Compr.
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" />
+          <!-- Modos Individuales (1st, 2nd, oil): Enfocados con D Diámetro Pistón y el par B y T a la par -->
+          <div v-else-if="filterAnilloTab === '1st'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  d 1 (D) Ø Pistón (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+              </div>
+              <input
+                v-model.number="filterAnilloDiametro"
+                type="number"
+                step="0.1"
+                placeholder="ej. 62.0"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
             </div>
-            <input
-              v-model.number="filterAnilloGrosor2"
-              type="number"
-              step="0.05"
-              placeholder="ej. 1.5"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  1st h 1 (B) Grosor (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
+              </div>
+              <input
+                v-model.number="filterAnilloGrosor1"
+                type="number"
+                step="0.05"
+                placeholder="ej. 1.2"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  1st a 1 (T) Altura (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" />
+              </div>
+              <input
+                v-model.number="filterAnilloRadial1"
+                type="number"
+                step="0.05"
+                placeholder="ej. 2.5"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
           </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Grosor axial anillo aceite / Oil h1 (B)">
-                Oil h 1 (B) Aceite
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" />
+          <div v-else-if="filterAnilloTab === '2nd'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  d 1 (D) Ø Pistón (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+              </div>
+              <input
+                v-model.number="filterAnilloDiametro"
+                type="number"
+                step="0.1"
+                placeholder="ej. 62.0"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
             </div>
-            <input
-              v-model.number="filterAnilloGrosorAceite"
-              type="number"
-              step="0.05"
-              placeholder="ej. 2.8"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  2nd h 1 (B) Grosor (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" />
+              </div>
+              <input
+                v-model.number="filterAnilloGrosor2"
+                type="number"
+                step="0.05"
+                placeholder="ej. 1.5"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  2nd a 1 (T) Altura (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.05" />
+              </div>
+              <input
+                v-model.number="filterAnilloRadial2"
+                type="number"
+                step="0.05"
+                placeholder="ej. 2.5"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
           </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Espesor o ancho radial del anillo / a1 (T)">
-                a 1 (T) Radial
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" />
+          <div v-else-if="filterAnilloTab === 'oil'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  d 1 (D) Ø Pistón (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+              </div>
+              <input
+                v-model.number="filterAnilloDiametro"
+                type="number"
+                step="0.1"
+                placeholder="ej. 62.0"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
             </div>
-            <input
-              v-model.number="filterAnilloRadial1"
-              type="number"
-              step="0.05"
-              placeholder="ej. 2.5"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  Oil h 1 (B) Grosor (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" />
+              </div>
+              <input
+                v-model.number="filterAnilloGrosorAceite"
+                type="number"
+                step="0.05"
+                placeholder="ej. 2.8"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-0.5">
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
+                  Oil a 1 (T) Altura (mm)
+                </label>
+                <ToleranceBadge v-model="filterTolerancias['anilloRadialAceite']" :fallback="filterToleranciaMm" :step="0.05" />
+              </div>
+              <input
+                v-model.number="filterAnilloRadialAceite"
+                type="number"
+                step="0.05"
+                placeholder="ej. 2.8"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
           </div>
         </div>
 
@@ -3257,7 +3551,7 @@ onUnmounted(() => {
                             </td>
                             <td 
                               class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="filterAnilloRadial1 && getMeasurementMatchClass(getRingA1(part, 1), filterAnilloRadial1, getTol('anilloRadial1')).includes('bg-emerald') ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
+                              :class="filterAnilloRadial2 && getMeasurementMatchClass(getRingA1(part, 1), filterAnilloRadial2, getTol('anilloRadial2')).includes('bg-emerald') ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
                             >
                               {{ formatRingVal(getRingA1(part, 1)) }}
                             </td>
@@ -3282,7 +3576,7 @@ onUnmounted(() => {
                             </td>
                             <td 
                               class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="filterAnilloRadial1 && getMeasurementMatchClass(getRingA1(part, 2), filterAnilloRadial1, getTol('anilloRadial1')).includes('bg-emerald') ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
+                              :class="filterAnilloRadialAceite && getMeasurementMatchClass(getRingA1(part, 2), filterAnilloRadialAceite, getTol('anilloRadialAceite')).includes('bg-emerald') ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
                             >
                               {{ formatRingVal(getRingA1(part, 2)) }}
                             </td>
