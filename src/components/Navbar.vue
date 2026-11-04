@@ -267,13 +267,13 @@ const handleNewOrder = () => {
           >
             <div
               v-if="userMenuOpen"
-              class="absolute top-full right-0 mt-2 w-64 bg-[#0d0d0d]/98 backdrop-blur-xl border border-neutral-800/90 rounded-2xl p-3.5 shadow-[0_16px_40px_-6px_rgba(0,0,0,0.7)] text-white z-50 pointer-events-auto"
+              class="absolute top-full right-0 mt-2 w-72 bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 shadow-2xl shadow-black/95 text-white z-50 pointer-events-auto"
               @mouseenter="openUserMenu"
               @mouseleave="scheduleCloseUserMenu"
             >
               <!-- Info del Usuario -->
-              <div class="flex items-center gap-3 pb-3 border-b border-neutral-800/80">
-                <div class="w-10 h-10 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/15">
+              <div class="flex items-center gap-3 pb-3 border-b border-neutral-800">
+                <div class="w-10 h-10 rounded-full overflow-hidden bg-neutral-900 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/15">
                   <img 
                     v-if="authStore.user?.avatar" 
                     :src="authStore.user.avatar" 
@@ -283,42 +283,42 @@ const handleNewOrder = () => {
                   <UserIcon v-else class="w-5 h-5 text-neutral-400" />
                 </div>
                 <div class="min-w-0 flex-1">
-                  <div class="text-xs font-bold text-white truncate">
+                  <div class="text-sm font-bold text-white truncate">
                     {{ authStore.user?.name || 'Usuario' }}
                   </div>
-                  <div class="text-[11px] text-neutral-400 truncate mt-0.5">
+                  <div class="text-xs text-neutral-300 truncate mt-0.5 font-medium">
                     {{ authStore.user?.email || 'usuario@jrblanco.com' }}
                   </div>
                 </div>
               </div>
 
               <!-- Sección de Rol de Usuario -->
-              <div class="py-2.5 border-b border-neutral-800/80 flex items-center justify-between">
-                <span class="text-[11px] font-medium text-neutral-400">Rol activo</span>
+              <div class="py-3 border-b border-neutral-800 flex items-center justify-between">
+                <span class="text-xs font-semibold text-neutral-300">Rol activo</span>
                 <button
                   type="button"
                   @click="cycleRole"
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer select-none"
+                  class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition cursor-pointer select-none"
                   :class="roleBadgeClass"
                   title="Clic para alternar rol en vivo (Admin → Operador → Consultor)"
                 >
-                  <component :is="roleIcon" class="w-3 h-3 shrink-0" />
+                  <component :is="roleIcon" class="w-3.5 h-3.5 shrink-0" />
                   <span>{{ authStore.user?.role || 'Consultor' }}</span>
                 </button>
               </div>
 
               <!-- Información de la Empresa / Taller -->
-              <div class="py-2 border-b border-neutral-800/80 text-[11px] text-neutral-400 flex items-center justify-between">
-                <span>Taller</span>
-                <span class="text-neutral-300 font-semibold">JR Blanco Motores</span>
+              <div class="py-2.5 border-b border-neutral-800 text-xs flex items-center justify-between">
+                <span class="font-semibold text-neutral-300">Taller</span>
+                <span class="text-white font-bold">JR Blanco Motores</span>
               </div>
 
               <!-- Acción de Cerrar Sesión -->
-              <div class="pt-2">
+              <div class="pt-2.5">
                 <button
                   type="button"
                   @click="handleLogout"
-                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                  class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:text-white hover:bg-rose-600 transition-colors cursor-pointer border border-rose-500/30 hover:border-rose-600"
                 >
                   <LogOut class="w-4 h-4 shrink-0" />
                   <span>Cerrar sesión</span>
@@ -362,7 +362,7 @@ const handleNewOrder = () => {
     >
       <div
         v-if="mobileMenuOpen"
-        class="pointer-events-auto absolute top-14 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a]/95 backdrop-blur-xl border border-neutral-800 rounded-2xl p-4 shadow-2xl space-y-3 z-50 lg:hidden"
+        class="pointer-events-auto absolute top-14 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 shadow-2xl shadow-black/95 space-y-3 z-50 lg:hidden"
       >
         <div class="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-2">
           Navegación
@@ -403,7 +403,7 @@ const handleNewOrder = () => {
             </div>
             <div class="min-w-0 flex-1">
               <div class="text-xs font-bold text-white truncate">{{ authStore.user?.name }}</div>
-              <div class="text-[11px] text-neutral-400 truncate">{{ authStore.user?.email }}</div>
+              <div class="text-[11px] text-neutral-300 truncate font-medium">{{ authStore.user?.email }}</div>
             </div>
           </div>
 
@@ -423,7 +423,7 @@ const handleNewOrder = () => {
             <button
               type="button"
               @click="handleLogout"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-400 hover:text-white hover:bg-rose-600 transition cursor-pointer border border-rose-500/30"
             >
               <LogOut class="w-3.5 h-3.5" />
               <span>Cerrar sesión</span>
