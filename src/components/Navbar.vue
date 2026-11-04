@@ -133,40 +133,40 @@ const handleNewOrder = () => {
 
 <template>
   <header class="sticky top-0 z-40 w-full flex justify-center pointer-events-none px-2 sm:px-4">
-    <!-- Notch Container Estilo Supaste / Dynamic Island -->
+    <!-- Notch Container Compacto Estilo Supaste / Dynamic Island -->
     <div
-      class="pointer-events-auto relative w-full max-w-6xl h-14 bg-[#0a0a0a] text-white rounded-b-[22px] border-b border-x border-neutral-800/90 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.55)] px-3 sm:px-5 flex items-center justify-between transition-all"
+      class="pointer-events-auto relative w-full sm:w-auto max-w-5xl h-12 bg-[#0a0a0a] text-white rounded-b-[20px] border-b border-x border-neutral-800/90 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.6)] px-3 sm:px-4 flex items-center justify-between sm:justify-center gap-3 sm:gap-6 lg:gap-8 transition-all"
     >
       <!-- Oreja Izquierda Curva Cóncava (Inverted Fillet Ear) -->
       <svg
-        class="absolute top-0 -left-[20px] w-[20px] h-[20px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
-        viewBox="0 0 20 20"
+        class="absolute top-0 -left-[18px] w-[18px] h-[18px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
+        viewBox="0 0 18 18"
       >
-        <path d="M20 0 H0 C11.046 0 20 8.954 20 20 V0 Z" />
-        <path d="M0 0 C11.046 0 20 8.954 20 20" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+        <path d="M18 0 H0 C9.941 0 18 8.059 18 18 V0 Z" />
+        <path d="M0 0 C9.941 0 18 8.059 18 18" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
       </svg>
 
       <!-- Oreja Derecha Curva Cóncava (Inverted Fillet Ear) -->
       <svg
-        class="absolute top-0 -right-[20px] w-[20px] h-[20px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
-        viewBox="0 0 20 20"
+        class="absolute top-0 -right-[18px] w-[18px] h-[18px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
+        viewBox="0 0 18 18"
       >
-        <path d="M0 0 H20 C8.954 0 0 8.954 0 20 Z" />
-        <path d="M20 0 C8.954 0 0 8.954 0 20" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+        <path d="M0 0 H18 C8.059 0 0 8.059 0 18 Z" />
+        <path d="M18 0 C8.059 0 0 8.059 0 18" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
       </svg>
 
       <!-- 1. Left: Brand / Logo con efecto Glossy Glass (Estilo Supaste) -->
       <router-link
         :to="authStore.defaultRoute"
-        class="flex items-center gap-2.5 group select-none shrink-0"
+        class="flex items-center gap-2 group select-none shrink-0"
         title="Ir al inicio"
       >
         <!-- Ícono Squircle con brillo vítreo tipo iOS / Supaste -->
         <div
-          class="relative w-8 h-8 rounded-xl bg-gradient-to-br from-[#05C7F2] via-[#0284c7] to-[#004b97] p-1.5 flex items-center justify-center shadow-md shadow-[#05C7F2]/25 ring-1 ring-white/30 overflow-hidden group-hover:scale-105 transition-transform"
+          class="relative w-7 h-7 rounded-lg bg-gradient-to-br from-[#05C7F2] via-[#0284c7] to-[#004b97] p-1 flex items-center justify-center shadow-sm shadow-[#05C7F2]/25 ring-1 ring-white/30 overflow-hidden group-hover:scale-105 transition-transform"
         >
           <!-- Reflejo brillante de cristal superior -->
-          <div class="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/40 to-transparent rounded-t-xl pointer-events-none"></div>
+          <div class="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/40 to-transparent rounded-t-lg pointer-events-none"></div>
           
           <!-- Monograma JR en blanco / cyan -->
           <svg viewBox="0 0 40 40" class="w-full h-full fill-none stroke-white stroke-[3.2] stroke-linecap-round stroke-linejoin-round drop-shadow-sm">
@@ -176,23 +176,20 @@ const handleNewOrder = () => {
           </svg>
         </div>
 
-        <!-- Texto de marca -->
-        <div class="flex items-center gap-2">
-          <span class="font-black text-white text-sm tracking-tight">JR BLANCO</span>
-          <span class="hidden sm:inline-block text-[9px] font-mono font-bold tracking-widest text-[#05C7F2] bg-[#05C7F2]/10 border border-[#05C7F2]/30 px-1.5 py-0.5 rounded">
-            SWGORA
-          </span>
-        </div>
+        <!-- Solo Nombre JR BLANCO (sin badge de SWGORA) -->
+        <span class="font-black text-white text-xs sm:text-sm tracking-tight whitespace-nowrap">
+          JR BLANCO
+        </span>
       </router-link>
 
       <!-- 2. Center: Enlaces de Navegación (Desktop) -->
-      <nav class="hidden lg:flex items-center gap-1">
+      <nav class="hidden lg:flex items-center gap-1 shrink-0">
         <router-link
           v-for="item in visibleNavItems"
           :key="item.path"
           :to="item.path"
           :class="[
-            'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 flex items-center gap-1.5',
+            'px-3 py-1 rounded-full text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 whitespace-nowrap',
             isActive(item.path)
               ? 'bg-neutral-800 text-[#05F2F2] ring-1 ring-white/15 shadow-inner'
               : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
@@ -209,13 +206,13 @@ const handleNewOrder = () => {
       </nav>
 
       <!-- 3. Right: Botón Destacado '+ Nueva Orden' + Perfil con Dropdown -->
-      <div class="flex items-center gap-2 sm:gap-2.5">
+      <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
         <!-- Botón Blanco Destacado Estilo 'Download' de Supaste -->
         <button
           v-if="authStore.canAccess('/ordenes')"
           type="button"
           @click="handleNewOrder"
-          class="bg-white hover:bg-neutral-100 text-neutral-950 font-bold text-xs px-3.5 py-1.5 rounded-full shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+          class="bg-white hover:bg-neutral-100 text-neutral-950 font-bold text-xs px-3 py-1 rounded-full shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
           title="Crear nueva orden de trabajo o cotización"
         >
           <Plus class="w-3.5 h-3.5 stroke-[2.5]" />
@@ -235,11 +232,11 @@ const handleNewOrder = () => {
           <button
             type="button"
             @click.stop="toggleUserMenu"
-            class="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-neutral-800/80 border border-transparent hover:border-neutral-700/60 transition cursor-pointer select-none group shrink-0"
+            class="flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-neutral-800/80 border border-transparent hover:border-neutral-700/60 transition cursor-pointer select-none group shrink-0"
             :class="{ 'bg-neutral-800 border-neutral-700/80': userMenuOpen }"
             aria-label="Perfil y opciones de usuario"
           >
-            <div class="w-7 h-7 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/10 group-hover:ring-white/25 transition">
+            <div class="w-6 h-6 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/10 group-hover:ring-white/25 transition">
               <img 
                 v-if="authStore.user?.avatar" 
                 :src="authStore.user.avatar" 
@@ -249,12 +246,12 @@ const handleNewOrder = () => {
               <UserIcon v-else class="w-3.5 h-3.5 text-neutral-400" />
             </div>
 
-            <span class="hidden sm:inline text-xs font-semibold text-neutral-200 group-hover:text-white transition truncate max-w-[120px]">
+            <span class="hidden sm:inline text-xs font-semibold text-neutral-200 group-hover:text-white transition truncate max-w-[110px]">
               {{ authStore.user?.name }}
             </span>
 
             <ChevronDown
-              class="w-3.5 h-3.5 text-neutral-400 group-hover:text-white transition-transform duration-200"
+              class="w-3 h-3 text-neutral-400 group-hover:text-white transition-transform duration-200"
               :class="{ 'rotate-180 text-white': userMenuOpen }"
             />
           </button>
@@ -270,7 +267,7 @@ const handleNewOrder = () => {
           >
             <div
               v-if="userMenuOpen"
-              class="absolute top-full right-0 mt-2.5 w-64 bg-[#0d0d0d]/98 backdrop-blur-xl border border-neutral-800/90 rounded-2xl p-3.5 shadow-[0_16px_40px_-6px_rgba(0,0,0,0.7)] text-white z-50 pointer-events-auto"
+              class="absolute top-full right-0 mt-2 w-64 bg-[#0d0d0d]/98 backdrop-blur-xl border border-neutral-800/90 rounded-2xl p-3.5 shadow-[0_16px_40px_-6px_rgba(0,0,0,0.7)] text-white z-50 pointer-events-auto"
               @mouseenter="openUserMenu"
               @mouseleave="scheduleCloseUserMenu"
             >
@@ -345,7 +342,7 @@ const handleNewOrder = () => {
         <button
           type="button"
           @click="mobileMenuOpen = !mobileMenuOpen"
-          class="lg:hidden p-1.5 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition"
+          class="lg:hidden p-1 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition"
           aria-label="Abrir menú"
         >
           <X v-if="mobileMenuOpen" class="w-5 h-5" />
@@ -365,7 +362,7 @@ const handleNewOrder = () => {
     >
       <div
         v-if="mobileMenuOpen"
-        class="pointer-events-auto absolute top-16 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a]/95 backdrop-blur-xl border border-neutral-800 rounded-2xl p-4 shadow-2xl space-y-3 z-50 lg:hidden"
+        class="pointer-events-auto absolute top-14 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a]/95 backdrop-blur-xl border border-neutral-800 rounded-2xl p-4 shadow-2xl space-y-3 z-50 lg:hidden"
       >
         <div class="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-2">
           Navegación
