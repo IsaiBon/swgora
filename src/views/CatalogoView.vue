@@ -388,10 +388,12 @@ const filterValvulaHongo = ref<number | undefined>(undefined)
 const filterValvulaVastago = ref<number | undefined>(undefined)
 const filterValvulaAltura = ref<number | undefined>(undefined)
 
-// 3. Anillos de motor
-const filterAnilloDiametro = ref<number | undefined>(undefined)
-const filterAnilloGrosor1 = ref<number | undefined>(undefined)
-const filterAnilloAlturaGrosor = ref<number | undefined>(undefined)
+// 3. Anillos de motor (Nomenclatura y Cotas Oficiales NPR)
+const filterAnilloDiametro = ref<number | undefined>(undefined) // d1 (D)
+const filterAnilloGrosor1 = ref<number | undefined>(undefined)   // 1st h1 (B)
+const filterAnilloGrosor2 = ref<number | undefined>(undefined)   // 2nd h1 (B)
+const filterAnilloGrosorAceite = ref<number | undefined>(undefined) // Oil h1 (B)
+const filterAnilloRadial1 = ref<number | undefined>(undefined)   // a1 (T)
 
 // 4. Juego de tornillos de culata
 const filterPernoMedidaRosca = ref<string>('')
@@ -411,7 +413,13 @@ const activeMeasurementsCount = computed(() => {
     } else if (selectedComponent.value.id === 'valvula') {
       count += [filterValvulaHongo.value, filterValvulaVastago.value, filterValvulaAltura.value].filter(v => v !== undefined && v !== null).length
     } else if (selectedComponent.value.id === 'anillos_motor') {
-      count += [filterAnilloDiametro.value, filterAnilloGrosor1.value, filterAnilloAlturaGrosor.value].filter(v => v !== undefined && v !== null).length
+      count += [
+        filterAnilloDiametro.value, 
+        filterAnilloGrosor1.value, 
+        filterAnilloGrosor2.value, 
+        filterAnilloGrosorAceite.value, 
+        filterAnilloRadial1.value
+      ].filter(v => v !== undefined && v !== null).length
     } else if (selectedComponent.value.id === 'tornillos_culata') {
       count += [
         filterPernoMedidaRosca.value || undefined,
@@ -440,7 +448,9 @@ const resetMeasurementsFilters = () => {
 
   filterAnilloDiametro.value = undefined
   filterAnilloGrosor1.value = undefined
-  filterAnilloAlturaGrosor.value = undefined
+  filterAnilloGrosor2.value = undefined
+  filterAnilloGrosorAceite.value = undefined
+  filterAnilloRadial1.value = undefined
 
   filterPernoMedidaRosca.value = ''
   filterPernoPasoRosca.value = undefined
@@ -892,6 +902,77 @@ const getBrandName = (fabId: string): string => {
   return fab?.nombre.toUpperCase() || 'TOYOTA'
 }
 
+// =============================================================================
+// FUNCIONES AUXILIARES PARA CUADRO TÉCNICO DE ANILLOS NPR: d1 (D), h1 (B), a1 (T)
+// =============================================================================
+const getRingD1 = (part: RepuestoTecnico, ringIdx: number): number | null => {
+  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
+  if (rings && rings[ringIdx] && rings[ringIdx].d1 != null) {
+    return Number(rings[ringIdx].d1)
+  }
+  return part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null
+}
+
+const getRingH1 = (part: RepuestoTecnico, ringIdx: number): number | null => {
+  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
+  if (rings && rings[ringIdx] && rings[ringIdx].h1 != null) {
+    return Number(rings[ringIdx].h1)
+  }
+  if (ringIdx === 0) return part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null
+  if (ringIdx === 1) return part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null
+  if (ringIdx === 2) return part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null
+  return null
+}
+
+const getRingA1 = (part: RepuestoTecnico, ringIdx: number): number | null => {
+  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
+  if (rings && rings[ringIdx] && rings[ringIdx].a1 != null) {
+    return Number(rings[ringIdx].a1)
+  }
+  const dims = part.dimensiones as any
+  if (ringIdx === 0) return dims?.espesor_radial1_mm != null ? Number(dims.espesor_radial1_mm) : null
+  if (ringIdx === 1) return dims?.espesor_radial2_mm != null ? Number(dims.espesor_radial2_mm) : null
+  if (ringIdx === 2) return dims?.espesor_radial_aceite_mm != null ? Number(dims.espesor_radial_aceite_mm) : null
+  return null
+}
+
+const formatRingVal = (val: number | null | undefined): string => {
+  if (val == null || isNaN(val) || val === 0) return '—'
+  const num = Number(val)
+  return num % 1 === 0 ? num.toFixed(1) : String(num)
+}
+
+const getRingFormas = (part: RepuestoTecnico): string | null => {
+  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
+  if (rings && rings.length > 0) {
+    const list = rings.map(r => r.forma).filter(Boolean)
+    if (list.length > 0) return list.join(' / ')
+  }
+  const dims = part.dimensiones as any
+  const arr = [dims?.forma1, dims?.forma2, dims?.forma_oil].filter(Boolean)
+  return arr.length > 0 ? arr.join(' / ') : null
+}
+
+const getRingMateriales = (part: RepuestoTecnico): string | null => {
+  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
+  if (rings && rings.length > 0) {
+    const list = rings.map(r => r.material).filter(Boolean)
+    if (list.length > 0) return list.join(' / ')
+  }
+  const dims = part.dimensiones as any
+  const arr = [dims?.material1, dims?.material2, dims?.material_oil].filter(Boolean)
+  return arr.length > 0 ? arr.join(' / ') : null
+}
+
+const getRingDetail = (part: RepuestoTecnico | null | undefined, ringIdx: number, prop: string): string => {
+  if (!part) return '—'
+  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
+  if (rings && rings[ringIdx] && rings[ringIdx][prop] != null && rings[ringIdx][prop] !== '') {
+    return String(rings[ringIdx][prop])
+  }
+  return '—'
+}
+
 // Modal informativo de motor
 const selectedMotorInfoModal = ref<Motor | null>(null)
 const openMotorInfo = (mot: Motor, e: MouseEvent) => {
@@ -986,14 +1067,20 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         const tolAnilloGrosor1 = getTol('anilloGrosor1')
         list = list.filter(r => r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - (filterAnilloGrosor1.value || 0)) <= tolAnilloGrosor1)
       }
-      if (filterAnilloAlturaGrosor.value !== undefined && filterAnilloAlturaGrosor.value !== null) {
-        const tolAnilloAlturaGrosor = getTol('anilloAlturaGrosor')
-        const val = filterAnilloAlturaGrosor.value || 0
-        list = list.filter(r => 
-          (r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - val) <= tolAnilloAlturaGrosor) ||
-          (r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - val) <= tolAnilloAlturaGrosor) ||
-          (r.espesor_anillo1_mm && Math.abs(r.espesor_anillo1_mm - val) <= tolAnilloAlturaGrosor)
-        )
+      if (filterAnilloGrosor2.value !== undefined && filterAnilloGrosor2.value !== null) {
+        const tolAnilloGrosor2 = getTol('anilloGrosor2')
+        list = list.filter(r => r.espesor_anillo2_mm && Math.abs(r.espesor_anillo2_mm - (filterAnilloGrosor2.value || 0)) <= tolAnilloGrosor2)
+      }
+      if (filterAnilloGrosorAceite.value !== undefined && filterAnilloGrosorAceite.value !== null) {
+        const tolAnilloGrosorAceite = getTol('anilloGrosorAceite')
+        list = list.filter(r => r.espesor_aceite_mm && Math.abs(r.espesor_aceite_mm - (filterAnilloGrosorAceite.value || 0)) <= tolAnilloGrosorAceite)
+      }
+      if (filterAnilloRadial1.value !== undefined && filterAnilloRadial1.value !== null) {
+        const tolAnilloRadial1 = getTol('anilloRadial1')
+        list = list.filter(r => {
+          const a1 = (r.dimensiones as any)?.espesor_radial1_mm ?? (r.dimensiones as any)?.anillos?.[0]?.a1
+          return a1 && Math.abs(a1 - (filterAnilloRadial1.value || 0)) <= tolAnilloRadial1
+        })
       }
     } else if (compId === 'tornillos_culata') {
       if (filterPernoMedidaRosca.value) {
@@ -2167,52 +2254,84 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR -->
-        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR (NOMENCLATURA OFICIAL NPR) -->
+        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
           <div>
             <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Diámetro (Ø Cilindro mm)
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Diámetro nominal del cilindro / d1 (D)">
+                d 1 (D) Ø Cilindro
               </label>
               <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
             </div>
             <input
               v-model.number="filterAnilloDiametro"
               type="number"
-              step="0.5"
-              placeholder="ej. 96.0"
+              step="0.1"
+              placeholder="ej. 62.0"
               class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
             <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Grosor 1° Anillo (mm)
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Grosor axial 1er anillo / 1st h1 (B)">
+                1st h 1 (B) Fuego
               </label>
               <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
             </div>
             <input
               v-model.number="filterAnilloGrosor1"
               type="number"
-              step="0.1"
-              placeholder="ej. 2.0"
+              step="0.05"
+              placeholder="ej. 1.2"
               class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
 
           <div>
             <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Altura grosor (mm)
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Grosor axial 2do anillo / 2nd h1 (B)">
+                2nd h 1 (B) Compr.
               </label>
-              <ToleranceBadge v-model="filterTolerancias['anilloAlturaGrosor']" :fallback="filterToleranciaMm" :step="0.02" />
+              <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" />
             </div>
             <input
-              v-model.number="filterAnilloAlturaGrosor"
+              v-model.number="filterAnilloGrosor2"
               type="number"
-              step="0.1"
-              placeholder="ej. 2.0 ó 4.0"
+              step="0.05"
+              placeholder="ej. 1.5"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+            />
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Grosor axial anillo aceite / Oil h1 (B)">
+                Oil h 1 (B) Aceite
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" />
+            </div>
+            <input
+              v-model.number="filterAnilloGrosorAceite"
+              type="number"
+              step="0.05"
+              placeholder="ej. 2.8"
+              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+            />
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-0.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate" title="Espesor o ancho radial del anillo / a1 (T)">
+                a 1 (T) Radial
+              </label>
+              <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" />
+            </div>
+            <input
+              v-model.number="filterAnilloRadial1"
+              type="number"
+              step="0.05"
+              placeholder="ej. 2.5"
               class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
             />
           </div>
@@ -2501,8 +2620,8 @@ onUnmounted(() => {
                 <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-2.5 px-3">
                   Medidas: Hongo / Vástago / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-2.5 px-3">
-                  Medidas: Diámetro / 1er Anillo / 2do Anillo / Aceite
+                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-2.5 px-3 min-w-[240px]">
+                  Cuadro NPR: Position • Size (mm) [d 1 (D) / h 1 (B) / a 1 (T)]
                 </th>
                 <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-2.5 px-3">
                   Cotas: ØA (Int) × ØB (Ext) × C (Largo) • Pestaña (D × E)
@@ -2651,24 +2770,125 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Caso C: Anillos de motor -->
-                  <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="space-y-1 text-xs font-mono text-slate-800">
-                    <div class="flex items-center gap-1.5 text-[11px]">
-                      <span class="text-slate-500 font-sans">Ø Cilindro:</span>
-                      <span class="px-1.5 py-0.5 rounded border font-bold text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cilindro_mm || 96.0, filterAnilloDiametro, getTol('anilloDiametro'))">
-                        {{ part.diametro_cilindro_mm || 96.0 }} mm
-                      </span>
+                  <!-- Caso C: Anillos de motor (Cuadro Técnico Oficial NPR) -->
+                  <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="py-1">
+                    <div class="inline-block border-2 border-[#3d230d] rounded-sm overflow-hidden bg-white shadow-2xs font-mono select-text">
+                      <table class="border-collapse text-center text-xs">
+                        <thead>
+                          <!-- Fila 1 Cabecera: Position | Size (mm) -->
+                          <tr class="bg-[#f5c796] text-[#241304] border-b border-[#3d230d]">
+                            <th rowspan="2" class="px-3 py-0.5 border-r border-[#3d230d] font-serif text-[11px] font-bold tracking-tight">
+                              Position
+                            </th>
+                            <th colspan="3" class="px-3 py-0.5 font-serif text-[11px] font-bold tracking-tight border-b border-[#3d230d]">
+                              Size &nbsp;(mm)
+                            </th>
+                          </tr>
+                          <!-- Fila 2 Sub-cabecera: d 1 (D) | h 1 (B) | a 1 (T) -->
+                          <tr class="bg-[#f5c796] text-[#241304] text-[10px] font-serif border-b border-[#3d230d]">
+                            <th class="px-2 py-0.5 border-r border-[#3d230d] font-bold">
+                              <span class="block leading-tight">d 1</span>
+                              <span class="block text-[9px] font-normal leading-tight">(D)</span>
+                            </th>
+                            <th class="px-2 py-0.5 border-r border-[#3d230d] font-bold">
+                              <span class="block leading-tight">h 1</span>
+                              <span class="block text-[9px] font-normal leading-tight">(B)</span>
+                            </th>
+                            <th class="px-2 py-0.5 font-bold">
+                              <span class="block leading-tight">a 1</span>
+                              <span class="block text-[9px] font-normal leading-tight">(T)</span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#3d230d] text-[11px]">
+                          <!-- Fila 1st -->
+                          <tr>
+                            <td class="px-2 py-0.5 bg-white font-serif font-bold text-slate-900 border-r border-[#3d230d]">
+                              1st
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 border-r border-[#3d230d] font-mono font-bold transition"
+                              :class="filterAnilloDiametro && getMeasurementMatchClass(getRingD1(part, 0), filterAnilloDiametro, getTol('anilloDiametro')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingD1(part, 0)) }}
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 border-r border-[#3d230d] font-mono font-bold transition"
+                              :class="filterAnilloGrosor1 && getMeasurementMatchClass(getRingH1(part, 0), filterAnilloGrosor1, getTol('anilloGrosor1')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingH1(part, 0)) }}
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 font-mono font-bold transition"
+                              :class="filterAnilloRadial1 && getMeasurementMatchClass(getRingA1(part, 0), filterAnilloRadial1, getTol('anilloRadial1')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingA1(part, 0)) }}
+                            </td>
+                          </tr>
+
+                          <!-- Fila 2nd -->
+                          <tr>
+                            <td class="px-2 py-0.5 bg-white font-serif font-bold text-slate-900 border-r border-[#3d230d]">
+                              2nd
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 border-r border-[#3d230d] font-mono font-bold transition"
+                              :class="filterAnilloDiametro && getMeasurementMatchClass(getRingD1(part, 1), filterAnilloDiametro, getTol('anilloDiametro')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingD1(part, 1)) }}
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 border-r border-[#3d230d] font-mono font-bold transition"
+                              :class="filterAnilloGrosor2 && getMeasurementMatchClass(getRingH1(part, 1), filterAnilloGrosor2, getTol('anilloGrosor2')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingH1(part, 1)) }}
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 font-mono font-bold transition"
+                              :class="filterAnilloRadial1 && getMeasurementMatchClass(getRingA1(part, 1), filterAnilloRadial1, getTol('anilloRadial1')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingA1(part, 1)) }}
+                            </td>
+                          </tr>
+
+                          <!-- Fila Oil -->
+                          <tr>
+                            <td class="px-2 py-0.5 bg-white font-serif font-bold text-slate-900 border-r border-[#3d230d]">
+                              Oil
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 border-r border-[#3d230d] font-mono font-bold transition"
+                              :class="filterAnilloDiametro && getMeasurementMatchClass(getRingD1(part, 2), filterAnilloDiametro, getTol('anilloDiametro')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingD1(part, 2)) }}
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 border-r border-[#3d230d] font-mono font-bold transition"
+                              :class="filterAnilloGrosorAceite && getMeasurementMatchClass(getRingH1(part, 2), filterAnilloGrosorAceite, getTol('anilloGrosorAceite')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingH1(part, 2)) }}
+                            </td>
+                            <td 
+                              class="px-2 py-0.5 font-mono font-bold transition"
+                              :class="filterAnilloRadial1 && getMeasurementMatchClass(getRingA1(part, 2), filterAnilloRadial1, getTol('anilloRadial1')).includes('bg-emerald') ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-[#fce5cd] text-slate-900'"
+                            >
+                              {{ formatRingVal(getRingA1(part, 2)) }}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
 
-                    <div class="flex flex-wrap items-center gap-1 text-[10px]">
-                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo1_mm || 2.0, filterAnilloGrosor1, getTol('anilloGrosor1'))">
-                        1°: {{ part.espesor_anillo1_mm || 2.0 }}mm
+                    <!-- Fila informativa adicional de taller -->
+                    <div v-if="getRingFormas(part) || getRingMateriales(part) || (part.dimensiones as any)?.cilindros" class="flex flex-wrap items-center gap-1 mt-1 text-[10px] font-sans text-slate-600">
+                      <span v-if="(part.dimensiones as any)?.cilindros" class="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
+                        {{ (part.dimensiones as any).cilindros }} Cilindros
                       </span>
-                      <span class="px-1.5 py-0.2 rounded border font-bold transition" :class="getMeasurementMatchClass(part.espesor_anillo2_mm || 2.0, filterAnilloAlturaGrosor, getTol('anilloAlturaGrosor'))">
-                        2°: {{ part.espesor_anillo2_mm || 2.0 }}mm
+                      <span v-if="getRingFormas(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Forma técnica NPR">
+                        Forma: {{ getRingFormas(part) }}
                       </span>
-                      <span class="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
-                        Aceite: {{ part.espesor_aceite_mm || 4.0 }}mm
+                      <span v-if="getRingMateriales(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Materiales de los aros">
+                        Mat: {{ getRingMateriales(part) }}
                       </span>
                     </div>
                   </div>
@@ -3006,7 +3226,95 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div>
+            <!-- CASO ANILLOS: CUADRO TÉCNICO OFICIAL NPR -->
+            <div v-if="modalPart.categoria === 'Anillos' || (modalPart.dimensiones as any)?.anillos">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                  Matriz Técnica NPR - Cotas de Aros de Pistón
+                </h4>
+                <span v-if="(modalPart.dimensiones as any)?.cilindros" class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[11px] font-mono border border-amber-200">
+                  {{ (modalPart.dimensiones as any).cilindros }} Cilindros
+                </span>
+              </div>
+
+              <!-- Cuadro NPR idéntico al manual oficial -->
+              <div class="border-2 border-[#3d230d] rounded-lg overflow-hidden bg-white shadow-xs font-mono text-xs">
+                <table class="w-full border-collapse text-center">
+                  <thead>
+                    <tr class="bg-[#f5c796] text-[#241304] border-b border-[#3d230d]">
+                      <th rowspan="2" class="px-3 py-1.5 border-r border-[#3d230d] font-serif text-xs font-bold">Position</th>
+                      <th colspan="3" class="px-4 py-1 font-serif text-xs font-bold border-b border-[#3d230d]">Size &nbsp;(mm)</th>
+                      <th rowspan="2" class="px-3 py-1.5 border-l border-[#3d230d] font-serif text-[11px] font-bold">Shape (Forma)</th>
+                      <th rowspan="2" class="px-3 py-1.5 border-l border-[#3d230d] font-serif text-[11px] font-bold">Material</th>
+                      <th rowspan="2" class="px-3 py-1.5 border-l border-[#3d230d] font-serif text-[11px] font-bold">Tratamiento</th>
+                    </tr>
+                    <tr class="bg-[#f5c796] text-[#241304] text-[10px] font-serif border-b border-[#3d230d]">
+                      <th class="px-2.5 py-1 border-r border-[#3d230d] font-bold">
+                        <span>d 1</span>
+                        <span class="block text-[9px] font-normal">(D)</span>
+                      </th>
+                      <th class="px-2.5 py-1 border-r border-[#3d230d] font-bold">
+                        <span>h 1</span>
+                        <span class="block text-[9px] font-normal">(B)</span>
+                      </th>
+                      <th class="px-2.5 py-1 font-bold">
+                        <span>a 1</span>
+                        <span class="block text-[9px] font-normal">(T)</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#3d230d] text-xs">
+                    <!-- 1st -->
+                    <tr>
+                      <td class="px-3 py-1.5 bg-white font-serif font-bold text-slate-900 border-r border-[#3d230d]">1st</td>
+                      <td class="px-2.5 py-1.5 border-r border-[#3d230d] bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingD1(modalPart, 0)) }}</td>
+                      <td class="px-2.5 py-1.5 border-r border-[#3d230d] bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingH1(modalPart, 0)) }}</td>
+                      <td class="px-2.5 py-1.5 bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingA1(modalPart, 0)) }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, 0, 'forma') }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-white text-slate-700">{{ getRingDetail(modalPart, 0, 'material') }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, 0, 'tratamiento_ext'), getRingDetail(modalPart, 0, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
+                    </tr>
+                    <!-- 2nd -->
+                    <tr>
+                      <td class="px-3 py-1.5 bg-white font-serif font-bold text-slate-900 border-r border-[#3d230d]">2nd</td>
+                      <td class="px-2.5 py-1.5 border-r border-[#3d230d] bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingD1(modalPart, 1)) }}</td>
+                      <td class="px-2.5 py-1.5 border-r border-[#3d230d] bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingH1(modalPart, 1)) }}</td>
+                      <td class="px-2.5 py-1.5 bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingA1(modalPart, 1)) }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, 1, 'forma') }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-white text-slate-700">{{ getRingDetail(modalPart, 1, 'material') }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, 1, 'tratamiento_ext'), getRingDetail(modalPart, 1, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
+                    </tr>
+                    <!-- Oil -->
+                    <tr>
+                      <td class="px-3 py-1.5 bg-white font-serif font-bold text-slate-900 border-r border-[#3d230d]">Oil</td>
+                      <td class="px-2.5 py-1.5 border-r border-[#3d230d] bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingD1(modalPart, 2)) }}</td>
+                      <td class="px-2.5 py-1.5 border-r border-[#3d230d] bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingH1(modalPart, 2)) }}</td>
+                      <td class="px-2.5 py-1.5 bg-[#fce5cd] font-bold text-slate-950">{{ formatRingVal(getRingA1(modalPart, 2)) }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, 2, 'forma') }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-white text-slate-700">{{ getRingDetail(modalPart, 2, 'material') }}</td>
+                      <td class="px-3 py-1.5 border-l border-[#3d230d] bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, 2, 'tratamiento_ext'), getRingDetail(modalPart, 2, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Metadatos de motor asociados al juego de aros -->
+              <div v-if="(modalPart.dimensiones as any)?.cilindrada || (modalPart.dimensiones as any)?.motores_texto || (modalPart.dimensiones as any)?.anos" class="mt-3 p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-sans flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+                <span v-if="(modalPart.dimensiones as any)?.cilindrada">
+                  <strong>Cilindrada:</strong> {{ (modalPart.dimensiones as any).cilindrada }}
+                </span>
+                <span v-if="(modalPart.dimensiones as any)?.motores_texto">
+                  <strong>Motores NPR:</strong> {{ (modalPart.dimensiones as any).motores_texto }}
+                </span>
+                <span v-if="(modalPart.dimensiones as any)?.anos">
+                  <strong>Años:</strong> {{ (modalPart.dimensiones as any).anos }}
+                </span>
+              </div>
+            </div>
+
+            <!-- CASO OTROS COMPONENTES: TABLA DE ESPECIFICACIONES GENERALES -->
+            <div v-else>
               <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
                 Especificaciones Métricas (mm)
               </h4>
@@ -3060,6 +3368,7 @@ onUnmounted(() => {
                     <tr 
                       v-for="(val, key) in modalPart.dimensiones" 
                       :key="`dyn-dim-${key}`"
+                      v-show="key !== 'anillos' && typeof val !== 'object'"
                       class="border-t border-slate-100 hover:bg-slate-50"
                     >
                       <td class="py-1.5 px-3 text-slate-500 font-sans capitalize">
