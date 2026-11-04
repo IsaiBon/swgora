@@ -38,23 +38,9 @@ const currentRouteTitle = computed(() => {
   }
 })
 
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
-}
-
-const cycleRole = () => {
-  const current = normalizeRole(authStore.user?.role)
-  let nextRole: 'Administrador' | 'Operador' | 'Consultor' = 'Administrador'
-  if (current === 'Administrador') nextRole = 'Operador'
-  else if (current === 'Operador') nextRole = 'Consultor'
-  else nextRole = 'Administrador'
-
-  authStore.setRole(nextRole)
-
-  if (!authStore.canAccess(route.path)) {
-    router.push(authStore.defaultRoute)
-  }
+const handleLogout = async () => {
+  await authStore.logout()
+  await router.replace('/login')
 }
 
 const roleIcon = computed(() => {
@@ -66,9 +52,9 @@ const roleIcon = computed(() => {
 
 const roleBadgeClass = computed(() => {
   const r = normalizeRole(authStore.user?.role)
-  if (r === 'Administrador') return 'bg-[#05C7F2]/15 text-[#038896] border-[#05C7F2]/40 hover:bg-[#05C7F2]/25'
-  if (r === 'Operador') return 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-  return 'bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100'
+  if (r === 'Administrador') return 'bg-[#05C7F2]/15 text-[#038896] border-[#05C7F2]/40'
+  if (r === 'Operador') return 'bg-amber-50 text-amber-900 border-amber-300'
+  return 'bg-indigo-50 text-indigo-900 border-indigo-200'
 })
 </script>
 
@@ -102,17 +88,15 @@ const roleBadgeClass = computed(() => {
     <!-- Right: User Profile & Actions -->
     <div class="flex items-center gap-2 sm:gap-3">
       <div v-if="authStore.isAuthenticated" class="flex items-center gap-2">
-        <!-- Rol Interactivo con Clic para Alternar (Admin → Operador → Consultor) -->
-        <button
-          type="button"
-          @click="cycleRole"
-          class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition cursor-pointer select-none"
+        <!-- Insignia del Rol Validado del Usuario -->
+        <span
+          class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold border select-none"
           :class="roleBadgeClass"
-          title="Alternar rol en vivo para probar permisos (Admin → Operador → Consultor)"
+          :title="`Rol activo: ${authStore.user?.role || 'Consultor'}`"
         >
           <component :is="roleIcon" class="w-3 h-3 shrink-0" />
           <span>{{ authStore.user?.role || 'Consultor' }}</span>
-        </button>
+        </span>
 
         <div class="h-4 w-px bg-slate-200 hidden sm:block"></div>
 
