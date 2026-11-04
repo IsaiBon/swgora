@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { 
@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   User as UserIcon,
+  ChevronDown,
   ChevronRight,
 } from 'lucide-vue-next'
 
@@ -23,6 +24,9 @@ const router = useRouter()
 const route = useRoute()
 
 const mobileMenuOpen = ref(false)
+const userMenuOpen = ref(false)
+const userMenuContainerRef = ref<HTMLElement | null>(null)
+let closeTimeout: ReturnType<typeof setTimeout> | null = null
 
 interface NavItem {
   name: string
@@ -46,7 +50,43 @@ const isActive = (path: string) => {
   return route.path === path
 }
 
+const openUserMenu = () => {
+  if (closeTimeout) clearTimeout(closeTimeout)
+  userMenuOpen.value = true
+}
+
+const scheduleCloseUserMenu = () => {
+  if (closeTimeout) clearTimeout(closeTimeout)
+  closeTimeout = setTimeout(() => {
+    userMenuOpen.value = false
+  }, 200)
+}
+
+const toggleUserMenu = () => {
+  if (closeTimeout) clearTimeout(closeTimeout)
+  userMenuOpen.value = !userMenuOpen.value
+}
+
+const handleClickOutside = (event: MouseEvent) => {
+  if (
+    userMenuContainerRef.value &&
+    !userMenuContainerRef.value.contains(event.target as Node)
+  ) {
+    userMenuOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  if (closeTimeout) clearTimeout(closeTimeout)
+})
+
 const handleLogout = () => {
+  userMenuOpen.value = false
   mobileMenuOpen.value = false
   authStore.logout()
   router.push('/login')
@@ -82,6 +122,7 @@ const roleBadgeClass = computed(() => {
 
 const handleNewOrder = () => {
   mobileMenuOpen.value = false
+  userMenuOpen.value = false
   if (route.path === '/ordenes') {
     router.push({ path: '/ordenes', query: { nueva: Date.now().toString() } })
   } else {
@@ -167,7 +208,7 @@ const handleNewOrder = () => {
         </router-link>
       </nav>
 
-      <!-- 3. Right: Botón Destacado '+ Nueva Orden' + Rol + Usuario -->
+      <!-- 3. Right: Botón Destacado '+ Nueva Orden' + Perfil con Dropdown -->
       <div class="flex items-center gap-2 sm:gap-2.5">
         <!-- Botón Blanco Destacado Estilo 'Download' de Supaste -->
         <button
@@ -182,44 +223,112 @@ const handleNewOrder = () => {
           <span class="sm:hidden">Orden</span>
         </button>
 
-        <!-- Rol Interactivo con Clic para Alternar (Admin → Operador → Consultor) -->
-        <button
+        <!-- Dropdown de Usuario / Información y Cerrar Sesión -->
+        <div
           v-if="authStore.isAuthenticated"
-          type="button"
-          @click="cycleRole"
-          class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer select-none shrink-0"
-          :class="roleBadgeClass"
-          title="Alternar rol en vivo para probar permisos (Admin → Operador → Consultor)"
+          ref="userMenuContainerRef"
+          class="relative"
+          @mouseenter="openUserMenu"
+          @mouseleave="scheduleCloseUserMenu"
         >
-          <component :is="roleIcon" class="w-3 h-3 shrink-0" />
-          <span>{{ authStore.user?.role || 'Consultor' }}</span>
-        </button>
-
-        <!-- Perfil Usuario & Logout -->
-        <div v-if="authStore.isAuthenticated" class="flex items-center gap-1.5 shrink-0">
-          <div class="w-7 h-7 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0">
-            <img 
-              v-if="authStore.user?.avatar" 
-              :src="authStore.user.avatar" 
-              :alt="authStore.user.name"
-              class="w-full h-full object-cover" 
-            />
-            <UserIcon v-else class="w-3.5 h-3.5 text-neutral-400" />
-          </div>
-
-          <span class="hidden xl:inline text-xs font-semibold text-neutral-300 truncate max-w-[100px]">
-            {{ authStore.user?.name }}
-          </span>
-
-          <!-- Botón Logout -->
+          <!-- Gatillo del Perfil (Avatar + Nombre + Chevron) -->
           <button
             type="button"
-            @click="handleLogout"
-            class="p-1.5 text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-full transition"
-            title="Cerrar sesión"
+            @click.stop="toggleUserMenu"
+            class="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-neutral-800/80 border border-transparent hover:border-neutral-700/60 transition cursor-pointer select-none group shrink-0"
+            :class="{ 'bg-neutral-800 border-neutral-700/80': userMenuOpen }"
+            aria-label="Perfil y opciones de usuario"
           >
-            <LogOut class="w-3.5 h-3.5" />
+            <div class="w-7 h-7 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/10 group-hover:ring-white/25 transition">
+              <img 
+                v-if="authStore.user?.avatar" 
+                :src="authStore.user.avatar" 
+                :alt="authStore.user.name"
+                class="w-full h-full object-cover" 
+              />
+              <UserIcon v-else class="w-3.5 h-3.5 text-neutral-400" />
+            </div>
+
+            <span class="hidden sm:inline text-xs font-semibold text-neutral-200 group-hover:text-white transition truncate max-w-[120px]">
+              {{ authStore.user?.name }}
+            </span>
+
+            <ChevronDown
+              class="w-3.5 h-3.5 text-neutral-400 group-hover:text-white transition-transform duration-200"
+              :class="{ 'rotate-180 text-white': userMenuOpen }"
+            />
           </button>
+
+          <!-- Menú Flotante Estilo Dark Glass / Supaste -->
+          <Transition
+            enter-active-class="transition duration-150 ease-out"
+            enter-from-class="transform -translate-y-2 opacity-0 scale-95"
+            enter-to-class="transform translate-y-0 opacity-100 scale-100"
+            leave-active-class="transition duration-100 ease-in"
+            leave-from-class="transform translate-y-0 opacity-100 scale-100"
+            leave-to-class="transform -translate-y-2 opacity-0 scale-95"
+          >
+            <div
+              v-if="userMenuOpen"
+              class="absolute top-full right-0 mt-2.5 w-64 bg-[#0d0d0d]/98 backdrop-blur-xl border border-neutral-800/90 rounded-2xl p-3.5 shadow-[0_16px_40px_-6px_rgba(0,0,0,0.7)] text-white z-50 pointer-events-auto"
+              @mouseenter="openUserMenu"
+              @mouseleave="scheduleCloseUserMenu"
+            >
+              <!-- Info del Usuario -->
+              <div class="flex items-center gap-3 pb-3 border-b border-neutral-800/80">
+                <div class="w-10 h-10 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/15">
+                  <img 
+                    v-if="authStore.user?.avatar" 
+                    :src="authStore.user.avatar" 
+                    :alt="authStore.user.name"
+                    class="w-full h-full object-cover" 
+                  />
+                  <UserIcon v-else class="w-5 h-5 text-neutral-400" />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-bold text-white truncate">
+                    {{ authStore.user?.name || 'Usuario' }}
+                  </div>
+                  <div class="text-[11px] text-neutral-400 truncate mt-0.5">
+                    {{ authStore.user?.email || 'usuario@jrblanco.com' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sección de Rol de Usuario -->
+              <div class="py-2.5 border-b border-neutral-800/80 flex items-center justify-between">
+                <span class="text-[11px] font-medium text-neutral-400">Rol activo</span>
+                <button
+                  type="button"
+                  @click="cycleRole"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer select-none"
+                  :class="roleBadgeClass"
+                  title="Clic para alternar rol en vivo (Admin → Operador → Consultor)"
+                >
+                  <component :is="roleIcon" class="w-3 h-3 shrink-0" />
+                  <span>{{ authStore.user?.role || 'Consultor' }}</span>
+                </button>
+              </div>
+
+              <!-- Información de la Empresa / Taller -->
+              <div class="py-2 border-b border-neutral-800/80 text-[11px] text-neutral-400 flex items-center justify-between">
+                <span>Taller</span>
+                <span class="text-neutral-300 font-semibold">JR Blanco Motores</span>
+              </div>
+
+              <!-- Acción de Cerrar Sesión -->
+              <div class="pt-2">
+                <button
+                  type="button"
+                  @click="handleLogout"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                >
+                  <LogOut class="w-4 h-4 shrink-0" />
+                  <span>Cerrar sesión</span>
+                </button>
+              </div>
+            </div>
+          </Transition>
         </div>
 
         <!-- Acceso si no está autenticado -->
@@ -283,27 +392,46 @@ const handleNewOrder = () => {
           </router-link>
         </div>
 
-        <div class="pt-2 border-t border-neutral-800 flex items-center justify-between px-1">
-          <!-- Rol selector móvil -->
-          <button
-            type="button"
-            @click="cycleRole"
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer select-none"
-            :class="roleBadgeClass"
-          >
-            <component :is="roleIcon" class="w-3 h-3 shrink-0" />
-            <span>Rol: {{ authStore.user?.role || 'Consultor' }}</span>
-          </button>
+        <div class="pt-3 border-t border-neutral-800 space-y-2.5">
+          <!-- Info del Usuario Móvil -->
+          <div class="flex items-center gap-3 px-2">
+            <div class="w-9 h-9 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/10">
+              <img 
+                v-if="authStore.user?.avatar" 
+                :src="authStore.user.avatar" 
+                :alt="authStore.user.name"
+                class="w-full h-full object-cover" 
+              />
+              <UserIcon v-else class="w-4 h-4 text-neutral-400" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-bold text-white truncate">{{ authStore.user?.name }}</div>
+              <div class="text-[11px] text-neutral-400 truncate">{{ authStore.user?.email }}</div>
+            </div>
+          </div>
 
-          <!-- Cerrar sesión móvil -->
-          <button
-            type="button"
-            @click="handleLogout"
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition"
-          >
-            <LogOut class="w-3.5 h-3.5" />
-            <span>Salir</span>
-          </button>
+          <div class="flex items-center justify-between px-2 pt-1">
+            <!-- Rol selector móvil -->
+            <button
+              type="button"
+              @click="cycleRole"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer select-none"
+              :class="roleBadgeClass"
+            >
+              <component :is="roleIcon" class="w-3 h-3 shrink-0" />
+              <span>{{ authStore.user?.role || 'Consultor' }}</span>
+            </button>
+
+            <!-- Cerrar sesión móvil -->
+            <button
+              type="button"
+              @click="handleLogout"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+            >
+              <LogOut class="w-3.5 h-3.5" />
+              <span>Cerrar sesión</span>
+            </button>
+          </div>
         </div>
       </div>
     </Transition>
