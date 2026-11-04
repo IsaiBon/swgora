@@ -38,8 +38,8 @@ export interface Motor {
   kw?: number
   cv?: number
   combustible: string
-  cilindros: number
-  valvulas: number
+  cilindros?: number
+  valvulas?: number
   diametro_cilindro_std_mm?: number
   carrera_piston_mm?: number
   configuracion?: string
@@ -738,8 +738,8 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
       kw: motorEspec.kw ? Number(motorEspec.kw) : undefined,
       cv: motorEspec.cv ? Number(motorEspec.cv) : undefined,
       combustible: String(motorRaw.combustible || 'Diésel'),
-      cilindros: Number(motorRaw.cilindros || 4),
-      valvulas: Number(motorRaw.valvulas || 8),
+      cilindros: motorRaw.cilindros ? Number(motorRaw.cilindros) : undefined,
+      valvulas: motorRaw.valvulas ? Number(motorRaw.valvulas) : undefined,
       diametro_cilindro_std_mm: motorRaw.diametro_cilindro_std_mm ? Number(motorRaw.diametro_cilindro_std_mm) : undefined,
       carrera_piston_mm: motorRaw.carrera_piston_mm ? Number(motorRaw.carrera_piston_mm) : undefined,
       configuracion: motorRaw.configuracion ? String(motorRaw.configuracion) : undefined,
@@ -938,8 +938,8 @@ export const catalogService = {
           kw: espec.kw ? Number(espec.kw) : undefined,
           cv: espec.cv ? Number(espec.cv) : undefined,
           combustible: String(item.combustible || 'Diésel'),
-          cilindros: Number(item.cilindros || 4),
-          valvulas: Number(item.valvulas || 8),
+          cilindros: item.cilindros ? Number(item.cilindros) : undefined,
+          valvulas: item.valvulas ? Number(item.valvulas) : undefined,
           diametro_cilindro_std_mm: item.diametro_cilindro_std_mm ? Number(item.diametro_cilindro_std_mm) : undefined,
           carrera_piston_mm: item.carrera_piston_mm ? Number(item.carrera_piston_mm) : undefined,
           configuracion: item.configuracion ? String(item.configuracion) : undefined,
@@ -1099,8 +1099,8 @@ export const catalogService = {
             nombre_comercial: item.nombre_comercial ? String(item.nombre_comercial) : undefined,
             cilindrada_cc: item.cilindrada_cc ? Number(item.cilindrada_cc) : undefined,
             combustible: String(item.combustible || 'Diésel'),
-            cilindros: Number(item.cilindros || 4),
-            valvulas: Number(item.valvulas || 8),
+            cilindros: item.cilindros ? Number(item.cilindros) : undefined,
+            valvulas: item.valvulas ? Number(item.valvulas) : undefined,
             diametro_cilindro_std_mm: item.diametro_cilindro_std_mm ? Number(item.diametro_cilindro_std_mm) : undefined,
             carrera_piston_mm: item.carrera_piston_mm ? Number(item.carrera_piston_mm) : undefined,
             configuracion: item.configuracion ? String(item.configuracion) : undefined,

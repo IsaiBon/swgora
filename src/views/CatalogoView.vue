@@ -306,7 +306,7 @@ const baseComponentGroups: ComponentGroup[] = [
     category: 'Camisas',
     icon: 'Layers',
     description: 'Camisas de cilindro terminadas y semiterminadas para bloque',
-    sampleMeasurements: 'ØA Int × ØB Ext × C Largo'
+    sampleMeasurements: 'Int × Ext × Largo'
   },
   {
     id: 'guias_valvula',
@@ -576,15 +576,15 @@ const copyFullCross = async (part: RepuestoTecnico) => {
     const a = part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '-'
     const b = part.dimensiones?.diametro_exterior_mm || '-'
     const c = part.dimensiones?.longitud_total_mm || part.longitud_total_mm || '-'
-    lines.push(`Camisa: ØA Int ${a}mm | ØB Ext ${b}mm | Largo C ${c}mm`)
+    lines.push(`Camisa: Int ${a}mm | Ext ${b}mm | Largo ${c}mm`)
   } else if (part.diametro_interior_mm) {
-    lines.push(`Ajuste Válvula: ØInt ${part.diametro_interior_mm}mm | ØExt ${part.diametro_exterior_mm}mm | Alt ${part.altura_mm}mm`)
+    lines.push(`Ajuste Válvula: Int ${part.diametro_interior_mm}mm | Ext ${part.diametro_exterior_mm}mm | Alt ${part.altura_mm}mm`)
   }
   if (part.diametro_cabeza_mm) {
-    lines.push(`Válvula: Hongo Ø${part.diametro_cabeza_mm}mm | Vástago Ø${part.diametro_vastago_mm}mm | Altura ${part.longitud_total_mm}mm`)
+    lines.push(`Válvula: Cabeza ${part.diametro_cabeza_mm}mm | Vástago ${part.diametro_vastago_mm}mm | Altura ${part.longitud_total_mm}mm`)
   }
   if (part.diametro_cilindro_mm && part.categoria !== 'Camisas') {
-    lines.push(`Anillos: ØCil ${part.diametro_cilindro_mm}mm | 1° Anillo: ${part.espesor_anillo1_mm || '-'}mm | 2° Anillo: ${part.espesor_anillo2_mm || '-'}mm | Aceite: ${part.espesor_aceite_mm || '-'}mm`)
+    lines.push(`Anillos: Cil ${part.diametro_cilindro_mm}mm | Anillo 1: ${part.espesor_anillo1_mm || '-'}mm | Anillo 2: ${part.espesor_anillo2_mm || '-'}mm | Aceite: ${part.espesor_aceite_mm || '-'}mm`)
   }
   if (part.medida_rosca) {
     lines.push(`Tornillos Culata: ${part.medida_rosca}x${part.paso_rosca_mm || 1.25} | Long ${part.longitud_perno_mm || 120}mm | Cant: ${part.cantidad_piezas || 10}`)
@@ -988,7 +988,7 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
       const isLast = idx === total - 1
       const isOil = String(r.posicion || '').toLowerCase().includes('oil') || isLast
       return {
-        posicion: isOil ? 'Anillo de aceite' : `${idx + 1}`,
+        posicion: isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`,
         d1: r.d1 != null ? Number(r.d1) : (part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null),
         h1: r.h1 != null ? Number(r.h1) : null,
         a1: r.a1 != null ? Number(r.a1) : null
@@ -999,8 +999,8 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
   const d = part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null
   const dims = part.dimensiones as any
   return [
-    { posicion: '1', d1: d, h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null, a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : null },
-    { posicion: '2', d1: d, h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null, a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : null },
+    { posicion: 'Anillo 1', d1: d, h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null, a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : null },
+    { posicion: 'Anillo 2', d1: d, h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null, a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : null },
     { posicion: 'Anillo de aceite', d1: d, h1: part.espesor_aceite_mm ? Number(part.espesor_aceite_mm) : null, a1: dims?.espesor_radial_aceite_mm ? Number(dims.espesor_radial_aceite_mm) : null }
   ]
 }
@@ -1878,8 +1878,8 @@ onUnmounted(() => {
                 <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
                   {{ mot.parts_count }} pzs
                 </span>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  {{ mot.cilindros }} Cil / {{ mot.cilindrada_texto || (mot.cilindrada_cc + ' cc') }}
+                <span v-if="mot.cilindros || mot.cilindrada_texto || mot.cilindrada_cc" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  <template v-if="mot.cilindros">{{ mot.cilindros }} Cil<template v-if="mot.cilindrada_texto || mot.cilindrada_cc"> / </template></template><template v-if="mot.cilindrada_texto || mot.cilindrada_cc">{{ mot.cilindrada_texto || (mot.cilindrada_cc + ' cc') }}</template>
                 </span>
                 <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
@@ -2256,7 +2256,7 @@ onUnmounted(() => {
 
                 <!-- 5. Cilindros -->
                 <td class="py-2 px-2.5 text-center font-mono text-slate-800 align-middle border-r border-slate-100">
-                  {{ mot.cilindros }}
+                  {{ mot.cilindros || '—' }}
                 </td>
 
                 <!-- 6. Cilindrada -->
@@ -2525,7 +2525,7 @@ onUnmounted(() => {
           <div>
             <div class="flex items-center justify-between mb-0.5">
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Hongo (Ø cabeza mm)
+                Cabeza (mm)
               </label>
               <ToleranceBadge v-model="filterTolerancias['valvulaHongo']" :fallback="filterToleranciaMm" />
             </div>
@@ -2541,7 +2541,7 @@ onUnmounted(() => {
           <div>
             <div class="flex items-center justify-between mb-0.5">
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Vástago (Ø vástago mm)
+                Vástago (mm)
               </label>
               <ToleranceBadge v-model="filterTolerancias['valvulaVastago']" :fallback="filterToleranciaMm" :step="0.01" />
             </div>
@@ -2557,7 +2557,7 @@ onUnmounted(() => {
           <div>
             <div class="flex items-center justify-between mb-0.5">
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Altura (Longitud mm)
+                Altura (mm)
               </label>
               <ToleranceBadge v-model="filterTolerancias['valvulaAltura']" :fallback="filterToleranciaMm" />
             </div>
@@ -2603,7 +2603,7 @@ onUnmounted(() => {
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
                 :class="filterAnilloTab === '1' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
-                <span>1</span>
+                <span>Anillo 1</span>
                 <span v-if="filterAnilloGrosor1 !== undefined || filterAnilloRadial1 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               </button>
               <button
@@ -2612,7 +2612,7 @@ onUnmounted(() => {
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
                 :class="filterAnilloTab === '2' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
-                <span>2</span>
+                <span>Anillo 2</span>
                 <span v-if="filterAnilloGrosor2 !== undefined || filterAnilloRadial2 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               </button>
               <button
@@ -2621,7 +2621,7 @@ onUnmounted(() => {
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
                 :class="filterAnilloTab === '3' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
-                <span>3</span>
+                <span>Anillo 3</span>
                 <span v-if="filterAnilloGrosor3 !== undefined || filterAnilloRadial3 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               </button>
               <button
@@ -2636,8 +2636,8 @@ onUnmounted(() => {
             </div>
 
             <!-- Información técnica informativa (no búsqueda) -->
-            <div class="flex items-center gap-1.5 text-[10px] text-cyan-800 bg-cyan-50/80 px-2.5 py-1 rounded-md border border-cyan-200/70 font-medium">
-              <span class="font-bold text-[#038391]">4 Cilindros</span>
+            <div v-if="selectedMotor?.cilindros" class="flex items-center gap-1.5 text-[10px] text-cyan-800 bg-cyan-50/80 px-2.5 py-1 rounded-md border border-cyan-200/70 font-medium">
+              <span class="font-bold text-[#038391]">{{ selectedMotor.cilindros }} Cilindros</span>
               <span class="text-slate-400">|</span>
               <span class="text-slate-600">Dato informativo en tabla (no filtra)</span>
             </div>
@@ -2661,13 +2661,13 @@ onUnmounted(() => {
                 placeholder="ej. 88.0"
                 class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
-              <span class="text-[9px] text-slate-500 mt-1 block">Ø nominal (mm)</span>
+              <span class="text-[9px] text-slate-500 mt-1 block">Diámetro nominal (mm)</span>
             </div>
 
             <!-- 1: Grosor y Altura a la par -->
             <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                1
+                Anillo 1
               </div>
               <div class="grid grid-cols-2 gap-1.5">
                 <div>
@@ -2702,7 +2702,7 @@ onUnmounted(() => {
             <!-- 2: Grosor y Altura a la par -->
             <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                2
+                Anillo 2
               </div>
               <div class="grid grid-cols-2 gap-1.5">
                 <div>
@@ -2737,7 +2737,7 @@ onUnmounted(() => {
             <!-- 3: Grosor y Altura a la par (para 4 anillos) -->
             <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
-                <span>3</span>
+                <span>Anillo 3</span>
                 <span class="text-[9px] text-[#038391] font-mono font-semibold">4 aros</span>
               </div>
               <div class="grid grid-cols-2 gap-1.5">
@@ -2826,7 +2826,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
-                  1: Grosor (mm)
+                  Anillo 1: Grosor (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
               </div>
@@ -2841,7 +2841,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
-                  1: Altura (mm)
+                  Anillo 1: Altura (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" />
               </div>
@@ -2874,7 +2874,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
-                  2: Grosor (mm)
+                  Anillo 2: Grosor (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" />
               </div>
@@ -2889,7 +2889,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
-                  2: Altura (mm)
+                  Anillo 2: Altura (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.05" />
               </div>
@@ -2922,7 +2922,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
-                  3: Grosor (mm)
+                  Anillo 3: Grosor (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['anilloGrosor3']" :fallback="filterToleranciaMm" :step="0.02" />
               </div>
@@ -2937,7 +2937,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate">
-                  3: Altura (mm)
+                  Anillo 3: Altura (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['anilloRadial3']" :fallback="filterToleranciaMm" :step="0.05" />
               </div>
@@ -3018,7 +3018,7 @@ onUnmounted(() => {
 
           <div>
             <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Grosor / Ø (mm)</label>
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Grosor (mm)</label>
               <ToleranceBadge v-model="filterTolerancias['pernoGrosor']" :fallback="filterToleranciaMm" :step="0.5" />
             </div>
             <input
@@ -3075,12 +3075,12 @@ onUnmounted(() => {
           v-else-if="selectedComponent.id === 'camisas_cilindro' || selectedComponent.category === 'Camisas'"
           class="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80"
         >
-          <!-- Fila principal: Cotas maestras de maquinado (ØA Int, ØB Ext, C Largo) -->
+          <!-- Fila principal: Cotas maestras de maquinado (Int, Ext, Largo) -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Ø Int (A) Diámetro Interior
+                  Diámetro interior
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['diametro_interior_mm']" :fallback="filterToleranciaMm" />
               </div>
@@ -3096,7 +3096,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Ø Ext (B) Diámetro Exterior
+                  Diámetro exterior
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['diametro_exterior_mm']" :fallback="filterToleranciaMm" />
               </div>
@@ -3112,7 +3112,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Largo / Altura (C)
+                  Largo / Altura
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['longitud_total_mm']" :fallback="filterToleranciaMm" />
               </div>
@@ -3129,7 +3129,7 @@ onUnmounted(() => {
           <!-- Fila secundaria: Pestaña, Acabado y Tipo -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-200/60">
             <div>
-              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Ø Pestaña (D)</label>
+              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Diámetro pestaña</label>
               <input
                 v-model.number="dynamicParamFilters['diametro_pestana_mm']"
                 type="number"
@@ -3140,7 +3140,7 @@ onUnmounted(() => {
             </div>
 
             <div>
-              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Esp. Pestaña (E)</label>
+              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Espesor pestaña</label>
               <input
                 v-model.number="dynamicParamFilters['espesor_pestana_mm']"
                 type="number"
@@ -3329,7 +3329,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro Interior (Vástago)">
-                  Ø Interior (mm)
+                  Diámetro interior (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['guiaDiamInt']" :fallback="filterToleranciaMm" :step="0.01" />
               </div>
@@ -3345,7 +3345,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro Exterior 1 (Alojamiento en culata)">
-                  Ø Exterior 1 (mm)
+                  Diámetro exterior 1 (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['guiaDiamExt1']" :fallback="filterToleranciaMm" :step="0.02" />
               </div>
@@ -3361,7 +3361,7 @@ onUnmounted(() => {
             <div>
               <div class="flex items-center justify-between mb-0.5">
                 <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro Exterior 2 (Collarín o escalón)">
-                  Ø Exterior 2 (mm)
+                  Diámetro exterior 2 (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['guiaDiamExt2']" :fallback="filterToleranciaMm" :step="0.02" />
               </div>
@@ -3519,7 +3519,7 @@ onUnmounted(() => {
                   Medidas: Diámetro / Grosor / Altura (mm)
                 </th>
                 <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-2.5 px-3">
-                  Cotas: ØA (Int) × ØB (Ext) × C (Largo) • Pestaña (D × E)
+                  Cotas: A (Int) × B (Ext) × C (Largo) • Pestaña (D × E)
                 </th>
                 <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-2.5 px-3">
                   Tornillos: Rosca / Grosor / Paso / Longitud / Cantidad
@@ -3528,7 +3528,7 @@ onUnmounted(() => {
                   Casquetería: Tipo (MS/CB/TW/CH/PB) • SHAFT × HOUSING × T WALL × LENGTH
                 </th>
                 <th v-else-if="selectedComponent?.id === 'guias_valvula' || selectedComponent?.category === 'Guías'" class="py-2.5 px-3">
-                  Guías: Ø Int × Ø Ext 1 × Ø Ext 2 × Largo (mm) • Info: Juego
+                  Guías: Int × Ext 1 × Ext 2 × Largo (mm) • Info: Juego
                 </th>
                 <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-2.5 px-3">
                   Empaques: Diámetro / Espesor / Material
@@ -3740,8 +3740,8 @@ onUnmounted(() => {
                     </div>
 
                     <!-- Fila informativa adicional de taller -->
-                    <div v-if="getRingFormas(part) || getRingMateriales(part) || (part.dimensiones as any)?.cilindros" class="flex flex-wrap items-center gap-1 mt-1 text-[10px] font-sans text-slate-600">
-                      <span v-if="(part.dimensiones as any)?.cilindros" class="px-1.5 py-0.2 rounded bg-cyan-50 text-[#038391] border border-cyan-200 font-bold font-mono">
+                    <div v-if="getRingFormas(part) || getRingMateriales(part) || ((part.dimensiones as any)?.cilindros && Number((part.dimensiones as any).cilindros) > 0)" class="flex flex-wrap items-center gap-1 mt-1 text-[10px] font-sans text-slate-600">
+                      <span v-if="(part.dimensiones as any)?.cilindros && Number((part.dimensiones as any).cilindros) > 0" class="px-1.5 py-0.2 rounded bg-cyan-50 text-[#038391] border border-cyan-200 font-bold font-mono">
                         {{ (part.dimensiones as any).cilindros }} Cil.
                       </span>
                       <span v-if="getRingFormas(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Forma técnica NPR">
@@ -3803,13 +3803,13 @@ onUnmounted(() => {
                       {{ part.dimensiones.posicion }}
                     </span>
                     <span v-if="part.diametro_interior_mm || part.dimensiones?.diametro_interior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Ø Int: <strong>{{ part.diametro_interior_mm || part.dimensiones?.diametro_interior_mm }} mm</strong>
+                      Int: <strong>{{ part.diametro_interior_mm || part.dimensiones?.diametro_interior_mm }} mm</strong>
                     </span>
                     <span v-if="part.diametro_exterior_mm || part.dimensiones?.diametro_exterior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Ø Ext 1: <strong>{{ part.diametro_exterior_mm || part.dimensiones?.diametro_exterior_mm }} mm</strong>
+                      Ext 1: <strong>{{ part.diametro_exterior_mm || part.dimensiones?.diametro_exterior_mm }} mm</strong>
                     </span>
                     <span v-if="part.dimensiones?.diametro_exterior_2_mm || part.dimensiones?.diametro_pestana_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Ø Ext 2: <strong>{{ part.dimensiones?.diametro_exterior_2_mm || part.dimensiones?.diametro_pestana_mm }} mm</strong>
+                      Ext 2: <strong>{{ part.dimensiones?.diametro_exterior_2_mm || part.dimensiones?.diametro_pestana_mm }} mm</strong>
                     </span>
                     <span v-if="part.longitud_total_mm || part.dimensiones?.longitud_total_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
                       Largo: <strong>{{ part.longitud_total_mm || part.dimensiones?.longitud_total_mm }} mm</strong>
@@ -3822,7 +3822,7 @@ onUnmounted(() => {
                   <!-- Caso F: Empaques -->
                   <div v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
                     <span v-if="part.diametro_cilindro_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Ø Cil: <strong>{{ part.diametro_cilindro_mm }} mm</strong>
+                      Cil: <strong>{{ part.diametro_cilindro_mm }} mm</strong>
                     </span>
                     <span v-if="part.dimensiones?.espesor_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
                       Espesor: <strong>{{ part.dimensiones.espesor_mm }} mm</strong>
@@ -3832,10 +3832,10 @@ onUnmounted(() => {
                   <!-- Caso G: Camisas de cilindro (Ultra-compacto) -->
                   <div v-else-if="selectedComponent?.id === 'camisas_cilindro' || part.categoria === 'Camisas'" class="space-y-0.5">
                     <div class="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-bold text-slate-800">
-                      <span class="text-slate-500 text-[10px] uppercase font-sans">ØA:</span>
+                      <span class="text-slate-500 text-[10px] uppercase font-sans">A (Int):</span>
                       <strong class="text-slate-900 text-xs">{{ part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '—' }}</strong>
                       <span class="text-slate-300">×</span>
-                      <span class="text-slate-500 text-[10px] uppercase font-sans">ØB:</span>
+                      <span class="text-slate-500 text-[10px] uppercase font-sans">B (Ext):</span>
                       <strong class="text-slate-900 text-xs">{{ part.dimensiones?.diametro_exterior_mm || '—' }}</strong>
                       <span class="text-slate-300">×</span>
                       <span class="text-slate-500 text-[10px] uppercase font-sans">C:</span>
@@ -3845,7 +3845,7 @@ onUnmounted(() => {
 
                     <div class="flex items-center gap-1 flex-wrap text-[10px] font-mono text-slate-600">
                       <span v-if="part.dimensiones?.diametro_pestana_mm || part.dimensiones?.espesor_pestana_mm" class="px-1 rounded bg-slate-50 border border-slate-200 text-[9px]">
-                        Pest: Ø{{ part.dimensiones?.diametro_pestana_mm || '—' }}×{{ part.dimensiones?.espesor_pestana_mm || '—' }}mm
+                        Pest: {{ part.dimensiones?.diametro_pestana_mm || '—' }}×{{ part.dimensiones?.espesor_pestana_mm || '—' }}mm
                       </span>
                       <span v-if="part.dimensiones?.acabado" class="px-1 rounded text-[9px] font-bold uppercase" :class="part.dimensiones.acabado === 'F' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'">
                         {{ part.dimensiones.acabado === 'F' ? 'Terminada' : 'Semi' }}
@@ -4003,7 +4003,7 @@ onUnmounted(() => {
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Arquitectura</span>
-                <strong class="text-slate-900">{{ selectedMotorInfoModal.cilindros }} Cil / {{ selectedMotorInfoModal.valvulas }}V</strong>
+                <strong class="text-slate-900"><template v-if="selectedMotorInfoModal.cilindros">{{ selectedMotorInfoModal.cilindros }} Cil<template v-if="selectedMotorInfoModal.valvulas"> / </template></template><template v-if="selectedMotorInfoModal.valvulas">{{ selectedMotorInfoModal.valvulas }}V</template></strong>
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Potencia</span>
@@ -4018,7 +4018,7 @@ onUnmounted(() => {
             <div class="p-3 bg-cyan-50/60 rounded-xl border border-cyan-200/70 text-slate-700 text-xs">
               <div class="font-bold text-slate-900 mb-1 font-sans">Datos de Rectificación:</div>
               <ul class="space-y-1 text-[11px]">
-                <li>• Diámetro de Cilindro STD: <strong>{{ selectedMotorInfoModal.diametro_cilindro_std_mm || 96.0 }} mm</strong></li>
+                <li v-if="selectedMotorInfoModal.diametro_cilindro_std_mm">• Diámetro de Cilindro STD: <strong>{{ selectedMotorInfoModal.diametro_cilindro_std_mm }} mm</strong></li>
                 <li>• Aspiración: <strong>{{ selectedMotorInfoModal.aspiracion || 'Natural' }}</strong></li>
               </ul>
             </div>
@@ -4151,7 +4151,7 @@ onUnmounted(() => {
                   <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
                   Matriz Técnica NPR - Cotas de Aros de Pistón
                 </h4>
-                <span v-if="(modalPart.dimensiones as any)?.cilindros" class="px-2 py-0.5 rounded bg-cyan-50 text-[#038391] font-bold text-[11px] font-mono border border-cyan-200">
+                <span v-if="(modalPart.dimensiones as any)?.cilindros && Number((modalPart.dimensiones as any).cilindros) > 0" class="px-2 py-0.5 rounded bg-cyan-50 text-[#038391] font-bold text-[11px] font-mono border border-cyan-200">
                   {{ (modalPart.dimensiones as any).cilindros }} Cilindros
                 </span>
               </div>

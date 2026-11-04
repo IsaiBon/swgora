@@ -1088,8 +1088,8 @@ onUnmounted(() => {
                     </div>
 
                     <div class="shrink-0 flex items-center gap-2">
-                      <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                        {{ mot.cilindros }} Cil<span v-if="mot.cilindrada_texto || mot.cilindrada_cc"> • {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}</span>
+                      <span v-if="mot.cilindros || mot.cilindrada_texto || mot.cilindrada_cc" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                        <template v-if="mot.cilindros">{{ mot.cilindros }} Cil<template v-if="mot.cilindrada_texto || mot.cilindrada_cc"> • </template></template><span v-if="mot.cilindrada_texto || mot.cilindrada_cc">{{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}</span>
                       </span>
                       <Check v-if="partMotorId === mot.id" class="w-3.5 h-3.5 text-[#038896]" />
                     </div>
