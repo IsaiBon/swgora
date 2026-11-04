@@ -38,7 +38,6 @@ import {
   FolderPlus,
   Edit3,
   Ruler,
-  Lock,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -60,6 +59,7 @@ const selectedBrand = ref<Fabricante | null>(null)
 const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
+const showAllMotors = ref<boolean>(false)
 
 // =============================================================================
 // ACCESIBILIDAD Y CONTROL POR TECLADO EN SELECTORES DE COMBOBOX
@@ -120,11 +120,9 @@ const handleBrandKeydown = (e: KeyboardEvent) => {
 const handleMotorKeydown = (e: KeyboardEvent) => {
   if (!isMotorOpen.value) {
     if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      if (selectedBrand.value) {
-        isMotorOpen.value = true
-        highlightedMotorIdx.value = 0
-        e.preventDefault()
-      }
+      isMotorOpen.value = true
+      highlightedMotorIdx.value = 0
+      e.preventDefault()
     }
     return
   }
@@ -151,11 +149,9 @@ const handleMotorKeydown = (e: KeyboardEvent) => {
 const handleModelKeydown = (e: KeyboardEvent) => {
   if (!isModelOpen.value) {
     if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      if (selectedBrand.value) {
-        isModelOpen.value = true
-        highlightedModelIdx.value = 0
-        e.preventDefault()
-      }
+      isModelOpen.value = true
+      highlightedModelIdx.value = 0
+      e.preventDefault()
     }
     return
   }
@@ -572,6 +568,7 @@ const handleSelectBrand = async (fab: Fabricante) => {
   selectedBrand.value = fab
   brandInput.value = fab.nombre.toUpperCase()
   isBrandOpen.value = false
+  showAllMotors.value = false
   motorCurrentPage.value = 1
 
   // Reiniciar modelo y motor subordinados
@@ -594,15 +591,14 @@ const handleClearSelectedBrand = async () => {
   brandInput.value = ''
   setTimeout(() => brandInputRef.value?.focus(), 50)
   selectedBrand.value = null
-  selectedModel.value = null
-  modelInput.value = ''
-  selectedMotor.value = null
-  motorInput.value = ''
   await catalogStore.selectFabricante(null)
 
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
     await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category)
+  } else if (selectedMotor.value) {
+    activeViewTab.value = 'repuestos'
+    await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
   } else {
     catalogStore.repuestos = []
     activeViewTab.value = 'motores'
@@ -616,7 +612,10 @@ const filteredModels = computed(() => {
   if (!q || (selectedModel.value && q === selectedModel.value.nombre.toLowerCase().trim())) {
     return list
   }
-  return list.filter(m => m.nombre.toLowerCase().includes(q))
+  return list.filter(m => 
+    m.nombre.toLowerCase().includes(q) ||
+    (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
+  )
 })
 
 const handleSelectModel = async (mod: Modelo) => {
@@ -629,6 +628,15 @@ const handleSelectModel = async (mod: Modelo) => {
   if (selectedMotor.value && selectedMotor.value.modelo_id && selectedMotor.value.modelo_id !== mod.id) {
     selectedMotor.value = null
     motorInput.value = ''
+  }
+
+  // Si no había fabricante seleccionado y el modelo pertenece a uno, autocompletar fabricante
+  if (!selectedBrand.value && mod.fabricante_id) {
+    const fab = catalogStore.fabricantes.find(f => f.id === mod.fabricante_id)
+    if (fab) {
+      selectedBrand.value = fab
+      brandInput.value = fab.nombre.toUpperCase()
+    }
   }
 
   await catalogStore.selectModelo(mod.id)
@@ -653,23 +661,19 @@ const handleClearSelectedModel = async () => {
 }
 
 const onFocusModel = (e?: Event) => {
-  if (selectedBrand.value) {
-    isModelOpen.value = true
-    if (e?.target) {
-      (e.target as HTMLInputElement).select?.()
-    }
+  isModelOpen.value = true
+  if (e?.target) {
+    (e.target as HTMLInputElement).select?.()
   }
 }
-const onInputModel = () => { if (selectedBrand.value) isModelOpen.value = true }
+const onInputModel = () => { isModelOpen.value = true }
 const onFocusMotor = (e?: Event) => {
-  if (selectedBrand.value) {
-    isMotorOpen.value = true
-    if (e?.target) {
-      (e.target as HTMLInputElement).select?.()
-    }
+  isMotorOpen.value = true
+  if (e?.target) {
+    (e.target as HTMLInputElement).select?.()
   }
 }
-const onInputMotor = () => { if (selectedBrand.value) isMotorOpen.value = true }
+const onInputMotor = () => { isMotorOpen.value = true }
 
 // 3. Filtrado de MOTORES DISPONIBLES (CASCADA NIVEL 3)
 const availableMotors = computed(() => {
@@ -690,7 +694,8 @@ const filteredMotors = computed(() => {
     m.codigo.toLowerCase().includes(q) || 
     (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
     (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
-    m.combustible.toLowerCase().includes(q)
+    m.combustible.toLowerCase().includes(q) ||
+    (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
   )
 })
 
@@ -814,6 +819,7 @@ const handleResetAll = async () => {
   selectedModel.value = null
   selectedMotor.value = null
   selectedComponent.value = null
+  showAllMotors.value = false
   isBrandOpen.value = false
   isModelOpen.value = false
   isMotorOpen.value = false
@@ -1397,11 +1403,7 @@ onUnmounted(() => {
             <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
               Motor
             </label>
-            <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
-              <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
-            </span>
             <button
-              v-else
               type="button"
               @click="toggleMotorsWithPartsOnly"
               class="text-[10px] font-bold px-1.5 py-0.5 rounded transition flex items-center gap-1 cursor-pointer"
@@ -1419,43 +1421,32 @@ onUnmounted(() => {
             <input
               ref="motorInputRef"
               v-model="motorInput"
-              :disabled="!selectedBrand"
               @focus="onFocusMotor"
               @click="onFocusMotor"
-              @input="onInputMotor; highlightedMotorIdx = 0"
+              @input="onInputMotor(); highlightedMotorIdx = 0"
               @keydown="handleMotorKeydown"
               type="text"
-              :placeholder="!selectedBrand ? 'Elija fabricante...' : 'Código de motor...'"
-              :class="[
-                'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold rounded-lg focus:outline-none min-h-[40px] transition',
-                !selectedBrand 
-                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                  : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
-              ]"
+              placeholder="Buscar código de motor..."
+              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
             />
-            <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-              <Lock class="w-3.5 h-3.5" />
-            </div>
-            <template v-else>
-              <button
-                v-if="motorInput"
-                type="button"
-                @click="handleClearSelectedMotor"
-                class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-                title="Limpiar motor"
-              >
-                <X class="w-3.5 h-3.5" />
-              </button>
-              <ChevronDown
-                @click="isMotorOpen = !isMotorOpen"
-                class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-              />
-            </template>
+            <button
+              v-if="motorInput"
+              type="button"
+              @click="handleClearSelectedMotor"
+              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+              title="Limpiar motor"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+            <ChevronDown
+              @click="isMotorOpen = !isMotorOpen"
+              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+            />
           </div>
 
           <!-- Dropdown Motores -->
           <div
-            v-if="isMotorOpen && selectedBrand"
+            v-if="isMotorOpen"
             class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
           >
             <div
@@ -1471,6 +1462,9 @@ onUnmounted(() => {
               <div class="flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
                 <div>
+                  <span v-if="!selectedBrand" class="text-[10px] font-bold text-[#038391] mr-1 uppercase">
+                    {{ getBrandName(mot.fabricante_id) }}
+                  </span>
                   <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
                   <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
                   <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
@@ -1494,56 +1488,40 @@ onUnmounted(() => {
 
         <!-- 3. MODELO -->
         <div class="relative combobox-model">
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-              Modelo
-            </label>
-            <span v-if="!selectedBrand" class="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
-              <Lock class="w-2.5 h-2.5" /> Requiere Fabricante
-            </span>
-          </div>
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+            Modelo
+          </label>
 
           <div class="relative flex items-center">
             <input
               ref="modelInputRef"
               v-model="modelInput"
-              :disabled="!selectedBrand"
               @focus="onFocusModel"
               @click="onFocusModel"
-              @input="onInputModel; highlightedModelIdx = 0"
+              @input="onInputModel(); highlightedModelIdx = 0"
               @keydown="handleModelKeydown"
               type="text"
-              :placeholder="!selectedBrand ? 'Elija fabricante...' : (selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Modelo compatible...')"
-              :class="[
-                'w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold rounded-lg focus:outline-none min-h-[40px] transition',
-                !selectedBrand 
-                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed select-none' 
-                  : 'bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]'
-              ]"
+              :placeholder="selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Buscar modelo...'"
+              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
             />
-            <div v-if="!selectedBrand" class="absolute right-3 text-slate-400">
-              <Lock class="w-3.5 h-3.5" />
-            </div>
-            <template v-else>
-              <button
-                v-if="modelInput"
-                type="button"
-                @click="handleClearSelectedModel"
-                class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-                title="Limpiar modelo"
-              >
-                <X class="w-3.5 h-3.5" />
-              </button>
-              <ChevronDown
-                @click="isModelOpen = !isModelOpen"
-                class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-              />
-            </template>
+            <button
+              v-if="modelInput"
+              type="button"
+              @click="handleClearSelectedModel"
+              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+              title="Limpiar modelo"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+            <ChevronDown
+              @click="isModelOpen = !isModelOpen"
+              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+            />
           </div>
 
           <!-- Dropdown Modelos -->
           <div
-            v-if="isModelOpen && selectedBrand"
+            v-if="isModelOpen"
             class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
           >
             <div
@@ -1558,7 +1536,12 @@ onUnmounted(() => {
             >
               <div class="flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full" :class="selectedModel?.id === mod.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                <strong class="font-bold">{{ mod.nombre }}</strong>
+                <div>
+                  <span v-if="!selectedBrand && mod.fabricante_id" class="text-[10px] font-bold text-[#038391] mr-1 uppercase">
+                    {{ getBrandName(mod.fabricante_id) }}
+                  </span>
+                  <strong class="font-bold">{{ mod.nombre }}</strong>
+                </div>
               </div>
               <div class="flex items-center gap-1.5">
                 <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
@@ -1673,7 +1656,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Pestañas para alternar entre lista de motores y repuestos -->
-        <div v-if="selectedBrand && selectedComponent" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
+        <div v-if="selectedComponent" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
           <button
             type="button"
             @click="activeViewTab = 'motores'"
@@ -1702,7 +1685,7 @@ onUnmounted(() => {
     <!-- ESTADO 1: PANTALLA INICIAL (MINIMALISTA)                                   -->
     <!-- ========================================================================= -->
     <div 
-      v-if="!selectedBrand && !brandInput && !selectedMotor && !selectedComponent && !searchInput" 
+      v-if="!selectedBrand && !brandInput && !selectedMotor && !selectedModel && !selectedComponent && !searchInput && !showAllMotors" 
       class="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
     >
       <div class="w-12 h-12 rounded-xl bg-cyan-50 border border-cyan-200/80 text-[#04C4D9] flex items-center justify-center mx-auto shadow-2xs">
@@ -1713,13 +1696,21 @@ onUnmounted(() => {
           Búsqueda de Motores y Repuestos
         </h2>
         <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
-          Seleccione un fabricante o utilice la barra superior para buscar por código OEM y cotas métricas.
+          Seleccione un fabricante, motor o componente para explorar el catálogo técnico o cotas métricas.
         </p>
       </div>
 
-      <!-- Botones de acceso rápido a marcas principales -->
+      <!-- Botones de acceso rápido a marcas principales y opción Ver todos -->
       <div class="pt-3 border-t border-slate-100">
         <div class="flex flex-wrap items-center justify-center gap-1.5">
+          <button
+            type="button"
+            @click="showAllMotors = true; activeViewTab = 'motores'"
+            class="px-3 py-1 rounded-full border border-cyan-300 bg-cyan-50/90 hover:bg-cyan-100 text-xs font-bold text-[#038391] transition active:scale-95 flex items-center gap-1"
+          >
+            <Layers class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>Ver todos los motores</span>
+          </button>
           <button
             v-for="fab in catalogStore.fabricantes.slice(0, 8)"
             :key="fab.id"
@@ -1737,7 +1728,7 @@ onUnmounted(() => {
     <!-- ESTADO 2: TABLA DE MOTORES (MINIMALISTA, LIMPIA Y RÁPIDA)                 -->
     <!-- ========================================================================= -->
     <div 
-      v-else-if="(selectedBrand || brandInput) && (!selectedMotor || activeViewTab === 'motores') && !searchInput && (!selectedComponent || activeViewTab === 'motores')"
+      v-else-if="(selectedBrand || brandInput || selectedModel || showAllMotors || (activeViewTab === 'motores' && !selectedMotor)) && (!selectedMotor || activeViewTab === 'motores') && !searchInput && (!selectedComponent || activeViewTab === 'motores')"
       class="space-y-3.5"
     >
       <!-- Encabezado de la tabla de motores -->
@@ -1745,7 +1736,7 @@ onUnmounted(() => {
         <div class="flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
           <h3 class="text-xs sm:text-sm font-bold text-slate-900">
-            Motores disponibles: <span class="text-[#038391] uppercase font-extrabold">{{ selectedBrand?.nombre || brandInput }}</span>
+            Motores disponibles: <span class="text-[#038391] uppercase font-extrabold">{{ selectedBrand?.nombre || brandInput || 'Todos los fabricantes' }}</span>
             <span v-if="selectedModel" class="text-slate-600 font-medium ml-1">({{ selectedModel.nombre }})</span>
           </h3>
           <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }})</span>
@@ -2570,6 +2561,9 @@ onUnmounted(() => {
                         {{ part.nombre }}
                       </div>
                       <span class="text-[10px] font-semibold text-slate-400 uppercase">
+                        <span v-if="part.motor?.fabricante?.nombre || (part.motor?.fabricante_id && getBrandName(part.motor.fabricante_id))" class="text-slate-600 font-bold mr-1">
+                          {{ part.motor?.fabricante?.nombre || getBrandName(part.motor.fabricante_id) }} •
+                        </span>
                         {{ part.subsistema }} • {{ part.motor?.codigo ? `Motor ${part.motor.codigo}` : (part.catalogo_origen || 'OEM') }}
                       </span>
                     </div>
