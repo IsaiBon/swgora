@@ -41,6 +41,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref<boolean>(false)
 const isUploading = ref<boolean>(false)
 const errorMessage = ref<string | null>(null)
+const uploadWarning = ref<string | null>(null)
 const compressionStats = ref<CompressionResult | null>(null)
 const showUrlInput = ref<boolean>(false)
 const manualUrl = ref<string>('')
@@ -96,6 +97,7 @@ const processFile = async (file: File) => {
     if (result.compression) {
       compressionStats.value = result.compression
     }
+    uploadWarning.value = result.warning || null
     emit('update:modelValue', result.url)
     manualUrl.value = result.url
   } catch (err: unknown) {
@@ -191,9 +193,28 @@ const applyManualUrl = () => {
       <!-- Información y Acciones -->
       <div class="flex-1 min-w-0 space-y-1.5 text-left w-full sm:w-auto">
         <div class="flex items-center gap-1.5">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <!-- Origen del Storage -->
+          <span 
+            v-if="modelValue.includes('supabase.co')" 
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+          >
             <CheckCircle2 class="w-3 h-3 text-emerald-600" />
-            Imagen Asignada
+            En la nube (Supabase Storage)
+          </span>
+          <span 
+            v-else-if="modelValue.startsWith('blob:') || modelValue.startsWith('data:')" 
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+            title="La imagen está en memoria local temporal porque el bucket 'repuestos' aún no existe en tu proyecto de Supabase."
+          >
+            <AlertCircle class="w-3 h-3 text-amber-600" />
+            Temporal Local (Pendiente activar bucket en Supabase)
+          </span>
+          <span 
+            v-else 
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-200"
+          >
+            <CheckCircle2 class="w-3 h-3 text-cyan-600" />
+            Enlace Externo
           </span>
 
           <span 
@@ -207,6 +228,11 @@ const applyManualUrl = () => {
         <p class="text-[11px] text-slate-600 truncate font-mono" :title="modelValue">
           {{ modelValue }}
         </p>
+
+        <div v-if="uploadWarning" class="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg font-medium flex items-start gap-1.5">
+          <AlertCircle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+          <span>{{ uploadWarning }}. Para guardarla permanentemente en la nube, ejecuta el SQL de la migración en Supabase.</span>
+        </div>
 
         <!-- Botonera de acciones -->
         <div class="flex items-center gap-2 pt-1 flex-wrap">
@@ -344,3 +370,4 @@ const applyManualUrl = () => {
     </div>
   </div>
 </template>
+

@@ -20,6 +20,8 @@ export interface UploadResult {
   url: string
   path: string
   size: number
+  isRemote: boolean
+  warning?: string
   compression?: CompressionResult
 }
 
@@ -190,11 +192,12 @@ export async function uploadRepuestoImage(
 
     if (error) {
       console.warn(`[StorageService] Subida a Supabase falló (${error.message}). Utilizando vista previa local temporal.`)
-      // Fallback a DataURL en memoria para no bloquear al usuario si el bucket en Supabase no ha sido activado
       return {
         url: compression.previewUrl,
         path: filePath,
         size: compression.compressedSize,
+        isRemote: false,
+        warning: `No se pudo subir al bucket '${STORAGE_BUCKET}' en Supabase: ${error.message}`,
         compression
       }
     }
@@ -208,14 +211,18 @@ export async function uploadRepuestoImage(
       url: urlData.publicUrl,
       path: data.path,
       size: compression.compressedSize,
+      isRemote: true,
       compression
     }
   } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
     console.warn('[StorageService] Excepción durante subida a Storage:', err)
     return {
       url: compression.previewUrl,
       path: filePath,
       size: compression.compressedSize,
+      isRemote: false,
+      warning: `Error de conexión con Supabase Storage: ${errorMsg}`,
       compression
     }
   }
@@ -263,3 +270,4 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
+
