@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ordersService, type Order } from '@/services/ordersService'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
+import OperationsManagerModal from '@/components/OperationsManagerModal.vue'
 import { 
   Search, 
   Filter, 
@@ -15,7 +16,8 @@ import {
   Wrench,
   CheckCircle2,
   FileText,
-  Lock
+  Lock,
+  SlidersHorizontal
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -34,6 +36,9 @@ const selectedType = ref<string>('Todos')
 // Modal de impresión rápida desde la lista
 const printModalOpen = ref(false)
 const orderToPrint = ref<Order | null>(null)
+
+// Modal de gestión de operaciones y servicios
+const showOperationsModal = ref(false)
 
 const loadOrders = async () => {
   orders.value = await ordersService.getOrders()
@@ -151,11 +156,21 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
             Gestión y seguimiento de rectificación por componentes: Bielas, Bancadas, Cigüeñal, Culata y Block.
           </p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            @click="showOperationsModal = true"
+            class="inline-flex items-center px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-xl shadow-xs transition"
+            title="Editar y administrar la lista de operaciones y servicios del taller"
+          >
+            <SlidersHorizontal class="w-4 h-4 mr-1.5 text-[#04c4d9]" />
+            Operaciones y Servicios
+          </button>
+
           <button
             type="button"
             @click="openNewOrder"
-            class="inline-flex items-center px-4 py-2.5 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] rounded-xl shadow-sm transition"
+            class="inline-flex items-center px-4 py-2.5 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] active:bg-[#0296a6] rounded-xl shadow-sm transition"
           >
             <Plus class="w-4 h-4 mr-1.5" />
             Nueva Orden de Trabajo
@@ -376,6 +391,12 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
       :is-open="printModalOpen"
       :order="orderToPrint"
       @close="printModalOpen = false"
+    />
+
+    <!-- Modal de Administración de Operaciones y Servicios -->
+    <OperationsManagerModal
+      v-if="showOperationsModal"
+      @close="showOperationsModal = false"
     />
   </div>
 </template>
