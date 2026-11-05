@@ -48,7 +48,6 @@ export interface Motor {
   especificaciones_tecnicas?: Record<string, unknown>
   fabricante?: Fabricante
   modelo?: Modelo
-  parts_count?: number
 }
 
 export interface Equivalencia {
@@ -752,7 +751,6 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
   }
 
   const dims = (item.dimensiones as Record<string, unknown>) || {}
-  const spec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
 
   return {
     id: String(item.id),
@@ -765,15 +763,7 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     stock: Number(item.stock || 0),
     estado: (item.estado as RepuestoTecnico['estado']) || 'Disponible',
     imagen_url: item.imagen_url ? String(item.imagen_url) : undefined,
-    catalogo_origen: item.catalogo_origen 
-      ? String(item.catalogo_origen) 
-      : ((spec as any).marca_catalogo 
-          ? String((spec as any).marca_catalogo) 
-          : ((spec as any).codigo_dokuro 
-              ? 'Dokuro' 
-              : ((spec as any).codigo_npr 
-                  ? 'NPR' 
-                  : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('npr') ? 'NPR' : 'OEM')))),
+    catalogo_origen: item.catalogo_origen ? String(item.catalogo_origen) : 'OEM',
 
     diametro_cabeza_mm: item.diametro_cabeza_mm != null ? Number(item.diametro_cabeza_mm) : null,
     diametro_vastago_mm: item.diametro_vastago_mm != null ? Number(item.diametro_vastago_mm) : null,
@@ -808,6 +798,13 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     motor: motorData
   }
 }
+
+/**
+ * Normaliza texto para comparar/buscar: minúsculas, sin tildes y sin espacios repetidos.
+ * Debe coincidir con la función SQL public.normalizar_texto.
+ */
+export const normalizeText = (t: string): string =>
+  (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 
 export const catalogService = {
   /**
@@ -871,12 +868,9 @@ export const catalogService = {
 
       const { data, error } = await query.order('nombre', { ascending: true })
 
-      if (error || !data || data.length === 0) {
-        if (fabricanteId) {
-          const filtered = mockModelos.filter(m => m.fabricante_id === fabricanteId)
-          return filtered.length > 0 ? filtered : mockModelos
-        }
-        return mockModelos
+      // Solo se usan datos de respaldo si hubo error, o si la BD está vacía y no se filtró por marca
+      if (error || !data || (data.length === 0 && !fabricanteId)) {
+        return fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : mockModelos
       }
 
       return data.map((item: Record<string, unknown>) => ({
@@ -893,25 +887,71 @@ export const catalogService = {
   },
 
   /**
+   * Crea un modelo para un fabricante (o devuelve el existente si ya hay uno equivalente,
+   * sin distinguir mayúsculas ni tildes). Usa la función SQL public.crear_modelo.
+   */
+  async createModelo(fabricanteId: string, nombre: string): Promise<Modelo> {
+    const limpio = nombre.replace(/\s+/g, ' ').trim()
+    if (!fabricanteId || !limpio) throw new Error('Indica la marca y el nombre del modelo')
+
+    const { data, error } = await supabase.rpc('crear_modelo', { p_fabricante_id: fabricanteId, p_nombre: limpio })
+    if (error) throw new Error(error.message)
+
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown>
+    return {
+      id: String(row.id),
+      fabricante_id: String(row.fabricante_id),
+      nombre: String(row.nombre),
+      anio_inicio: row.anio_inicio ? Number(row.anio_inicio) : undefined,
+      anio_fin: row.anio_fin ? Number(row.anio_fin) : undefined,
+      activo: row.activo === undefined ? true : Boolean(row.activo)
+    }
+  },
+
+  /**
+   * IDs de motores asociados a un modelo (relación N:M modelo_motor + vínculo antiguo motores.modelo_id)
+   */
+  async getMotorIdsByModelo(modeloId: string): Promise<string[]> {
+    const ids = new Set<string>()
+    const { data: links } = await supabase
+      .from('modelo_motor').select('motor_id').eq('modelo_id', modeloId).not('motor_id', 'is', null)
+    ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.motor_id)))
+    const { data: legacy } = await supabase.from('motores').select('id').eq('modelo_id', modeloId)
+    ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.id)))
+    return [...ids]
+  },
+
+  /**
+   * IDs de modelos que comparten un motor (el mismo motor puede montarse en varios modelos)
+   */
+  async getModeloIdsByMotor(motorId: string): Promise<string[]> {
+    const ids = new Set<string>()
+    const { data: links } = await supabase.from('modelo_motor').select('modelo_id').eq('motor_id', motorId)
+    ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
+    const { data: legacy } = await supabase.from('motores').select('modelo_id').eq('id', motorId).not('modelo_id', 'is', null)
+    ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
+    return [...ids]
+  },
+
+  /**
    * Obtiene motores filtrados por fabricante o modelo directamente desde Supabase
    */
-  async getMotores(fabricanteId?: string, modeloId?: string, onlyWithParts: boolean = false): Promise<Motor[]> {
+  async getMotores(fabricanteId?: string, modeloId?: string): Promise<Motor[]> {
     try {
-      const selectFields = onlyWithParts
-        ? '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos!inner(id)'
-        : '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos(id)'
-
-      let query = supabase.from('motores').select(selectFields)
+      let query = supabase.from('motores').select('*, fabricante:fabricantes(*), modelo:modelos(*)')
       if (fabricanteId) {
         query = query.eq('fabricante_id', fabricanteId)
       }
       if (modeloId) {
-        query = query.eq('modelo_id', modeloId)
+        const motorIds = await this.getMotorIdsByModelo(modeloId)
+        // Si no hay ningún motor vinculado se devuelve lista vacía (no los de otros modelos)
+        if (motorIds.length === 0) return []
+        query = query.in('id', motorIds)
       }
 
-      const { data, error } = await query.order('codigo', { ascending: true }).limit(1000)
+      const { data, error } = await query.order('codigo', { ascending: true })
 
-      if (error || !data || data.length === 0) {
+      if (error || !data || (data.length === 0 && !fabricanteId && !modeloId)) {
         let filtered = [...mockMotores]
         if (fabricanteId) {
           filtered = filtered.filter(m => m.fabricante_id === fabricanteId)
@@ -924,7 +964,6 @@ export const catalogService = {
 
       return data.map((item: Record<string, unknown>) => {
         const espec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
-        const repArray = Array.isArray(item.repuestos_tecnicos) ? item.repuestos_tecnicos : []
         return {
           id: String(item.id),
           fabricante_id: String(item.fabricante_id),
@@ -947,8 +986,7 @@ export const catalogService = {
           anios: item.anios ? String(item.anios) : undefined,
           especificaciones_tecnicas: espec,
           fabricante: item.fabricante as Fabricante | undefined,
-          modelo: item.modelo as Modelo | undefined,
-          parts_count: repArray.length
+          modelo: item.modelo as Modelo | undefined
         }
       })
     } catch {
@@ -1001,8 +1039,16 @@ export const catalogService = {
   /**
    * Obtiene todos los repuestos pertenecientes a una categoría/grupo técnico desde Supabase
    */
-  async getRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string): Promise<RepuestoTecnico[]> {
+  async getRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string, modeloId?: string): Promise<RepuestoTecnico[]> {
     try {
+      // Motores compatibles con el modelo; los repuestos universales (sin motor) siempre se conservan
+      const motorIdsModelo = modeloId ? new Set(await this.getMotorIdsByModelo(modeloId)) : null
+      const filtrar = (list: RepuestoTecnico[]) => list.filter(r => {
+        if (!r.motor_id) return true
+        if (fabricanteId && r.motor?.fabricante_id !== fabricanteId) return false
+        if (motorIdsModelo && !motorIdsModelo.has(r.motor_id)) return false
+        return true
+      })
       let query = supabase
         .from('repuestos_tecnicos')
         .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
@@ -1018,11 +1064,7 @@ export const catalogService = {
       const { data, error } = await query.order('codigo_oem', { ascending: true })
 
       if (!error && data && data.length > 0) {
-        let mapped = data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
-        if (fabricanteId) {
-          mapped = mapped.filter(r => r.motor?.fabricante_id === fabricanteId)
-        }
-        return mapped
+        return filtrar(data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item)))
       }
 
       // Si no hubo resultados por coincidencia exacta, probar búsqueda flexible por nombre o categoría
@@ -1034,11 +1076,7 @@ export const catalogService = {
           .order('codigo_oem', { ascending: true })
 
         if (altData && altData.length > 0) {
-          let mapped = altData.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
-          if (fabricanteId) {
-            mapped = mapped.filter(r => r.motor?.fabricante_id === fabricanteId)
-          }
-          return mapped
+          return filtrar(altData.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item)))
         }
       }
     } catch (err) {
@@ -1691,131 +1729,6 @@ export const catalogService = {
     saveLocalCustomRepuesto(fallbackPart)
     mockRepuestos.unshift(fallbackPart)
     return fallbackPart
-  },
-
-  /**
-   * Modifica un repuesto técnico existente y actualiza sus equivalencias en Supabase
-   */
-  async updateRepuesto(
-    partId: string,
-    part: Partial<RepuestoTecnico>,
-    equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
-  ): Promise<RepuestoTecnico> {
-    const updatePayload: Record<string, unknown> = {
-      motor_id: part.motor_id !== undefined ? (part.motor_id || null) : undefined,
-      codigo_oem: part.codigo_oem !== undefined ? (part.codigo_oem || '').trim().toUpperCase() : undefined,
-      nombre: part.nombre !== undefined ? (part.nombre || '').trim() : undefined,
-      subsistema: part.subsistema !== undefined ? part.subsistema : undefined,
-      categoria: part.categoria !== undefined ? part.categoria : undefined,
-      precio: part.precio !== undefined ? Number(part.precio || 0) : undefined,
-      stock: part.stock !== undefined ? Number(part.stock || 0) : undefined,
-      estado: part.estado !== undefined ? part.estado : undefined,
-      imagen_url: part.imagen_url !== undefined ? (part.imagen_url || null) : undefined,
-      diametro_cabeza_mm: part.diametro_cabeza_mm !== undefined ? (part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null) : undefined,
-      diametro_vastago_mm: part.diametro_vastago_mm !== undefined ? (part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null) : undefined,
-      longitud_total_mm: part.longitud_total_mm !== undefined ? (part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null) : undefined,
-      angulo_asiento_grados: part.angulo_asiento_grados !== undefined ? (part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null) : undefined,
-      diametro_cilindro_mm: part.diametro_cilindro_mm !== undefined ? (part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null) : undefined,
-      espesor_anillo1_mm: part.espesor_anillo1_mm !== undefined ? (part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null) : undefined,
-      espesor_anillo2_mm: part.espesor_anillo2_mm !== undefined ? (part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null) : undefined,
-      espesor_aceite_mm: part.espesor_aceite_mm !== undefined ? (part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null) : undefined,
-      tipo_cojinete: part.tipo_cojinete !== undefined ? (part.tipo_cojinete || null) : undefined,
-      diametro_munon_mm: part.diametro_munon_mm !== undefined ? (part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null) : undefined,
-      diametro_alojamiento_mm: part.diametro_alojamiento_mm !== undefined ? (part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null) : undefined,
-      ancho_casquete_mm: part.ancho_casquete_mm !== undefined ? (part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null) : undefined,
-      dimensiones: part.dimensiones !== undefined ? part.dimensiones : undefined,
-      especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? part.especificaciones_tecnicas : undefined,
-      updated_at: new Date().toISOString()
-    }
-
-    // Limpiar claves undefined
-    Object.keys(updatePayload).forEach(k => {
-      if (updatePayload[k] === undefined) delete updatePayload[k]
-    })
-
-    try {
-      const { data: updatedPart, error: partError } = await supabase
-        .from('repuestos_tecnicos')
-        .update(updatePayload)
-        .eq('id', partId)
-        .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
-        .single()
-
-      if (!partError && updatedPart) {
-        let finalEquivs: Equivalencia[] = []
-
-        if (equivalencias !== undefined) {
-          await supabase.from('equivalencias_repuestos').delete().eq('repuesto_id', partId)
-
-          const validRows = equivalencias
-            .filter(eq => eq.marca_alterna && eq.codigo_alterno && eq.codigo_alterno.trim().length > 0)
-            .map(eq => ({
-              repuesto_id: partId,
-              marca_alterna: eq.marca_alterna.trim(),
-              codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
-              notas: eq.notas || null
-            }))
-
-          if (validRows.length > 0) {
-            const { data: savedEquivs } = await supabase
-              .from('equivalencias_repuestos')
-              .insert(validRows)
-              .select('*')
-            if (savedEquivs) {
-              finalEquivs = savedEquivs as Equivalencia[]
-            }
-          }
-        } else {
-          const { data: currentEquivs } = await supabase
-            .from('equivalencias_repuestos')
-            .select('*')
-            .eq('repuesto_id', partId)
-          if (currentEquivs) {
-            finalEquivs = currentEquivs as Equivalencia[]
-          }
-        }
-
-        const mapped = mapDbRepuestoToFrontend({
-          ...updatedPart,
-          equivalencias: finalEquivs
-        })
-        saveLocalCustomRepuesto(mapped)
-        const mockIdx = mockRepuestos.findIndex(r => r.id === partId)
-        if (mockIdx >= 0) {
-          mockRepuestos[mockIdx] = mapped
-        }
-        return mapped
-      }
-    } catch (err) {
-      console.warn('[CatalogService] Actualización en Supabase falló, usando respaldo local:', err)
-    }
-
-    // Fallback local
-    const localParts = getLocalCustomRepuestos()
-    const foundIdx = localParts.findIndex(p => p.id === partId)
-    const existing = foundIdx >= 0 ? localParts[foundIdx] : mockRepuestos.find(r => r.id === partId)
-
-    const updatedLocalPart: RepuestoTecnico = {
-      ...(existing || ({} as RepuestoTecnico)),
-      ...part,
-      id: partId,
-      equivalencias: equivalencias
-        ? equivalencias.map((eq, i) => ({
-            id: `eq-${Date.now()}-${i}`,
-            repuesto_id: partId,
-            marca_alterna: eq.marca_alterna,
-            codigo_alterno: eq.codigo_alterno,
-            notas: eq.notas
-          }))
-        : existing?.equivalencias || []
-    }
-
-    saveLocalCustomRepuesto(updatedLocalPart)
-    const mIdx = mockRepuestos.findIndex(r => r.id === partId)
-    if (mIdx >= 0) {
-      mockRepuestos[mIdx] = updatedLocalPart
-    }
-    return updatedLocalPart
   },
 
   /**

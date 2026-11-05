@@ -1,0 +1,98 @@
+-- Migración: Cobertura universal de modelos vehiculares
+-- - nombre_normalizado en modelos (evita duplicados tipo "Hilux" / "HILUX")
+-- - tabla puente modelo_motor (relación N:M modelo <-> motor)
+-- - función crear_modelo (alta idempotente desde formulario/modal)
+
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+CREATE OR REPLACE FUNCTION public.normalizar_texto(t TEXT)
+RETURNS TEXT LANGUAGE sql STABLE SET search_path = public, extensions AS $$
+  SELECT regexp_replace(lower(unaccent(btrim(coalesce(t, '')))), '\s+', ' ', 'g')
+$$;
+
+-- 1. modelos.nombre_normalizado
+ALTER TABLE public.modelos ADD COLUMN IF NOT EXISTS nombre_normalizado TEXT;
+
+CREATE OR REPLACE FUNCTION public.modelos_set_nombre_normalizado()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.nombre_normalizado := public.normalizar_texto(NEW.nombre);
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_modelos_nombre_normalizado ON public.modelos;
+CREATE TRIGGER trg_modelos_nombre_normalizado
+BEFORE INSERT OR UPDATE OF nombre ON public.modelos
+FOR EACH ROW EXECUTE FUNCTION public.modelos_set_nombre_normalizado();
+
+UPDATE public.modelos SET nombre_normalizado = public.normalizar_texto(nombre)
+WHERE nombre_normalizado IS NULL OR nombre_normalizado <> public.normalizar_texto(nombre);
+
+-- Si esta línea falla, existen modelos duplicados por marca (ej. "Hilux" y "HILUX"): unifícalos y reintenta.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_modelos_fabricante_nombre_norm
+  ON public.modelos (fabricante_id, nombre_normalizado);
+CREATE INDEX IF NOT EXISTS idx_modelos_fabricante ON public.modelos (fabricante_id);
+
+-- 2. Relación N:M modelo <-> motor
+-- motor_codigo guarda el código del dataset aunque aún no exista ficha técnica en public.motores;
+-- motor_id se completa cuando existe el motor en public.motores (misma marca y código).
+CREATE TABLE IF NOT EXISTS public.modelo_motor (
+    modelo_id UUID NOT NULL REFERENCES public.modelos(id) ON DELETE CASCADE,
+    motor_codigo TEXT NOT NULL,
+    motor_codigo_normalizado TEXT NOT NULL,
+    motor_id UUID REFERENCES public.motores(id) ON DELETE SET NULL,
+    anio_desde SMALLINT,
+    anio_hasta SMALLINT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    PRIMARY KEY (modelo_id, motor_codigo_normalizado)
+);
+CREATE INDEX IF NOT EXISTS idx_modelo_motor_motor ON public.modelo_motor (motor_id);
+
+-- Conservar los vínculos antiguos (motores.modelo_id) dentro de la nueva tabla
+INSERT INTO public.modelo_motor (modelo_id, motor_codigo, motor_codigo_normalizado, motor_id)
+SELECT m.modelo_id, m.codigo, public.normalizar_texto(m.codigo), m.id
+FROM public.motores m WHERE m.modelo_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+-- Enlaza modelo_motor.motor_id con public.motores (también reconoce códigos compuestos "K20A / K24A")
+CREATE OR REPLACE FUNCTION public.vincular_modelo_motor()
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE n INTEGER;
+BEGIN
+  UPDATE public.modelo_motor mm
+  SET motor_id = m.id
+  FROM public.modelos mo, public.motores m
+  WHERE mm.motor_id IS NULL
+    AND mo.id = mm.modelo_id
+    AND m.fabricante_id = mo.fabricante_id
+    AND (public.normalizar_texto(m.codigo) = mm.motor_codigo_normalizado
+         OR mm.motor_codigo_normalizado = ANY (string_to_array(public.normalizar_texto(m.codigo), ' / ')));
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
+
+ALTER TABLE public.modelo_motor ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura pública modelo_motor" ON public.modelo_motor;
+CREATE POLICY "Lectura pública modelo_motor" ON public.modelo_motor FOR SELECT USING (true);
+-- Misma política abierta que usan modelos/motores hoy (ver 20261007000000). Restringir a futuro por rol.
+DROP POLICY IF EXISTS "Permitir escritura de modelo_motor" ON public.modelo_motor;
+CREATE POLICY "Permitir escritura de modelo_motor" ON public.modelo_motor FOR ALL USING (true) WITH CHECK (true);
+
+-- 3. Alta idempotente de modelos (devuelve el existente si ya hay uno equivalente)
+CREATE OR REPLACE FUNCTION public.crear_modelo(p_fabricante_id UUID, p_nombre TEXT)
+RETURNS public.modelos LANGUAGE plpgsql AS $$
+DECLARE
+  r public.modelos;
+  nn TEXT := public.normalizar_texto(p_nombre);
+BEGIN
+  IF nn = '' THEN RAISE EXCEPTION 'El nombre del modelo no puede estar vacío'; END IF;
+  SELECT * INTO r FROM public.modelos WHERE fabricante_id = p_fabricante_id AND nombre_normalizado = nn;
+  IF FOUND THEN RETURN r; END IF;
+  INSERT INTO public.modelos (fabricante_id, nombre) VALUES (p_fabricante_id, btrim(p_nombre))
+  ON CONFLICT DO NOTHING RETURNING * INTO r;
+  IF r.id IS NULL THEN
+    SELECT * INTO r FROM public.modelos WHERE fabricante_id = p_fabricante_id AND nombre_normalizado = nn;
+  END IF;
+  RETURN r;
+END $$;
+GRANT EXECUTE ON FUNCTION public.crear_modelo(UUID, TEXT) TO anon, authenticated;
