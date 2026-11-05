@@ -252,12 +252,31 @@ def process_set(maker, page_num, engine_lines, ring_lines, remarks_lines, fallba
                     
     motor_principal = motores[0] if motores else fallback_engine
     
-    # Extraer referencias OEM
+    # Extraer referencias OEM robustamente
     oem_refs = []
-    for m in re.finditer(r'\b([0-9]{4,6}-[0-9]{4,6}[A-Z0-9]?|[A-Z0-9]{3,6}-[0-9]{4,6}[A-Z0-9]?)\b', full_remarks):
-        ref = m.group(1).strip()
-        if ref not in oem_refs:
-            oem_refs.append(ref)
+    tokens = re.split(r'[\s,]+', full_remarks)
+    for tok in tokens:
+        t = re.sub(r'[()]', '', tok)
+        t = re.sub(r'/cyl\.?$', '', t, flags=re.I).strip()
+        if not t or t == set_no:
+            continue
+        if re.match(r'^(KEYSTONE|HALF|CR1|CR2|CR3|CR4|RN|GN|SV|FX|FM|SM|FV|RN|STD|FE|CYL|SET|TOP|2ND|OIL|NEW|OLD|P|T|O|EXP|CH|BF|CO|L1|L2)$', t, flags=re.I):
+            continue
+        if 'KEYSTONE' in t.upper() or re.match(r'^\d+x\d+', t, flags=re.I):
+            continue
+        clean_chars = re.sub(r'[^A-Z0-9]', '', t, flags=re.I)
+        if len(clean_chars) < 7:
+            continue
+        if re.match(r'^[A-Z0-9]{1,6}(?:-[A-Z0-9]{1,6}){1,4}$', t, flags=re.I) and any(c.isdigit() for c in t) and '-' in t:
+            if re.match(r'^[A-Z0-9]{3,5}-[A-Z]{1,2}$', t, flags=re.I):
+                continue
+            t_upper = t.upper()
+            if t_upper not in oem_refs:
+                oem_refs.append(t_upper)
+        elif re.match(r'^(?:MD|ME|MB|MC|MN|MR|OK|K\d|A\d|B\d|C\d)\d{5,7}[A-Z]?$', t, flags=re.I):
+            t_upper = t.upper()
+            if t_upper not in oem_refs:
+                oem_refs.append(t_upper)
             
     return {
         'marca_fabricante': maker,

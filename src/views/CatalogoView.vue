@@ -6,7 +6,8 @@ import {
   type Modelo,
   type RepuestoTecnico, 
   type Fabricante,
-  type GrupoRepuesto
+  type GrupoRepuesto,
+  type Equivalencia
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
 import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
@@ -567,8 +568,9 @@ const copyFullCross = async (part: RepuestoTecnico) => {
     `REPARACIÓN: ${part.nombre} [${part.subsistema}]`,
     `OEM: ${part.codigo_oem}`
   ]
-  if (part.equivalencias && part.equivalencias.length > 0) {
-    part.equivalencias.forEach(eq => {
+  const eqs = getPartEquivalencias(part)
+  if (eqs && eqs.length > 0) {
+    eqs.forEach(eq => {
       lines.push(`${eq.marca_alterna}: ${eq.codigo_alterno}`)
     })
   }
@@ -1542,7 +1544,23 @@ const getBrandBadgeClass = (brand: string): string => {
   if (b.includes('ndc')) return 'bg-emerald-50 text-emerald-800 border-emerald-200/90 font-bold'
   if (b.includes('taiho')) return 'bg-purple-50 text-purple-800 border-purple-200/90 font-bold'
   if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
+  if (b === 'oem' || b.includes('oem')) return 'bg-amber-50 text-amber-900 border-amber-300 font-bold'
   return 'bg-slate-100 text-slate-700 border-slate-200 font-bold'
+}
+
+// Filtra equivalencias para evitar duplicar el código principal de sí mismo (ej. RIK-12510 vs Rik: 12510)
+const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equivalencia[] => {
+  if (!part || !part.equivalencias || part.equivalencias.length === 0) return []
+  return part.equivalencias.filter(eq => {
+    if (eq.marca_alterna.toLowerCase() === 'rik') {
+      const cleanPartCode = (part.codigo_oem || '').replace(/^RIK-/i, '').trim().toUpperCase()
+      const cleanEqCode = (eq.codigo_alterno || '').trim().toUpperCase()
+      if (cleanPartCode === cleanEqCode) {
+        return false
+      }
+    }
+    return true
+  })
 }
 
 // Modal de Ficha Técnica
@@ -3666,9 +3684,9 @@ onUnmounted(() => {
                 <!-- 3. Códigos Alternos por Catálogo -->
                 <td class="py-2.5 px-3 align-middle">
                   <div class="flex flex-wrap gap-1">
-                    <template v-if="part.equivalencias && part.equivalencias.length > 0">
+                    <template v-if="getPartEquivalencias(part).length > 0">
                       <span
-                        v-for="eq in part.equivalencias"
+                        v-for="eq in getPartEquivalencias(part)"
                         :key="eq.id"
                         @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
                         :class="[
@@ -4169,9 +4187,9 @@ onUnmounted(() => {
               <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
                 Equivalencias Cruzadas Multimarca
               </h4>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <div v-if="getPartEquivalencias(modalPart).length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div
-                  v-for="eq in modalPart.equivalencias"
+                  v-for="eq in getPartEquivalencias(modalPart)"
                   :key="eq.id"
                   class="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-white"
                 >
@@ -4190,6 +4208,9 @@ onUnmounted(() => {
                     <Copy class="w-3 h-3" />
                   </button>
                 </div>
+              </div>
+              <div v-else class="text-xs text-slate-400 italic p-3 bg-slate-50 rounded-lg border border-slate-200">
+                Sin equivalencias cruzadas registradas para esta pieza.
               </div>
             </div>
 
