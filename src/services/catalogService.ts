@@ -54,7 +54,7 @@ export interface Motor {
 export interface Equivalencia {
   id: string
   repuesto_id: string
-  marca_alterna: 'Dokuro' | 'Rik' | 'NPR' | 'NDC' | 'Ajusa' | 'Pioneer' | 'Taiho' | 'Toto' | 'TIK' | string
+  marca_alterna: 'Dokuro' | 'Rik' | 'NDC' | 'Ajusa' | 'Pioneer' | 'Taiho' | 'Toto' | 'TIK' | string
   codigo_alterno: string
   tipo_referencia?: string
   notas?: string
@@ -114,7 +114,7 @@ export interface RepuestoTecnico {
   stock: number
   estado: 'Disponible' | 'Bajo Stock' | 'Agotado'
   imagen_url?: string
-  catalogo_origen?: 'Dokuro' | 'Rik' | 'NPR' | 'NDC' | 'Ajusa' | 'Pioneer' | 'OEM' | string
+  catalogo_origen?: 'Dokuro' | 'Rik' | 'NDC' | 'Ajusa' | 'Pioneer' | 'Taiho' | 'OEM' | string
 
   // Dimensiones físicas - Válvulas
   diametro_cabeza_mm?: number | null
@@ -133,6 +133,8 @@ export interface RepuestoTecnico {
   espesor_anillo1_mm?: number | null
   espesor_anillo2_mm?: number | null
   espesor_aceite_mm?: number | null
+  diseno_conico?: boolean | null
+  keystone?: string | null
 
   // Dimensiones físicas - Cojinetes / Casquetes NDC
   tipo_cojinete?: 'MS' | 'CB' | 'TW' | 'SH' | 'PB' | string | null
@@ -210,7 +212,7 @@ export interface CatalogProduct {
 }
 
 // =============================================================================
-// DATOS MOCK REALISTAS DEL TALLER JR BLANCO (DOKURO, RIK, NPR, NDC, AJUSA, PIONEER)
+// DATOS MOCK REALISTAS DEL TALLER JR BLANCO (DOKURO, RIK, NDC, AJUSA, PIONEER)
 // =============================================================================
 
 export const LOCAL_GROUPS_STORAGE_KEY = 'swgora_grupos_repuestos_v1'
@@ -769,11 +771,13 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
       ? String(item.catalogo_origen) 
       : ((spec as any).marca_catalogo 
           ? String((spec as any).marca_catalogo) 
-          : ((spec as any).codigo_dokuro 
-              ? 'Dokuro' 
-              : ((spec as any).codigo_npr 
-                  ? 'NPR' 
-                  : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('npr') ? 'NPR' : 'OEM')))),
+          : ((spec as any).codigo_rik 
+              ? 'Rik'
+              : ((spec as any).codigo_dokuro 
+                  ? 'Dokuro' 
+                  : ((spec as any).codigo_taiho 
+                      ? 'Taiho' 
+                      : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('rik') ? 'Rik' : 'OEM'))))),
 
     diametro_cabeza_mm: item.diametro_cabeza_mm != null ? Number(item.diametro_cabeza_mm) : null,
     diametro_vastago_mm: item.diametro_vastago_mm != null ? Number(item.diametro_vastago_mm) : null,
@@ -788,6 +792,8 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     espesor_anillo1_mm: item.espesor_anillo1_mm != null ? Number(item.espesor_anillo1_mm) : (dims.espesor_anillo1_mm != null ? Number(dims.espesor_anillo1_mm) : null),
     espesor_anillo2_mm: item.espesor_anillo2_mm != null ? Number(item.espesor_anillo2_mm) : (dims.espesor_anillo2_mm != null ? Number(dims.espesor_anillo2_mm) : null),
     espesor_aceite_mm: item.espesor_aceite_mm != null ? Number(item.espesor_aceite_mm) : (dims.espesor_aceite_mm != null ? Number(dims.espesor_aceite_mm) : null),
+    diseno_conico: dims.diseno_conico != null ? Boolean(dims.diseno_conico) : (spec.diseno_conico != null ? Boolean(spec.diseno_conico) : false),
+    keystone: dims.keystone ? String(dims.keystone) : (spec.keystone ? String(spec.keystone) : null),
 
     tipo_cojinete: item.tipo_cojinete ? String(item.tipo_cojinete) : (dims.tipo_cojinete ? String(dims.tipo_cojinete) : null),
     diametro_munon_mm: item.diametro_munon_mm != null ? Number(item.diametro_munon_mm) : (dims.diametro_munon_mm != null ? Number(dims.diametro_munon_mm) : null),

@@ -213,7 +213,7 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
-   * Búsqueda por código OEM, descripción o equivalencia (cruce Dokuro, Rik, NPR, etc.)
+   * Búsqueda por código OEM, descripción o equivalencia (cruce Dokuro, Rik, Taiho, NDC, etc.)
    */
   async function searchParts(query: string) {
     const q = query.trim()

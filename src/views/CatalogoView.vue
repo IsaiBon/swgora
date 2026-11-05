@@ -971,8 +971,30 @@ const getBrandName = (fabId: string): string => {
 }
 
 // =============================================================================
-// FUNCIONES AUXILIARES PARA CUADRO TÉCNICO DE ANILLOS NPR: d1 (D), h1 (B), a1 (T)
+// FUNCIONES AUXILIARES PARA CUADRO TÉCNICO DE ANILLOS RIK / TALLER: d1 (D), h1 (B), a1 (T)
 // =============================================================================
+const isPartConical = (part: RepuestoTecnico | null | undefined): boolean => {
+  if (!part) return false
+  const dims = part.dimensiones as any
+  const spec = part.especificaciones_tecnicas as any
+  return Boolean(
+    part.diseno_conico ||
+    dims?.diseno_conico ||
+    spec?.diseno_conico ||
+    dims?.keystone ||
+    spec?.keystone ||
+    (dims?.forma1 && String(dims.forma1).toUpperCase().includes('KEYSTONE')) ||
+    (spec?.forma1 && String(spec.forma1).toUpperCase().includes('KEYSTONE'))
+  )
+}
+
+const getKeystoneLabel = (part: RepuestoTecnico | null | undefined): string => {
+  if (!part) return ''
+  const dims = part.dimensiones as any
+  const spec = part.especificaciones_tecnicas as any
+  return dims?.keystone || spec?.keystone || dims?.forma1 || spec?.forma1 || '1ST=KEYSTONE'
+}
+
 interface PartRingItem {
   posicion: string
   d1: number | null
@@ -1103,6 +1125,19 @@ const getRingDetail = (part: RepuestoTecnico | null | undefined, ringIdx: number
   const rings = (part.dimensiones as any)?.anillos as any[] | undefined
   if (rings && rings[ringIdx] && rings[ringIdx][prop] != null && rings[ringIdx][prop] !== '') {
     return String(rings[ringIdx][prop])
+  }
+  const dims = part.dimensiones as any
+  if (ringIdx === 0) {
+    if (prop === 'forma') return dims?.forma1 || (isPartConical(part) ? (getKeystoneLabel(part) || 'KEYSTONE (Cónico)') : '—')
+    if (prop === 'material') return dims?.material1 || '—'
+  }
+  if (ringIdx === 1) {
+    if (prop === 'forma') return dims?.forma2 || '—'
+    if (prop === 'material') return dims?.material2 || '—'
+  }
+  if (ringIdx === 2) {
+    if (prop === 'forma') return dims?.forma_oil || '—'
+    if (prop === 'material') return dims?.material_oil || '—'
   }
   return '—'
 }
@@ -1459,7 +1494,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     )
   }
 
-  // 4. Filtro de marca de catálogo alterno (reparado para Dokuro, NPR, Rik, NDC, Ajusa, Pioneer)
+  // 4. Filtro de marca de catálogo alterno (reparado para Dokuro, Rik, NDC, Taiho, Ajusa, Pioneer)
   if (tableBrandFilter.value !== 'Todas las marcas') {
     const b = tableBrandFilter.value.toLowerCase().trim()
     list = list.filter(r => {
@@ -1476,7 +1511,8 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       if (fuenteStr.includes(b)) return true
 
       if (b === 'dokuro' && (spec.codigo_dokuro || spec.codigo_catalogo)) return true
-      if (b === 'npr' && (spec.codigo_npr || spec.seccion_catalogo)) return true
+      if (b === 'rik' && (spec.codigo_rik || spec.marca_catalogo === 'RIK')) return true
+      if (b === 'taiho' && spec.codigo_taiho) return true
 
       // 3. Equivalencias cruzadas
       if (r.equivalencias?.some(eq => 
@@ -1503,7 +1539,6 @@ const getBrandBadgeClass = (brand: string): string => {
   const b = brand.toLowerCase()
   if (b.includes('dokuro')) return 'bg-rose-50 text-rose-800 border-rose-200/90 font-bold'
   if (b.includes('rik')) return 'bg-indigo-50 text-indigo-800 border-indigo-200/90 font-bold'
-  if (b.includes('npr')) return 'bg-blue-50 text-blue-800 border-blue-200/90 font-bold'
   if (b.includes('ndc')) return 'bg-emerald-50 text-emerald-800 border-emerald-200/90 font-bold'
   if (b.includes('taiho')) return 'bg-purple-50 text-purple-800 border-purple-200/90 font-bold'
   if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
@@ -2583,7 +2618,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR (NOMENCLATURA OFICIAL NPR / TALLER) -->
+        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR (NOMENCLATURA OFICIAL RIK / TALLER) -->
         <div v-else-if="selectedComponent.id === 'anillos_motor'" class="space-y-2.5">
           <!-- Barra superior de selección de Anillo y Nota Técnica -->
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
@@ -3471,7 +3506,6 @@ onUnmounted(() => {
               <option value="Todas las marcas">Todas las marcas</option>
               <option value="Dokuro">Dokuro</option>
               <option value="Rik">Rik</option>
-              <option value="NPR">NPR</option>
               <option value="NDC">NDC</option>
               <option value="Taiho">Taiho</option>
               <option value="Ajusa">Ajusa</option>
@@ -3714,7 +3748,14 @@ onUnmounted(() => {
                             class="hover:bg-slate-50/70 transition"
                           >
                             <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
-                              {{ ring.posicion }}
+                              <span>{{ ring.posicion }}</span>
+                              <span
+                                v-if="rIdx === 0 && isPartConical(part)"
+                                class="ml-1 text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-900 font-extrabold border border-amber-300 uppercase tracking-tight"
+                                :title="getKeystoneLabel(part) || 'Diseño cónico Keystone'"
+                              >
+                                Cónico
+                              </span>
                             </td>
                             <td 
                               class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
@@ -3744,7 +3785,15 @@ onUnmounted(() => {
                       <span v-if="(part.dimensiones as any)?.cilindros && Number((part.dimensiones as any).cilindros) > 0" class="px-1.5 py-0.2 rounded bg-cyan-50 text-[#038391] border border-cyan-200 font-bold font-mono">
                         {{ (part.dimensiones as any).cilindros }} Cil.
                       </span>
-                      <span v-if="getRingFormas(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Forma técnica NPR">
+                      <span
+                        v-if="isPartConical(part)"
+                        class="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] flex items-center gap-1"
+                        :title="getKeystoneLabel(part) || 'Diseño cónico Keystone (1ST=KEYSTONE)'"
+                      >
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
+                        <span>Cónico (Keystone)</span>
+                      </span>
+                      <span v-if="getRingFormas(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Forma técnica de aros">
                         Forma: {{ getRingFormas(part) }}
                       </span>
                       <span v-if="getRingMateriales(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Materiales de los aros">
@@ -4144,19 +4193,29 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- CASO ANILLOS: CUADRO TÉCNICO OFICIAL NPR (DISEÑO SWGORA) -->
+            <!-- CASO ANILLOS: CUADRO TÉCNICO OFICIAL RIK / TALLER (DISEÑO SWGORA) -->
             <div v-if="modalPart.categoria === 'Anillos' || (modalPart.dimensiones as any)?.anillos">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-                  Matriz Técnica NPR - Cotas de Aros de Pistón
-                </h4>
+                <div class="flex items-center gap-2">
+                  <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+                    Matriz Técnica RIK - Cotas de Aros de Pistón
+                  </h4>
+                  <span
+                    v-if="isPartConical(modalPart)"
+                    class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] flex items-center gap-1"
+                    :title="getKeystoneLabel(modalPart)"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    Cónico (Keystone)
+                  </span>
+                </div>
                 <span v-if="(modalPart.dimensiones as any)?.cilindros && Number((modalPart.dimensiones as any).cilindros) > 0" class="px-2 py-0.5 rounded bg-cyan-50 text-[#038391] font-bold text-[11px] font-mono border border-cyan-200">
                   {{ (modalPart.dimensiones as any).cilindros }} Cilindros
                 </span>
               </div>
 
-              <!-- Cuadro NPR con diseño corporativo SWGORA -->
+              <!-- Cuadro RIK con diseño corporativo SWGORA -->
               <div class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-xs font-mono text-xs">
                 <table class="w-full border-collapse text-center">
                   <thead>
@@ -4223,7 +4282,7 @@ onUnmounted(() => {
                   <strong>Cilindrada:</strong> {{ (modalPart.dimensiones as any).cilindrada }}
                 </span>
                 <span v-if="(modalPart.dimensiones as any)?.motores_texto">
-                  <strong>Motores NPR:</strong> {{ (modalPart.dimensiones as any).motores_texto }}
+                  <strong>Motores compatibles:</strong> {{ (modalPart.dimensiones as any).motores_texto }}
                 </span>
                 <span v-if="(modalPart.dimensiones as any)?.anos">
                   <strong>Años:</strong> {{ (modalPart.dimensiones as any).anos }}

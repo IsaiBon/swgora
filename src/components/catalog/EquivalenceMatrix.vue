@@ -134,10 +134,10 @@ const copyFullCross = async (rep: RepuestoTecnico) => {
               <th class="px-4 py-3 min-w-[130px] text-cyan-800 bg-cyan-50/50">Código OEM</th>
               <th class="px-3 py-3 min-w-[100px] text-slate-700">Dokuro</th>
               <th class="px-3 py-3 min-w-[90px] text-slate-700">Rik</th>
-              <th class="px-3 py-3 min-w-[110px] text-slate-700">NPR</th>
+              <th class="px-3 py-3 min-w-[110px] text-slate-700">Taiho</th>
               <th class="px-3 py-3 min-w-[110px] text-slate-700">NDC (Japón)</th>
               <th class="px-3 py-3 min-w-[100px] text-slate-700">Ajusa</th>
-              <th class="px-3 py-3 min-w-[110px] text-slate-700">Pioneer / Taiho</th>
+              <th class="px-3 py-3 min-w-[110px] text-slate-700">Pioneer</th>
               <th class="px-4 py-3 min-w-[220px]">Medidas Clave (mm)</th>
               <th class="px-3 py-3 text-right min-w-[80px]">Precio ($)</th>
               <th class="px-4 py-3 text-center min-w-[120px]">Acciones</th>
@@ -213,15 +213,15 @@ const copyFullCross = async (rep: RepuestoTecnico) => {
                 <span v-else class="text-slate-300">—</span>
               </td>
 
-              <!-- 5. NPR (Anillos) -->
+              <!-- 5. Taiho (Cojinetes) -->
               <td class="px-3 py-3 font-mono">
-                <div v-if="getBrandCode(rep, 'NPR')" class="flex items-center justify-between gap-1">
-                  <span class="font-bold text-slate-800">{{ getBrandCode(rep, 'NPR') }}</span>
+                <div v-if="getBrandCode(rep, 'Taiho')" class="flex items-center justify-between gap-1">
+                  <span class="font-bold text-slate-800">{{ getBrandCode(rep, 'Taiho') }}</span>
                   <button
                     type="button"
-                    @click="copyToClipboard(getBrandCode(rep, 'NPR')!, 'NPR')"
+                    @click="copyToClipboard(getBrandCode(rep, 'Taiho')!, 'Taiho')"
                     class="p-0.5 text-slate-300 hover:text-slate-600"
-                    title="Copiar NPR"
+                    title="Copiar Taiho"
                   >
                     <Copy class="w-3 h-3" />
                   </button>

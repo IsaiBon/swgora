@@ -63,7 +63,7 @@ const copyText = async (text: string) => {
         </span>
         <h2 class="text-xl font-black text-white">Consulte cualquier código OEM o de Marca Alterna</h2>
         <p class="text-xs text-slate-400 mt-1">
-          Ingrese un número de parte de Dokuro, Rik, NPR, NDC, Ajusa o código original de concesionario para descubrir sus medidas físicas y todos los motores compatibles.
+          Ingrese un número de parte de Dokuro, Rik, Taiho, NDC, Ajusa o código original de concesionario para descubrir sus medidas físicas y todos los motores compatibles.
         </p>
 
         <!-- Input de Búsqueda -->

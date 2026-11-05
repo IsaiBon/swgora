@@ -1128,7 +1128,7 @@ onUnmounted(() => {
                   <option value="OEM">OEM Original</option>
                   <option value="Dokuro">Dokuro (Japón)</option>
                   <option value="Rik">Rik / Riken (Japón)</option>
-                  <option value="NPR">NPR (Japón)</option>
+                  <option value="Taiho">Taiho (Japón)</option>
                   <option value="NDC">NDC Cojinetes (Japón)</option>
                   <option value="Ajusa">Ajusa (España)</option>
                   <option value="Pioneer">Pioneer (USA)</option>
@@ -1299,7 +1299,7 @@ onUnmounted(() => {
                 >
                   <option value="Dokuro">Dokuro</option>
                   <option value="Rik">Rik</option>
-                  <option value="NPR">NPR</option>
+
                   <option value="NDC">NDC</option>
                   <option value="Ajusa">Ajusa</option>
                   <option value="Pioneer">Pioneer</option>
