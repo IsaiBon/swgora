@@ -170,24 +170,34 @@ const handleNewOrder = () => {
       </router-link>
 
       <!-- 2. Center: Enlaces de Navegación (Desktop) -->
-      <nav class="hidden lg:flex items-center gap-1 shrink-0">
+      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-0.5 bg-neutral-900/50 rounded-full border border-neutral-800/60">
         <router-link
           v-for="item in visibleNavItems"
           :key="item.path"
           :to="item.path"
           :class="[
-            'px-3 py-1 rounded-full text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 whitespace-nowrap',
+            'relative px-3.5 py-1 rounded-full text-xs font-semibold transition-all duration-200 ease-out flex items-center gap-1.5 whitespace-nowrap select-none group',
             isActive(item.path)
-              ? 'bg-neutral-800 text-[#05F2F2] ring-1 ring-white/15 shadow-inner'
-              : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+              ? 'text-[#05F2F2] shadow-sm'
+              : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
           ]"
         >
-          <component :is="item.icon" class="w-3.5 h-3.5" />
-          <span>{{ item.name }}</span>
-          <!-- Active Glow Dot -->
+          <!-- Active Pill Background animado con suavidad -->
           <span
             v-if="isActive(item.path)"
-            class="w-1.5 h-1.5 rounded-full bg-[#05C7F2] shadow-[0_0_6px_#05C7F2]"
+            class="absolute inset-0 rounded-full bg-neutral-800 ring-1 ring-white/15 shadow-inner -z-10 animate-nav-pill"
+          ></span>
+
+          <component 
+            :is="item.icon" 
+            class="w-3.5 h-3.5 transition-transform duration-200 group-hover:scale-110" 
+            :class="isActive(item.path) ? 'text-[#05C7F2]' : 'text-neutral-400 group-hover:text-neutral-200'"
+          />
+          <span class="relative z-10">{{ item.name }}</span>
+          <!-- Active Glow Dot con suave resplandor -->
+          <span
+            v-if="isActive(item.path)"
+            class="w-1.5 h-1.5 rounded-full bg-[#05C7F2] shadow-[0_0_8px_#05C7F2] animate-pulse"
           ></span>
         </router-link>
       </nav>
@@ -360,17 +370,27 @@ const handleNewOrder = () => {
             :to="item.path"
             @click="mobileMenuOpen = false"
             :class="[
-              'flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition',
+              'relative flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ease-out select-none',
               isActive(item.path)
-                ? 'bg-neutral-800 text-[#05F2F2] ring-1 ring-white/15'
+                ? 'bg-neutral-800 text-[#05F2F2] ring-1 ring-white/15 shadow-inner'
                 : 'text-neutral-300 hover:bg-neutral-800/60 hover:text-white'
             ]"
           >
             <div class="flex items-center gap-2.5">
-              <component :is="item.icon" class="w-4 h-4" />
+              <component 
+                :is="item.icon" 
+                class="w-4 h-4 transition-transform duration-200"
+                :class="isActive(item.path) ? 'text-[#05C7F2]' : 'text-neutral-400'"
+              />
               <span>{{ item.name }}</span>
             </div>
-            <ChevronRight class="w-3.5 h-3.5 text-neutral-500" />
+            <div class="flex items-center gap-2">
+              <span
+                v-if="isActive(item.path)"
+                class="w-1.5 h-1.5 rounded-full bg-[#05C7F2] shadow-[0_0_6px_#05C7F2]"
+              ></span>
+              <ChevronRight class="w-3.5 h-3.5 text-neutral-500" />
+            </div>
           </router-link>
         </div>
 

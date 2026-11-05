@@ -1762,8 +1762,9 @@ onUnmounted(() => {
 
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
+    <!-- Top-14 (56px) para despejar completamente el Navbar flotante al hacer scroll -->
     <!-- ========================================================================= -->
-    <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-xs space-y-2">
+    <div class="sticky top-14 z-30 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-md transition-all duration-200 space-y-2">
       <!-- Buscador Universal Integrado -->
       <div class="relative w-full pb-1">
         <Search class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />

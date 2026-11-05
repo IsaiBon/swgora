@@ -259,3 +259,4 @@ main().catch(err => {
   console.error('❌ Error fatal en main:', err);
   process.exit(1);
 });
+
