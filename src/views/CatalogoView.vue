@@ -329,7 +329,7 @@ const baseComponentGroups: ComponentGroup[] = [
     category: 'Guías',
     icon: 'Layers',
     description: 'Guías de válvula para culata de motor (Admisión y Escape)',
-    sampleMeasurements: 'Posición (IN/EX), piezas por juego'
+    sampleMeasurements: 'Posición, Juego, Ø Int × Ø Ext × Largo'
   },
   {
     id: 'asientos_valvula',
@@ -434,12 +434,12 @@ const filterCasqueteHousing = ref<number | undefined>(undefined) // HOUSING / Al
 const filterCasqueteTWall = ref<number | undefined>(undefined)   // T WALL / Espesor pared mm
 const filterCasqueteLength = ref<number | undefined>(undefined)  // LENGTH / Ancho casquete mm
 
-// 6. Guías de válvula (Int, Ext 1, Ext 2, Largo)
-const filterGuiaDiamInt = ref<number | undefined>(undefined)
-const filterGuiaDiamExt1 = ref<number | undefined>(undefined)
-const filterGuiaDiamExt2 = ref<number | undefined>(undefined)
-const filterGuiaLargo = ref<number | undefined>(undefined)
+// 6. Guías de válvula (Parámetros del grupo: Posición, Juego (Set), Ø Int, Ø Ext, Largo)
 const filterGuiaPosicion = ref<string>('')
+const filterGuiaSet = ref<number | undefined>(undefined)
+const filterGuiaDiamInt = ref<number | undefined>(undefined)
+const filterGuiaDiamExt = ref<number | undefined>(undefined)
+const filterGuiaLargo = ref<number | undefined>(undefined)
 
 // Contador de filtros de medida activos
 const activeMeasurementsCount = computed(() => {
@@ -487,11 +487,11 @@ const activeMeasurementsCount = computed(() => {
       ].filter(v => v !== undefined && v !== null).length
     } else if (selectedComponent.value.id === 'guias_valvula' || selectedComponent.value.category === 'Guías') {
       count += [
+        filterGuiaPosicion.value || undefined,
+        filterGuiaSet.value,
         filterGuiaDiamInt.value,
-        filterGuiaDiamExt1.value,
-        filterGuiaDiamExt2.value,
-        filterGuiaLargo.value,
-        filterGuiaPosicion.value || undefined
+        filterGuiaDiamExt.value,
+        filterGuiaLargo.value
       ].filter(v => v !== undefined && v !== null).length
     }
   }
@@ -536,11 +536,11 @@ const resetMeasurementsFilters = () => {
   filterCasqueteTWall.value = undefined
   filterCasqueteLength.value = undefined
 
-  filterGuiaDiamInt.value = undefined
-  filterGuiaDiamExt1.value = undefined
-  filterGuiaDiamExt2.value = undefined
-  filterGuiaLargo.value = undefined
   filterGuiaPosicion.value = ''
+  filterGuiaSet.value = undefined
+  filterGuiaDiamInt.value = undefined
+  filterGuiaDiamExt.value = undefined
+  filterGuiaLargo.value = undefined
 
   dynamicParamFilters.value = {}
   filterTolerancias.value = {}
@@ -1435,27 +1435,27 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return p.includes(pos)
         })
       }
+      if (filterGuiaSet.value !== undefined && filterGuiaSet.value !== null) {
+        list = list.filter(r => {
+          const dims = (r.dimensiones as any) || {}
+          const s = dims.set ?? dims.juego ?? r.cantidad_piezas
+          return s != null && Number(s) === Number(filterGuiaSet.value)
+        })
+      }
       if (filterGuiaDiamInt.value !== undefined && filterGuiaDiamInt.value !== null) {
         const tol = getTol('guiaDiamInt')
         list = list.filter(r => {
-          const val = r.diametro_interior_mm ?? (r.dimensiones as any)?.diametro_interior_mm
+          const dims = (r.dimensiones as any) || {}
+          const val = r.diametro_interior_mm ?? dims.diametro_interior_mm
           return val != null && Math.abs(Number(val) - (filterGuiaDiamInt.value || 0)) <= tol
         })
       }
-      if (filterGuiaDiamExt1.value !== undefined && filterGuiaDiamExt1.value !== null) {
-        const tol = getTol('guiaDiamExt1')
+      if (filterGuiaDiamExt.value !== undefined && filterGuiaDiamExt.value !== null) {
+        const tol = getTol('guiaDiamExt')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
           const val = r.diametro_exterior_mm ?? dims.diametro_exterior_mm ?? dims.diametro_exterior_1_mm
-          return val != null && Math.abs(Number(val) - (filterGuiaDiamExt1.value || 0)) <= tol
-        })
-      }
-      if (filterGuiaDiamExt2.value !== undefined && filterGuiaDiamExt2.value !== null) {
-        const tol = getTol('guiaDiamExt2')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const val = dims.diametro_exterior_2_mm ?? dims.diametro_pestana_mm ?? dims.diametro_exterior_collar_mm
-          return val != null && Math.abs(Number(val) - (filterGuiaDiamExt2.value || 0)) <= tol
+          return val != null && Math.abs(Number(val) - (filterGuiaDiamExt.value || 0)) <= tol
         })
       }
       if (filterGuiaLargo.value !== undefined && filterGuiaLargo.value !== null) {
@@ -1554,14 +1554,14 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
 })
 
 // Badges de marcas
-const getBrandBadgeClass = (brand: string): string => {
-  const b = brand.toLowerCase()
-  if (b.includes('dokuro')) return 'bg-rose-50 text-rose-800 border-rose-200/90 font-bold'
-  if (b.includes('rik')) return 'bg-indigo-50 text-indigo-800 border-indigo-200/90 font-bold'
-  if (b.includes('ndc')) return 'bg-emerald-50 text-emerald-800 border-emerald-200/90 font-bold'
-  if (b.includes('taiho')) return 'bg-purple-50 text-purple-800 border-purple-200/90 font-bold'
+const getBrandBadgeClass = (brand?: string | null): string => {
+  const b = String(brand || '').toLowerCase()
+  if (b.includes('dokuro')) return 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+  if (b.includes('rik')) return 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold'
+  if (b.includes('ndc')) return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
+  if (b.includes('taiho')) return 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
   if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
-  if (b === 'oem' || b.includes('oem')) return 'bg-amber-50 text-amber-900 border-amber-300 font-bold'
+  if (b === 'oem' || b.includes('oem')) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
   return 'bg-slate-100 text-slate-700 border-slate-200 font-bold'
 }
 
@@ -2642,7 +2642,7 @@ onUnmounted(() => {
           <div>
             <div class="flex items-center justify-between mb-0.5">
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Cabeza (mm)
+                Hongo (mm)
               </label>
               <ToleranceBadge v-model="filterTolerancias['valvulaHongo']" :fallback="filterToleranciaMm" />
             </div>
@@ -3422,7 +3422,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 7. FILTROS PARA: GUÍAS DE VÁLVULA -->
+        <!-- 7. FILTROS PARA: GUÍAS DE VÁLVULA (PARÁMETROS OFICIALES DEL GRUPO) -->
         <div 
           v-else-if="selectedComponent.id === 'guias_valvula' || selectedComponent.category === 'Guías'"
           class="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80"
@@ -3444,9 +3444,22 @@ onUnmounted(() => {
             </div>
 
             <div>
+              <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight mb-0.5 truncate">
+                Juego / Set (pzs)
+              </label>
+              <input
+                v-model.number="filterGuiaSet"
+                type="number"
+                step="1"
+                placeholder="ej. 4, 6, 8, 12"
+                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+
+            <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro Interior (Vástago)">
-                  Diámetro interior (mm)
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Ø Interior (mm)">
+                  Ø Interior (mm)
                 </label>
                 <ToleranceBadge v-model="filterTolerancias['guiaDiamInt']" :fallback="filterToleranciaMm" :step="0.01" />
               </div>
@@ -3461,32 +3474,16 @@ onUnmounted(() => {
 
             <div>
               <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro Exterior 1 (Alojamiento en culata)">
-                  Diámetro exterior 1 (mm)
+                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Ø Exterior (mm)">
+                  Ø Exterior (mm)
                 </label>
-                <ToleranceBadge v-model="filterTolerancias['guiaDiamExt1']" :fallback="filterToleranciaMm" :step="0.02" />
+                <ToleranceBadge v-model="filterTolerancias['guiaDiamExt']" :fallback="filterToleranciaMm" :step="0.02" />
               </div>
               <input
-                v-model.number="filterGuiaDiamExt1"
+                v-model.number="filterGuiaDiamExt"
                 type="number"
                 step="0.05"
                 placeholder="ej. 12.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro Exterior 2 (Collarín o escalón)">
-                  Diámetro exterior 2 (mm)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['guiaDiamExt2']" :fallback="filterToleranciaMm" :step="0.02" />
-              </div>
-              <input
-                v-model.number="filterGuiaDiamExt2"
-                type="number"
-                step="0.05"
-                placeholder="ej. 12.5 mm"
                 class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
             </div>
@@ -3644,7 +3641,7 @@ onUnmounted(() => {
                   Casquetería: Tipo (MS/CB/TW/CH/PB) • SHAFT × HOUSING × T WALL × LENGTH
                 </th>
                 <th v-else-if="selectedComponent?.id === 'guias_valvula' || selectedComponent?.category === 'Guías'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Guías: Posición • Medidas • Juego
+                  Guías: Posición • Juego • Medidas (Ø Int × Ø Ext × Largo)
                 </th>
                 <th v-else-if="selectedComponent?.id === 'asientos_valvula' || selectedComponent?.category === 'Asientos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Asientos: Posición • Cilindros • Cruces
@@ -3719,14 +3716,27 @@ onUnmounted(() => {
                     </div>
 
                     <div class="min-w-0">
-                      <div class="font-bold text-slate-900 text-xs leading-tight">
-                        {{ part.nombre }}
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <span 
+                          v-if="part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo"
+                          class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
+                          :class="getBrandBadgeClass(part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo)"
+                        >
+                          {{ part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo }}
+                        </span>
+                        <div class="font-bold text-slate-900 text-xs leading-tight">
+                          {{ part.nombre }}
+                        </div>
                       </div>
                       <span class="text-[10px] font-semibold text-slate-400 uppercase">
                         <span v-if="part.motor?.fabricante?.nombre || (part.motor?.fabricante_id && getBrandName(part.motor.fabricante_id))" class="text-slate-600 font-bold mr-1">
                           {{ part.motor?.fabricante?.nombre || getBrandName(part.motor.fabricante_id) }} •
                         </span>
-                        {{ part.subsistema }} • {{ part.motor?.codigo ? `Motor ${part.motor.codigo}` : (part.catalogo_origen || 'OEM') }}
+                        {{ part.subsistema }}
+                        <span v-if="part.motor?.codigo"> • Motor {{ part.motor.codigo }}</span>
+                        <span v-if="part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo" class="text-slate-500 font-bold">
+                          • Catálogo {{ part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo }}
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -3735,6 +3745,13 @@ onUnmounted(() => {
                 <!-- 2. Código OEM -->
                 <td class="py-2 px-2.5 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-1">
+                    <span 
+                      v-if="part.catalogo_origen?.toLowerCase() === 'dokuro' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'DOKURO'"
+                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300"
+                      title="Código oficial del catálogo Dokuro"
+                    >
+                      DOKURO
+                    </span>
                     <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                       {{ part.codigo_oem }}
                     </span>
@@ -3799,20 +3816,23 @@ onUnmounted(() => {
                     >
                       {{ part.dimensiones?.tipo_valvula || (part.dimensiones?.posicion === 'IN' ? 'Admisión' : (part.dimensiones?.posicion === 'EX' ? 'Escape' : part.dimensiones?.posicion)) }}
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cabeza_mm, filterValvulaHongo, getTol('valvulaHongo'))">
-                      Hongo: <strong>{{ part.diametro_cabeza_mm ? `${part.diametro_cabeza_mm} mm` : '—' }}</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cabeza_mm || (part.dimensiones as any)?.hongo_mm || (part.dimensiones as any)?.diametro_cabeza_mm, filterValvulaHongo, getTol('valvulaHongo'))">
+                      Hongo: <strong>{{ (part.diametro_cabeza_mm || (part.dimensiones as any)?.hongo_mm || (part.dimensiones as any)?.diametro_cabeza_mm) ? `${part.diametro_cabeza_mm || (part.dimensiones as any)?.hongo_mm || (part.dimensiones as any)?.diametro_cabeza_mm} mm` : '—' }}</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_vastago_mm, filterValvulaVastago, getTol('valvulaVastago'))">
-                      Vástago: <strong>{{ part.diametro_vastago_mm ? `${part.diametro_vastago_mm} mm` : '—' }}</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_vastago_mm || (part.dimensiones as any)?.diametro_vastago_mm, filterValvulaVastago, getTol('valvulaVastago'))">
+                      Vástago: <strong>{{ (part.diametro_vastago_mm || (part.dimensiones as any)?.diametro_vastago_mm) ? `${part.diametro_vastago_mm || (part.dimensiones as any)?.diametro_vastago_mm} mm` : '—' }}</strong>
                     </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.longitud_total_mm, filterValvulaAltura, getTol('valvulaAltura'))">
-                      Largo: <strong>{{ part.longitud_total_mm ? `${part.longitud_total_mm} mm` : '—' }}</strong>
+                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm, filterValvulaAltura, getTol('valvulaAltura'))">
+                      Largo: <strong>{{ (part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm) ? `${part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm} mm` : '—' }}</strong>
                     </span>
-                    <span v-if="part.dimensiones?.stem_end || part.dimensiones?.cunero || part.dimensiones?.ranuras" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px]">
-                      Cuñero: <strong>{{ part.dimensiones?.stem_end || part.dimensiones?.cunero || part.dimensiones?.ranuras }}</strong>
+                    <span v-if="part.angulo_asiento_grados || (part.dimensiones as any)?.angulo_asiento_grados" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] border border-slate-200">
+                      Ángulo: <strong>{{ part.angulo_asiento_grados || (part.dimensiones as any)?.angulo_asiento_grados }}°</strong>
                     </span>
-                    <span v-if="part.angulo_asiento_grados" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] border border-slate-200">
-                      Ángulo: <strong>{{ part.angulo_asiento_grados }}°</strong>
+                    <span v-if="(part.dimensiones as any)?.stem_end || (part.dimensiones as any)?.cunero || (part.dimensiones as any)?.ranuras" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px]">
+                      Cuñero: <strong>{{ (part.dimensiones as any)?.stem_end || (part.dimensiones as any)?.cunero || (part.dimensiones as any)?.ranuras }}</strong>
+                    </span>
+                    <span v-if="(part.dimensiones as any)?.head_style" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] border border-slate-200">
+                      Plato: <strong>{{ (part.dimensiones as any).head_style }}</strong>
                     </span>
                   </div>
 
@@ -3933,25 +3953,25 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <!-- Caso Guías de válvula -->
+                  <!-- Caso Guías de válvula (Parámetros oficiales del grupo: Posición, Juego, Ø Int, Ø Ext, Largo) -->
                   <div v-else-if="selectedComponent?.id === 'guias_valvula' || part.categoria === 'Guías'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
-                    <span v-if="part.dimensiones?.posicion" class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-100 text-[#038391] border border-cyan-200">
-                      {{ part.dimensiones.posicion }}
+                    <span v-if="(part.dimensiones as any)?.posicion" class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-100 text-[#038391] border border-cyan-200">
+                      {{ (part.dimensiones as any).posicion }}
                     </span>
-                    <span v-if="part.diametro_interior_mm || part.dimensiones?.diametro_interior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Int: <strong>{{ part.diametro_interior_mm || part.dimensiones?.diametro_interior_mm }} mm</strong>
+                    <span v-if="(part.dimensiones as any)?.set || (part.dimensiones as any)?.juego || part.cantidad_piezas" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                      Juego: {{ (part.dimensiones as any)?.set || (part.dimensiones as any)?.juego || part.cantidad_piezas }} pzs
                     </span>
-                    <span v-if="part.diametro_exterior_mm || part.dimensiones?.diametro_exterior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Ext 1: <strong>{{ part.diametro_exterior_mm || part.dimensiones?.diametro_exterior_mm }} mm</strong>
+                    <span v-if="part.diametro_interior_mm || (part.dimensiones as any)?.diametro_interior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]" :class="getMeasurementMatchClass(part.diametro_interior_mm || (part.dimensiones as any)?.diametro_interior_mm, filterGuiaDiamInt, getTol('guiaDiamInt'))">
+                      Ø Int: <strong>{{ part.diametro_interior_mm || (part.dimensiones as any)?.diametro_interior_mm }} mm</strong>
                     </span>
-                    <span v-if="part.dimensiones?.diametro_exterior_2_mm || part.dimensiones?.diametro_pestana_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Ext 2: <strong>{{ part.dimensiones?.diametro_exterior_2_mm || part.dimensiones?.diametro_pestana_mm }} mm</strong>
+                    <span v-if="part.diametro_exterior_mm || (part.dimensiones as any)?.diametro_exterior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]" :class="getMeasurementMatchClass(part.diametro_exterior_mm || (part.dimensiones as any)?.diametro_exterior_mm, filterGuiaDiamExt, getTol('guiaDiamExt'))">
+                      Ø Ext: <strong>{{ part.diametro_exterior_mm || (part.dimensiones as any)?.diametro_exterior_mm }} mm</strong>
                     </span>
-                    <span v-if="part.longitud_total_mm || part.dimensiones?.longitud_total_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]">
-                      Largo: <strong>{{ part.longitud_total_mm || part.dimensiones?.longitud_total_mm }} mm</strong>
+                    <span v-if="part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]" :class="getMeasurementMatchClass(part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm, filterGuiaLargo, getTol('guiaLargo'))">
+                      Largo: <strong>{{ part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm }} mm</strong>
                     </span>
-                    <span v-if="part.dimensiones?.set || part.dimensiones?.juego || part.cantidad_piezas" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
-                      Juego: {{ part.dimensiones?.set || part.dimensiones?.juego || part.cantidad_piezas }} pzs
+                    <span v-if="(part.dimensiones as any)?.remarks" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px]" title="Notas y cruces del catálogo">
+                      {{ (part.dimensiones as any).remarks }}
                     </span>
                   </div>
 

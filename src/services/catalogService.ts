@@ -246,7 +246,7 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
     activo: true,
     orden_visual: 2,
     parametros: [
-      { id: 'p_valv_1', clave: 'diametro_cabeza_mm', etiqueta: 'Diámetro de Cabeza (Hongo)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro mayor del plato o hongo' },
+      { id: 'p_valv_1', clave: 'diametro_cabeza_mm', etiqueta: 'Hongo (Ø mm)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro mayor del plato o hongo' },
       { id: 'p_valv_2', clave: 'diametro_vastago_mm', etiqueta: 'Diámetro de Vástago', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del vástago' },
       { id: 'p_valv_3', clave: 'longitud_total_mm', etiqueta: 'Longitud Total', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Largo de punta a cabeza' },
       { id: 'p_valv_4', clave: 'angulo_asiento_grados', etiqueta: 'Ángulo de Asiento', unidad: '°', tipo_dato: 'numero', requerido: false, descripcion: 'Ángulo de rectificación (ej. 45°)' },
