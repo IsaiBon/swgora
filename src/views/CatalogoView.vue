@@ -25,6 +25,7 @@ import {
   Layers, 
   CircleDot, 
   ChevronDown, 
+  ChevronUp,
   ChevronLeft, 
   ChevronRight, 
   ChevronsLeft, 
@@ -63,6 +64,18 @@ const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
 const showAllMotors = ref<boolean>(false)
+
+// Control de visibilidad de filtros en vista móvil para liberar espacio vertical
+const isMobileFiltersOpen = ref<boolean>(false)
+
+const activeFilterCount = computed<number>(() => {
+  let count = 0
+  if (selectedBrand.value || brandInput.value) count++
+  if (selectedMotor.value || motorInput.value) count++
+  if (selectedModel.value || modelInput.value) count++
+  if (selectedComponent.value) count++
+  return count
+})
 
 // =============================================================================
 // ACCESIBILIDAD Y CONTROL POR TECLADO EN SELECTORES DE COMBOBOX
@@ -1764,32 +1777,66 @@ onUnmounted(() => {
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- Top-14 (56px) para despejar completamente el Navbar flotante al hacer scroll -->
     <!-- ========================================================================= -->
-    <div class="sticky top-14 z-30 bg-white/95 backdrop-blur-md p-3 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-md transition-all duration-200 space-y-2">
-      <!-- Buscador Universal Integrado -->
-      <div class="relative w-full pb-1">
-        <Search class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-        <input
-          v-model="searchInput"
-          @input="handleSearchInput"
-          type="text"
-          placeholder="Buscar por código OEM, cruce o descripción..."
-          class="w-full pl-9 pr-16 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
-        />
-        <div class="absolute right-2.5 top-2 flex items-center gap-1">
-          <Loader2 v-if="catalogStore.isSearching" class="w-4 h-4 text-[#04C4D9] animate-spin" />
-          <button
-            v-if="searchInput"
-            type="button"
-            @click="handleClearSearch"
-            class="p-1 text-slate-400 hover:text-slate-600 rounded"
-            title="Limpiar búsqueda"
-          >
-            <X class="w-3.5 h-3.5" />
-          </button>
+    <div class="sticky top-14 z-30 bg-white/95 backdrop-blur-md p-2.5 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-md transition-all duration-200 space-y-2 max-h-[85vh] overflow-y-auto">
+      
+      <!-- Fila Superior: Buscador Universal + Botón Filtros Móvil -->
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1">
+          <Search class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+          <input
+            v-model="searchInput"
+            @input="handleSearchInput"
+            type="text"
+            placeholder="Buscar por código OEM, cruce o descripción..."
+            class="w-full pl-9 pr-14 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
+          />
+          <div class="absolute right-2.5 top-2 flex items-center gap-1">
+            <Loader2 v-if="catalogStore.isSearching" class="w-4 h-4 text-[#04C4D9] animate-spin" />
+            <button
+              v-if="searchInput"
+              type="button"
+              @click="handleClearSearch"
+              class="p-1 text-slate-400 hover:text-slate-600 rounded"
+              title="Limpiar búsqueda"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
+
+        <!-- Botón Toggle de Filtros Avanzados (Solo Móvil / Tablet < lg) -->
+        <button
+          type="button"
+          @click="isMobileFiltersOpen = !isMobileFiltersOpen"
+          class="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 border shadow-2xs select-none active:scale-95"
+          :class="isMobileFiltersOpen 
+            ? 'bg-slate-900 text-white border-slate-900' 
+            : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'"
+          :title="isMobileFiltersOpen ? 'Ocultar filtros' : 'Mostrar filtros de vehículo y motor'"
+        >
+          <SlidersHorizontal class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span>Filtros</span>
+          <span 
+            v-if="activeFilterCount > 0" 
+            class="w-4 h-4 rounded-full bg-[#04C4D9] text-white text-[10px] font-black flex items-center justify-center leading-none"
+          >
+            {{ activeFilterCount }}
+          </span>
+          <ChevronDown 
+            class="w-3.5 h-3.5 transition-transform duration-200" 
+            :class="{ 'rotate-180 text-white': isMobileFiltersOpen, 'text-slate-400': !isMobileFiltersOpen }" 
+          />
+        </button>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
+      <div 
+        :class="[
+          'gap-2.5 items-end transition-all duration-200',
+          isMobileFiltersOpen 
+            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 pt-1' 
+            : 'hidden lg:grid lg:grid-cols-4'
+        ]"
+      >
         
         <!-- 1. FABRICANTE -->
         <div class="relative combobox-brand">
@@ -2078,6 +2125,18 @@ onUnmounted(() => {
               No hay componentes coincidentes
             </div>
           </div>
+        </div>
+
+        <!-- Botón de acción para cerrar filtros en móvil y ver resultados -->
+        <div v-if="isMobileFiltersOpen" class="col-span-full lg:hidden pt-1.5">
+          <button
+            type="button"
+            @click="isMobileFiltersOpen = false"
+            class="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-98 shadow-sm"
+          >
+            <ChevronUp class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>Ocultar filtros y ver resultados</span>
+          </button>
         </div>
 
       </div>
