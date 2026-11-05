@@ -1184,8 +1184,12 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
 
     if (compId === 'ajuste_valvula' || cat === 'sellos') {
       list = list.filter(r => r.categoria === 'Sellos' || r.subsistema === 'Sellos y Juntas' || r.nombre.toLowerCase().includes('sello'))
-    } else if (compId === 'valvula' || cat.includes('válvul') || cat.includes('valvul')) {
-      list = list.filter(r => r.categoria === 'Válvulas' || r.categoria === 'Valvulas' || r.nombre.toLowerCase().includes('válvula') || r.nombre.toLowerCase().includes('valvula'))
+    } else if (compId === 'valvula' || cat === 'válvulas' || cat === 'valvulas') {
+      list = list.filter(r => (r.categoria === 'Válvulas' || r.categoria === 'Valvulas') && !r.categoria.includes('Guía') && !r.categoria.includes('Asiento'))
+    } else if (compId === 'guias_valvula' || cat === 'guías' || cat === 'guias') {
+      list = list.filter(r => r.categoria === 'Guías' || r.categoria === 'Guias')
+    } else if (compId === 'asientos_valvula' || cat === 'asientos') {
+      list = list.filter(r => r.categoria === 'Asientos')
     } else if (compId === 'anillos_motor' || cat === 'anillos') {
       list = list.filter(r => r.categoria === 'Anillos' || r.nombre.toLowerCase().includes('anillos') || r.nombre.toLowerCase().includes('aros'))
     } else if (compId === 'tornillos_culata' || cat === 'pernos') {
@@ -3640,7 +3644,10 @@ onUnmounted(() => {
                   Casquetería: Tipo (MS/CB/TW/CH/PB) • SHAFT × HOUSING × T WALL × LENGTH
                 </th>
                 <th v-else-if="selectedComponent?.id === 'guias_valvula' || selectedComponent?.category === 'Guías'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Guías: Int × Ext 1 × Ext 2 × Largo (mm) • Info: Juego
+                  Guías: Posición • Medidas • Juego
+                </th>
+                <th v-else-if="selectedComponent?.id === 'asientos_valvula' || selectedComponent?.category === 'Asientos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  Asientos: Posición • Cilindros • Cruces
                 </th>
                 <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Empaques: Diámetro / Espesor / Material
@@ -3697,6 +3704,8 @@ onUnmounted(() => {
                         <FileText v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="w-4 h-4" />
                         <CircleDot v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="w-4 h-4" />
                         <Layers v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="w-4 h-4" />
+                        <Wrench v-else-if="selectedComponent?.id === 'guias_valvula' || part.categoria === 'Guías'" class="w-4 h-4" />
+                        <CircleDot v-else-if="selectedComponent?.id === 'asientos_valvula' || part.categoria === 'Asientos'" class="w-4 h-4" />
                         <Layers v-else class="w-4 h-4" />
                       </span>
 
@@ -3943,6 +3952,19 @@ onUnmounted(() => {
                     </span>
                     <span v-if="part.dimensiones?.set || part.dimensiones?.juego || part.cantidad_piezas" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
                       Juego: {{ part.dimensiones?.set || part.dimensiones?.juego || part.cantidad_piezas }} pzs
+                    </span>
+                  </div>
+
+                  <!-- Caso Asientos de válvula -->
+                  <div v-else-if="selectedComponent?.id === 'asientos_valvula' || part.categoria === 'Asientos'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
+                    <span v-if="(part.dimensiones as any)?.posicion" class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider" :class="((part.dimensiones as any)?.posicion === 'Admisión' || (part.dimensiones as any)?.posicion === 'IN') ? 'bg-cyan-100 text-[#038391] border border-cyan-200' : 'bg-amber-100 text-amber-900 border border-amber-200'">
+                      {{ (part.dimensiones as any)?.posicion }}
+                    </span>
+                    <span v-if="(part.dimensiones as any)?.cilindros" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold">
+                      {{ (part.dimensiones as any)?.cilindros }} Cilindros
+                    </span>
+                    <span v-if="(part.dimensiones as any)?.interchangeable && (part.dimensiones as any)?.interchangeable.length > 0" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
+                      Cruces: {{ Array.isArray((part.dimensiones as any)?.interchangeable) ? (part.dimensiones as any).interchangeable.join(', ') : (part.dimensiones as any)?.interchangeable }}
                     </span>
                   </div>
 
