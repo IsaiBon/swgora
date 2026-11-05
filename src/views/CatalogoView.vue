@@ -1777,7 +1777,7 @@ onUnmounted(() => {
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- Top-14 (56px) para despejar completamente el Navbar flotante al hacer scroll -->
     <!-- ========================================================================= -->
-    <div class="sticky top-14 z-30 bg-white/95 backdrop-blur-md p-2.5 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-md transition-all duration-200 space-y-2 max-h-[85vh] overflow-y-auto">
+    <div class="sticky top-14 z-30 bg-white/95 backdrop-blur-md p-2.5 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-md transition-all duration-200 space-y-2 overflow-visible">
       
       <!-- Fila Superior: Buscador Universal + Botón Filtros Móvil -->
       <div class="flex items-center gap-2">
@@ -2288,18 +2288,18 @@ onUnmounted(() => {
 
         <!-- Contenedor con scroll interno -->
         <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
-          <table class="w-full text-left text-xs border-collapse">
+          <table class="w-full text-left text-xs border-separate border-spacing-0">
             <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
               <tr>
-                <th class="py-2 px-2.5 w-9 text-center border-r border-slate-200/80"></th>
-                <th class="py-2 px-3 w-28 border-r border-slate-200/80">ID / Ref</th>
-                <th class="py-2 px-3.5 w-48 border-r border-slate-200/80">Código Motor</th>
-                <th class="py-2 px-3.5 w-40 border-r border-slate-200/80">Denominación</th>
-                <th class="py-2 px-2.5 w-20 text-center border-r border-slate-200/80">Cil</th>
-                <th class="py-2 px-3.5 w-36 border-r border-slate-200/80">Cilindrada</th>
-                <th class="py-2 px-2.5 w-16 text-center border-r border-slate-200/80">kW</th>
-                <th class="py-2 px-2.5 w-16 text-center border-r border-slate-200/80">CV</th>
-                <th class="py-2 px-2.5 w-24 text-center">Repuestos</th>
+                <th class="py-2 px-2.5 w-9 text-center border-r border-b border-slate-200 bg-slate-50"></th>
+                <th class="py-2 px-3 w-28 border-r border-b border-slate-200 bg-slate-50">ID / Ref</th>
+                <th class="py-2 px-3.5 w-48 border-r border-b border-slate-200 bg-slate-50">Código Motor</th>
+                <th class="py-2 px-3.5 w-40 border-r border-b border-slate-200 bg-slate-50">Denominación</th>
+                <th class="py-2 px-2.5 w-20 text-center border-r border-b border-slate-200 bg-slate-50">Cil</th>
+                <th class="py-2 px-3.5 w-36 border-r border-b border-slate-200 bg-slate-50">Cilindrada</th>
+                <th class="py-2 px-2.5 w-16 text-center border-r border-b border-slate-200 bg-slate-50">kW</th>
+                <th class="py-2 px-2.5 w-16 text-center border-r border-b border-slate-200 bg-slate-50">CV</th>
+                <th class="py-2 px-2.5 w-24 text-center border-b border-slate-200 bg-slate-50">Repuestos</th>
               </tr>
             </thead>
 
@@ -3614,56 +3614,56 @@ onUnmounted(() => {
         </div>
 
         <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
-          <table class="w-full text-left text-xs border-collapse">
-            <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+          <table class="w-full text-left text-xs border-separate border-spacing-0">
+            <thead class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th class="py-2.5 px-3 w-52">Componente</th>
-                <th class="py-2.5 px-3 w-32">Código OEM</th>
-                <th class="py-2.5 px-3 w-48">Catálogos Alternos</th>
+                <th class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Componente</th>
+                <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Código OEM</th>
+                <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
                 
-                <th v-if="selectedComponent?.id === 'ajuste_valvula' || selectedComponent?.category === 'Sellos'" class="py-2.5 px-3">
+                <th v-if="selectedComponent?.id === 'ajuste_valvula' || selectedComponent?.category === 'Sellos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Medidas: Diám. Int / Diám. Ext / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-2.5 px-3">
+                <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Medidas: Hongo / Vástago / Altura (mm) • Cuñero
                 </th>
-                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-2.5 px-3 min-w-[260px]">
+                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Medidas: Diámetro / Grosor / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-2.5 px-3">
+                <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Cotas: A (Int) × B (Ext) × C (Largo) • Pestaña (D × E)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-2.5 px-3">
+                <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Tornillos: Rosca / Grosor / Paso / Longitud / Cantidad
                 </th>
-                <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-2.5 px-3">
+                <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Casquetería: Tipo (MS/CB/TW/CH/PB) • SHAFT × HOUSING × T WALL × LENGTH
                 </th>
-                <th v-else-if="selectedComponent?.id === 'guias_valvula' || selectedComponent?.category === 'Guías'" class="py-2.5 px-3">
+                <th v-else-if="selectedComponent?.id === 'guias_valvula' || selectedComponent?.category === 'Guías'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Guías: Int × Ext 1 × Ext 2 × Largo (mm) • Info: Juego
                 </th>
-                <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-2.5 px-3">
+                <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Empaques: Diámetro / Espesor / Material
                 </th>
-                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-2.5 px-3">
+                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Parámetros: {{ currentGroupDefinition.parametros.map(p => p.etiqueta).slice(0, 3).join(' / ') }}<span v-if="currentGroupDefinition.parametros.length > 3">...</span>
                 </th>
-                <th v-else class="py-2.5 px-3">
+                <th v-else class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Especificaciones Técnicas (mm)
                 </th>
 
-                <th class="py-2.5 px-3 w-28 text-right">Acciones</th>
+                <th class="py-1.5 px-3 w-24 text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
               </tr>
             </thead>
 
             <!-- Skeleton loading de repuestos -->
             <tbody v-if="catalogStore.loadingRepuestos || catalogStore.isSearching" class="divide-y divide-slate-100">
               <tr v-for="n in 5" :key="`skel-rep-${n}`" class="animate-pulse bg-slate-50/50">
-                <td class="py-3 px-3"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-3"><div class="h-3.5 w-20 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-3"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-3"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
-                <td class="py-3 px-3 text-right"><div class="h-3.5 w-14 bg-slate-200 rounded ml-auto"></div></td>
+                <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
+                <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-20 bg-slate-200 rounded"></div></td>
+                <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
+                <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
+                <td class="py-2 px-3 text-right border-b border-slate-100"><div class="h-3.5 w-14 bg-slate-200 rounded ml-auto"></div></td>
               </tr>
             </tbody>
 
@@ -3674,7 +3674,7 @@ onUnmounted(() => {
                 class="hover:bg-slate-50 transition group"
               >
                 <!-- 1. Componente con Miniatura Técnica y Lightbox -->
-                <td class="py-2.5 px-3 align-middle">
+                <td class="py-2 px-3 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-2.5">
                     <!-- Miniatura técnica interactiva -->
                     <div
@@ -3724,7 +3724,7 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 2. Código OEM -->
-                <td class="py-2.5 px-3 align-middle">
+                <td class="py-2 px-2.5 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-1">
                     <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                       {{ part.codigo_oem }}
@@ -3742,7 +3742,7 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 3. Códigos Alternos por Catálogo -->
-                <td class="py-2.5 px-3 align-middle">
+                <td class="py-2 px-2.5 align-middle border-b border-slate-100">
                   <div class="flex flex-wrap gap-1">
                     <template v-if="getPartEquivalencias(part).length > 0">
                       <span
@@ -3766,7 +3766,7 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 4. MEDIDAS Y COTAS -->
-                <td class="py-2.5 px-3 align-middle">
+                <td class="py-2 px-3 align-middle border-b border-slate-100">
                   
                   <!-- Caso A: Ajuste de válvula -->
                   <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
@@ -4005,7 +4005,7 @@ onUnmounted(() => {
                 </td>
 
                 <!-- 5. Acciones Rápidas -->
-                <td class="py-2.5 px-3 align-middle text-right">
+                <td class="py-2 px-3 align-middle text-right border-b border-slate-100">
                   <div class="flex items-center justify-end gap-1">
                     <button
                       type="button"
