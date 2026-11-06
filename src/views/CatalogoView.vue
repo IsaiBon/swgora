@@ -1561,6 +1561,7 @@ const getBrandBadgeClass = (brand?: string | null): string => {
   if (b.includes('ndc')) return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
   if (b.includes('taiho')) return 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
   if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
+  if (b.includes('mrk') || b.includes('mkr')) return 'bg-teal-100 text-teal-800 border-teal-300 font-bold'
   if (b === 'oem' || b.includes('oem')) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
   return 'bg-slate-100 text-slate-700 border-slate-200 font-bold'
 }
@@ -1599,6 +1600,19 @@ const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equival
       marca_alterna: 'Dokuro',
       codigo_alterno: dokCode,
       tipo_referencia: 'Código Directo Dokuro'
+    })
+  }
+
+  // Agregar código MRK si está en especificaciones y no es el código principal mostrado
+  const mrkCode = ((part.especificaciones_tecnicas as any)?.codigo_mrk as string | undefined)?.trim()?.toUpperCase()
+  if (mrkCode && mrkCode !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(mrkCode)) {
+    seenCodes.add(mrkCode)
+    list.unshift({
+      id: `mrk-${mrkCode}`,
+      repuesto_id: part.id,
+      marca_alterna: 'MRK',
+      codigo_alterno: mrkCode,
+      tipo_referencia: 'Código Directo MRK'
     })
   }
 
@@ -3817,16 +3831,23 @@ onUnmounted(() => {
                     >
                       DOKURO
                     </span>
+                    <span 
+                      v-else-if="part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK'"
+                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-300"
+                      title="Código oficial del catálogo MRK"
+                    >
+                      MRK
+                    </span>
                     <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || part.codigo_oem }}
+                      {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || part.codigo_oem }}
                     </span>
                     <button
                       type="button"
-                      @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || part.codigo_oem, 'OEM')"
+                      @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || part.codigo_oem, 'OEM')"
                       class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
-                      title="Copiar código OEM"
+                      title="Copiar código principal"
                     >
-                      <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
+                      <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
                       <Copy v-else class="w-3.5 h-3.5" />
                     </button>
                   </div>

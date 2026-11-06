@@ -1,0 +1,4006 @@
+[
+  {
+    "codigo_mrk": "MGT-01",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 40.5,
+    "fabricante": "Toyota",
+    "motores_texto": "1E,2E(3Valves),2E(4Valves)",
+    "motores": [
+      "1E",
+      "2E(3Valves)",
+      "2E(4Valves)"
+    ],
+    "referencias_oem": [
+      "11126-10040",
+      "11122-10040"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-05R",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 43.0,
+    "fabricante": "Toyota",
+    "motores_texto": "2AU,3AU,1GE",
+    "motores": [
+      "2AU",
+      "3AU",
+      "1GE"
+    ],
+    "referencias_oem": [
+      "11122-15020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-06R",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1S,2A,3A,4A",
+    "motores": [
+      "1S",
+      "2A",
+      "3A",
+      "4A"
+    ],
+    "referencias_oem": [
+      "11126-15020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-07",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 38.5,
+    "fabricante": "Toyota",
+    "motores_texto": "3A-4A 4VALVES",
+    "motores": [
+      "3A-4A 4VALVES"
+    ],
+    "referencias_oem": [
+      "11122-15030"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-08",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 43.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1A",
+    "motores": [
+      "1A"
+    ],
+    "referencias_oem": [
+      "11122-15011"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-09",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1A",
+    "motores": [
+      "1A"
+    ],
+    "referencias_oem": [
+      "11126-15011"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-13R",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 40.5,
+    "fabricante": "Toyota",
+    "motores_texto": "4A,4 VSLVES, 4AG,3S,1VZ,3VZ",
+    "motores": [
+      "4A",
+      "4 VSLVES",
+      "4AG",
+      "3S",
+      "1VZ",
+      "3VZ"
+    ],
+    "referencias_oem": [
+      "11122-16010",
+      "11122-16020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-14",
+    "diametro_exterior_mm": 9.7,
+    "diametro_interior_mm": 5.0,
+    "longitud_total_mm": 41.5,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11126-16010",
+      "11126-16020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-21",
+    "diametro_exterior_mm": 10.3,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 34.5,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11122-20020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-22",
+    "diametro_exterior_mm": 10.3,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 40.5,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11126-20020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-23",
+    "diametro_exterior_mm": 9.7,
+    "diametro_interior_mm": 5.0,
+    "longitud_total_mm": 34.5,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11122-21010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-29",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 51.0,
+    "fabricante": "Toyota",
+    "motores_texto": "3P,12R,4P",
+    "motores": [
+      "3P",
+      "12R",
+      "4P"
+    ],
+    "referencias_oem": [
+      "11122-23010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-33R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 46.0,
+    "fabricante": "Toyota",
+    "motores_texto": "K,2K,3K,4K,5K,7K",
+    "motores": [
+      "K",
+      "2K",
+      "3K",
+      "4K",
+      "5K",
+      "7K"
+    ],
+    "referencias_oem": [
+      "11122-24020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-34R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": "K,2K,3K,4K,5K,7K/1C,2C",
+    "motores": [
+      "K",
+      "2K",
+      "3K",
+      "4K",
+      "5K",
+      "7K",
+      "1C",
+      "2C"
+    ],
+    "referencias_oem": [
+      "11126-24020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-35R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": "2T,12T,3T /20",
+    "motores": [
+      "2T",
+      "12T",
+      "3T",
+      "20"
+    ],
+    "referencias_oem": [
+      "11122-25010",
+      "11122-25021"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-36R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 54.0,
+    "fabricante": "Toyota",
+    "motores_texto": "2T,12T,3T /20",
+    "motores": [
+      "2T",
+      "12T",
+      "3T",
+      "20"
+    ],
+    "referencias_oem": [
+      "11126-25010",
+      "11126-25021"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-40",
+    "diametro_exterior_mm": 10.3,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 38.5,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11122-28010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-41",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 51.0,
+    "fabricante": "Toyota",
+    "motores_texto": "3P,12R,4P",
+    "motores": [
+      "3P",
+      "12R",
+      "4P"
+    ],
+    "referencias_oem": [
+      "11122-31020",
+      "11122-23010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-43",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Toyota",
+    "motores_texto": "7R,18R",
+    "motores": [
+      "7R",
+      "18R"
+    ],
+    "referencias_oem": [
+      "11122-33011"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-44",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 57.0,
+    "fabricante": "Toyota",
+    "motores_texto": "6R,8R,16R",
+    "motores": [
+      "6R",
+      "8R",
+      "16R"
+    ],
+    "referencias_oem": [
+      "11126-33011"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-47R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 57.5,
+    "fabricante": "Toyota",
+    "motores_texto": "22R(OLD)",
+    "motores": [
+      "22R(OLD)"
+    ],
+    "referencias_oem": [
+      "11122-35010",
+      "11122-35020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-51R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 57.5,
+    "fabricante": "Toyota",
+    "motores_texto": "20R-22R /20",
+    "motores": [
+      "20R-22R",
+      "20"
+    ],
+    "referencias_oem": [
+      "11122-38010",
+      "11122-38021"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-54R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": "4M,5M",
+    "motores": [
+      "4M",
+      "5M"
+    ],
+    "referencias_oem": [
+      "11126-45020",
+      "11126-41040"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-55R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": "4M,5M",
+    "motores": [
+      "4M",
+      "5M"
+    ],
+    "referencias_oem": [
+      "11122-41020"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-59R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 47.5,
+    "fabricante": "Toyota",
+    "motores_texto": "5ME,5MG,6MG",
+    "motores": [
+      "5ME",
+      "5MG",
+      "6MG"
+    ],
+    "referencias_oem": [
+      "11122-43010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-61L",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.5,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Toyota",
+    "motores_texto": "5R",
+    "motores": [
+      "5R"
+    ],
+    "referencias_oem": [
+      "11122-44010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-61S",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.5,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": "5R",
+    "motores": [
+      "5R"
+    ],
+    "referencias_oem": [
+      "11122-44011"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-65",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 56.0,
+    "fabricante": "Toyota",
+    "motores_texto": "J,2J,H",
+    "motores": [
+      "J",
+      "2J",
+      "H"
+    ],
+    "referencias_oem": [
+      "11122-46010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-66",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Toyota",
+    "motores_texto": "J,3J,H",
+    "motores": [
+      "J",
+      "3J",
+      "H"
+    ],
+    "referencias_oem": [
+      "11126-46010"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-70",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11126-50050"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-75",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.5,
+    "longitud_total_mm": 61.0,
+    "fabricante": "Toyota",
+    "motores_texto": "L,2L",
+    "motores": [
+      "L",
+      "2L"
+    ],
+    "referencias_oem": [
+      "11122-54010",
+      "11122-54011"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-77",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 40.0,
+    "fabricante": "Toyota",
+    "motores_texto": "3L,1HZ",
+    "motores": [
+      "3L",
+      "1HZ"
+    ],
+    "referencias_oem": [
+      "11122-54020",
+      "11122-54021"
+    ],
+    "pagina_pdf": 1
+  },
+  {
+    "codigo_mrk": "MGT-79L",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 62.0,
+    "fabricante": "Toyota",
+    "motores_texto": "B.2B,3B,13B",
+    "motores": [
+      "B.2B",
+      "3B",
+      "13B"
+    ],
+    "referencias_oem": [
+      "11122-56020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-79S",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Toyota",
+    "motores_texto": "B,2B,3B,13B",
+    "motores": [
+      "B",
+      "2B",
+      "3B",
+      "13B"
+    ],
+    "referencias_oem": [
+      "11122-56020",
+      "11122-56021"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-80",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Toyota",
+    "motores_texto": "B,2B,3B,13B",
+    "motores": [
+      "B",
+      "2B",
+      "3B",
+      "13B"
+    ],
+    "referencias_oem": [
+      "11122-56010"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-81",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Toyota",
+    "motores_texto": "B,2B,3B,13B",
+    "motores": [
+      "B",
+      "2B",
+      "3B",
+      "13B"
+    ],
+    "referencias_oem": [
+      "11122-56030"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-85",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 59.0,
+    "fabricante": "Toyota",
+    "motores_texto": "15B",
+    "motores": [
+      "15B"
+    ],
+    "referencias_oem": [
+      "11122-58010",
+      "11122-58020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-91",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 54.0,
+    "fabricante": "Toyota",
+    "motores_texto": "2F,3F,4F",
+    "motores": [
+      "2F",
+      "3F",
+      "4F"
+    ],
+    "referencias_oem": [
+      "11122-61010",
+      "11122-61011"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-92",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 59.0,
+    "fabricante": "Toyota",
+    "motores_texto": "2F,3F,4F",
+    "motores": [
+      "2F",
+      "3F",
+      "4F"
+    ],
+    "referencias_oem": [
+      "11126-61010",
+      "11126-61011"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-93R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 48.5,
+    "fabricante": "Toyota",
+    "motores_texto": "1S,2S,3S",
+    "motores": [
+      "1S",
+      "2S",
+      "3S"
+    ],
+    "referencias_oem": [
+      "11122-63020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-94R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 52.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1S,2S,3S",
+    "motores": [
+      "1S",
+      "2S",
+      "3S"
+    ],
+    "referencias_oem": [
+      "11126-63020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-95",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 46.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1C",
+    "motores": [
+      "1C"
+    ],
+    "referencias_oem": [
+      "11122-64010"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-98",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1C,2C",
+    "motores": [
+      "1C",
+      "2C"
+    ],
+    "referencias_oem": [
+      "11126-64010",
+      "11126-64030"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-99R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 46.5,
+    "fabricante": "Toyota",
+    "motores_texto": "3V,3VZ",
+    "motores": [
+      "3V",
+      "3VZ"
+    ],
+    "referencias_oem": [
+      "11122-65020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-105",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 58.0,
+    "fabricante": "Toyota",
+    "motores_texto": "H,2H",
+    "motores": [
+      "H",
+      "2H"
+    ],
+    "referencias_oem": [
+      "11122-68010"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-111R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11122-71020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-112R",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 52.0,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11126-71020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-113",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 38.5,
+    "fabricante": "Toyota",
+    "motores_texto": "3S,5S",
+    "motores": [
+      "3S",
+      "5S"
+    ],
+    "referencias_oem": [
+      "11122-74030"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-116",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 44.5,
+    "fabricante": "Toyota",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "11122-75010"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-117",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 42.0,
+    "fabricante": "Toyota",
+    "motores_texto": "1FZ",
+    "motores": [
+      "1FZ"
+    ],
+    "referencias_oem": [
+      "11122-66020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGT-119",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 75.0,
+    "fabricante": "Toyota",
+    "motores_texto": "D,2D",
+    "motores": [
+      "D",
+      "2D"
+    ],
+    "referencias_oem": [
+      "11122-76010",
+      "11122-76020"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-21",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 69.0,
+    "fabricante": "Hino",
+    "motores_texto": "EM100",
+    "motores": [
+      "EM100"
+    ],
+    "referencias_oem": [
+      "11122-1120"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-27R",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 87.0,
+    "fabricante": "Hino",
+    "motores_texto": "EF700,EF750,EF300,EF350EF500,EF550,K13C 12V,F17",
+    "motores": [
+      "EF700",
+      "EF750",
+      "EF300",
+      "EF350EF500",
+      "EF550",
+      "K13C 12V",
+      "F17"
+    ],
+    "referencias_oem": [
+      "11122-1040",
+      "11122-1150"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-30",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 70.0,
+    "fabricante": "Hino",
+    "motores_texto": "DM100",
+    "motores": [
+      "DM100"
+    ],
+    "referencias_oem": [
+      "11121-1160"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-31",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 83.5,
+    "fabricante": "Hino",
+    "motores_texto": "EK100,EK200",
+    "motores": [
+      "EK100",
+      "EK200"
+    ],
+    "referencias_oem": [
+      "11122-1011",
+      "11122-1160"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-35",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 61.0,
+    "fabricante": "Hino",
+    "motores_texto": "H07C,H06C",
+    "motores": [
+      "H07C",
+      "H06C"
+    ],
+    "referencias_oem": [
+      "11122-1180"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-39",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 69.0,
+    "fabricante": "Hino",
+    "motores_texto": "EH700,K13C 24V  /01",
+    "motores": [
+      "EH700",
+      "K13C 24V",
+      "01"
+    ],
+    "referencias_oem": [
+      "11122-1060",
+      "11122-1200"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-41",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 60.5,
+    "fabricante": "Hino",
+    "motores_texto": "J08C",
+    "motores": [
+      "J08C"
+    ],
+    "referencias_oem": [
+      "11122-1220"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-43",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 56.0,
+    "fabricante": "Hino",
+    "motores_texto": "W04D,W06D",
+    "motores": [
+      "W04D",
+      "W06D"
+    ],
+    "referencias_oem": [
+      "11122-1140"
+    ],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGH-47",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 80.0,
+    "fabricante": "Hino",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 2
+  },
+  {
+    "codigo_mrk": "MGN-01",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Nissan",
+    "motores_texto": "MARCH,MICRA 1000CC/MA10",
+    "motores": [
+      "MARCH",
+      "MICRA 1000CC",
+      "MA10"
+    ],
+    "referencias_oem": [
+      "13212-01B01",
+      "13212-01B11"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-02",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Nissan",
+    "motores_texto": "MARCH,MICRA 1000CC/MA11",
+    "motores": [
+      "MARCH",
+      "MICRA 1000CC",
+      "MA11"
+    ],
+    "referencias_oem": [
+      "13213-01B01",
+      "13213-01B11"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-03",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Nissan",
+    "motores_texto": "E10,E13,E15",
+    "motores": [
+      "E10",
+      "E13",
+      "E15"
+    ],
+    "referencias_oem": [
+      "13212-01M01",
+      "13212-01M11"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-04",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 58.0,
+    "fabricante": "Nissan",
+    "motores_texto": "E10,E13,E15",
+    "motores": [
+      "E10",
+      "E13",
+      "E15"
+    ],
+    "referencias_oem": [
+      "13213-01M01",
+      "13213-01M11"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-09",
+    "diametro_exterior_mm": 14.3,
+    "diametro_interior_mm": 8.7,
+    "longitud_total_mm": 47.5,
+    "fabricante": "Nissan",
+    "motores_texto": "J13,J15,J16,J20",
+    "motores": [
+      "J13",
+      "J15",
+      "J16",
+      "J20"
+    ],
+    "referencias_oem": [
+      "13211-30001",
+      "13211-01W10"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-10L",
+    "diametro_exterior_mm": 14.3,
+    "diametro_interior_mm": 8.7,
+    "longitud_total_mm": 56.0,
+    "fabricante": "Nissan",
+    "motores_texto": "J13,J15,J16,J20",
+    "motores": [
+      "J13",
+      "J15",
+      "J16",
+      "J20"
+    ],
+    "referencias_oem": [
+      "13213-30002",
+      "13213-01W10"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-11",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 54.0,
+    "fabricante": "Nissan",
+    "motores_texto": "TB42S",
+    "motores": [
+      "TB42S"
+    ],
+    "referencias_oem": [
+      "13212-03J10"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-12",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Nissan",
+    "motores_texto": "TB42S",
+    "motores": [
+      "TB42S"
+    ],
+    "referencias_oem": [
+      "13213-03J10"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-15",
+    "diametro_exterior_mm": 12.2,
+    "diametro_interior_mm": 6.5,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Nissan",
+    "motores_texto": "SUNNY,PULSAR 1500CCSENTRA/E10,E13,E15 /01",
+    "motores": [
+      "SUNNY",
+      "PULSAR 1500CCSENTRA",
+      "E10",
+      "E13",
+      "E15",
+      "01"
+    ],
+    "referencias_oem": [
+      "13212-15M00",
+      "13212-15M11"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-19",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Nissan",
+    "motores_texto": "CARAVAN,CABSTERDATSUN TRUCK/J16,J18",
+    "motores": [
+      "CARAVAN",
+      "CABSTERDATSUN TRUCK",
+      "J16",
+      "J18"
+    ],
+    "referencias_oem": [
+      "13212-24W00",
+      "13212-24W10"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-20",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Nissan",
+    "motores_texto": "CARAVAN,CABSTERDATSUN TRUCK/J16,J19",
+    "motores": [
+      "CARAVAN",
+      "CABSTERDATSUN TRUCK",
+      "J16",
+      "J19"
+    ],
+    "referencias_oem": [
+      "13213-24W00",
+      "13213-24W10"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-27",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 52.5,
+    "fabricante": "Nissan",
+    "motores_texto": "KA24",
+    "motores": [
+      "KA24"
+    ],
+    "referencias_oem": [
+      "13212-40F00",
+      "13212-40F60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-28",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 56.0,
+    "fabricante": "Nissan",
+    "motores_texto": "KA24",
+    "motores": [
+      "KA24"
+    ],
+    "referencias_oem": [
+      "13213-40F00",
+      "13213-40F60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-37",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 40.0,
+    "fabricante": "Nissan",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "13212-60U60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-38",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 39.5,
+    "fabricante": "Nissan",
+    "motores_texto": "SD20DET",
+    "motores": [
+      "SD20DET"
+    ],
+    "referencias_oem": [
+      "13213-53F60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-41",
+    "diametro_exterior_mm": 9.5,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 40.0,
+    "fabricante": "Nissan",
+    "motores_texto": "CA13,GA15,GA16EGI 4VALVES",
+    "motores": [
+      "CA13",
+      "GA15",
+      "GA16EGI 4VALVES"
+    ],
+    "referencias_oem": [
+      "13212-53Y60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-42",
+    "diametro_exterior_mm": 9.5,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 40.0,
+    "fabricante": "Nissan",
+    "motores_texto": "CA13,GA15,GA16EGI 4VALVES",
+    "motores": [
+      "CA13",
+      "GA15",
+      "GA16EGI 4VALVES"
+    ],
+    "referencias_oem": [
+      "13213-53Y60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-43",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Nissan",
+    "motores_texto": "TD42",
+    "motores": [
+      "TD42"
+    ],
+    "referencias_oem": [
+      "13212-54T00",
+      "13212-54T01"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-44",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 47.0,
+    "fabricante": "Nissan",
+    "motores_texto": "TD25,TD27",
+    "motores": [
+      "TD25",
+      "TD27"
+    ],
+    "referencias_oem": [
+      "13212-43G01",
+      "13212-43G02"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-45",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 8.7,
+    "longitud_total_mm": 72.0,
+    "fabricante": "Nissan",
+    "motores_texto": "P40",
+    "motores": [
+      "P40"
+    ],
+    "referencias_oem": [
+      "13212-58000",
+      "13212-58001"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-46",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 8.7,
+    "longitud_total_mm": 72.0,
+    "fabricante": "Nissan",
+    "motores_texto": "P40",
+    "motores": [
+      "P40"
+    ],
+    "referencias_oem": [
+      "13213-58000",
+      "13213-58001"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-49",
+    "diametro_exterior_mm": 10.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Nissan",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "13212-77A60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-50",
+    "diametro_exterior_mm": 10.6,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Nissan",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "13213-77A60"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-63",
+    "diametro_exterior_mm": 14.3,
+    "diametro_interior_mm": 8.5,
+    "longitud_total_mm": 63.0,
+    "fabricante": "Nissan",
+    "motores_texto": "P40",
+    "motores": [
+      "P40"
+    ],
+    "referencias_oem": [
+      "13212-C6000",
+      "13212-C6001"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-64",
+    "diametro_exterior_mm": 14.3,
+    "diametro_interior_mm": 8.5,
+    "longitud_total_mm": 67.0,
+    "fabricante": "Nissan",
+    "motores_texto": "P40",
+    "motores": [
+      "P40"
+    ],
+    "referencias_oem": [
+      "13213-C6000",
+      "13213-C6001"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-65",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 45.0,
+    "fabricante": "Nissan",
+    "motores_texto": "CD17,CD18,RD28 /11",
+    "motores": [
+      "CD17",
+      "CD18",
+      "RD28",
+      "11"
+    ],
+    "referencias_oem": [
+      "13212-D0110",
+      "13212-D0112"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-66",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 45.0,
+    "fabricante": "Nissan",
+    "motores_texto": "CD17,CD18,RD28 /1113213- V5514",
+    "motores": [
+      "CD17",
+      "CD18",
+      "RD28",
+      "1113213- V5514"
+    ],
+    "referencias_oem": [
+      "13213-D0110",
+      "13213-D0112"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-71R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Nissan",
+    "motores_texto": "A10,A12,A15 /1/2",
+    "motores": [
+      "A10",
+      "A12",
+      "A15",
+      "1",
+      "2"
+    ],
+    "referencias_oem": [
+      "13212-H0110",
+      "13212-H0113"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-72R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Nissan",
+    "motores_texto": "A10,A12,A15 /1/2",
+    "motores": [
+      "A10",
+      "A12",
+      "A15",
+      "1",
+      "2"
+    ],
+    "referencias_oem": [
+      "13213-H0110",
+      "13213-H0113"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-73R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Nissan",
+    "motores_texto": "A12,A14,A15",
+    "motores": [
+      "A12",
+      "A14",
+      "A15"
+    ],
+    "referencias_oem": [
+      "13212-H2310",
+      "13212-H2311"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-74R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Nissan",
+    "motores_texto": "A12,A14,A15 /1",
+    "motores": [
+      "A12",
+      "A14",
+      "A15",
+      "1"
+    ],
+    "referencias_oem": [
+      "13213-H2310",
+      "13213-H2312"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-75R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Nissan",
+    "motores_texto": "A12-A14",
+    "motores": [
+      "A12-A14"
+    ],
+    "referencias_oem": [
+      "13212-H8510",
+      "13212-H8511"
+    ],
+    "pagina_pdf": 3
+  },
+  {
+    "codigo_mrk": "MGN-79",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Nissan",
+    "motores_texto": "ED6,FD6,FE6",
+    "motores": [
+      "ED6",
+      "FD6",
+      "FE6"
+    ],
+    "referencias_oem": [
+      "13211-J6500"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-82",
+    "diametro_exterior_mm": 13.9,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Nissan",
+    "motores_texto": "ED30,ED33/ED60,ED6,FD6,FE6(OLD)",
+    "motores": [
+      "ED30",
+      "ED33",
+      "ED60",
+      "ED6",
+      "FD6",
+      "FE6(OLD)"
+    ],
+    "referencias_oem": [
+      "13211-J2000",
+      "13211-Z5001"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-85",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 52.0,
+    "fabricante": "Nissan",
+    "motores_texto": "SD23,SD25",
+    "motores": [
+      "SD23",
+      "SD25"
+    ],
+    "referencias_oem": [
+      "13211-V1700"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-87",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 59.0,
+    "fabricante": "Nissan",
+    "motores_texto": "RB24,RB30,VG20,VG30",
+    "motores": [
+      "RB24",
+      "RB30",
+      "VG20",
+      "VG30"
+    ],
+    "referencias_oem": [
+      "13212-V5010",
+      "13212-V5011"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-88",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 63.5,
+    "fabricante": "Nissan",
+    "motores_texto": "RB24,RB30,VG20,VG30",
+    "motores": [
+      "RB24",
+      "RB30",
+      "VG20",
+      "VG30"
+    ],
+    "referencias_oem": [
+      "13213-V5010",
+      "13213-V5011"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-91R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 59.0,
+    "fabricante": "Nissan",
+    "motores_texto": "AUSTER,BLUEBIRDCEDRIC,LAURELL13,L14,L16,L18,L20,L24,L28,LD20 13212-U011013212-21000/10/11",
+    "motores": [
+      "AUSTER",
+      "BLUEBIRDCEDRIC",
+      "LAURELL13",
+      "L14",
+      "L16",
+      "L18",
+      "L20",
+      "L24",
+      "L28",
+      "LD20 13212-U011013212-21000",
+      "10",
+      "11"
+    ],
+    "referencias_oem": [
+      "13212-W0310"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-92R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 59.0,
+    "fabricante": "Nissan",
+    "motores_texto": "AUSTER,BLUEBIRDCEDRIC,LAURELL13,L14,L16,L18,L20,L24,L28,LD20 13213-U011013213-21000/10/11",
+    "motores": [
+      "AUSTER",
+      "BLUEBIRDCEDRIC",
+      "LAURELL13",
+      "L14",
+      "L16",
+      "L18",
+      "L20",
+      "L24",
+      "L28",
+      "LD20 13213-U011013213-21000",
+      "10",
+      "11"
+    ],
+    "referencias_oem": [
+      "13213-W0310"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-95R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 67.5,
+    "fabricante": "Nissan",
+    "motores_texto": "Z16,Z18,Z20,LD20 /10 /10",
+    "motores": [
+      "Z16",
+      "Z18",
+      "Z20",
+      "LD20",
+      "10",
+      "10"
+    ],
+    "referencias_oem": [
+      "13212-W0400",
+      "13212-W0500"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-96R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 67.5,
+    "fabricante": "Nissan",
+    "motores_texto": "Z16,Z18,Z20,LD20  /10",
+    "motores": [
+      "Z16",
+      "Z18",
+      "Z20",
+      "LD20",
+      "10"
+    ],
+    "referencias_oem": [
+      "13213-W0410",
+      "13213-W0500"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-101",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Nissan",
+    "motores_texto": "ED60,ED6,FD6FE6(Old)",
+    "motores": [
+      "ED60",
+      "ED6",
+      "FD6FE6(Old)"
+    ],
+    "referencias_oem": [
+      "13211-Z5000",
+      "13211-Z5001"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-102",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Nissan",
+    "motores_texto": "ED6,FD6,FE6",
+    "motores": [
+      "ED6",
+      "FD6",
+      "FE6"
+    ],
+    "referencias_oem": [
+      "13211-Z5500"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-103",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 72.0,
+    "fabricante": "Nissan",
+    "motores_texto": "RF8,PF8,PF6,PF1,NE6 /2/3/4",
+    "motores": [
+      "RF8",
+      "PF8",
+      "PF6",
+      "PF1",
+      "NE6",
+      "2",
+      "3",
+      "4"
+    ],
+    "referencias_oem": [
+      "13212-95000",
+      "13212-95005"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-104",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 72.0,
+    "fabricante": "Nissan",
+    "motores_texto": "PD6/PE6,PF6 New, RD8,PD",
+    "motores": [
+      "PD6",
+      "PE6",
+      "PF6 New",
+      "RD8",
+      "PD"
+    ],
+    "referencias_oem": [
+      "13212-96001",
+      "13212-96002"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-105",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 78.0,
+    "fabricante": "Nissan",
+    "motores_texto": "PF8,PF6,PF1",
+    "motores": [
+      "PF8",
+      "PF6",
+      "PF1"
+    ],
+    "referencias_oem": [
+      "13211-97003",
+      "13211-96009"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-106",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 71.0,
+    "fabricante": "Nissan",
+    "motores_texto": "PD6,PE6,PF6(New)",
+    "motores": [
+      "PD6",
+      "PE6",
+      "PF6(New)"
+    ],
+    "referencias_oem": [
+      "13212-96006",
+      "13212-96009"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-108",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 72.0,
+    "fabricante": "Nissan",
+    "motores_texto": "ND6,RD8,RD10,RE8,RE10",
+    "motores": [
+      "ND6",
+      "RD8",
+      "RD10",
+      "RE8",
+      "RE10"
+    ],
+    "referencias_oem": [
+      "13211-95000",
+      "13212-97000"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-109",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 75.0,
+    "fabricante": "Nissan",
+    "motores_texto": "PD6,PE6,PF6,PD/PENEW,RD8,RE8,RE10",
+    "motores": [
+      "PD6",
+      "PE6",
+      "PF6",
+      "PD",
+      "PENEW",
+      "RD8",
+      "RE8",
+      "RE10"
+    ],
+    "referencias_oem": [
+      "13211-97001"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-110",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 79.0,
+    "fabricante": "Nissan",
+    "motores_texto": "RD",
+    "motores": [
+      "RD"
+    ],
+    "referencias_oem": [
+      "13212-97001"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-130",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Nissan",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "13211-Z5501"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-136",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 85.0,
+    "fabricante": "Nissan",
+    "motores_texto": "PD",
+    "motores": [
+      "PD"
+    ],
+    "referencias_oem": [
+      "13211-96000",
+      "13211-96001"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-137",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 69.0,
+    "fabricante": "Nissan",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGN-145",
+    "diametro_exterior_mm": 17.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 78.0,
+    "fabricante": "Nissan",
+    "motores_texto": "PD6",
+    "motores": [
+      "PD6"
+    ],
+    "referencias_oem": [
+      "13211-96007"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGS-01",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 32.0,
+    "fabricante": "Suzuki",
+    "motores_texto": "G16A",
+    "motores": [
+      "G16A"
+    ],
+    "referencias_oem": [
+      "11115-60B10",
+      "11115-60B11"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGS-02",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 52.5,
+    "fabricante": "Suzuki",
+    "motores_texto": "F5A,F8A,Y64",
+    "motores": [
+      "F5A",
+      "F8A",
+      "Y64"
+    ],
+    "referencias_oem": [
+      "11115-73010",
+      "11115-73030"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGS-03",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 54.5,
+    "fabricante": "Suzuki",
+    "motores_texto": "F5A,F8A,Y64",
+    "motores": [
+      "F5A",
+      "F8A",
+      "Y64"
+    ],
+    "referencias_oem": [
+      "11116-73010",
+      "11116-73030"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGS-04",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 43.0,
+    "fabricante": "Suzuki",
+    "motores_texto": "F6,F5B",
+    "motores": [
+      "F6",
+      "F5B"
+    ],
+    "referencias_oem": [
+      "11115-70B00",
+      "11115-62D00"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGS-05",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Suzuki",
+    "motores_texto": "F10A,F10,GA13A,G13A,G13BA",
+    "motores": [
+      "F10A",
+      "F10",
+      "GA13A",
+      "G13A",
+      "G13BA"
+    ],
+    "referencias_oem": [
+      "11115-82000",
+      "11115-82001"
+    ],
+    "pagina_pdf": 4
+  },
+  {
+    "codigo_mrk": "MGM-02",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 93.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "TRUCK R400,W110,BUS B828MR410/7DB",
+    "motores": [
+      "TRUCK R400",
+      "W110",
+      "BUS B828MR410",
+      "7DB"
+    ],
+    "referencias_oem": [
+      "30001-10603"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-06",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "CAT.(GCA-73-0)(GCB-73-0)",
+    "motores": [
+      "CAT.(GCA-73-0)(GCB-73-0)"
+    ],
+    "referencias_oem": [
+      "34201-01600",
+      "34301-02300"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-10",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 56.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4DR,6DR,4DQ,4DR1,4DQ1",
+    "motores": [
+      "4DR",
+      "6DR",
+      "4DQ",
+      "4DR1",
+      "4DQ1"
+    ],
+    "referencias_oem": [
+      "30601-25600",
+      "34301-02200"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-11",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 44.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G32,AG31,4G33,4G36,4G37,6G72",
+    "motores": [
+      "4G32",
+      "AG31",
+      "4G33",
+      "4G36",
+      "4G37",
+      "6G72"
+    ],
+    "referencias_oem": [
+      "MD000461",
+      "MD079880"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-12",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G32,AG31,4G33,4G36,4G37,6G72",
+    "motores": [
+      "4G32",
+      "AG31",
+      "4G33",
+      "4G36",
+      "4G37",
+      "6G72"
+    ],
+    "referencias_oem": [
+      "MD000471",
+      "MD185850"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-13",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 44.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "2G23,2G23B,4G11B,4G12B,4G13B",
+    "motores": [
+      "2G23",
+      "2G23B",
+      "4G11B",
+      "4G12B",
+      "4G13B"
+    ],
+    "referencias_oem": [
+      "MD016441",
+      "MD079660",
+      "MD356013"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-14L",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 49.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "2G23,2G23B,4G11B,4G12B,4G13B",
+    "motores": [
+      "2G23",
+      "2G23B",
+      "4G11B",
+      "4G12B",
+      "4G13B"
+    ],
+    "referencias_oem": [
+      "MD016445",
+      "MD079661",
+      "MD356014"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-15",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 49.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "2G23,2G23B,4G11B,4G12B,4G13B",
+    "motores": [
+      "2G23",
+      "2G23B",
+      "4G11B",
+      "4G12B",
+      "4G13B"
+    ],
+    "referencias_oem": [
+      "MD343941",
+      "MD016445"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-16",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 44.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "COLT/4G41",
+    "motores": [
+      "COLT",
+      "4G41"
+    ],
+    "referencias_oem": [
+      "MD010461"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-17",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "COLT/4G42",
+    "motores": [
+      "COLT",
+      "4G42"
+    ],
+    "referencias_oem": [
+      "MD010471",
+      "MD010466"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-18",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 47.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G63,4G52,4G54,G52,G62",
+    "motores": [
+      "4G63",
+      "4G52",
+      "4G54",
+      "G52",
+      "G62"
+    ],
+    "referencias_oem": [
+      "MD020551"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-19",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 52.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G63,4G52,4G54,G52,G62",
+    "motores": [
+      "4G63",
+      "4G52",
+      "4G54",
+      "G52",
+      "G62"
+    ],
+    "referencias_oem": [
+      "MD020561"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-20",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 71.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4D55,4D56",
+    "motores": [
+      "4D55",
+      "4D56"
+    ],
+    "referencias_oem": [
+      "MD050523"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-21",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 74.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4D55,4D57",
+    "motores": [
+      "4D55",
+      "4D57"
+    ],
+    "referencias_oem": [
+      "MD050527"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-22",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 56.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "GALANT/4D65,4D68",
+    "motores": [
+      "GALANT",
+      "4D65",
+      "4D68"
+    ],
+    "referencias_oem": [
+      "MD076354"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-23",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 58.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "GALANT/4D65,4D69",
+    "motores": [
+      "GALANT",
+      "4D65",
+      "4D69"
+    ],
+    "referencias_oem": [
+      "MD076358"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-24",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 45.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G61-T 4VALVE",
+    "motores": [
+      "4G61-T 4VALVE"
+    ],
+    "referencias_oem": [
+      "MD126605",
+      "MD372791"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-25",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 50.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G61-T 4VALVE",
+    "motores": [
+      "4G61-T 4VALVE"
+    ],
+    "referencias_oem": [
+      "MD126608",
+      "MD372795"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-27",
+    "diametro_exterior_mm": 11.1,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 50.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G92,4G93",
+    "motores": [
+      "4G92",
+      "4G93"
+    ],
+    "referencias_oem": [
+      "MD172530"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-29",
+    "diametro_exterior_mm": 11.1,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 45.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G92,4G94",
+    "motores": [
+      "4G92",
+      "4G94"
+    ],
+    "referencias_oem": [
+      "MD300702"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-30",
+    "diametro_exterior_mm": 11.1,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 50.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-31",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 64.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "6D10,6D14,6DS1,4D30",
+    "motores": [
+      "6D10",
+      "6D14",
+      "6DS1",
+      "4D30"
+    ],
+    "referencias_oem": [
+      "ME031293"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-32",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 64.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "6D15/6D30,4D30",
+    "motores": [
+      "6D15",
+      "6D30",
+      "4D30"
+    ],
+    "referencias_oem": [
+      "ME031886"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-33",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 71.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4D31,4D34,4D33",
+    "motores": [
+      "4D31",
+      "4D34",
+      "4D33"
+    ],
+    "referencias_oem": [
+      "ME031888"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-34",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 83.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "6D22,8DC,6DC2,8DC2,6DB",
+    "motores": [
+      "6D22",
+      "8DC",
+      "6DC2",
+      "8DC2",
+      "6DB"
+    ],
+    "referencias_oem": [
+      "ME051120"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-35",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 93.5,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "6D22,8DC,6DC2,8DC2,6DB",
+    "motores": [
+      "6D22",
+      "8DC",
+      "6DC2",
+      "8DC2",
+      "6DB"
+    ],
+    "referencias_oem": [
+      "ME051122"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-40",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 44.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4M40",
+    "motores": [
+      "4M40"
+    ],
+    "referencias_oem": [
+      "ME200007"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-41",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 51.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4M40",
+    "motores": [
+      "4M40"
+    ],
+    "referencias_oem": [
+      "ME200009"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-44",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 95.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "6D40",
+    "motores": [
+      "6D40"
+    ],
+    "referencias_oem": [
+      "ME120085"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-45",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 95.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "6D40",
+    "motores": [
+      "6D40"
+    ],
+    "referencias_oem": [
+      "ME120087"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-53",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 44.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "ME201051"
+    ],
+    "pagina_pdf": 5
+  },
+  {
+    "codigo_mrk": "MGM-54",
+    "diametro_exterior_mm": 13.1,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 51.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "ME201054"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGM-55",
+    "diametro_exterior_mm": 10.6,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G13",
+    "motores": [
+      "4G13"
+    ],
+    "referencias_oem": [
+      "MD357589"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGM-56",
+    "diametro_exterior_mm": 10.6,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": "4G13,4G18",
+    "motores": [
+      "4G13",
+      "4G18"
+    ],
+    "referencias_oem": [
+      "MD357589"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGM-57",
+    "diametro_exterior_mm": 11.1,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGM-61",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 47.0,
+    "fabricante": "Mitsubishi",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-01RB",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 51.0,
+    "fabricante": "Mazda",
+    "motores_texto": "PICK UP / TB",
+    "motores": [
+      "TB"
+    ],
+    "referencias_oem": [
+      "0249-10-130"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-02RB",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 49.2,
+    "fabricante": "Mazda",
+    "motores_texto": "FAMILIA ,BONGO,SPA,FPA 1000C/ PB",
+    "motores": [
+      "FAMILIA",
+      "BONGO",
+      "SPA",
+      "FPA 1000C",
+      "PB"
+    ],
+    "referencias_oem": [
+      "0249-10-140"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-03RB",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.1,
+    "longitud_total_mm": 51.0,
+    "fabricante": "Mazda",
+    "motores_texto": "NA,MA,PC,TC,VC 0305-23-2800305-10-280 0305-23-0900305-10-290",
+    "motores": [
+      "NA",
+      "MA",
+      "PC",
+      "TC",
+      "VC 0305-23-2800305-10-280 0305-23-0900305-10-290"
+    ],
+    "referencias_oem": [],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-04B",
+    "diametro_exterior_mm": 12.7,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 54.0,
+    "fabricante": "Mazda",
+    "motores_texto": "TRUCK TITAN AEX E/T 2500,2700B2200,E2200/XA,XB,HA,ZB,SZ 0636-10-104B",
+    "motores": [
+      "TRUCK TITAN AEX E",
+      "T 2500",
+      "2700B2200",
+      "E2200",
+      "XA",
+      "XB",
+      "HA",
+      "ZB",
+      "SZ 0636-10-104B"
+    ],
+    "referencias_oem": [],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-05RB",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.1,
+    "longitud_total_mm": 50.5,
+    "fabricante": "Mazda",
+    "motores_texto": "B1600-B2000,323929/929L/NA(NEW),E3/5,VC",
+    "motores": [
+      "B1600-B2000",
+      "323929",
+      "929L",
+      "NA(NEW)",
+      "E3",
+      "5",
+      "VC"
+    ],
+    "referencias_oem": [
+      "8173-23-090"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-06R",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 48.5,
+    "fabricante": "Mazda",
+    "motores_texto": "B6,B1,B3",
+    "motores": [
+      "B6",
+      "B1",
+      "B3"
+    ],
+    "referencias_oem": [
+      "B6Z0-10-280"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-07R",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 6.0,
+    "longitud_total_mm": 48.5,
+    "fabricante": "Mazda",
+    "motores_texto": "B6,B1,B3",
+    "motores": [
+      "B6",
+      "B1",
+      "B3"
+    ],
+    "referencias_oem": [
+      "B6Z0-10-290"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-09",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Mazda",
+    "motores_texto": "F2",
+    "motores": [
+      "F2"
+    ],
+    "referencias_oem": [
+      "F2Y1-23-091"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-10RB",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.1,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Mazda",
+    "motores_texto": "FE,F6,F8,MA",
+    "motores": [
+      "FE",
+      "F6",
+      "F8",
+      "MA"
+    ],
+    "referencias_oem": [
+      "F801-23-090"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-11RB",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 40.5,
+    "fabricante": "Mazda",
+    "motores_texto": "R2,S2",
+    "motores": [
+      "R2",
+      "S2"
+    ],
+    "referencias_oem": [
+      "RF01-10-280"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-13LRB",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 46.5,
+    "fabricante": "Mazda",
+    "motores_texto": "RF",
+    "motores": [
+      "RF"
+    ],
+    "referencias_oem": [
+      "RF01-10-290",
+      "RFJ5-10-290"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-13SRB",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 38.0,
+    "fabricante": "Mazda",
+    "motores_texto": "R2,RF",
+    "motores": [
+      "R2",
+      "RF"
+    ],
+    "referencias_oem": [
+      "RF01-10-290"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-14B",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 54.0,
+    "fabricante": "Mazda",
+    "motores_texto": "HA(New),XA,SL",
+    "motores": [
+      "HA(New)",
+      "XA",
+      "SL"
+    ],
+    "referencias_oem": [
+      "SE01-10-104"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-15B",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 47.5,
+    "fabricante": "Mazda",
+    "motores_texto": "TF TF01-10-281A",
+    "motores": [
+      "TF TF01-10-281A"
+    ],
+    "referencias_oem": [],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-21R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 46.0,
+    "fabricante": "Mazda",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "WLY1-10-280"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-22R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 46.0,
+    "fabricante": "Mazda",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "WLY2-10-280"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-24R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 46.0,
+    "fabricante": "Mazda",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "WL01-10-290",
+      "WL01-10-280"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-28R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Mazda",
+    "motores_texto": "B3,B5",
+    "motores": [
+      "B3",
+      "B5"
+    ],
+    "referencias_oem": [
+      "B6Y0-10-290"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-38B",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 8.1,
+    "longitud_total_mm": 64.0,
+    "fabricante": "Mazda",
+    "motores_texto": "TRUCK TITAN TVA E/T2000,E2000/VA",
+    "motores": [
+      "TRUCK TITAN TVA E",
+      "T2000",
+      "E2000",
+      "VA"
+    ],
+    "referencias_oem": [
+      "0552-10-105"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGZ-45R",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 44.5,
+    "fabricante": "Mazda",
+    "motores_texto": "Z5-DA ENG.",
+    "motores": [
+      "Z5-DA ENG."
+    ],
+    "referencias_oem": [
+      "Z5Y1-10-280"
+    ],
+    "pagina_pdf": 6
+  },
+  {
+    "codigo_mrk": "MGI-01",
+    "diametro_exterior_mm": 18.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 76.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "8MA1,6RA,6RB",
+    "motores": [
+      "8MA1",
+      "6RA",
+      "6RB"
+    ],
+    "referencias_oem": [
+      "1-11721-001-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-02",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 80.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "10PA1,10PE1,10PB1,12PA1",
+    "motores": [
+      "10PA1",
+      "10PE1",
+      "10PB1",
+      "12PA1"
+    ],
+    "referencias_oem": [
+      "1-11721-004-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-04",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "6SA1,6SD1",
+    "motores": [
+      "6SA1",
+      "6SD1"
+    ],
+    "referencias_oem": [
+      "1-11721-008-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-05",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "CL,C330,4BA1,4BC2,4BD1,6BB16BD1,6BF1,6FG1,D500,4BG1,6BG1",
+    "motores": [
+      "CL",
+      "C330",
+      "4BA1",
+      "4BC2",
+      "4BD1",
+      "6BB16BD1",
+      "6BF1",
+      "6FG1",
+      "D500",
+      "4BG1",
+      "6BG1"
+    ],
+    "referencias_oem": [
+      "5-11721-001-0",
+      "1-11721-013-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-06",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Isuzu",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "5-11721-006-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-07",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "TRUCK,FARGO 1800CC/4FB14FA1,4FC1,4FG1 /-1",
+    "motores": [
+      "TRUCK",
+      "FARGO 1800CC",
+      "4FB14FA1",
+      "4FC1",
+      "4FG1",
+      "-1"
+    ],
+    "referencias_oem": [
+      "5-11721-015-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-08",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "C240 NEW",
+    "motores": [
+      "C240 NEW"
+    ],
+    "referencias_oem": [
+      "5-11721-016-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-10",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "GEMINI 1500CC / 4XC",
+    "motores": [
+      "GEMINI 1500CC",
+      "4XC"
+    ],
+    "referencias_oem": [
+      "8-94176-718-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-12",
+    "diametro_exterior_mm": 11.5,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 42.0,
+    "fabricante": "Isuzu",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "8-94239-423-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-15",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 46.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "G181Z/161/180/200,4ZA14ZB1,4ZC1,4ZD1,4JD1",
+    "motores": [
+      "G181Z",
+      "161",
+      "180",
+      "200",
+      "4ZA14ZB1",
+      "4ZC1",
+      "4ZD1",
+      "4JD1"
+    ],
+    "referencias_oem": [
+      "8-94206-762-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-16",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "G181Z/161/180/200,4ZA14ZB1,4ZC1,4ZD1,4JD1",
+    "motores": [
+      "G181Z",
+      "161",
+      "180",
+      "200",
+      "4ZA14ZB1",
+      "4ZC1",
+      "4ZD1",
+      "4JD1"
+    ],
+    "referencias_oem": [
+      "8-94206-763-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-18",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 60.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "4HF1,6HF1",
+    "motores": [
+      "4HF1",
+      "6HF1"
+    ],
+    "referencias_oem": [
+      "8-94396-598-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-23",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 53.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "C221,C240,C190",
+    "motores": [
+      "C221",
+      "C240",
+      "C190"
+    ],
+    "referencias_oem": [
+      "9-11721-113-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-24",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 81.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "DH100",
+    "motores": [
+      "DH100"
+    ],
+    "referencias_oem": [
+      "9-11721-120-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-28",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 80.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "DA120,DA640",
+    "motores": [
+      "DA120",
+      "DA640"
+    ],
+    "referencias_oem": [
+      "9-11721-160-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-29",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 84.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "E110,D920,6GA1,6QA1",
+    "motores": [
+      "E110",
+      "D920",
+      "6GA1",
+      "6QA1"
+    ],
+    "referencias_oem": [
+      "9-11721-165-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-32",
+    "diametro_exterior_mm": 18.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 76.0,
+    "fabricante": "Isuzu",
+    "motores_texto": "BUS BU, CPA / E120,4 VALVES",
+    "motores": [
+      "BUS BU",
+      "CPA",
+      "E120"
+    ],
+    "referencias_oem": [
+      "9-11721-212-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGI-33",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 57.0,
+    "fabricante": "Isuzu",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "9-11721-601-0",
+      "9-94390-780-0"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGK-02",
+    "diametro_exterior_mm": 18.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 85.0,
+    "fabricante": "Komatsu",
+    "motores_texto": "D155A,D355A / 4D1556D155 4VALVES",
+    "motores": [
+      "D155A",
+      "D355A",
+      "4D1556D155 4VALVES"
+    ],
+    "referencias_oem": [
+      "6127-11-1341"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGK-10",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 52.0,
+    "fabricante": "Komatsu",
+    "motores_texto": "4D95,6D95  /12",
+    "motores": [
+      "4D95",
+      "6D95",
+      "12"
+    ],
+    "referencias_oem": [
+      "6204-19-1310",
+      "6204-19-1311"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGK-11",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 67.8,
+    "fabricante": "Komatsu",
+    "motores_texto": "6D125 4VALVES",
+    "motores": [
+      "6D125 4VALVES"
+    ],
+    "referencias_oem": [
+      "6150-12-1341"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGK-12",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 67.8,
+    "fabricante": "Komatsu",
+    "motores_texto": "6D125 4VALVES",
+    "motores": [
+      "6D125 4VALVES"
+    ],
+    "referencias_oem": [
+      "6150-12-1351"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGK-15",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 67.5,
+    "fabricante": "Komatsu",
+    "motores_texto": "S6D105",
+    "motores": [
+      "S6D105"
+    ],
+    "referencias_oem": [
+      "6136-19-1430"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGK-19",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 58.8,
+    "fabricante": "Komatsu",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [
+      "6221-19-1311"
+    ],
+    "pagina_pdf": 7
+  },
+  {
+    "codigo_mrk": "MGD-02R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Daihatsu",
+    "motores_texto": "AB, CB, CD, EB, EB10",
+    "motores": [
+      "AB",
+      "CB",
+      "CD",
+      "EB",
+      "EB10"
+    ],
+    "referencias_oem": [
+      "11124-87701"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGD-03R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 45.0,
+    "fabricante": "Daihatsu",
+    "motores_texto": "CL",
+    "motores": [
+      "CL"
+    ],
+    "referencias_oem": [
+      "11124-87702"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-07",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Honda",
+    "motores_texto": "EK,EP -300 -305",
+    "motores": [
+      "EK",
+      "EP -300 -305"
+    ],
+    "referencias_oem": [
+      "12204-689",
+      "12204-689"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-08",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Honda",
+    "motores_texto": "EK,EP,ES -300 -305",
+    "motores": [
+      "EK",
+      "EP",
+      "ES -300 -305"
+    ],
+    "referencias_oem": [
+      "12205-689",
+      "12205-689"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-09",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Honda",
+    "motores_texto": "EV,ES,B20,AB,AC,AD,EK -305",
+    "motores": [
+      "EV",
+      "ES",
+      "B20",
+      "AB",
+      "AC",
+      "AD",
+      "EK -305"
+    ],
+    "referencias_oem": [
+      "12204-PC6"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-12",
+    "diametro_exterior_mm": 12.1,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Honda",
+    "motores_texto": "EV,ES,EF,ER,EW -31012205-PE0-305 -31512205-PE0-315",
+    "motores": [
+      "EV",
+      "ES",
+      "EF",
+      "ER",
+      "EW -31012205-PE0-305 -31512205-PE0-315"
+    ],
+    "referencias_oem": [
+      "12205-657",
+      "12205-657"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-15",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 47.5,
+    "fabricante": "Honda",
+    "motores_texto": "D15B,D13,PT -305",
+    "motores": [
+      "D15B",
+      "D13",
+      "PT -305"
+    ],
+    "referencias_oem": [
+      "12204-PJ7"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-16",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 54.0,
+    "fabricante": "Honda",
+    "motores_texto": "D15B,D13,PT -003 -305",
+    "motores": [
+      "D15B",
+      "D13",
+      "PT -003 -305"
+    ],
+    "referencias_oem": [
+      "12205-PJ7",
+      "12205-PJ7"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-19",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 42.0,
+    "fabricante": "Honda",
+    "motores_texto": "-305",
+    "motores": [
+      "-305"
+    ],
+    "referencias_oem": [
+      "12204-PR3"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-20",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 47.5,
+    "fabricante": "Honda",
+    "motores_texto": "-305",
+    "motores": [
+      "-305"
+    ],
+    "referencias_oem": [
+      "12205-PR3"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-21",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 47.5,
+    "fabricante": "Honda",
+    "motores_texto": "-305",
+    "motores": [
+      "-305"
+    ],
+    "referencias_oem": [
+      "12204-PR7"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-22",
+    "diametro_exterior_mm": 11.0,
+    "diametro_interior_mm": 5.5,
+    "longitud_total_mm": 49.0,
+    "fabricante": "Honda",
+    "motores_texto": "-305",
+    "motores": [
+      "-305"
+    ],
+    "referencias_oem": [
+      "12205-PR7"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGO-31",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 6.6,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Honda",
+    "motores_texto": "ED,ER -300    (VGHM-A007) -305   (VGHM-A003)",
+    "motores": [
+      "ED",
+      "ER -300    (VGHM-A007) -305   (VGHM-A003)"
+    ],
+    "referencias_oem": [
+      "12204-PA6",
+      "12204-PA6"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGB-01",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Subaru",
+    "motores_texto": "EF10,EK21-23,EA82,ER27,EF12",
+    "motores": [
+      "EF10",
+      "EK21-23",
+      "EA82",
+      "ER27",
+      "EF12"
+    ],
+    "referencias_oem": [
+      "38090-2100"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGB-02R",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 55.0,
+    "fabricante": "Subaru",
+    "motores_texto": "EF10,EK21-23,EA82,ER27,EF12",
+    "motores": [
+      "EF10",
+      "EK21-23",
+      "EA82",
+      "ER27",
+      "EF12"
+    ],
+    "referencias_oem": [
+      "38091-2100",
+      "48091-1300"
+    ],
+    "pagina_pdf": 8
+  },
+  {
+    "codigo_mrk": "MGYR-01",
+    "diametro_exterior_mm": 13.0,
+    "diametro_interior_mm": 8.0,
+    "longitud_total_mm": 50.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-02",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 44.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-03",
+    "diametro_exterior_mm": 12.0,
+    "diametro_interior_mm": 7.0,
+    "longitud_total_mm": 48.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-04",
+    "diametro_exterior_mm": 14.0,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 58.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-05",
+    "diametro_exterior_mm": 22.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 86.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-06",
+    "diametro_exterior_mm": 25.0,
+    "diametro_interior_mm": 14.0,
+    "longitud_total_mm": 95.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-07",
+    "diametro_exterior_mm": 13.5,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 57.5,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-08",
+    "diametro_exterior_mm": 13.5,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 51.5,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-09",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 68.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-10",
+    "diametro_exterior_mm": 15.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 68.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-11",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 64.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-12",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 76.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-13",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 78.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-14",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 72.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-15",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 80.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-16",
+    "diametro_exterior_mm": 22.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 76.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-17",
+    "diametro_exterior_mm": 22.0,
+    "diametro_interior_mm": 14.0,
+    "longitud_total_mm": 94.5,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-18",
+    "diametro_exterior_mm": 25.0,
+    "diametro_interior_mm": 14.0,
+    "longitud_total_mm": 95.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-19",
+    "diametro_exterior_mm": 25.0,
+    "diametro_interior_mm": 14.0,
+    "longitud_total_mm": 130.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-20B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 59.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-21B",
+    "diametro_exterior_mm": 13.5,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 70.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-22B",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 70.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-23B",
+    "diametro_exterior_mm": 13.5,
+    "diametro_interior_mm": 9.0,
+    "longitud_total_mm": 78.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-24B",
+    "diametro_exterior_mm": 16.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 70.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-25B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 82.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-26B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 77.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-27B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 85.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-28B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 86.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-29B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 10.0,
+    "longitud_total_mm": 82.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-30B",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 76.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-31B",
+    "diametro_exterior_mm": 22.0,
+    "diametro_interior_mm": 12.0,
+    "longitud_total_mm": 76.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-32B",
+    "diametro_exterior_mm": 19.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 97.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 9
+  },
+  {
+    "codigo_mrk": "MGYR-33B",
+    "diametro_exterior_mm": 20.0,
+    "diametro_interior_mm": 11.0,
+    "longitud_total_mm": 85.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 10
+  },
+  {
+    "codigo_mrk": "MGYR-34B",
+    "diametro_exterior_mm": 22.0,
+    "diametro_interior_mm": 14.0,
+    "longitud_total_mm": 98.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 10
+  },
+  {
+    "codigo_mrk": "MGYR-35",
+    "diametro_exterior_mm": 25.0,
+    "diametro_interior_mm": 14.0,
+    "longitud_total_mm": 95.0,
+    "fabricante": "Universal",
+    "motores_texto": null,
+    "motores": [],
+    "referencias_oem": [],
+    "pagina_pdf": 10
+  }
+]

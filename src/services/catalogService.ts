@@ -770,14 +770,16 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     catalogo_origen: item.catalogo_origen 
       ? String(item.catalogo_origen) 
       : ((spec as any).marca_catalogo 
-          ? (String((spec as any).marca_catalogo).toUpperCase() === 'DOKURO' ? 'Dokuro' : String((spec as any).marca_catalogo))
+          ? (String((spec as any).marca_catalogo).toUpperCase() === 'DOKURO' ? 'Dokuro' : (String((spec as any).marca_catalogo).toUpperCase() === 'MRK' ? 'MRK' : String((spec as any).marca_catalogo)))
           : ((spec as any).codigo_rik 
               ? 'Rik'
-              : ((spec as any).codigo_dokuro 
-                  ? 'Dokuro' 
-                  : ((spec as any).codigo_taiho 
-                      ? 'Taiho' 
-                      : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('rik') ? 'Rik' : 'OEM'))))),
+              : ((spec as any).codigo_mrk
+                  ? 'MRK'
+                  : ((spec as any).codigo_dokuro 
+                      ? 'Dokuro' 
+                      : ((spec as any).codigo_taiho 
+                          ? 'Taiho' 
+                          : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('rik') ? 'Rik' : 'OEM')))))),
 
     diametro_cabeza_mm: item.diametro_cabeza_mm != null 
       ? Number(item.diametro_cabeza_mm) 
