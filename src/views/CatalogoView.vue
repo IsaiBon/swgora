@@ -1531,6 +1531,8 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
 
       if (b === 'dokuro' && (spec.codigo_dokuro || spec.codigo_catalogo)) return true
       if (b === 'rik' && (spec.codigo_rik || spec.marca_catalogo === 'RIK')) return true
+      if (b === 'npr' && (spec.codigo_npr || spec.marca_catalogo === 'NPR')) return true
+      if (b === 'mrk' && (spec.codigo_mrk || spec.marca_catalogo === 'MRK' || spec.catalogo === 'MRK' || (r.dimensiones as any)?.catalogo === 'MRK')) return true
       if (b === 'taiho' && spec.codigo_taiho) return true
 
       // 3. Equivalencias cruzadas
@@ -3631,11 +3633,11 @@ onUnmounted(() => {
               class="px-2.5 py-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none"
             >
               <option value="Todas las marcas">Todas las marcas</option>
-              <option value="Dokuro">Dokuro</option>
               <option value="Rik">Rik</option>
-              <option value="NDC">NDC</option>
-              <option value="Taiho">Taiho</option>
+              <option value="NPR">NPR</option>
+              <option value="MRK">MRK</option>
               <option value="Ajusa">Ajusa</option>
+              <option value="NDC">NDC</option>
               <option value="Pioneer">Pioneer</option>
             </select>
           </div>

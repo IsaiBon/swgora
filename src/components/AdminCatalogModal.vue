@@ -1126,11 +1126,11 @@ onUnmounted(() => {
                   class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 >
                   <option value="OEM">OEM Original</option>
-                  <option value="Dokuro">Dokuro (Japón)</option>
                   <option value="Rik">Rik / Riken (Japón)</option>
-                  <option value="Taiho">Taiho (Japón)</option>
-                  <option value="NDC">NDC Cojinetes (Japón)</option>
+                  <option value="NPR">NPR (Japón)</option>
+                  <option value="MRK">MRK Guías (Japón)</option>
                   <option value="Ajusa">Ajusa (España)</option>
+                  <option value="NDC">NDC Cojinetes (Japón)</option>
                   <option value="Pioneer">Pioneer (USA)</option>
                 </select>
               </div>
@@ -1297,13 +1297,12 @@ onUnmounted(() => {
                   v-model="eq.marca_alterna"
                   class="w-32 px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none"
                 >
-                  <option value="Dokuro">Dokuro</option>
                   <option value="Rik">Rik</option>
-
+                  <option value="NPR">NPR</option>
+                  <option value="MRK">MRK</option>
                   <option value="NDC">NDC</option>
                   <option value="Ajusa">Ajusa</option>
                   <option value="Pioneer">Pioneer</option>
-                  <option value="Taiho">Taiho</option>
                   <option value="Toto">Toto</option>
                   <option value="TIK">TIK</option>
                 </select>
