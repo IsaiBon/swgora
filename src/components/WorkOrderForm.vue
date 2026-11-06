@@ -13,6 +13,7 @@ import {
 } from '@/services/ordersService'
 import { clientesService, type Cliente, type ClientType } from '@/services/clientesService'
 import { catalogService, type CatalogProduct } from '@/services/catalogService'
+import { useCatalogStore } from '@/stores/catalog'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
 import { 
   Search, 
@@ -89,6 +90,63 @@ const vehicleYear = ref('')
 const engineNumber = ref('')
 const engineType = ref('')
 const observations = ref('')
+
+const catalogStore = useCatalogStore()
+const brandContainerRef = ref<HTMLElement | null>(null)
+const engineContainerRef = ref<HTMLElement | null>(null)
+const isBrandSuggestionsOpen = ref(false)
+const isEngineSuggestionsOpen = ref(false)
+
+const filteredBrandSuggestions = computed(() => {
+  const q = vehicleBrand.value.trim().toLowerCase()
+  const list = catalogStore.fabricantes || []
+  if (!q) return list.slice(0, 10).map(f => f.nombre)
+  return list
+    .filter(f => f.nombre.toLowerCase().includes(q))
+    .slice(0, 10)
+    .map(f => f.nombre)
+})
+
+const filteredEngineSuggestions = computed(() => {
+  const q = vehicleEngine.value.trim().toLowerCase()
+  const brandLower = vehicleBrand.value.trim().toLowerCase()
+  
+  let engines = catalogStore.motores || []
+  if (brandLower && catalogStore.fabricantes) {
+    const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === brandLower)
+    if (fab) {
+      const brandEngines = engines.filter(m => m.fabricante_id === fab.id)
+      if (brandEngines.length > 0) engines = brandEngines
+    }
+  }
+  
+  if (!q) return engines.slice(0, 12).map(m => m.codigo)
+  return engines
+    .filter(m => m.codigo.toLowerCase().includes(q) || (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)))
+    .slice(0, 12)
+    .map(m => m.codigo)
+})
+
+const selectBrandSuggestion = (brand: string) => {
+  vehicleBrand.value = brand
+  formErrors.value.vehicleBrand = false
+  isBrandSuggestionsOpen.value = false
+}
+
+const selectEngineSuggestion = (engine: string) => {
+  vehicleEngine.value = engine
+  formErrors.value.vehicleEngine = false
+  isEngineSuggestionsOpen.value = false
+}
+
+const handleClickOutsideVehicleDropdowns = (e: MouseEvent) => {
+  if (brandContainerRef.value && !brandContainerRef.value.contains(e.target as Node)) {
+    isBrandSuggestionsOpen.value = false
+  }
+  if (engineContainerRef.value && !engineContainerRef.value.contains(e.target as Node)) {
+    isEngineSuggestionsOpen.value = false
+  }
+}
 
 // Opciones estándar de medidas de rectificación (STD, 0.25, 0.50, 0.75, 1.00)
 const MEASURE_OPTIONS = ['STD', '0.25', '0.50', '0.75', '1.00'] as const
@@ -540,6 +598,10 @@ const addExcelPart = (partName: string) => {
 // Inicialización de la orden
 onMounted(async () => {
   document.addEventListener('click', handleClickOutsideClientSearch)
+  document.addEventListener('click', handleClickOutsideVehicleDropdowns)
+  if (!catalogStore.fabricantes || catalogStore.fabricantes.length === 0) {
+    catalogStore.initCatalog()
+  }
   const freshCatalog = await ordersService.getOperationsCatalogAsync()
   catalogProducts.value = await catalogService.getProducts()
   await loadAllClients()
@@ -578,6 +640,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutsideClientSearch)
+  document.removeEventListener('click', handleClickOutsideVehicleDropdowns)
 })
 
 const loadExistingOrder = (order: Order) => {
@@ -599,11 +662,19 @@ const loadExistingOrder = (order: Order) => {
   clientAddress.value = order.customerAddress || ''
   clientWorkshop.value = order.workshop || ''
   vehicleBrand.value = order.vehicleBrand || ''
-  vehicleEngine.value = order.engine || order.vehicleModel || order.engineType || ''
-  vehicleModel.value = order.vehicleModel || ''
+  // Limpiar recursión/duplicación previa de marca en motor (ej. "NISSAN NISSAN Z24" -> "Z24")
+  let rawEngine = (order.engine || order.vehicleModel || order.engineType || '').trim()
+  if (vehicleBrand.value) {
+    const brandLower = vehicleBrand.value.toLowerCase().trim()
+    while (rawEngine.toLowerCase().startsWith(brandLower)) {
+      rawEngine = rawEngine.slice(brandLower.length).trim()
+    }
+  }
+  vehicleEngine.value = rawEngine
+  vehicleModel.value = rawEngine
   vehicleYear.value = order.vehicleYear || ''
   engineNumber.value = order.engineNumber || ''
-  engineType.value = order.engineType || ''
+  engineType.value = rawEngine
   observations.value = order.observations || ''
   parts.value = order.parts ? JSON.parse(JSON.stringify(order.parts)) : []
   materials.value = order.materials ? JSON.parse(JSON.stringify(order.materials)) : []
@@ -870,6 +941,15 @@ const handleSaveOrder = async () => {
     const savedOperations = activeBilledOperations.value
     const isTallerista = selectedCustomerType.value === 'Tallerista' || !!clientWorkshop.value.trim()
 
+    const cleanBrand = vehicleBrand.value.trim()
+    let cleanEngine = vehicleEngine.value.trim()
+    if (cleanBrand) {
+      const brandLower = cleanBrand.toLowerCase()
+      while (cleanEngine.toLowerCase().startsWith(brandLower)) {
+        cleanEngine = cleanEngine.slice(brandLower.length).trim()
+      }
+    }
+
     const orderPayload: Omit<Order, 'id'> = {
       orderNumber: orderNumber.value,
       date: orderDate.value,
@@ -882,11 +962,11 @@ const handleSaveOrder = async () => {
       customerPhone: clientPhone.value.trim(),
       customerAddress: clientAddress.value.trim(),
       workshop: clientWorkshop.value.trim(),
-      vehicleBrand: vehicleBrand.value.trim(),
-      vehicleModel: vehicleEngine.value.trim(),
+      vehicleBrand: cleanBrand,
+      vehicleModel: cleanEngine,
       vehicleYear: vehicleYear.value.trim(),
       engineNumber: engineNumber.value.trim(),
-      engineType: vehicleEngine.value.trim(),
+      engineType: cleanEngine,
       observations: observations.value.trim(),
       operations: savedOperations,
       parts: parts.value.filter(p => p.quantity > 0 && p.unitPrice >= 0),
@@ -900,9 +980,9 @@ const handleSaveOrder = async () => {
       total: totalOrder.value,
       itemsCount: savedOperations.length + parts.value.length + materials.value.length,
       component: savedOperations[0]?.category || 'Culata',
-      engine: vehicleEngine.value.trim() 
-        ? `${vehicleBrand.value.trim() ? vehicleBrand.value.trim() + ' ' : ''}${vehicleEngine.value.trim()}`.trim() 
-        : (vehicleBrand.value.trim() || 'General')
+      engine: cleanEngine
+        ? `${cleanBrand ? cleanBrand + ' ' : ''}${cleanEngine}`.trim()
+        : (cleanBrand || 'General')
     }
 
     let saved: Order
@@ -1293,51 +1373,110 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           </h2>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="space-y-1">
+            <!-- Selector reactivo con Autocompletado de Marca -->
+            <div class="space-y-1 relative" ref="brandContainerRef">
               <label class="text-[11px] font-semibold flex items-center justify-between" :class="formErrors.vehicleBrand ? 'text-rose-600 font-bold' : 'text-slate-500'">
                 <span>Marca *</span>
                 <span v-if="formErrors.vehicleBrand" class="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
                   <AlertCircle class="w-3 h-3" /> Requerido
                 </span>
               </label>
-              <input
-                v-model="vehicleBrand"
-                @input="formErrors.vehicleBrand = false"
-                type="text"
-                placeholder="Ej. Toyota, Nissan, Cummins"
-                :class="[
-                  'w-full px-3 py-1.5 rounded-md text-xs font-medium transition',
-                  formErrors.vehicleBrand
-                    ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
-                    : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
-                ]"
-              />
+              <div class="relative">
+                <input
+                  v-model="vehicleBrand"
+                  @input="formErrors.vehicleBrand = false; isBrandSuggestionsOpen = true"
+                  @focus="isBrandSuggestionsOpen = true"
+                  type="text"
+                  placeholder="Ej. Toyota, Nissan, Cummins"
+                  :class="[
+                    'w-full px-3 py-1.5 pr-7 rounded-md text-xs font-medium transition',
+                    formErrors.vehicleBrand
+                      ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
+                      : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                  ]"
+                />
+                <button
+                  type="button"
+                  @click="isBrandSuggestionsOpen = !isBrandSuggestionsOpen"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 transition"
+                  tabindex="-1"
+                >
+                  <ChevronDown class="w-3.5 h-3.5" />
+                </button>
+              </div>
               <p v-if="formErrors.vehicleBrand" class="text-[10px] text-rose-600 font-semibold mt-0.5">
                 Ingresa la marca del vehículo o motor.
               </p>
+
+              <!-- Dropdown de Sugerencias de Marca -->
+              <div
+                v-if="isBrandSuggestionsOpen && filteredBrandSuggestions.length > 0"
+                class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-slate-200 z-50 max-h-48 overflow-y-auto py-1 divide-y divide-slate-50"
+              >
+                <button
+                  v-for="b in filteredBrandSuggestions"
+                  :key="b"
+                  type="button"
+                  @click="selectBrandSuggestion(b)"
+                  class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-cyan-50 hover:text-[#038391] font-semibold transition flex items-center justify-between"
+                >
+                  <span>{{ b }}</span>
+                  <span class="text-[10px] text-slate-400 font-normal">Marca</span>
+                </button>
+              </div>
             </div>
-            <div class="space-y-1">
+
+            <!-- Selector reactivo con Autocompletado de Motor -->
+            <div class="space-y-1 relative" ref="engineContainerRef">
               <label class="text-[11px] font-semibold flex items-center justify-between" :class="formErrors.vehicleEngine ? 'text-rose-600 font-bold' : 'text-slate-500'">
                 <span>Motor *</span>
                 <span v-if="formErrors.vehicleEngine" class="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
                   <AlertCircle class="w-3 h-3" /> Requerido
                 </span>
               </label>
-              <input
-                v-model="vehicleEngine"
-                @input="formErrors.vehicleEngine = false"
-                type="text"
-                placeholder="Ej. 3L, 22R, Z24, 1KD, ISX15"
-                :class="[
-                  'w-full px-3 py-1.5 rounded-md text-xs font-medium transition',
-                  formErrors.vehicleEngine
-                    ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
-                    : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
-                ]"
-              />
+              <div class="relative">
+                <input
+                  v-model="vehicleEngine"
+                  @input="formErrors.vehicleEngine = false; isEngineSuggestionsOpen = true"
+                  @focus="isEngineSuggestionsOpen = true"
+                  type="text"
+                  placeholder="Ej. 3L, 22R, Z24, 1KD, ISX15"
+                  :class="[
+                    'w-full px-3 py-1.5 pr-7 rounded-md text-xs font-medium transition',
+                    formErrors.vehicleEngine
+                      ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
+                      : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                  ]"
+                />
+                <button
+                  type="button"
+                  @click="isEngineSuggestionsOpen = !isEngineSuggestionsOpen"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 transition"
+                  tabindex="-1"
+                >
+                  <ChevronDown class="w-3.5 h-3.5" />
+                </button>
+              </div>
               <p v-if="formErrors.vehicleEngine" class="text-[10px] text-rose-600 font-semibold mt-0.5">
                 Ingresa el código o tipo de motor.
               </p>
+
+              <!-- Dropdown de Sugerencias de Motor -->
+              <div
+                v-if="isEngineSuggestionsOpen && filteredEngineSuggestions.length > 0"
+                class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-slate-200 z-50 max-h-48 overflow-y-auto py-1 divide-y divide-slate-50"
+              >
+                <button
+                  v-for="m in filteredEngineSuggestions"
+                  :key="m"
+                  type="button"
+                  @click="selectEngineSuggestion(m)"
+                  class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-cyan-50 hover:text-[#038391] font-semibold transition flex items-center justify-between"
+                >
+                  <span class="font-mono font-bold">{{ m }}</span>
+                  <span class="text-[10px] text-slate-400 font-normal">Código Motor</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

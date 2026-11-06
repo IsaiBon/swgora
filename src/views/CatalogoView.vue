@@ -441,19 +441,24 @@ const filterGuiaDiamInt = ref<number | undefined>(undefined)
 const filterGuiaDiamExt = ref<number | undefined>(undefined)
 const filterGuiaLargo = ref<number | undefined>(undefined)
 
+// Validadores robustos para filtros de medida dimensional
+const isFilterActive = (val: unknown): val is number => {
+  return val !== undefined && val !== null && val !== '' && !isNaN(Number(val)) && Number(val) > 0
+}
+
+const isFilterStringActive = (val: unknown): boolean => {
+  return val !== undefined && val !== null && String(val).trim().length > 0
+}
+
 // Contador de filtros de medida activos
 const activeMeasurementsCount = computed(() => {
   let count = 0
   if (selectedComponent.value) {
     if (selectedComponent.value.id === 'ajuste_valvula') {
-      count += [filterSelloDiamInt.value, filterSelloDiamExt.value, filterSelloAltura.value].filter(v => v !== undefined && v !== null).length
+      count += [filterSelloDiamInt.value, filterSelloDiamExt.value, filterSelloAltura.value].filter(isFilterActive).length
     } else if (selectedComponent.value.id === 'valvula') {
-      count += [
-        filterValvulaHongo.value, 
-        filterValvulaVastago.value, 
-        filterValvulaAltura.value,
-        filterValvulaCunero.value || undefined
-      ].filter(v => v !== undefined && v !== null).length
+      count += [filterValvulaHongo.value, filterValvulaVastago.value, filterValvulaAltura.value].filter(isFilterActive).length
+      if (isFilterStringActive(filterValvulaCunero.value)) count += 1
     } else if (selectedComponent.value.id === 'anillos_motor') {
       count += [
         filterAnilloDiametro.value, 
@@ -465,10 +470,10 @@ const activeMeasurementsCount = computed(() => {
         filterAnilloRadial3.value,
         filterAnilloGrosorAceite.value, 
         filterAnilloRadialAceite.value
-      ].filter(v => v !== undefined && v !== null).length
+      ].filter(isFilterActive).length
     } else if (selectedComponent.value.id === 'tornillos_culata') {
+      if (isFilterStringActive(filterPernoMedidaRosca.value)) count += 1
       count += [
-        filterPernoMedidaRosca.value || undefined,
         filterPernoGrosor.value,
         filterPernoPasoRosca.value,
         filterPernoLongitud.value,
@@ -476,23 +481,23 @@ const activeMeasurementsCount = computed(() => {
         filterPernoPasoRosca1.value,
         filterPernoLongitud1.value,
         filterPernoLongitud2.value
-      ].filter(v => v !== undefined && v !== null).length
+      ].filter(isFilterActive).length
     } else if (selectedComponent.value.id === 'casqueteria' || selectedComponent.value.category === 'Casquetería') {
+      if (isFilterStringActive(filterCasqueteTipo.value)) count += 1
       count += [
-        filterCasqueteTipo.value || undefined,
         filterCasqueteShaft.value,
         filterCasqueteHousing.value,
         filterCasqueteTWall.value,
         filterCasqueteLength.value
-      ].filter(v => v !== undefined && v !== null).length
+      ].filter(isFilterActive).length
     } else if (selectedComponent.value.id === 'guias_valvula' || selectedComponent.value.category === 'Guías') {
+      if (isFilterStringActive(filterGuiaPosicion.value)) count += 1
       count += [
-        filterGuiaPosicion.value || undefined,
         filterGuiaSet.value,
         filterGuiaDiamInt.value,
         filterGuiaDiamExt.value,
         filterGuiaLargo.value
-      ].filter(v => v !== undefined && v !== null).length
+      ].filter(isFilterActive).length
     }
   }
   // Sumar filtros dinámicos activos
@@ -670,6 +675,9 @@ const handleSelectBrand = async (fab: Fabricante) => {
   selectedMotor.value = null
   motorInput.value = ''
 
+  // Limpiar filtros dimensionales para garantizar catálogo limpio en la nueva marca
+  resetMeasurementsFilters()
+
   await catalogStore.selectFabricante(fab.id)
 
   if (selectedComponent.value) {
@@ -797,6 +805,9 @@ const handleSelectMotor = async (mot: Motor) => {
   motorInput.value = mot.codigo
   isMotorOpen.value = false
 
+  // Limpiar filtros dimensionales previos para el nuevo motor
+  resetMeasurementsFilters()
+
   await catalogStore.selectMotor(mot.id)
 
   // Autoseleccionar marca si estaba vacía
@@ -873,6 +884,9 @@ const handleSelectComponent = async (comp: ComponentGroup) => {
   componentInput.value = comp.title
   isComponentOpen.value = false
   activeViewTab.value = 'repuestos'
+
+  // Limpiar filtros dimensionales al alternar familias de componentes
+  resetMeasurementsFilters()
 
   // Si hay motor seleccionado, cargar repuestos del motor
   if (selectedMotor.value) {
@@ -1221,28 +1235,28 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
 
     // 2. Filtros de medidas dimensionales específicas (con Tolerancia por filtro o universal)
     if (compId === 'ajuste_valvula') {
-      if (filterSelloDiamInt.value !== undefined && filterSelloDiamInt.value !== null) {
+      if (isFilterActive(filterSelloDiamInt.value)) {
         const tolSelloDiamInt = getTol('selloDiamInt')
         list = list.filter(r => r.diametro_interior_mm && Math.abs(r.diametro_interior_mm - (filterSelloDiamInt.value || 0)) <= tolSelloDiamInt)
       }
-      if (filterSelloDiamExt.value !== undefined && filterSelloDiamExt.value !== null) {
+      if (isFilterActive(filterSelloDiamExt.value)) {
         const tolSelloDiamExt = getTol('selloDiamExt')
         list = list.filter(r => r.diametro_exterior_mm && Math.abs(r.diametro_exterior_mm - (filterSelloDiamExt.value || 0)) <= tolSelloDiamExt)
       }
-      if (filterSelloAltura.value !== undefined && filterSelloAltura.value !== null) {
+      if (isFilterActive(filterSelloAltura.value)) {
         const tolSelloAltura = getTol('selloAltura')
         list = list.filter(r => r.altura_mm && Math.abs(r.altura_mm - (filterSelloAltura.value || 0)) <= tolSelloAltura)
       }
     } else if (compId === 'valvula') {
-      if (filterValvulaHongo.value !== undefined && filterValvulaHongo.value !== null) {
+      if (isFilterActive(filterValvulaHongo.value)) {
         const tolValvulaHongo = getTol('valvulaHongo')
         list = list.filter(r => r.diametro_cabeza_mm && Math.abs(r.diametro_cabeza_mm - (filterValvulaHongo.value || 0)) <= tolValvulaHongo)
       }
-      if (filterValvulaVastago.value !== undefined && filterValvulaVastago.value !== null) {
+      if (isFilterActive(filterValvulaVastago.value)) {
         const tolValvulaVastago = getTol('valvulaVastago')
         list = list.filter(r => r.diametro_vastago_mm && Math.abs(r.diametro_vastago_mm - (filterValvulaVastago.value || 0)) <= tolValvulaVastago)
       }
-      if (filterValvulaAltura.value !== undefined && filterValvulaAltura.value !== null) {
+      if (isFilterActive(filterValvulaAltura.value)) {
         const tolValvulaAltura = getTol('valvulaAltura')
         list = list.filter(r => r.longitud_total_mm && Math.abs(r.longitud_total_mm - (filterValvulaAltura.value || 0)) <= tolValvulaAltura)
       }
@@ -1261,7 +1275,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       }
     } else if (compId === 'anillos_motor') {
       // Diámetro (la primera siempre)
-      if (filterAnilloDiametro.value !== undefined && filterAnilloDiametro.value !== null) {
+      if (isFilterActive(filterAnilloDiametro.value)) {
         const tolAnilloDiametro = getTol('anilloDiametro')
         list = list.filter(r => {
           const d1 = getPartRingsList(r)[0]?.d1 ?? r.diametro_cilindro_mm
@@ -1269,7 +1283,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         })
       }
       // Anillo 1: Grosor y Altura
-      if (filterAnilloGrosor1.value !== undefined && filterAnilloGrosor1.value !== null) {
+      if (isFilterActive(filterAnilloGrosor1.value)) {
         const tol = getTol('anilloGrosor1')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1277,7 +1291,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return h != null && Math.abs(h - (filterAnilloGrosor1.value || 0)) <= tol
         })
       }
-      if (filterAnilloRadial1.value !== undefined && filterAnilloRadial1.value !== null) {
+      if (isFilterActive(filterAnilloRadial1.value)) {
         const tol = getTol('anilloRadial1')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1286,7 +1300,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         })
       }
       // Anillo 2: Grosor y Altura
-      if (filterAnilloGrosor2.value !== undefined && filterAnilloGrosor2.value !== null) {
+      if (isFilterActive(filterAnilloGrosor2.value)) {
         const tol = getTol('anilloGrosor2')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1294,7 +1308,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return h != null && Math.abs(h - (filterAnilloGrosor2.value || 0)) <= tol
         })
       }
-      if (filterAnilloRadial2.value !== undefined && filterAnilloRadial2.value !== null) {
+      if (isFilterActive(filterAnilloRadial2.value)) {
         const tol = getTol('anilloRadial2')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1303,7 +1317,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         })
       }
       // Anillo 3: Grosor y Altura (para sets con 4 o más anillos)
-      if (filterAnilloGrosor3.value !== undefined && filterAnilloGrosor3.value !== null) {
+      if (isFilterActive(filterAnilloGrosor3.value)) {
         const tol = getTol('anilloGrosor3')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1314,7 +1328,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return false
         })
       }
-      if (filterAnilloRadial3.value !== undefined && filterAnilloRadial3.value !== null) {
+      if (isFilterActive(filterAnilloRadial3.value)) {
         const tol = getTol('anilloRadial3')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1326,7 +1340,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         })
       }
       // Anillo de aceite: Grosor y Altura (el último siempre)
-      if (filterAnilloGrosorAceite.value !== undefined && filterAnilloGrosorAceite.value !== null) {
+      if (isFilterActive(filterAnilloGrosorAceite.value)) {
         const tol = getTol('anilloGrosorAceite')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1334,7 +1348,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return oilRing?.h1 != null && Math.abs(oilRing.h1 - (filterAnilloGrosorAceite.value || 0)) <= tol
         })
       }
-      if (filterAnilloRadialAceite.value !== undefined && filterAnilloRadialAceite.value !== null) {
+      if (isFilterActive(filterAnilloRadialAceite.value)) {
         const tol = getTol('anilloRadialAceite')
         list = list.filter(r => {
           const rings = getPartRingsList(r)
@@ -1346,7 +1360,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       if (filterPernoMedidaRosca.value) {
         list = list.filter(r => r.medida_rosca?.toLowerCase() === filterPernoMedidaRosca.value.toLowerCase())
       }
-      if (filterPernoGrosor.value !== undefined && filterPernoGrosor.value !== null) {
+      if (isFilterActive(filterPernoGrosor.value)) {
         const tolPernoGrosor = getTol('pernoGrosor')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1354,26 +1368,26 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return d != null && !isNaN(d) && Math.abs(d - (filterPernoGrosor.value || 0)) <= tolPernoGrosor
         })
       }
-      if (filterPernoPasoRosca.value !== undefined && filterPernoPasoRosca.value !== null) {
+      if (isFilterActive(filterPernoPasoRosca.value)) {
         const tolPernoPasoRosca = getTol('pernoPasoRosca')
         list = list.filter(r => r.paso_rosca_mm && Math.abs(r.paso_rosca_mm - (filterPernoPasoRosca.value || 0)) <= tolPernoPasoRosca)
       }
-      if (filterPernoLongitud.value !== undefined && filterPernoLongitud.value !== null) {
+      if (isFilterActive(filterPernoLongitud.value)) {
         const tolPernoLongitud = getTol('pernoLongitud')
         list = list.filter(r => (r.longitud_perno_mm || r.longitud_total_mm) && Math.abs(((r.longitud_perno_mm || r.longitud_total_mm) || 0) - (filterPernoLongitud.value || 0)) <= tolPernoLongitud)
       }
-      if (filterPernoCantidad.value !== undefined && filterPernoCantidad.value !== null) {
+      if (isFilterActive(filterPernoCantidad.value)) {
         list = list.filter(r => r.cantidad_piezas === filterPernoCantidad.value)
       }
-      if (filterPernoPasoRosca1.value !== undefined && filterPernoPasoRosca1.value !== null) {
+      if (isFilterActive(filterPernoPasoRosca1.value)) {
         const tolPernoPasoRosca1 = getTol('pernoPasoRosca1')
         list = list.filter(r => r.paso_rosca1_mm && Math.abs(r.paso_rosca1_mm - (filterPernoPasoRosca1.value || 0)) <= tolPernoPasoRosca1)
       }
-      if (filterPernoLongitud1.value !== undefined && filterPernoLongitud1.value !== null) {
+      if (isFilterActive(filterPernoLongitud1.value)) {
         const tolPernoLongitud1 = getTol('pernoLongitud1')
         list = list.filter(r => r.longitud1_mm && Math.abs(r.longitud1_mm - (filterPernoLongitud1.value || 0)) <= tolPernoLongitud1)
       }
-      if (filterPernoLongitud2.value !== undefined && filterPernoLongitud2.value !== null) {
+      if (isFilterActive(filterPernoLongitud2.value)) {
         const tolPernoLongitud2 = getTol('pernoLongitud2')
         list = list.filter(r => r.longitud2_mm && Math.abs(r.longitud2_mm - (filterPernoLongitud2.value || 0)) <= tolPernoLongitud2)
       }
@@ -1393,7 +1407,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return t.includes(tipo) || oem.includes(tipo) || nom.includes(tipo) || eqs.includes(tipo)
         })
       }
-      if (filterCasqueteShaft.value !== undefined && filterCasqueteShaft.value !== null) {
+      if (isFilterActive(filterCasqueteShaft.value)) {
         const tolShaft = getTol('casqueteShaft')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1401,7 +1415,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return s != null && Math.abs(Number(s) - (filterCasqueteShaft.value || 0)) <= tolShaft
         })
       }
-      if (filterCasqueteHousing.value !== undefined && filterCasqueteHousing.value !== null) {
+      if (isFilterActive(filterCasqueteHousing.value)) {
         const tolHousing = getTol('casqueteHousing')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1409,7 +1423,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return h != null && Math.abs(Number(h) - (filterCasqueteHousing.value || 0)) <= tolHousing
         })
       }
-      if (filterCasqueteTWall.value !== undefined && filterCasqueteTWall.value !== null) {
+      if (isFilterActive(filterCasqueteTWall.value)) {
         const tolTWall = getTol('casqueteTWall')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1417,7 +1431,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return w != null && Math.abs(Number(w) - (filterCasqueteTWall.value || 0)) <= tolTWall
         })
       }
-      if (filterCasqueteLength.value !== undefined && filterCasqueteLength.value !== null) {
+      if (isFilterActive(filterCasqueteLength.value)) {
         const tolLength = getTol('casqueteLength')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1435,14 +1449,14 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return p.includes(pos)
         })
       }
-      if (filterGuiaSet.value !== undefined && filterGuiaSet.value !== null) {
+      if (isFilterActive(filterGuiaSet.value)) {
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
           const s = dims.set ?? dims.juego ?? r.cantidad_piezas
           return s != null && Number(s) === Number(filterGuiaSet.value)
         })
       }
-      if (filterGuiaDiamInt.value !== undefined && filterGuiaDiamInt.value !== null) {
+      if (isFilterActive(filterGuiaDiamInt.value)) {
         const tol = getTol('guiaDiamInt')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1450,7 +1464,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return val != null && Math.abs(Number(val) - (filterGuiaDiamInt.value || 0)) <= tol
         })
       }
-      if (filterGuiaDiamExt.value !== undefined && filterGuiaDiamExt.value !== null) {
+      if (isFilterActive(filterGuiaDiamExt.value)) {
         const tol = getTol('guiaDiamExt')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}
@@ -1458,7 +1472,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return val != null && Math.abs(Number(val) - (filterGuiaDiamExt.value || 0)) <= tol
         })
       }
-      if (filterGuiaLargo.value !== undefined && filterGuiaLargo.value !== null) {
+      if (isFilterActive(filterGuiaLargo.value)) {
         const tol = getTol('guiaLargo')
         list = list.filter(r => {
           const dims = (r.dimensiones as any) || {}

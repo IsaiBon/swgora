@@ -204,6 +204,43 @@ const paramValues = ref<Record<string, any>>({})
 const formErrors = ref<Record<string, string>>({})
 const isSubmittingPart = ref(false)
 
+// Catálogo reactivo y persistente de marcas alternas
+const DEFAULT_ALT_BRANDS = ['Dokuro', 'Rik', 'NPR', 'MRK', 'NDC', 'Ajusa', 'Pioneer', 'Toto', 'TIK', 'Hastings', 'Mahle', 'Cofap', 'Taiho', 'Federal Mogul']
+const availableAltBrands = ref<string[]>([...DEFAULT_ALT_BRANDS])
+const showNewBrandInput = ref(false)
+const newBrandInputName = ref('')
+
+const loadStoredAltBrands = () => {
+  try {
+    const raw = localStorage.getItem('swgora_marcas_alternas_v1')
+    if (raw) {
+      const custom: string[] = JSON.parse(raw)
+      const merged = Array.from(new Set([...DEFAULT_ALT_BRANDS, ...custom]))
+      availableAltBrands.value = merged
+    }
+  } catch {}
+}
+
+const handleAddNewAltBrand = () => {
+  const brand = newBrandInputName.value.trim()
+  if (!brand) return
+  if (!availableAltBrands.value.some(b => b.toLowerCase() === brand.toLowerCase())) {
+    availableAltBrands.value.push(brand)
+    try {
+      const customOnly = availableAltBrands.value.filter(b => !DEFAULT_ALT_BRANDS.includes(b))
+      localStorage.setItem('swgora_marcas_alternas_v1', JSON.stringify(customOnly))
+    } catch {}
+  }
+  // Asignar a la última fila abierta si existe
+  if (equivalencias.value.length > 0) {
+    equivalencias.value[equivalencias.value.length - 1].marca_alterna = brand
+  }
+  newBrandInputName.value = ''
+  showNewBrandInput.value = false
+}
+
+loadStoredAltBrands()
+
 // Equivalencias alternas del repuesto
 const equivalencias = ref<Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>>([
   { marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }
@@ -302,15 +339,49 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     motorSearchQuery.value = ''
   }
 
-  // Identificar el grupo correspondiente
-  const catLower = (part.categoria || '').toLowerCase()
-  const subLower = (part.subsistema || '').toLowerCase()
-  const matchedGroup = catalogStore.grupos.find(g => 
-    g.categoria.toLowerCase() === catLower ||
-    g.codigo.toLowerCase() === catLower ||
-    g.nombre.toLowerCase().includes(catLower) ||
-    g.subsistema.toLowerCase() === subLower
-  ) || catalogStore.grupos[0]
+  // Identificar el grupo correspondiente con coincidencia estricta y semántica (sin recurrir laxamente a subsistema)
+  const catClean = (part.categoria || '').toLowerCase().trim()
+  const nameClean = (part.nombre || '').toLowerCase().trim()
+  const oemClean = (part.codigo_oem || '').toLowerCase().trim()
+
+  // 1. Coincidencia exacta por código o categoría del grupo
+  let matchedGroup = catalogStore.grupos.find(g => 
+    g.codigo.toLowerCase() === catClean ||
+    g.categoria.toLowerCase() === catClean
+  )
+
+  // 2. Coincidencia por subcadena de categoría o código
+  if (!matchedGroup) {
+    matchedGroup = catalogStore.grupos.find(g => {
+      const gCode = g.codigo.toLowerCase()
+      const gCat = g.categoria.toLowerCase()
+      return catClean.includes(gCat) || gCat.includes(catClean) || catClean.includes(gCode) || gCode.includes(catClean)
+    })
+  }
+
+  // 3. Coincidencia semántica por palabras clave en nombre o código OEM
+  if (!matchedGroup) {
+    if (nameClean.includes('anillo') || catClean.includes('anillo') || oemClean.startsWith('rk-') || oemClean.includes('rik')) {
+      matchedGroup = catalogStore.grupos.find(g => g.codigo === 'anillos_motor' || g.categoria.toLowerCase() === 'anillos')
+    } else if (nameClean.includes('valvula') || catClean.includes('valvula')) {
+      matchedGroup = catalogStore.grupos.find(g => g.codigo === 'valvula' || g.categoria.toLowerCase() === 'válvulas')
+    } else if (nameClean.includes('sello') || nameClean.includes('retén') || nameClean.includes('reten') || catClean.includes('sello')) {
+      matchedGroup = catalogStore.grupos.find(g => g.codigo === 'ajuste_valvula' || g.categoria.toLowerCase() === 'sellos')
+    } else if (nameClean.includes('tornillo') || nameClean.includes('perno') || catClean.includes('perno')) {
+      matchedGroup = catalogStore.grupos.find(g => g.codigo === 'tornillos_culata' || g.categoria.toLowerCase() === 'pernos')
+    } else if (nameClean.includes('camisa') || catClean.includes('camisa')) {
+      matchedGroup = catalogStore.grupos.find(g => g.codigo === 'camisas' || g.categoria.toLowerCase() === 'camisas')
+    } else if (nameClean.includes('cojinete') || nameClean.includes('casquete') || catClean.includes('casquetería') || catClean.includes('casqueteria')) {
+      matchedGroup = catalogStore.grupos.find(g => g.codigo === 'casqueteria' || g.categoria.toLowerCase() === 'casquetería')
+    }
+  }
+
+  // 4. Coincidencia por nombre descriptivo
+  if (!matchedGroup) {
+    matchedGroup = catalogStore.grupos.find(g => g.nombre.toLowerCase().includes(catClean) || nameClean.includes(g.nombre.toLowerCase()))
+  }
+
+  matchedGroup = matchedGroup || catalogStore.grupos[0]
 
   if (matchedGroup) {
     selectedGroupCode.value = matchedGroup.codigo
@@ -336,6 +407,23 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   if (part.espesor_anillo1_mm != null) loadedParams.espesor_anillo1_mm = part.espesor_anillo1_mm
   if (part.espesor_anillo2_mm != null) loadedParams.espesor_anillo2_mm = part.espesor_anillo2_mm
   if (part.espesor_aceite_mm != null) loadedParams.espesor_aceite_mm = part.espesor_aceite_mm
+
+  // Desempaquetar array `anillos` de dimensiones si existe
+  const ringItems = Array.isArray((part.dimensiones as any)?.anillos) ? (part.dimensiones as any).anillos : []
+  if (ringItems.length > 0) {
+    if (loadedParams.diametro_cilindro_mm == null && ringItems[0]?.d1 != null) loadedParams.diametro_cilindro_mm = ringItems[0].d1
+    if (loadedParams.espesor_anillo1_mm == null && ringItems[0]?.h1 != null) loadedParams.espesor_anillo1_mm = ringItems[0].h1
+    if (loadedParams.espesor_anillo2_mm == null && ringItems[1]?.h1 != null) loadedParams.espesor_anillo2_mm = ringItems[1].h1
+    if (loadedParams.espesor_aceite_mm == null && ringItems[ringItems.length - 1]?.h1 != null) loadedParams.espesor_aceite_mm = ringItems[ringItems.length - 1].h1
+
+    loadedParams.altura_radial1_mm = ringItems[0]?.a1 ?? (part.dimensiones as any)?.espesor_radial1_mm ?? null
+    loadedParams.altura_radial2_mm = ringItems[1]?.a1 ?? (part.dimensiones as any)?.espesor_radial2_mm ?? null
+    loadedParams.altura_radial_aceite_mm = ringItems[ringItems.length - 1]?.a1 ?? (part.dimensiones as any)?.espesor_radial_aceite_mm ?? null
+  } else {
+    loadedParams.altura_radial1_mm = (part.dimensiones as any)?.espesor_radial1_mm ?? (part.dimensiones as any)?.altura_radial1_mm ?? null
+    loadedParams.altura_radial2_mm = (part.dimensiones as any)?.espesor_radial2_mm ?? (part.dimensiones as any)?.altura_radial2_mm ?? null
+    loadedParams.altura_radial_aceite_mm = (part.dimensiones as any)?.espesor_radial_aceite_mm ?? (part.dimensiones as any)?.altura_radial_aceite_mm ?? null
+  }
 
   if (part.tipo_cojinete != null) loadedParams.tipo_cojinete = part.tipo_cojinete
   if (part.diametro_munon_mm != null) loadedParams.diametro_munon_mm = part.diametro_munon_mm
@@ -378,8 +466,11 @@ const handleSavePart = async () => {
       eq => eq.marca_alterna && eq.codigo_alterno.trim().length > 0
     )
 
-    // Dimensiones dinámicas limpias
-    const dimensionesPayload: Record<string, any> = {}
+    // Dimensiones dinámicas limpias preservando cotas preexistentes
+    const prevDimensions = (editingPartId.value && props.editPart?.dimensiones) ? { ...(props.editPart.dimensiones as any) } : {}
+    const dimensionesPayload: Record<string, any> = {
+      ...prevDimensions
+    }
     if (activeGroup.value) {
       for (const p of activeGroup.value.parametros) {
         const val = paramValues.value[p.clave]
@@ -387,6 +478,39 @@ const handleSavePart = async () => {
           dimensionesPayload[p.clave] = p.tipo_dato === 'numero' ? Number(val) : val
         }
       }
+    }
+
+    // Sincronizar cotas radiales y array `anillos` para familias de anillos
+    const isRingsGroup = activeGroup.value?.codigo === 'anillos_motor' || (activeGroup.value?.categoria || '').toLowerCase() === 'anillos'
+    if (isRingsGroup) {
+      const d = dimensionesPayload.diametro_cilindro_mm != null 
+        ? Number(dimensionesPayload.diametro_cilindro_mm) 
+        : (props.editPart?.diametro_cilindro_mm != null ? Number(props.editPart.diametro_cilindro_mm) : null)
+
+      const prevRings = Array.isArray(prevDimensions.anillos) ? prevDimensions.anillos : []
+      const r1_a1 = paramValues.value.altura_radial1_mm != null && paramValues.value.altura_radial1_mm !== '' 
+        ? Number(paramValues.value.altura_radial1_mm) 
+        : (prevRings[0]?.a1 ?? prevDimensions.espesor_radial1_mm ?? null)
+      const r2_a1 = paramValues.value.altura_radial2_mm != null && paramValues.value.altura_radial2_mm !== '' 
+        ? Number(paramValues.value.altura_radial2_mm) 
+        : (prevRings[1]?.a1 ?? prevDimensions.espesor_radial2_mm ?? null)
+      const roil_a1 = paramValues.value.altura_radial_aceite_mm != null && paramValues.value.altura_radial_aceite_mm !== '' 
+        ? Number(paramValues.value.altura_radial_aceite_mm) 
+        : (prevRings[prevRings.length - 1]?.a1 ?? prevDimensions.espesor_radial_aceite_mm ?? null)
+
+      const h1_val = dimensionesPayload.espesor_anillo1_mm != null ? Number(dimensionesPayload.espesor_anillo1_mm) : (prevRings[0]?.h1 ?? null)
+      const h2_val = dimensionesPayload.espesor_anillo2_mm != null ? Number(dimensionesPayload.espesor_anillo2_mm) : (prevRings[1]?.h1 ?? null)
+      const hoil_val = dimensionesPayload.espesor_aceite_mm != null ? Number(dimensionesPayload.espesor_aceite_mm) : (prevRings[prevRings.length - 1]?.h1 ?? null)
+
+      dimensionesPayload.anillos = [
+        { posicion: 'Anillo 1', d1: d, h1: h1_val, a1: r1_a1 },
+        { posicion: 'Anillo 2', d1: d, h1: h2_val, a1: r2_a1 },
+        { posicion: 'Anillo de aceite', d1: d, h1: hoil_val, a1: roil_a1 }
+      ]
+
+      if (r1_a1 != null) dimensionesPayload.espesor_radial1_mm = r1_a1
+      if (r2_a1 != null) dimensionesPayload.espesor_radial2_mm = r2_a1
+      if (roil_a1 != null) dimensionesPayload.espesor_radial_aceite_mm = roil_a1
     }
 
     const partPayload = {
@@ -1187,8 +1311,56 @@ onUnmounted(() => {
               Este grupo no tiene medidas dimensionales adicionales configuradas.
             </div>
 
+            <!-- Sub-sección especial para desglose explícito de Alturas Radiales en Anillos -->
+            <div 
+              v-if="activeGroup && (activeGroup.codigo === 'anillos_motor' || activeGroup.categoria.toLowerCase() === 'anillos')" 
+              class="p-4 bg-cyan-50/60 rounded-2xl border border-cyan-200/80 space-y-3"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold text-[#004B97] flex items-center gap-1.5">
+                  <Layers class="w-4 h-4 text-[#04C4D9]" />
+                  Desglose de Alturas Radiales de Anillo (a1 mm)
+                </span>
+                <span class="text-[10px] text-cyan-800 font-bold bg-white px-2 py-0.5 rounded-full border border-cyan-200">
+                  Cotas visibles en Catálogo
+                </span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-white p-2.5 rounded-xl border border-cyan-200/60 space-y-1">
+                  <label class="text-[11px] font-bold text-slate-700 block">1° Anillo (Radial mm)</label>
+                  <input
+                    v-model.number="paramValues.altura_radial1_mm"
+                    type="number"
+                    step="0.01"
+                    placeholder="ej. 3.40"
+                    class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-cyan-200/60 space-y-1">
+                  <label class="text-[11px] font-bold text-slate-700 block">2° Anillo (Radial mm)</label>
+                  <input
+                    v-model.number="paramValues.altura_radial2_mm"
+                    type="number"
+                    step="0.01"
+                    placeholder="ej. 3.40"
+                    class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-cyan-200/60 space-y-1">
+                  <label class="text-[11px] font-bold text-slate-700 block">Aceite (Radial mm)</label>
+                  <input
+                    v-model.number="paramValues.altura_radial_aceite_mm"
+                    type="number"
+                    step="0.01"
+                    placeholder="ej. 2.80"
+                    class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+              </div>
+            </div>
+
             <!-- Grilla reactiva de campos de parámetros -->
-            <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               <div 
                 v-for="param in activeGroup.parametros" 
                 :key="param.id"
@@ -1277,13 +1449,49 @@ onUnmounted(() => {
                 <Hash class="w-4 h-4 text-[#04C4D9]" />
                 Marcas Alternas
               </h3>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="showNewBrandInput = !showNewBrandInput"
+                  class="text-xs font-bold text-[#004B97] hover:text-[#04C4D9] flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 hover:border-[#04C4D9] bg-white transition"
+                  title="Agregar marca personalizada a la lista"
+                >
+                  <Plus class="w-3.5 h-3.5" />
+                  <span>+ Nueva Marca</span>
+                </button>
+                <button
+                  type="button"
+                  @click="addEquivalenceRow"
+                  class="text-xs font-bold text-[#038896] hover:text-[#04C4D9] flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 border border-cyan-200 hover:bg-cyan-100 transition"
+                >
+                  <Plus class="w-3.5 h-3.5" />
+                  <span>+ Cruce Alterno</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Input rápido para registrar nueva marca alterna permanente -->
+            <div v-if="showNewBrandInput" class="p-3 bg-cyan-50 rounded-xl border border-cyan-200 flex items-center gap-2">
+              <input
+                v-model="newBrandInputName"
+                @keydown.enter.prevent="handleAddNewAltBrand"
+                type="text"
+                placeholder="Nombre de la nueva marca (ej. Hastings, Cofap, Mahle)"
+                class="flex-1 px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+              />
               <button
                 type="button"
-                @click="addEquivalenceRow"
-                class="text-xs font-bold text-[#038896] hover:text-[#04C4D9] flex items-center gap-1"
+                @click="handleAddNewAltBrand"
+                class="px-3 py-1.5 bg-[#004B97] hover:bg-[#003870] text-white font-bold text-xs rounded-lg transition"
               >
-                <Plus class="w-3.5 h-3.5" />
-                <span>+ Cruce Alterno</span>
+                Guardar Marca
+              </button>
+              <button
+                type="button"
+                @click="showNewBrandInput = false; newBrandInputName = ''"
+                class="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X class="w-4 h-4" />
               </button>
             </div>
 
@@ -1295,16 +1503,11 @@ onUnmounted(() => {
               >
                 <select
                   v-model="eq.marca_alterna"
-                  class="w-32 px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none"
+                  class="w-36 px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none"
                 >
-                  <option value="Rik">Rik</option>
-                  <option value="NPR">NPR</option>
-                  <option value="MRK">MRK</option>
-                  <option value="NDC">NDC</option>
-                  <option value="Ajusa">Ajusa</option>
-                  <option value="Pioneer">Pioneer</option>
-                  <option value="Toto">Toto</option>
-                  <option value="TIK">TIK</option>
+                  <option v-for="brand in availableAltBrands" :key="brand" :value="brand">
+                    {{ brand }}
+                  </option>
                 </select>
 
                 <input
