@@ -205,3 +205,4 @@ deleteCompleteTaiho().catch(err => {
   console.error('Error fatal durante la purga de Taiho:', err);
   process.exit(1);
 });
+

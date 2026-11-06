@@ -718,6 +718,30 @@ export const mockMotores: Motor[] = [
 
 export const mockRepuestos: RepuestoTecnico[] = []
 
+function resolveCatalogoOrigen(item: Record<string, unknown>, spec: Record<string, any>): string {
+  if (item.catalogo_origen) return String(item.catalogo_origen)
+  if (spec.marca_catalogo) {
+    const mc = String(spec.marca_catalogo).toUpperCase()
+    if (mc === 'DOKURO') return 'Dokuro'
+    if (mc === 'MRK') return 'MRK'
+    if (mc === 'RIK') return 'Rik'
+    if (mc === 'NPR') return 'NPR'
+    return String(spec.marca_catalogo)
+  }
+  if (spec.codigo_rik) return 'Rik'
+  if (spec.codigo_mrk) return 'MRK'
+  if (spec.codigo_npr) return 'NPR'
+  if (spec.codigo_dokuro) return 'Dokuro'
+  if (spec.codigo_taiho) return 'Taiho'
+  if (typeof spec.fuente === 'string') {
+    const f = spec.fuente.toLowerCase()
+    if (f.includes('rik')) return 'Rik'
+    if (f.includes('npr')) return 'NPR'
+    if (f.includes('mrk')) return 'MRK'
+  }
+  return 'OEM'
+}
+
 /**
  * Mapea una fila de Supabase a RepuestoTecnico
  */
@@ -767,19 +791,7 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     stock: Number(item.stock || 0),
     estado: (item.estado as RepuestoTecnico['estado']) || 'Disponible',
     imagen_url: item.imagen_url ? String(item.imagen_url) : undefined,
-    catalogo_origen: item.catalogo_origen 
-      ? String(item.catalogo_origen) 
-      : ((spec as any).marca_catalogo 
-          ? (String((spec as any).marca_catalogo).toUpperCase() === 'DOKURO' ? 'Dokuro' : (String((spec as any).marca_catalogo).toUpperCase() === 'MRK' ? 'MRK' : String((spec as any).marca_catalogo)))
-          : ((spec as any).codigo_rik 
-              ? 'Rik'
-              : ((spec as any).codigo_mrk
-                  ? 'MRK'
-                  : ((spec as any).codigo_dokuro 
-                      ? 'Dokuro' 
-                      : ((spec as any).codigo_taiho 
-                          ? 'Taiho' 
-                          : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('rik') ? 'Rik' : 'OEM')))))),
+    catalogo_origen: resolveCatalogoOrigen(item, spec),
 
     diametro_cabeza_mm: item.diametro_cabeza_mm != null 
       ? Number(item.diametro_cabeza_mm) 

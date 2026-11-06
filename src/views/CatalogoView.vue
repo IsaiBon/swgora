@@ -1555,17 +1555,53 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
   return list
 })
 
-// Badges de marcas
+// Badges de marcas y catálogos
 const getBrandBadgeClass = (brand?: string | null): string => {
-  const b = String(brand || '').toLowerCase()
+  const b = String(brand || '').toLowerCase().trim()
   if (b.includes('dokuro')) return 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
   if (b.includes('rik')) return 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold'
   if (b.includes('ndc')) return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
   if (b.includes('taiho')) return 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
   if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
   if (b.includes('mrk') || b.includes('mkr')) return 'bg-teal-100 text-teal-800 border-teal-300 font-bold'
+  if (b.includes('npr')) return 'bg-amber-100 text-amber-800 border-amber-300 font-bold'
   if (b === 'oem' || b.includes('oem')) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
   return 'bg-slate-100 text-slate-700 border-slate-200 font-bold'
+}
+
+// Resuelve la marca principal de catálogo de un repuesto (ej. RIK, MRK, NPR, AJUSA)
+const getPartCatalogBrand = (part: RepuestoTecnico | null | undefined): string | null => {
+  if (!part) return null
+  const orig = String(part.catalogo_origen || '').trim()
+  if (orig && orig !== 'OEM') return orig.toUpperCase()
+
+  const spec = (part.especificaciones_tecnicas || {}) as Record<string, any>
+  if (spec.marca_catalogo) return String(spec.marca_catalogo).toUpperCase()
+
+  if (spec.codigo_rik || (part.codigo_oem && part.codigo_oem.startsWith('RIK-')) || part.nombre?.includes('RIK')) {
+    return 'RIK'
+  }
+  if (spec.codigo_mrk || (part.dimensiones as any)?.catalogo === 'MRK' || (part.codigo_oem && part.codigo_oem.startsWith('MG'))) {
+    return 'MRK'
+  }
+  if (spec.codigo_npr || part.nombre?.includes('NPR') || (part.codigo_oem && part.codigo_oem.startsWith('NPR-'))) {
+    return 'NPR'
+  }
+  if (spec.codigo_ajusa || part.nombre?.includes('Ajusa')) {
+    return 'AJUSA'
+  }
+  if (spec.codigo_dokuro || part.nombre?.includes('Dokuro')) {
+    return 'DOKURO'
+  }
+  if (typeof spec.fuente === 'string') {
+    const f = spec.fuente.toLowerCase()
+    if (f.includes('rik')) return 'RIK'
+    if (f.includes('mrk')) return 'MRK'
+    if (f.includes('npr')) return 'NPR'
+    if (f.includes('ajusa')) return 'AJUSA'
+    if (f.includes('dokuro')) return 'DOKURO'
+  }
+  return orig || null
 }
 
 // Filtra equivalencias para evitar duplicar el código principal de sí mismo (ej. RIK-12510 vs Rik: 12510)
@@ -1622,7 +1658,8 @@ const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equival
     if (eq.marca_alterna.toLowerCase() === 'rik') {
       const cleanPartCode = (part.codigo_oem || '').replace(/^RIK-/i, '').trim().toUpperCase()
       const cleanEqCode = (eq.codigo_alterno || '').trim().toUpperCase()
-      if (cleanPartCode === cleanEqCode) {
+      const cleanRikSpec = (((part.especificaciones_tecnicas as any)?.codigo_rik as string | undefined) || '').trim().toUpperCase()
+      if (cleanPartCode === cleanEqCode || (cleanRikSpec && cleanRikSpec === cleanEqCode)) {
         return false
       }
     }
@@ -3768,11 +3805,11 @@ onUnmounted(() => {
                     <div class="min-w-0">
                       <div class="flex items-center gap-1.5 flex-wrap">
                         <span 
-                          v-if="part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo"
+                          v-if="getPartCatalogBrand(part)"
                           class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
-                          :class="getBrandBadgeClass(part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo)"
+                          :class="getBrandBadgeClass(getPartCatalogBrand(part))"
                         >
-                          {{ part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo }}
+                          {{ getPartCatalogBrand(part) }}
                         </span>
                         <div class="font-bold text-slate-900 text-xs leading-tight">
                           {{ part.nombre }}
@@ -3815,41 +3852,62 @@ onUnmounted(() => {
                         <span v-if="part.motor?.codigo || ((part.especificaciones_tecnicas as any)?.motores_compatibles && (part.especificaciones_tecnicas as any).motores_compatibles.length > 0)">
                           • Motor {{ part.motor?.codigo || (part.especificaciones_tecnicas as any).motores_compatibles.join('/') }}
                         </span>
-                        <span v-if="part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo" class="text-slate-500 font-bold">
-                          • Catálogo {{ part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo }}
+                        <span v-if="getPartCatalogBrand(part)" class="text-slate-500 font-bold">
+                          • Catálogo {{ getPartCatalogBrand(part) }}
                         </span>
                       </span>
                     </div>
                   </div>
                 </td>
 
-                <!-- 2. Código OEM -->
+                <!-- 2. Código OEM / Principal de Catálogo -->
                 <td class="py-2 px-2.5 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-1">
                     <span 
-                      v-if="part.catalogo_origen?.toLowerCase() === 'dokuro' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'DOKURO'"
+                      v-if="getPartCatalogBrand(part) === 'DOKURO' || part.catalogo_origen?.toLowerCase() === 'dokuro' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'DOKURO'"
                       class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300"
                       title="Código oficial del catálogo Dokuro"
                     >
                       DOKURO
                     </span>
                     <span 
-                      v-else-if="part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK'"
+                      v-else-if="getPartCatalogBrand(part) === 'MRK' || part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK' || (part.especificaciones_tecnicas as any)?.codigo_mrk"
                       class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-300"
                       title="Código oficial del catálogo MRK"
                     >
                       MRK
                     </span>
+                    <span 
+                      v-else-if="getPartCatalogBrand(part) === 'RIK' || part.catalogo_origen?.toLowerCase() === 'rik' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'RIK' || (part.especificaciones_tecnicas as any)?.codigo_rik || part.codigo_oem?.startsWith('RIK-') || part.nombre?.includes('RIK')"
+                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-300"
+                      title="Código oficial del catálogo RIK"
+                    >
+                      RIK
+                    </span>
+                    <span 
+                      v-else-if="getPartCatalogBrand(part) === 'NPR' || part.catalogo_origen?.toLowerCase() === 'npr' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'NPR' || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem?.startsWith('NPR-') || part.nombre?.includes('NPR')"
+                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300"
+                      title="Código oficial del catálogo NPR"
+                    >
+                      NPR
+                    </span>
+                    <span 
+                      v-else-if="getPartCatalogBrand(part) === 'AJUSA' || part.catalogo_origen?.toLowerCase() === 'ajusa' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'AJUSA' || (part.especificaciones_tecnicas as any)?.codigo_ajusa"
+                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-[#0f2d59] text-white border border-blue-950"
+                      title="Código oficial del catálogo Ajusa"
+                    >
+                      AJUSA
+                    </span>
                     <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || part.codigo_oem }}
+                      {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem }}
                     </span>
                     <button
                       type="button"
-                      @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || part.codigo_oem, 'OEM')"
+                      @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem, getPartCatalogBrand(part) || 'OEM')"
                       class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
                       title="Copiar código principal"
                     >
-                      <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
+                      <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
                       <Copy v-else class="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -4322,9 +4380,18 @@ onUnmounted(() => {
           
           <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
             <div>
-              <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#04C4D9] block">
-                Ficha Técnica de Homologación
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#04C4D9] block">
+                  Ficha Técnica de Homologación
+                </span>
+                <span 
+                  v-if="getPartCatalogBrand(modalPart)"
+                  class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
+                  :class="getBrandBadgeClass(getPartCatalogBrand(modalPart))"
+                >
+                  {{ getPartCatalogBrand(modalPart) }}
+                </span>
+              </div>
               <h3 class="text-base font-black text-white mt-0.5">
                 {{ modalPart.nombre }}
               </h3>
@@ -4361,7 +4428,16 @@ onUnmounted(() => {
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Código Principal</span>
-                <strong class="text-xs font-black text-slate-900">{{ (modalPart.especificaciones_tecnicas as any)?.codigo_dokuro || modalPart.codigo_oem }}</strong>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <span 
+                    v-if="getPartCatalogBrand(modalPart)"
+                    class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
+                    :class="getBrandBadgeClass(getPartCatalogBrand(modalPart))"
+                  >
+                    {{ getPartCatalogBrand(modalPart) }}
+                  </span>
+                  <strong class="text-xs font-black text-slate-900">{{ (modalPart.especificaciones_tecnicas as any)?.codigo_mrk || (modalPart.especificaciones_tecnicas as any)?.codigo_rik || (modalPart.especificaciones_tecnicas as any)?.codigo_npr || (modalPart.especificaciones_tecnicas as any)?.codigo_dokuro || modalPart.codigo_oem }}</strong>
+                </div>
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Subsistema</span>
