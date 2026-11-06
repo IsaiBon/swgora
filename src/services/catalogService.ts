@@ -770,7 +770,7 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     catalogo_origen: item.catalogo_origen 
       ? String(item.catalogo_origen) 
       : ((spec as any).marca_catalogo 
-          ? String((spec as any).marca_catalogo) 
+          ? (String((spec as any).marca_catalogo).toUpperCase() === 'DOKURO' ? 'Dokuro' : String((spec as any).marca_catalogo))
           : ((spec as any).codigo_rik 
               ? 'Rik'
               : ((spec as any).codigo_dokuro 
@@ -779,10 +779,20 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
                       ? 'Taiho' 
                       : (typeof (spec as any).fuente === 'string' && (spec as any).fuente.toLowerCase().includes('rik') ? 'Rik' : 'OEM'))))),
 
-    diametro_cabeza_mm: item.diametro_cabeza_mm != null ? Number(item.diametro_cabeza_mm) : null,
-    diametro_vastago_mm: item.diametro_vastago_mm != null ? Number(item.diametro_vastago_mm) : null,
-    longitud_total_mm: item.longitud_total_mm != null ? Number(item.longitud_total_mm) : null,
-    angulo_asiento_grados: item.angulo_asiento_grados != null ? Number(item.angulo_asiento_grados) : null,
+    diametro_cabeza_mm: item.diametro_cabeza_mm != null 
+      ? Number(item.diametro_cabeza_mm) 
+      : (dims.hongo_mm != null 
+          ? Number(dims.hongo_mm) 
+          : (dims.diametro_cabeza_mm != null ? Number(dims.diametro_cabeza_mm) : null)),
+    diametro_vastago_mm: item.diametro_vastago_mm != null 
+      ? Number(item.diametro_vastago_mm) 
+      : (dims.diametro_vastago_mm != null ? Number(dims.diametro_vastago_mm) : null),
+    longitud_total_mm: item.longitud_total_mm != null 
+      ? Number(item.longitud_total_mm) 
+      : (dims.longitud_total_mm != null ? Number(dims.longitud_total_mm) : null),
+    angulo_asiento_grados: item.angulo_asiento_grados != null 
+      ? Number(item.angulo_asiento_grados) 
+      : (dims.angulo_asiento_grados != null ? Number(dims.angulo_asiento_grados) : null),
 
     diametro_interior_mm: item.diametro_interior_mm != null ? Number(item.diametro_interior_mm) : (dims.diametro_interior_mm != null ? Number(dims.diametro_interior_mm) : null),
     diametro_exterior_mm: item.diametro_exterior_mm != null ? Number(item.diametro_exterior_mm) : (dims.diametro_exterior_mm != null ? Number(dims.diametro_exterior_mm) : null),

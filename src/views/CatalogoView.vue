@@ -596,7 +596,7 @@ const copyFullCross = async (part: RepuestoTecnico) => {
     lines.push(`Ajuste Válvula: Int ${part.diametro_interior_mm}mm | Ext ${part.diametro_exterior_mm}mm | Alt ${part.altura_mm}mm`)
   }
   if (part.diametro_cabeza_mm) {
-    lines.push(`Válvula: Cabeza ${part.diametro_cabeza_mm}mm | Vástago ${part.diametro_vastago_mm}mm | Altura ${part.longitud_total_mm}mm`)
+    lines.push(`Válvula: Hongo ${part.diametro_cabeza_mm}mm | Vástago ${part.diametro_vastago_mm}mm | Altura ${part.longitud_total_mm}mm`)
   }
   if (part.diametro_cilindro_mm && part.categoria !== 'Camisas') {
     lines.push(`Anillos: Cil ${part.diametro_cilindro_mm}mm | Anillo 1: ${part.espesor_anillo1_mm || '-'}mm | Anillo 2: ${part.espesor_anillo2_mm || '-'}mm | Aceite: ${part.espesor_aceite_mm || '-'}mm`)
@@ -1567,8 +1567,42 @@ const getBrandBadgeClass = (brand?: string | null): string => {
 
 // Filtra equivalencias para evitar duplicar el código principal de sí mismo (ej. RIK-12510 vs Rik: 12510)
 const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equivalencia[] => {
-  if (!part || !part.equivalencias || part.equivalencias.length === 0) return []
-  return part.equivalencias.filter(eq => {
+  if (!part) return []
+  const list: Equivalencia[] = [...(part.equivalencias || [])]
+  const seenCodes = new Set(list.map(e => (e.codigo_alterno || '').trim().toUpperCase()))
+
+  // Agregar referencias OEM guardadas en especificaciones técnicas si faltan en la lista
+  const refsOem = (part.especificaciones_tecnicas as any)?.referencias_oem as string[] | undefined
+  if (refsOem && Array.isArray(refsOem)) {
+    for (const ref of refsOem) {
+      const cleanRef = String(ref).trim().toUpperCase()
+      if (cleanRef && cleanRef !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(cleanRef)) {
+        seenCodes.add(cleanRef)
+        list.push({
+          id: `ref-oem-${cleanRef}`,
+          repuesto_id: part.id,
+          marca_alterna: 'OEM',
+          codigo_alterno: cleanRef,
+          tipo_referencia: 'Referencia Original OEM'
+        })
+      }
+    }
+  }
+
+  // Agregar código Dokuro si está en especificaciones y no es el código principal mostrado
+  const dokCode = ((part.especificaciones_tecnicas as any)?.codigo_dokuro as string | undefined)?.trim()?.toUpperCase()
+  if (dokCode && dokCode !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(dokCode)) {
+    seenCodes.add(dokCode)
+    list.unshift({
+      id: `dok-${dokCode}`,
+      repuesto_id: part.id,
+      marca_alterna: 'Dokuro',
+      codigo_alterno: dokCode,
+      tipo_referencia: 'Código Directo Dokuro'
+    })
+  }
+
+  return list.filter(eq => {
     if (eq.marca_alterna.toLowerCase() === 'rik') {
       const cleanPartCode = (part.codigo_oem || '').replace(/^RIK-/i, '').trim().toUpperCase()
       const cleanEqCode = (eq.codigo_alterno || '').trim().toUpperCase()
@@ -3728,12 +3762,43 @@ onUnmounted(() => {
                           {{ part.nombre }}
                         </div>
                       </div>
-                      <span class="text-[10px] font-semibold text-slate-400 uppercase">
-                        <span v-if="part.motor?.fabricante?.nombre || (part.motor?.fabricante_id && getBrandName(part.motor.fabricante_id))" class="text-slate-600 font-bold mr-1">
-                          {{ part.motor?.fabricante?.nombre || getBrandName(part.motor.fabricante_id) }} •
+
+                      <!-- Badges de vehículo, año y cilindros (Información técnica estilo Dokuro / TecDoc) -->
+                      <div 
+                        v-if="(part.especificaciones_tecnicas as any)?.vehiculo || (part.especificaciones_tecnicas as any)?.ano || (part.especificaciones_tecnicas as any)?.cilindros"
+                        class="flex flex-wrap items-center gap-1 mt-1 text-[10px]"
+                      >
+                        <span 
+                          v-if="(part.especificaciones_tecnicas as any)?.vehiculo"
+                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200"
+                          title="Modelo de vehículo y aplicación técnica"
+                        >
+                          <span class="text-blue-500 font-bold">🚗</span> {{ (part.especificaciones_tecnicas as any).vehiculo }}
+                        </span>
+                        <span 
+                          v-if="(part.especificaciones_tecnicas as any)?.ano && (part.especificaciones_tecnicas as any)?.ano !== '—'"
+                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium border border-slate-200"
+                          title="Años de aplicación"
+                        >
+                          <span class="text-slate-500 font-bold">📅</span> {{ (part.especificaciones_tecnicas as any).ano }}
+                        </span>
+                        <span 
+                          v-if="(part.especificaciones_tecnicas as any)?.cilindros"
+                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-semibold border border-amber-200 font-mono"
+                          title="Cantidad de cilindros"
+                        >
+                          {{ (part.especificaciones_tecnicas as any).cilindros }}
+                        </span>
+                      </div>
+
+                      <span class="text-[10px] font-semibold text-slate-400 uppercase mt-0.5 block">
+                        <span v-if="part.motor?.fabricante?.nombre || (part.motor?.fabricante_id && getBrandName(part.motor.fabricante_id)) || ((part.especificaciones_tecnicas as any)?.fabricantes && (part.especificaciones_tecnicas as any).fabricantes[0])" class="text-slate-600 font-bold mr-1">
+                          {{ part.motor?.fabricante?.nombre || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : undefined) || (part.especificaciones_tecnicas as any).fabricantes[0] }} •
                         </span>
                         {{ part.subsistema }}
-                        <span v-if="part.motor?.codigo"> • Motor {{ part.motor.codigo }}</span>
+                        <span v-if="part.motor?.codigo || ((part.especificaciones_tecnicas as any)?.motores_compatibles && (part.especificaciones_tecnicas as any).motores_compatibles.length > 0)">
+                          • Motor {{ part.motor?.codigo || (part.especificaciones_tecnicas as any).motores_compatibles.join('/') }}
+                        </span>
                         <span v-if="part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo" class="text-slate-500 font-bold">
                           • Catálogo {{ part.catalogo_origen || (part.especificaciones_tecnicas as any)?.marca_catalogo }}
                         </span>
@@ -3753,15 +3818,15 @@ onUnmounted(() => {
                       DOKURO
                     </span>
                     <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {{ part.codigo_oem }}
+                      {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || part.codigo_oem }}
                     </span>
                     <button
                       type="button"
-                      @click="copyToClipboard(part.codigo_oem, 'OEM')"
+                      @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || part.codigo_oem, 'OEM')"
                       class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
                       title="Copiar código OEM"
                     >
-                      <Check v-if="copiedCode === part.codigo_oem" class="w-3.5 h-3.5 text-emerald-600" />
+                      <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
                       <Copy v-else class="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -4272,8 +4337,8 @@ onUnmounted(() => {
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
               <div>
-                <span class="text-[10px] text-slate-400 font-sans uppercase block">Código OEM</span>
-                <strong class="text-xs font-black text-slate-900">{{ modalPart.codigo_oem }}</strong>
+                <span class="text-[10px] text-slate-400 font-sans uppercase block">Código Principal</span>
+                <strong class="text-xs font-black text-slate-900">{{ (modalPart.especificaciones_tecnicas as any)?.codigo_dokuro || modalPart.codigo_oem }}</strong>
               </div>
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Subsistema</span>
@@ -4282,6 +4347,25 @@ onUnmounted(() => {
               <div>
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Categoría</span>
                 <strong class="text-xs font-black text-slate-900">{{ modalPart.categoria }}</strong>
+              </div>
+            </div>
+
+            <!-- Aplicación técnica del vehículo, año y cilindros (Estilo Dokuro / TecDoc) -->
+            <div 
+              v-if="(modalPart.especificaciones_tecnicas as any)?.vehiculo || (modalPart.especificaciones_tecnicas as any)?.ano || (modalPart.especificaciones_tecnicas as any)?.cilindros"
+              class="bg-blue-50/70 border border-blue-200 p-3 rounded-xl flex flex-wrap items-center gap-3 text-xs"
+            >
+              <div v-if="(modalPart.especificaciones_tecnicas as any)?.vehiculo" class="flex items-center gap-1.5">
+                <span class="text-blue-600 font-bold">🚗 Vehículo:</span>
+                <strong class="text-blue-950 font-bold">{{ (modalPart.especificaciones_tecnicas as any).vehiculo }}</strong>
+              </div>
+              <div v-if="(modalPart.especificaciones_tecnicas as any)?.ano" class="flex items-center gap-1.5">
+                <span class="text-slate-600 font-bold">📅 Año:</span>
+                <strong class="text-slate-900 font-mono">{{ (modalPart.especificaciones_tecnicas as any).ano }}</strong>
+              </div>
+              <div v-if="(modalPart.especificaciones_tecnicas as any)?.cilindros" class="flex items-center gap-1.5">
+                <span class="text-amber-700 font-bold">⚙️ Cilindros:</span>
+                <strong class="text-amber-900 font-mono">{{ (modalPart.especificaciones_tecnicas as any).cilindros }}</strong>
               </div>
             </div>
 
@@ -4433,7 +4517,7 @@ onUnmounted(() => {
                     <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.altura_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.diametro_cabeza_mm">
-                    <td class="py-1.5 px-3 text-slate-500 font-sans">Hongo (Cabeza):</td>
+                    <td class="py-1.5 px-3 text-slate-500 font-sans">Hongo:</td>
                     <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.diametro_cabeza_mm }} mm</td>
                   </tr>
                   <tr v-if="modalPart.diametro_vastago_mm" class="bg-slate-50/50">
