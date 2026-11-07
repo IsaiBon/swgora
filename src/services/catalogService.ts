@@ -132,6 +132,7 @@ export interface RepuestoTecnico {
   diametro_cilindro_mm?: number | null
   espesor_anillo1_mm?: number | null
   espesor_anillo2_mm?: number | null
+  espesor_anillo3_mm?: number | null
   espesor_aceite_mm?: number | null
   diseno_conico?: boolean | null
   keystone?: string | null
@@ -815,6 +816,7 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     diametro_cilindro_mm: item.diametro_cilindro_mm != null ? Number(item.diametro_cilindro_mm) : (dims.diametro_cilindro_mm != null ? Number(dims.diametro_cilindro_mm) : null),
     espesor_anillo1_mm: item.espesor_anillo1_mm != null ? Number(item.espesor_anillo1_mm) : (dims.espesor_anillo1_mm != null ? Number(dims.espesor_anillo1_mm) : null),
     espesor_anillo2_mm: item.espesor_anillo2_mm != null ? Number(item.espesor_anillo2_mm) : (dims.espesor_anillo2_mm != null ? Number(dims.espesor_anillo2_mm) : null),
+    espesor_anillo3_mm: item.espesor_anillo3_mm != null ? Number(item.espesor_anillo3_mm) : (dims.espesor_anillo3_mm != null ? Number(dims.espesor_anillo3_mm) : null),
     espesor_aceite_mm: item.espesor_aceite_mm != null ? Number(item.espesor_aceite_mm) : (dims.espesor_aceite_mm != null ? Number(dims.espesor_aceite_mm) : null),
     diseno_conico: dims.diseno_conico != null ? Boolean(dims.diseno_conico) : (spec.diseno_conico != null ? Boolean(spec.diseno_conico) : false),
     keystone: dims.keystone ? String(dims.keystone) : (spec.keystone ? String(spec.keystone) : null),
@@ -1625,6 +1627,7 @@ export const catalogService = {
         paso_rosca1_mm: part.paso_rosca1_mm,
         longitud1_mm: part.longitud1_mm,
         longitud2_mm: part.longitud2_mm,
+        espesor_anillo3_mm: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : null,
         ...(part.dimensiones || {})
       },
       especificaciones_tecnicas: part.especificaciones_tecnicas || {}

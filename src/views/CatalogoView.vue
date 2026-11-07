@@ -1049,11 +1049,25 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
 
   const d = part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null
   const dims = part.dimensiones as any
-  return [
-    { posicion: 'Anillo 1', d1: d, h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null, a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : null },
-    { posicion: 'Anillo 2', d1: d, h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null, a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : null },
-    { posicion: 'Anillo de aceite', d1: d, h1: part.espesor_aceite_mm ? Number(part.espesor_aceite_mm) : null, a1: dims?.espesor_radial_aceite_mm ? Number(dims.espesor_radial_aceite_mm) : null }
+  const fallback: PartRingItem[] = [
+    { posicion: 'Anillo 1', d1: d, h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null, a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : (dims?.altura_radial1_mm ? Number(dims.altura_radial1_mm) : null) },
+    { posicion: 'Anillo 2', d1: d, h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null, a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : (dims?.altura_radial2_mm ? Number(dims.altura_radial2_mm) : null) }
   ]
+  if (part.espesor_anillo3_mm != null || dims?.espesor_anillo3_mm != null || dims?.altura_radial3_mm != null || dims?.espesor_radial3_mm != null) {
+    fallback.push({
+      posicion: 'Anillo 3',
+      d1: d,
+      h1: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : (dims?.espesor_anillo3_mm != null ? Number(dims.espesor_anillo3_mm) : null),
+      a1: dims?.altura_radial3_mm != null ? Number(dims.altura_radial3_mm) : (dims?.espesor_radial3_mm != null ? Number(dims.espesor_radial3_mm) : null)
+    })
+  }
+  fallback.push({
+    posicion: 'Anillo de aceite',
+    d1: d,
+    h1: part.espesor_aceite_mm ? Number(part.espesor_aceite_mm) : null,
+    a1: dims?.altura_radial_aceite_mm ? Number(dims.altura_radial_aceite_mm) : (dims?.espesor_radial_aceite_mm ? Number(dims.espesor_radial_aceite_mm) : null)
+  })
+  return fallback
 }
 
 const isRingGrosorMatched = (ring: PartRingItem, rIdx: number, totalRings: number): boolean => {
@@ -1088,37 +1102,6 @@ const isRingAlturaMatched = (ring: PartRingItem, rIdx: number, totalRings: numbe
     return !!(filterAnilloRadial3.value && getMeasurementMatchClass(ring.a1, filterAnilloRadial3.value, getTol('anilloRadial3')).includes('bg-emerald'))
   }
   return false
-}
-
-const getRingD1 = (part: RepuestoTecnico, ringIdx: number): number | null => {
-  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
-  if (rings && rings[ringIdx] && rings[ringIdx].d1 != null) {
-    return Number(rings[ringIdx].d1)
-  }
-  return part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null
-}
-
-const getRingH1 = (part: RepuestoTecnico, ringIdx: number): number | null => {
-  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
-  if (rings && rings[ringIdx] && rings[ringIdx].h1 != null) {
-    return Number(rings[ringIdx].h1)
-  }
-  if (ringIdx === 0) return part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null
-  if (ringIdx === 1) return part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null
-  if (ringIdx === 2) return part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null
-  return null
-}
-
-const getRingA1 = (part: RepuestoTecnico, ringIdx: number): number | null => {
-  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
-  if (rings && rings[ringIdx] && rings[ringIdx].a1 != null) {
-    return Number(rings[ringIdx].a1)
-  }
-  const dims = part.dimensiones as any
-  if (ringIdx === 0) return dims?.espesor_radial1_mm != null ? Number(dims.espesor_radial1_mm) : null
-  if (ringIdx === 1) return dims?.espesor_radial2_mm != null ? Number(dims.espesor_radial2_mm) : null
-  if (ringIdx === 2) return dims?.espesor_radial_aceite_mm != null ? Number(dims.espesor_radial_aceite_mm) : null
-  return null
 }
 
 const formatRingVal = (val: number | null | undefined): string => {
@@ -4562,35 +4545,20 @@ onUnmounted(() => {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100 text-xs">
-                    <!-- 1st -->
-                    <tr class="hover:bg-slate-50/70 transition">
-                      <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200">1st</td>
-                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(getRingD1(modalPart, 0)) }}</td>
-                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(getRingH1(modalPart, 0)) }}</td>
-                      <td class="px-2.5 py-1.5 font-bold text-slate-900">{{ formatRingVal(getRingA1(modalPart, 0)) }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, 0, 'forma') }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-white text-slate-700">{{ getRingDetail(modalPart, 0, 'material') }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, 0, 'tratamiento_ext'), getRingDetail(modalPart, 0, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
-                    </tr>
-                    <!-- 2nd -->
-                    <tr class="hover:bg-slate-50/70 transition">
-                      <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200">2nd</td>
-                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(getRingD1(modalPart, 1)) }}</td>
-                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(getRingH1(modalPart, 1)) }}</td>
-                      <td class="px-2.5 py-1.5 font-bold text-slate-900">{{ formatRingVal(getRingA1(modalPart, 1)) }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, 1, 'forma') }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-white text-slate-700">{{ getRingDetail(modalPart, 1, 'material') }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, 1, 'tratamiento_ext'), getRingDetail(modalPart, 1, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
-                    </tr>
-                    <!-- Oil -->
-                    <tr class="hover:bg-slate-50/70 transition">
-                      <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200">Oil</td>
-                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(getRingD1(modalPart, 2)) }}</td>
-                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(getRingH1(modalPart, 2)) }}</td>
-                      <td class="px-2.5 py-1.5 font-bold text-slate-900">{{ formatRingVal(getRingA1(modalPart, 2)) }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, 2, 'forma') }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-white text-slate-700">{{ getRingDetail(modalPart, 2, 'material') }}</td>
-                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, 2, 'tratamiento_ext'), getRingDetail(modalPart, 2, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
+                    <tr 
+                      v-for="(ring, rIdx) in getPartRingsList(modalPart)" 
+                      :key="rIdx" 
+                      class="hover:bg-slate-50/70 transition"
+                    >
+                      <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200">
+                        {{ ring.posicion === 'Anillo de aceite' ? 'Oil' : (rIdx === 0 ? '1st' : (rIdx === 1 ? '2nd' : (rIdx === 2 ? '3rd' : `${rIdx + 1}th`))) }}
+                      </td>
+                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(ring.d1) }}</td>
+                      <td class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900">{{ formatRingVal(ring.h1) }}</td>
+                      <td class="px-2.5 py-1.5 font-bold text-slate-900">{{ formatRingVal(ring.a1) }}</td>
+                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 font-bold text-slate-800">{{ getRingDetail(modalPart, rIdx, 'forma') }}</td>
+                      <td class="px-3 py-1.5 border-l border-slate-200 bg-white text-slate-700">{{ getRingDetail(modalPart, rIdx, 'material') }}</td>
+                      <td class="px-3 py-1.5 border-l border-slate-200 bg-slate-50 text-slate-700 font-sans text-[11px]">{{ [getRingDetail(modalPart, rIdx, 'tratamiento_ext'), getRingDetail(modalPart, rIdx, 'tratamiento_int')].filter(t => t !== '—').join(' / ') || '—' }}</td>
                     </tr>
                   </tbody>
                 </table>
