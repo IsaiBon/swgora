@@ -31,7 +31,8 @@ import {
   Filter,
   Table,
   CheckCircle2,
-  Copy
+  Copy,
+  Columns
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -778,6 +779,7 @@ export interface DynamicParamRow {
   unidad: string
   tipo_dato: 'numero' | 'texto' | 'booleano' | 'seleccion'
   requerido: boolean
+  filtrable?: boolean
   descripcion: string
   opciones?: string[]
   opcionesStr?: string
@@ -795,6 +797,7 @@ const groupCategoria = ref<string>('')
 const groupSubsistema = ref<string>('') // Opcional
 const groupDescripcion = ref<string>('')
 const groupIcono = ref<string>('Layers')
+const soloFiltrosEnTabla = ref<boolean>(false)
 
 // --- Creatable Combobox para Subsistema (Opcional, Inline, Cero Modales) ---
 const availableSubsistemas = ref<string[]>([
@@ -937,6 +940,14 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
   }
   groupDescripcion.value = grp.descripcion || ''
   groupIcono.value = grp.icono || 'Layers'
+
+  const nonReqParams = grp.parametros.filter(p => !p.requerido)
+  if (nonReqParams.length > 0) {
+    soloFiltrosEnTabla.value = nonReqParams.some(p => p.filtrable === false)
+  } else {
+    soloFiltrosEnTabla.value = false
+  }
+
   dynamicParams.value = grp.parametros.map((p, idx) => ({
     id: p.id || `param-${Date.now()}-${idx}`,
     etiqueta: p.etiqueta,
@@ -945,6 +956,7 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
     unidad: p.unidad,
     tipo_dato: p.tipo_dato,
     requerido: p.requerido,
+    filtrable: p.filtrable !== undefined ? p.filtrable : (p.requerido ? true : (soloFiltrosEnTabla.value ? false : true)),
     descripcion: p.descripcion || '',
     opciones: p.opciones || [],
     opcionesStr: (p.opciones || []).join(', '),
@@ -965,6 +977,7 @@ const switchToCreateMode = () => {
   subsistemaSearch.value = ''
   groupDescripcion.value = ''
   groupIcono.value = 'Layers'
+  soloFiltrosEnTabla.value = false
   dynamicParams.value = [
     {
       id: `param-${Date.now()}-1`,
@@ -974,6 +987,7 @@ const switchToCreateMode = () => {
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
+      filtrable: true,
       descripcion: 'Medida del diámetro interno de la pieza',
       decimales: 2,
       mostrar_unidad: true,
@@ -987,6 +1001,7 @@ const switchToCreateMode = () => {
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
+      filtrable: true,
       descripcion: 'Medida del diámetro externo o de alojamiento',
       decimales: 2,
       mostrar_unidad: true,
@@ -1000,6 +1015,7 @@ const switchToCreateMode = () => {
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: false,
+      filtrable: false,
       descripcion: 'Largo total o altura en milímetros',
       decimales: 1,
       mostrar_unidad: true,
@@ -1047,6 +1063,7 @@ const addParamRow = () => {
     unidad: defaultUnit,
     tipo_dato: 'numero',
     requerido: true,
+    filtrable: true,
     descripcion: '',
     decimales: 2,
     mostrar_unidad: true,
@@ -1056,6 +1073,41 @@ const addParamRow = () => {
 
 const removeParamRow = (index: number) => {
   dynamicParams.value.splice(index, 1)
+}
+
+const handleSoloFiltrosChange = () => {
+  if (soloFiltrosEnTabla.value) {
+    dynamicParams.value.forEach(p => {
+      if (!p.requerido) {
+        p.filtrable = false
+      }
+    })
+  } else {
+    dynamicParams.value.forEach(p => {
+      p.filtrable = true
+    })
+  }
+}
+
+const toggleParamRequerido = (param: DynamicParamRow) => {
+  param.requerido = !param.requerido
+  if (soloFiltrosEnTabla.value) {
+    param.filtrable = param.requerido
+  }
+}
+
+const toggleParamFiltrable = (param: DynamicParamRow) => {
+  if (soloFiltrosEnTabla.value && !param.requerido) {
+    return
+  }
+  param.filtrable = !(param.filtrable !== false)
+}
+
+const isParamFilterVisible = (param: DynamicParamRow): boolean => {
+  if (soloFiltrosEnTabla.value) {
+    return Boolean(param.requerido && param.filtrable !== false)
+  }
+  return param.filtrable !== false
 }
 
 // --- Live Preview: Visibilidad y Formato de Celdas ---
@@ -1274,6 +1326,7 @@ const handleSaveGroup = async () => {
         unidad: p.unidad.trim(),
         tipo_dato: p.tipo_dato,
         requerido: p.requerido,
+        filtrable: soloFiltrosEnTabla.value ? (p.requerido && p.filtrable !== false) : (p.filtrable !== false),
         descripcion: p.descripcion.trim() || undefined,
         opciones: parsedOpciones
       }
@@ -2390,6 +2443,32 @@ onUnmounted(() => {
                   </div>
                 </div>
 
+                <!-- Opción Global: Ocultar en filtros los que no se muestren en la tabla -->
+                <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl transition-all">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-7 h-7 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center text-[#038391] shrink-0">
+                      <Filter class="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div class="text-xs font-black text-slate-800">
+                        Ocultar en filtros los que no se muestren en la tabla
+                      </div>
+                      <div class="text-[10px] text-slate-500">
+                        Las cotas fuera de tabla se excluyen automáticamente de los filtros en portada.
+                      </div>
+                    </div>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer select-none shrink-0 ml-3">
+                    <input 
+                      type="checkbox" 
+                      v-model="soloFiltrosEnTabla" 
+                      @change="handleSoloFiltrosChange"
+                      class="sr-only peer" 
+                    />
+                    <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#04C4D9]"></div>
+                  </label>
+                </div>
+
                 <!-- Lista de Parámetros Dinámicos -->
                 <div class="space-y-3">
                   <div
@@ -2408,22 +2487,38 @@ onUnmounted(() => {
                         </span>
                       </div>
 
-                      <div class="flex items-center gap-2.5">
-                        <!-- Switch Obligatorio (controla aparición en tabla) -->
-                        <label 
-                          class="flex items-center gap-1.5 cursor-pointer select-none px-2 py-1 rounded-lg border transition-all text-[11px] font-bold"
+                      <div class="flex items-center gap-1.5">
+                        <!-- Switch En Tabla -->
+                        <button
+                          type="button"
+                          @click="toggleParamRequerido(param)"
+                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[11px] font-bold"
                           :class="param.requerido 
-                            ? 'bg-cyan-50 border-cyan-300 text-[#038391]' 
-                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'"
-                          :title="param.requerido ? 'Visible como columna fija en la tabla de portada' : 'Opcional (se muestra en filtros y ficha técnica)'"
+                            ? 'bg-cyan-50 border-cyan-300 text-[#038391] shadow-2xs' 
+                            : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'"
+                          :title="param.requerido ? 'Visible como columna fija en la tabla' : 'No se proyecta como columna fija en la tabla'"
                         >
-                          <input
-                            type="checkbox"
-                            v-model="param.requerido"
-                            class="w-3.5 h-3.5 rounded text-[#04C4D9] focus:ring-[#04C4D9]"
-                          />
-                          <span>{{ param.requerido ? 'En Tabla' : 'Solo Filtro' }}</span>
-                        </label>
+                          <Columns class="w-3 h-3" />
+                          <span>En Tabla</span>
+                        </button>
+
+                        <!-- Switch En Filtro -->
+                        <button
+                          type="button"
+                          @click="toggleParamFiltrable(param)"
+                          :disabled="soloFiltrosEnTabla && !param.requerido"
+                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[11px] font-bold"
+                          :class="[
+                            isParamFilterVisible(param)
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs'
+                              : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300',
+                            (soloFiltrosEnTabla && !param.requerido) ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                          ]"
+                          :title="(soloFiltrosEnTabla && !param.requerido) ? 'Excluido de filtros porque no se muestra en la tabla' : (isParamFilterVisible(param) ? 'Visible en la barra de filtros de portada' : 'Oculto de los filtros de portada')"
+                        >
+                          <Filter class="w-3 h-3" />
+                          <span>En Filtro</span>
+                        </button>
 
                         <button
                           type="button"
@@ -2608,7 +2703,7 @@ onUnmounted(() => {
                     <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Cotas:</span>
                     
                     <div
-                      v-for="param in dynamicParams"
+                      v-for="param in dynamicParams.filter(p => isParamFilterVisible(p))"
                       :key="`preview-filter-${param.id}`"
                       class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs"
                     >
@@ -2637,8 +2732,8 @@ onUnmounted(() => {
                       </template>
                     </div>
 
-                    <span v-if="dynamicParams.length === 0" class="text-[11px] text-slate-500 italic">
-                      Agrega parámetros a la izquierda para ver los filtros generados.
+                    <span v-if="dynamicParams.filter(p => isParamFilterVisible(p)).length === 0" class="text-[11px] text-slate-500 italic">
+                      Sin filtros dimensionales activos (todos ocultos o fuera de tabla).
                     </span>
                   </div>
                 </div>

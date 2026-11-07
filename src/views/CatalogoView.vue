@@ -434,13 +434,6 @@ const filterCasqueteHousing = ref<number | undefined>(undefined) // HOUSING / Al
 const filterCasqueteTWall = ref<number | undefined>(undefined)   // T WALL / Espesor pared mm
 const filterCasqueteLength = ref<number | undefined>(undefined)  // LENGTH / Ancho casquete mm
 
-// 6. Guías de válvula (Parámetros del grupo: Posición, Juego (Set), Ø Int, Ø Ext, Largo)
-const filterGuiaPosicion = ref<string>('')
-const filterGuiaSet = ref<number | undefined>(undefined)
-const filterGuiaDiamInt = ref<number | undefined>(undefined)
-const filterGuiaDiamExt = ref<number | undefined>(undefined)
-const filterGuiaLargo = ref<number | undefined>(undefined)
-
 // Validadores robustos para filtros de medida dimensional
 const isFilterActive = (val: unknown): val is number => {
   return val !== undefined && val !== null && val !== '' && !isNaN(Number(val)) && Number(val) > 0
@@ -490,14 +483,6 @@ const activeMeasurementsCount = computed(() => {
         filterCasqueteTWall.value,
         filterCasqueteLength.value
       ].filter(isFilterActive).length
-    } else if (selectedComponent.value.id === 'guias_valvula' || selectedComponent.value.category === 'Guías') {
-      if (isFilterStringActive(filterGuiaPosicion.value)) count += 1
-      count += [
-        filterGuiaSet.value,
-        filterGuiaDiamInt.value,
-        filterGuiaDiamExt.value,
-        filterGuiaLargo.value
-      ].filter(isFilterActive).length
     }
   }
   // Sumar filtros dinámicos activos
@@ -540,12 +525,6 @@ const resetMeasurementsFilters = () => {
   filterCasqueteHousing.value = undefined
   filterCasqueteTWall.value = undefined
   filterCasqueteLength.value = undefined
-
-  filterGuiaPosicion.value = ''
-  filterGuiaSet.value = undefined
-  filterGuiaDiamInt.value = undefined
-  filterGuiaDiamExt.value = undefined
-  filterGuiaLargo.value = undefined
 
   dynamicParamFilters.value = {}
   filterTolerancias.value = {}
@@ -1422,47 +1401,6 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return l != null && Math.abs(Number(l) - (filterCasqueteLength.value || 0)) <= tolLength
         })
       }
-    } else if (compId === 'guias_valvula' || cat.includes('guía') || cat.includes('guia')) {
-      if (filterGuiaPosicion.value) {
-        const pos = filterGuiaPosicion.value.toUpperCase()
-        list = list.filter(r => {
-          const p = String((r.dimensiones as any)?.posicion || '').toUpperCase()
-          if (pos === 'IN') return p.includes('IN') || p.includes('ADM')
-          if (pos === 'EX') return p.includes('EX') || p.includes('ESC')
-          return p.includes(pos)
-        })
-      }
-      if (isFilterActive(filterGuiaSet.value)) {
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const s = dims.set ?? dims.juego ?? r.cantidad_piezas
-          return s != null && Number(s) === Number(filterGuiaSet.value)
-        })
-      }
-      if (isFilterActive(filterGuiaDiamInt.value)) {
-        const tol = getTol('guiaDiamInt')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const val = r.diametro_interior_mm ?? dims.diametro_interior_mm
-          return val != null && Math.abs(Number(val) - (filterGuiaDiamInt.value || 0)) <= tol
-        })
-      }
-      if (isFilterActive(filterGuiaDiamExt.value)) {
-        const tol = getTol('guiaDiamExt')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const val = r.diametro_exterior_mm ?? dims.diametro_exterior_mm ?? dims.diametro_exterior_1_mm
-          return val != null && Math.abs(Number(val) - (filterGuiaDiamExt.value || 0)) <= tol
-        })
-      }
-      if (isFilterActive(filterGuiaLargo.value)) {
-        const tol = getTol('guiaLargo')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const val = r.longitud_total_mm ?? dims.longitud_total_mm ?? dims.largo_mm
-          return val != null && Math.abs(Number(val) - (filterGuiaLargo.value || 0)) <= tol
-        })
-      }
     }
 
     // 2.b. Filtros de parámetros dinámicos para grupos nuevos / personalizados
@@ -1471,7 +1409,12 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
         if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
           const tolParam = getTol(key)
           list = list.filter(r => {
-            const partVal = r.dimensiones?.[key] ?? (r as any)[key]
+            let partVal = r.dimensiones?.[key] ?? (r as any)[key]
+            if (partVal === undefined || partVal === null) {
+              if (key === 'diametro_interior_mm') partVal = r.diametro_cilindro_mm
+              else if (key === 'diametro_exterior_mm') partVal = (r.dimensiones as any)?.diametro_exterior_1_mm
+              else if (key === 'longitud_total_mm') partVal = (r.dimensiones as any)?.largo_mm ?? (r.dimensiones as any)?.altura_mm
+            }
             if (partVal === undefined || partVal === null) return false
 
             // Comparación numérica con tolerancia individual de este parámetro
@@ -3418,97 +3361,13 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 7. FILTROS PARA: GUÍAS DE VÁLVULA (PARÁMETROS OFICIALES DEL GRUPO) -->
-        <div 
-          v-else-if="selectedComponent.id === 'guias_valvula' || selectedComponent.category === 'Guías'"
-          class="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80"
-        >
-          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <div>
-              <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight mb-0.5 truncate">
-                Posición
-              </label>
-              <select
-                v-model="filterGuiaPosicion"
-                class="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              >
-                <option value="">Todas</option>
-                <option value="IN">IN (Admisión)</option>
-                <option value="EX">EX (Escape)</option>
-                <option value="IN/EX">IN/EX (Ambas)</option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight mb-0.5 truncate">
-                Juego / Set (pzs)
-              </label>
-              <input
-                v-model.number="filterGuiaSet"
-                type="number"
-                step="1"
-                placeholder="ej. 4, 6, 8, 12"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Ø Interior (mm)">
-                  Ø Interior (mm)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['guiaDiamInt']" :fallback="filterToleranciaMm" :step="0.01" />
-              </div>
-              <input
-                v-model.number="filterGuiaDiamInt"
-                type="number"
-                step="0.05"
-                placeholder="ej. 7.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Ø Exterior (mm)">
-                  Ø Exterior (mm)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['guiaDiamExt']" :fallback="filterToleranciaMm" :step="0.02" />
-              </div>
-              <input
-                v-model.number="filterGuiaDiamExt"
-                type="number"
-                step="0.05"
-                placeholder="ej. 12.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Longitud (mm)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['guiaLargo']" :fallback="filterToleranciaMm" :step="0.5" />
-              </div>
-              <input
-                v-model.number="filterGuiaLargo"
-                type="number"
-                step="0.5"
-                placeholder="ej. 45.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- 6. FILTROS PARA OTROS GRUPOS PERSONALIZADOS / DINÁMICOS (SOPORTE SELECT / CASCADA) -->
         <div 
           v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
           class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
         >
           <div 
-            v-for="param in currentGroupDefinition.parametros" 
+            v-for="param in currentGroupDefinition.parametros.filter(p => p.filtrable !== false)" 
             :key="param.clave"
           >
             <!-- Caso A: Número Decimal con Tolerancia Específica / Universal -->
@@ -3632,9 +3491,6 @@ onUnmounted(() => {
                 </th>
                 <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Casquetería: Tipo (MS/CB/TW/CH/PB) • SHAFT × HOUSING × T WALL × LENGTH
-                </th>
-                <th v-else-if="selectedComponent?.id === 'guias_valvula' || selectedComponent?.category === 'Guías'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Guías: Posición • Juego • Medidas (Ø Int × Ø Ext × Largo)
                 </th>
                 <th v-else-if="selectedComponent?.id === 'asientos_valvula' || selectedComponent?.category === 'Asientos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Asientos: Posición • Cilindros • Cruces
@@ -4005,28 +3861,6 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <!-- Caso Guías de válvula (Parámetros oficiales del grupo: Posición, Juego, Ø Int, Ø Ext, Largo) -->
-                  <div v-else-if="selectedComponent?.id === 'guias_valvula' || part.categoria === 'Guías'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
-                    <span v-if="(part.dimensiones as any)?.posicion" class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-cyan-100 text-[#038391] border border-cyan-200">
-                      {{ (part.dimensiones as any).posicion }}
-                    </span>
-                    <span v-if="(part.dimensiones as any)?.set || (part.dimensiones as any)?.juego || part.cantidad_piezas" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
-                      Juego: {{ (part.dimensiones as any)?.set || (part.dimensiones as any)?.juego || part.cantidad_piezas }} pzs
-                    </span>
-                    <span v-if="part.diametro_interior_mm || (part.dimensiones as any)?.diametro_interior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]" :class="getMeasurementMatchClass(part.diametro_interior_mm || (part.dimensiones as any)?.diametro_interior_mm, filterGuiaDiamInt, getTol('guiaDiamInt'))">
-                      Ø Int: <strong>{{ part.diametro_interior_mm || (part.dimensiones as any)?.diametro_interior_mm }} mm</strong>
-                    </span>
-                    <span v-if="part.diametro_exterior_mm || (part.dimensiones as any)?.diametro_exterior_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]" :class="getMeasurementMatchClass(part.diametro_exterior_mm || (part.dimensiones as any)?.diametro_exterior_mm, filterGuiaDiamExt, getTol('guiaDiamExt'))">
-                      Ø Ext: <strong>{{ part.diametro_exterior_mm || (part.dimensiones as any)?.diametro_exterior_mm }} mm</strong>
-                    </span>
-                    <span v-if="part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm" class="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-[11px]" :class="getMeasurementMatchClass(part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm, filterGuiaLargo, getTol('guiaLargo'))">
-                      Largo: <strong>{{ part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm }} mm</strong>
-                    </span>
-                    <span v-if="(part.dimensiones as any)?.remarks" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px]" title="Notas y cruces del catálogo">
-                      {{ (part.dimensiones as any).remarks }}
-                    </span>
-                  </div>
-
                   <!-- Caso Asientos de válvula -->
                   <div v-else-if="selectedComponent?.id === 'asientos_valvula' || part.categoria === 'Asientos'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
                     <span v-if="(part.dimensiones as any)?.posicion" class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider" :class="((part.dimensiones as any)?.posicion === 'Admisión' || (part.dimensiones as any)?.posicion === 'IN') ? 'bg-cyan-100 text-[#038391] border border-cyan-200' : 'bg-amber-100 text-amber-900 border border-amber-200'">
@@ -4056,14 +3890,18 @@ onUnmounted(() => {
                     class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800"
                   >
                     <span 
-                      v-for="p in currentGroupDefinition.parametros" 
+                      v-for="p in currentGroupDefinition.parametros.filter(p => p.requerido)" 
                       :key="p.clave"
-                      v-show="(part.dimensiones?.[p.clave] ?? (part as any)[p.clave]) !== undefined || p.requerido"
-                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs font-mono font-bold text-slate-800"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono font-bold"
+                      :class="[
+                        p.clave === 'posicion' 
+                          ? 'bg-cyan-100 text-[#038391] border-cyan-200 uppercase text-[10px]' 
+                          : getMeasurementMatchClass(part.dimensiones?.[p.clave] ?? (part as any)[p.clave], dynamicParamFilters[p.clave], getTol(p.clave))
+                      ]"
                     >
-                      <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span> 
-                      <strong class="text-slate-900">
-                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? (p.clave === 'diametro_interior_mm' ? part.diametro_cilindro_mm : undefined) ?? '—' }}
+                      <span v-if="p.clave !== 'posicion'" class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span> 
+                      <strong :class="p.clave === 'posicion' ? 'text-[#038391]' : 'text-slate-900'">
+                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? (p.clave === 'diametro_interior_mm' ? (r => r.diametro_cilindro_mm)(part) : undefined) ?? (p.clave === 'diametro_exterior_mm' ? (part.dimensiones as any)?.diametro_exterior_1_mm : undefined) ?? (p.clave === 'longitud_total_mm' ? ((part.dimensiones as any)?.largo_mm ?? (part.dimensiones as any)?.altura_mm) : undefined) ?? '—' }}
                       </strong>
                       <span v-if="p.unidad && (part.dimensiones?.[p.clave] ?? (part as any)[p.clave])" class="text-slate-400 text-[10px] font-sans">{{ p.unidad }}</span>
                     </span>

@@ -71,6 +71,7 @@ export interface ParametroTecnicoDefinicion {
   unidad: string
   tipo_dato: ParametroTipoDato
   requerido: boolean
+  filtrable?: boolean
   descripcion?: string
   opciones?: string[]
   valor_minimo?: number
