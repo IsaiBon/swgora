@@ -220,8 +220,8 @@ const handleComponentKeydown = (e: KeyboardEvent) => {
 }
 
 /**
- * Resaltado visual reactivo: destaca en verde esmeralda las medidas exactas
- * y en cian las cotas que entran dentro del rango de tolerancia universal.
+ * Resaltado visual reactivo: destaca en VERDE ESMERALDA las coincidencias exactas (diff <= 0.05)
+ * y en AMARILLO las cotas que entran dentro del rango de tolerancia universal / individual.
  */
 function getMeasurementMatchClass(partValue: number | undefined | null, filterValue: number | undefined | null, tol: number = 1.0): string {
   if (filterValue === undefined || filterValue === null || isNaN(Number(filterValue)) || partValue === undefined || partValue === null || isNaN(Number(partValue))) {
@@ -229,12 +229,108 @@ function getMeasurementMatchClass(partValue: number | undefined | null, filterVa
   }
   const diff = Math.abs(Number(partValue) - Number(filterValue))
   if (diff <= 0.05) {
-    return 'bg-emerald-50 text-emerald-900 border-emerald-300 font-bold ring-1 ring-emerald-400/50'
+    return 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black ring-1 ring-emerald-500/60 shadow-2xs'
   }
   if (diff <= tol) {
-    return 'bg-cyan-50 text-[#038391] border-cyan-300 font-bold'
+    return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs'
   }
-  return 'bg-slate-100 text-slate-600 border-slate-200 opacity-70'
+  return 'bg-slate-100 text-slate-500 border-slate-200 opacity-60'
+}
+
+/**
+ * Resuelve de forma unificada el valor de cualquier parámetro técnico de una pieza,
+ * consultando propiedades directas, dimensiones JSON, especificaciones técnicas y aliases canónicos.
+ */
+function getPartParamValue(part: RepuestoTecnico, key: string): any {
+  if (!part) return undefined
+  const dims = (part.dimensiones as any) || {}
+  const specs = (part.especificaciones_tecnicas as any) || {}
+  const direct = (part as any)[key]
+  if (direct !== undefined && direct !== null) return direct
+  if (dims[key] !== undefined && dims[key] !== null) return dims[key]
+  if (specs[key] !== undefined && specs[key] !== null) return specs[key]
+
+  const k = key.toLowerCase()
+
+  // Diámetro cabeza / hongo (válvulas)
+  if (k.includes('cabeza') || k.includes('hongo')) {
+    return part.diametro_cabeza_mm ?? dims.diametro_cabeza_mm ?? dims.hongo ?? dims.hongo_mm ?? specs.hongo
+  }
+  // Diámetro vástago (válvulas, guías)
+  if (k.includes('vastago') || k.includes('stem')) {
+    return part.diametro_vastago_mm ?? dims.diametro_vastago_mm ?? dims.vastago ?? dims.vastago_mm ?? specs.vastago
+  }
+  // Largo / Longitud total / Altura
+  if (k.includes('longitud') || k.includes('largo') || k.includes('altura')) {
+    return part.longitud_total_mm ?? part.altura_mm ?? dims.longitud_total_mm ?? dims.largo_mm ?? dims.altura_mm ?? dims.largo ?? dims.length_mm ?? specs.largo
+  }
+  // Diámetro interior
+  if (k.includes('interior') || k === 'int' || k === 'd_int') {
+    return part.diametro_interior_mm ?? part.diametro_cilindro_mm ?? dims.diametro_interior_mm ?? dims.diam_int ?? dims.interior_mm ?? specs.diametro_interior
+  }
+  // Diámetro exterior
+  if (k.includes('exterior') || k === 'ext' || k === 'd_ext') {
+    return part.diametro_exterior_mm ?? dims.diametro_exterior_mm ?? dims.diametro_exterior_1_mm ?? dims.diam_ext ?? dims.exterior_mm ?? specs.diametro_exterior
+  }
+  // Tipo de válvula o posición (Admisión / Escape / IN / EX)
+  if (k.includes('tipo') || k.includes('posicion') || k.includes('funcion')) {
+    const val = (part as any).tipo_valvula ?? dims.tipo_valvula ?? dims.posicion ?? dims.tipo ?? specs.tipo
+    if (val) return val
+    const nom = (part.nombre || '').toLowerCase()
+    if (nom.includes('admis') || nom.includes(' in ') || nom.endsWith(' in') || nom.includes('intake')) return 'Admisión'
+    if (nom.includes('escap') || nom.includes(' ex ') || nom.endsWith(' ex') || nom.includes('exhaust')) return 'Escape'
+  }
+  // Ángulo de asiento
+  if (k.includes('angulo')) {
+    return part.angulo_asiento_grados ?? dims.angulo_asiento_grados ?? dims.angulo ?? specs.angulo
+  }
+  // Cuñero / ranuras / stem end
+  if (k.includes('cunero') || k.includes('cuñero') || k.includes('ranura') || k.includes('stem_end')) {
+    return dims.stem_end ?? dims.cunero ?? dims.cuñero ?? dims.ranuras ?? specs.cunero
+  }
+  // Rosca / Pernos
+  if (k.includes('rosca')) {
+    return part.medida_rosca ?? dims.medida_rosca ?? specs.medida_rosca
+  }
+  // Pestañas (Camisas)
+  if (k.includes('pestaña') || k.includes('pestana') || k.includes('flange')) {
+    if (k.includes('diam') || k.includes('d')) return dims.diametro_pestana_mm ?? dims.flange_dia_mm ?? dims.flange_d
+    if (k.includes('espesor') || k.includes('e') || k.includes('h')) return dims.espesor_pestana_mm ?? dims.flange_height_mm ?? dims.flange_h
+  }
+
+  return undefined
+}
+
+/**
+ * Estilo y coloreado de coincidencia para badges de tipo y posición (Admisión/IN vs Escape/EX).
+ * Verde en coincidencia exacta, Amarillo en coincidencia semántica/parcial.
+ */
+function getPositionOrTypeBadgeClass(partVal: any, filterVal: any): string {
+  const strPart = String(partVal || '').trim()
+  const lower = strPart.toLowerCase()
+  const isAdm = lower === 'in' || lower.includes('admis') || lower.includes('intake')
+  const isEsc = lower === 'ex' || lower.includes('escap') || lower.includes('exhaust')
+
+  if (!filterVal || filterVal === '') {
+    if (isAdm) return 'bg-cyan-100 text-[#038391] border-cyan-300 font-bold uppercase text-[10px]'
+    if (isEsc) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold uppercase text-[10px]'
+    return 'bg-slate-100 text-slate-800 border-slate-200 uppercase text-[10px] font-bold'
+  }
+
+  const strFilter = String(filterVal).trim().toLowerCase()
+  if (strFilter === lower) {
+    return 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black ring-1 ring-emerald-500/60 text-[10px]'
+  }
+
+  const matches = (isAdm && (strFilter === 'in' || strFilter.includes('admis'))) ||
+                  (isEsc && (strFilter === 'ex' || strFilter.includes('escap'))) ||
+                  lower.includes(strFilter) || strFilter.includes(lower)
+
+  if (matches) {
+    return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 text-[10px]'
+  }
+
+  return 'bg-slate-100 text-slate-500 border-slate-200 opacity-60 text-[10px]'
 }
 
 
@@ -439,51 +535,21 @@ const isFilterActive = (val: unknown): val is number => {
   return val !== undefined && val !== null && val !== '' && !isNaN(Number(val)) && Number(val) > 0
 }
 
-const isFilterStringActive = (val: unknown): boolean => {
-  return val !== undefined && val !== null && String(val).trim().length > 0
-}
-
-// Contador de filtros de medida activos
+// Contador de filtros de medida activos (Especializado Anillos + Dinámico para todos los demás)
 const activeMeasurementsCount = computed(() => {
   let count = 0
-  if (selectedComponent.value) {
-    if (selectedComponent.value.id === 'ajuste_valvula') {
-      count += [filterSelloDiamInt.value, filterSelloDiamExt.value, filterSelloAltura.value].filter(isFilterActive).length
-    } else if (selectedComponent.value.id === 'valvula') {
-      count += [filterValvulaHongo.value, filterValvulaVastago.value, filterValvulaAltura.value].filter(isFilterActive).length
-      if (isFilterStringActive(filterValvulaCunero.value)) count += 1
-    } else if (selectedComponent.value.id === 'anillos_motor') {
-      count += [
-        filterAnilloDiametro.value, 
-        filterAnilloGrosor1.value, 
-        filterAnilloRadial1.value,
-        filterAnilloGrosor2.value, 
-        filterAnilloRadial2.value,
-        filterAnilloGrosor3.value,
-        filterAnilloRadial3.value,
-        filterAnilloGrosorAceite.value, 
-        filterAnilloRadialAceite.value
-      ].filter(isFilterActive).length
-    } else if (selectedComponent.value.id === 'tornillos_culata') {
-      if (isFilterStringActive(filterPernoMedidaRosca.value)) count += 1
-      count += [
-        filterPernoGrosor.value,
-        filterPernoPasoRosca.value,
-        filterPernoLongitud.value,
-        filterPernoCantidad.value,
-        filterPernoPasoRosca1.value,
-        filterPernoLongitud1.value,
-        filterPernoLongitud2.value
-      ].filter(isFilterActive).length
-    } else if (selectedComponent.value.id === 'casqueteria' || selectedComponent.value.category === 'Casquetería') {
-      if (isFilterStringActive(filterCasqueteTipo.value)) count += 1
-      count += [
-        filterCasqueteShaft.value,
-        filterCasqueteHousing.value,
-        filterCasqueteTWall.value,
-        filterCasqueteLength.value
-      ].filter(isFilterActive).length
-    }
+  if (selectedComponent.value && selectedComponent.value.id === 'anillos_motor') {
+    count += [
+      filterAnilloDiametro.value, 
+      filterAnilloGrosor1.value, 
+      filterAnilloRadial1.value,
+      filterAnilloGrosor2.value, 
+      filterAnilloRadial2.value,
+      filterAnilloGrosor3.value,
+      filterAnilloRadial3.value,
+      filterAnilloGrosorAceite.value, 
+      filterAnilloRadialAceite.value
+    ].filter(isFilterActive).length
   }
   // Sumar filtros dinámicos activos
   count += Object.values(dynamicParamFilters.value).filter(v => v !== undefined && v !== null && v !== '').length
@@ -1049,38 +1115,94 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
   return fallback
 }
 
-const isRingGrosorMatched = (ring: PartRingItem, rIdx: number, totalRings: number): boolean => {
-  const isOil = rIdx === totalRings - 1 || ring.posicion === 'Anillo de aceite'
-  if (isOil) {
-    return !!(filterAnilloGrosorAceite.value && getMeasurementMatchClass(ring.h1, filterAnilloGrosorAceite.value, getTol('anilloGrosorAceite')).includes('bg-emerald'))
+const getRingDiametroCellClass = (d1: number | null | undefined): string => {
+  if (filterAnilloDiametro.value === undefined || filterAnilloDiametro.value === null || isNaN(Number(filterAnilloDiametro.value))) {
+    return 'text-slate-900'
   }
-  if (rIdx === 0) {
-    return !!(filterAnilloGrosor1.value && getMeasurementMatchClass(ring.h1, filterAnilloGrosor1.value, getTol('anilloGrosor1')).includes('bg-emerald'))
+  if (d1 === undefined || d1 === null || isNaN(Number(d1))) {
+    return 'text-slate-400 opacity-60'
   }
-  if (rIdx === 1) {
-    return !!(filterAnilloGrosor2.value && getMeasurementMatchClass(ring.h1, filterAnilloGrosor2.value, getTol('anilloGrosor2')).includes('bg-emerald'))
+  const diff = Math.abs(Number(d1) - Number(filterAnilloDiametro.value))
+  const tol = getTol('anilloDiametro')
+  if (diff <= 0.05) {
+    return '!bg-emerald-100 !text-emerald-950 font-black ring-1 ring-emerald-500/60 shadow-2xs'
   }
-  if (rIdx === 2) {
-    return !!(filterAnilloGrosor3.value && getMeasurementMatchClass(ring.h1, filterAnilloGrosor3.value, getTol('anilloGrosor3')).includes('bg-emerald'))
+  if (diff <= tol) {
+    return '!bg-amber-100 !text-amber-950 font-bold ring-1 ring-amber-400/60 shadow-2xs'
   }
-  return false
+  return 'text-slate-400 opacity-60'
 }
 
-const isRingAlturaMatched = (ring: PartRingItem, rIdx: number, totalRings: number): boolean => {
+const getRingGrosorCellClass = (ring: PartRingItem, rIdx: number, totalRings: number): string => {
   const isOil = rIdx === totalRings - 1 || ring.posicion === 'Anillo de aceite'
+  let filterVal: number | undefined
+  let tolName = 'anilloGrosor1'
+
   if (isOil) {
-    return !!(filterAnilloRadialAceite.value && getMeasurementMatchClass(ring.a1, filterAnilloRadialAceite.value, getTol('anilloRadialAceite')).includes('bg-emerald'))
+    filterVal = filterAnilloGrosorAceite.value
+    tolName = 'anilloGrosorAceite'
+  } else if (rIdx === 0) {
+    filterVal = filterAnilloGrosor1.value
+    tolName = 'anilloGrosor1'
+  } else if (rIdx === 1) {
+    filterVal = filterAnilloGrosor2.value
+    tolName = 'anilloGrosor2'
+  } else if (rIdx === 2) {
+    filterVal = filterAnilloGrosor3.value
+    tolName = 'anilloGrosor3'
   }
-  if (rIdx === 0) {
-    return !!(filterAnilloRadial1.value && getMeasurementMatchClass(ring.a1, filterAnilloRadial1.value, getTol('anilloRadial1')).includes('bg-emerald'))
+
+  if (filterVal === undefined || filterVal === null || isNaN(Number(filterVal))) {
+    return 'text-slate-900'
   }
-  if (rIdx === 1) {
-    return !!(filterAnilloRadial2.value && getMeasurementMatchClass(ring.a1, filterAnilloRadial2.value, getTol('anilloRadial2')).includes('bg-emerald'))
+  if (ring.h1 === undefined || ring.h1 === null || isNaN(Number(ring.h1))) {
+    return 'text-slate-400 opacity-60'
   }
-  if (rIdx === 2) {
-    return !!(filterAnilloRadial3.value && getMeasurementMatchClass(ring.a1, filterAnilloRadial3.value, getTol('anilloRadial3')).includes('bg-emerald'))
+  const diff = Math.abs(Number(ring.h1) - Number(filterVal))
+  const tol = getTol(tolName)
+  if (diff <= 0.05) {
+    return '!bg-emerald-100 !text-emerald-950 font-black ring-1 ring-emerald-500/60 shadow-2xs'
   }
-  return false
+  if (diff <= tol) {
+    return '!bg-amber-100 !text-amber-950 font-bold ring-1 ring-amber-400/60 shadow-2xs'
+  }
+  return 'text-slate-400 opacity-60'
+}
+
+const getRingAlturaCellClass = (ring: PartRingItem, rIdx: number, totalRings: number): string => {
+  const isOil = rIdx === totalRings - 1 || ring.posicion === 'Anillo de aceite'
+  let filterVal: number | undefined
+  let tolName = 'anilloRadial1'
+
+  if (isOil) {
+    filterVal = filterAnilloRadialAceite.value
+    tolName = 'anilloRadialAceite'
+  } else if (rIdx === 0) {
+    filterVal = filterAnilloRadial1.value
+    tolName = 'anilloRadial1'
+  } else if (rIdx === 1) {
+    filterVal = filterAnilloRadial2.value
+    tolName = 'anilloRadial2'
+  } else if (rIdx === 2) {
+    filterVal = filterAnilloRadial3.value
+    tolName = 'anilloRadial3'
+  }
+
+  if (filterVal === undefined || filterVal === null || isNaN(Number(filterVal))) {
+    return 'text-slate-900'
+  }
+  if (ring.a1 === undefined || ring.a1 === null || isNaN(Number(ring.a1))) {
+    return 'text-slate-400 opacity-60'
+  }
+  const diff = Math.abs(Number(ring.a1) - Number(filterVal))
+  const tol = getTol(tolName)
+  if (diff <= 0.05) {
+    return '!bg-emerald-100 !text-emerald-950 font-black ring-1 ring-emerald-500/60 shadow-2xs'
+  }
+  if (diff <= tol) {
+    return '!bg-amber-100 !text-amber-950 font-bold ring-1 ring-amber-400/60 shadow-2xs'
+  }
+  return 'text-slate-400 opacity-60'
 }
 
 const formatRingVal = (val: number | null | undefined): string => {
@@ -1195,47 +1317,9 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       })
     }
 
-    // 2. Filtros de medidas dimensionales específicas (con Tolerancia por filtro o universal)
-    if (compId === 'ajuste_valvula') {
-      if (isFilterActive(filterSelloDiamInt.value)) {
-        const tolSelloDiamInt = getTol('selloDiamInt')
-        list = list.filter(r => r.diametro_interior_mm && Math.abs(r.diametro_interior_mm - (filterSelloDiamInt.value || 0)) <= tolSelloDiamInt)
-      }
-      if (isFilterActive(filterSelloDiamExt.value)) {
-        const tolSelloDiamExt = getTol('selloDiamExt')
-        list = list.filter(r => r.diametro_exterior_mm && Math.abs(r.diametro_exterior_mm - (filterSelloDiamExt.value || 0)) <= tolSelloDiamExt)
-      }
-      if (isFilterActive(filterSelloAltura.value)) {
-        const tolSelloAltura = getTol('selloAltura')
-        list = list.filter(r => r.altura_mm && Math.abs(r.altura_mm - (filterSelloAltura.value || 0)) <= tolSelloAltura)
-      }
-    } else if (compId === 'valvula') {
-      if (isFilterActive(filterValvulaHongo.value)) {
-        const tolValvulaHongo = getTol('valvulaHongo')
-        list = list.filter(r => r.diametro_cabeza_mm && Math.abs(r.diametro_cabeza_mm - (filterValvulaHongo.value || 0)) <= tolValvulaHongo)
-      }
-      if (isFilterActive(filterValvulaVastago.value)) {
-        const tolValvulaVastago = getTol('valvulaVastago')
-        list = list.filter(r => r.diametro_vastago_mm && Math.abs(r.diametro_vastago_mm - (filterValvulaVastago.value || 0)) <= tolValvulaVastago)
-      }
-      if (isFilterActive(filterValvulaAltura.value)) {
-        const tolValvulaAltura = getTol('valvulaAltura')
-        list = list.filter(r => r.longitud_total_mm && Math.abs(r.longitud_total_mm - (filterValvulaAltura.value || 0)) <= tolValvulaAltura)
-      }
-      if (filterValvulaCunero.value) {
-        const q = filterValvulaCunero.value.toLowerCase().trim()
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const stemEnd = String(dims.stem_end || '').toLowerCase()
-          const cunero = String(dims.cunero || dims.cuñero || '').toLowerCase()
-          const ranuras = String(dims.ranuras || '').toLowerCase()
-          const headStyle = String(dims.head_style || '').toLowerCase()
-          const name = String(r.nombre || '').toLowerCase()
-          const oem = String(r.codigo_oem || '').toLowerCase()
-          return stemEnd.includes(q) || cunero.includes(q) || ranuras.includes(q) || headStyle.includes(q) || name.includes(q) || oem.includes(q)
-        })
-      }
-    } else if (compId === 'anillos_motor') {
+    // 2. Filtros de medidas dimensionales específicas
+    // Caso Especializado: ANILLOS DE MOTOR (Mantiene estructura y cálculos exactos)
+    if (compId === 'anillos_motor') {
       // Diámetro (la primera siempre)
       if (isFilterActive(filterAnilloDiametro.value)) {
         const tolAnilloDiametro = getTol('anilloDiametro')
@@ -1318,103 +1402,15 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
           return oilRing?.a1 != null && Math.abs(oilRing.a1 - (filterAnilloRadialAceite.value || 0)) <= tol
         })
       }
-    } else if (compId === 'tornillos_culata') {
-      if (filterPernoMedidaRosca.value) {
-        list = list.filter(r => r.medida_rosca?.toLowerCase() === filterPernoMedidaRosca.value.toLowerCase())
-      }
-      if (isFilterActive(filterPernoGrosor.value)) {
-        const tolPernoGrosor = getTol('pernoGrosor')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const d = dims.diametro_mm ?? dims.grosor_mm ?? (r.medida_rosca ? Number(String(r.medida_rosca).replace(/[^0-9.]/g, '')) : null)
-          return d != null && !isNaN(d) && Math.abs(d - (filterPernoGrosor.value || 0)) <= tolPernoGrosor
-        })
-      }
-      if (isFilterActive(filterPernoPasoRosca.value)) {
-        const tolPernoPasoRosca = getTol('pernoPasoRosca')
-        list = list.filter(r => r.paso_rosca_mm && Math.abs(r.paso_rosca_mm - (filterPernoPasoRosca.value || 0)) <= tolPernoPasoRosca)
-      }
-      if (isFilterActive(filterPernoLongitud.value)) {
-        const tolPernoLongitud = getTol('pernoLongitud')
-        list = list.filter(r => (r.longitud_perno_mm || r.longitud_total_mm) && Math.abs(((r.longitud_perno_mm || r.longitud_total_mm) || 0) - (filterPernoLongitud.value || 0)) <= tolPernoLongitud)
-      }
-      if (isFilterActive(filterPernoCantidad.value)) {
-        list = list.filter(r => r.cantidad_piezas === filterPernoCantidad.value)
-      }
-      if (isFilterActive(filterPernoPasoRosca1.value)) {
-        const tolPernoPasoRosca1 = getTol('pernoPasoRosca1')
-        list = list.filter(r => r.paso_rosca1_mm && Math.abs(r.paso_rosca1_mm - (filterPernoPasoRosca1.value || 0)) <= tolPernoPasoRosca1)
-      }
-      if (isFilterActive(filterPernoLongitud1.value)) {
-        const tolPernoLongitud1 = getTol('pernoLongitud1')
-        list = list.filter(r => r.longitud1_mm && Math.abs(r.longitud1_mm - (filterPernoLongitud1.value || 0)) <= tolPernoLongitud1)
-      }
-      if (isFilterActive(filterPernoLongitud2.value)) {
-        const tolPernoLongitud2 = getTol('pernoLongitud2')
-        list = list.filter(r => r.longitud2_mm && Math.abs(r.longitud2_mm - (filterPernoLongitud2.value || 0)) <= tolPernoLongitud2)
-      }
-    } else if (compId === 'casqueteria' || cat.includes('casquet') || cat.includes('cojinet')) {
-      if (filterCasqueteTipo.value) {
-        const tipo = filterCasqueteTipo.value.toUpperCase()
-        list = list.filter(r => {
-          const t = String(r.tipo_cojinete || (r.dimensiones as any)?.tipo_cojinete || '').toUpperCase()
-          const oem = String(r.codigo_oem || '').toUpperCase()
-          const nom = String(r.nombre || '').toUpperCase()
-          const eqs = (r.equivalencias || []).map(e => String(e.codigo_alterno).toUpperCase()).join(' ')
-          if (tipo === 'MS') return t.includes('MS') || oem.startsWith('MS') || nom.includes('BANC') || nom.includes('MAIN') || eqs.includes('MS')
-          if (tipo === 'CB') return t.includes('CB') || oem.startsWith('CB') || nom.includes('BIEL') || nom.includes('ROD') || eqs.includes('CB')
-          if (tipo === 'TW') return t.includes('TW') || oem.startsWith('TW') || nom.includes('LINEUP') || nom.includes('AXIAL') || nom.includes('WASHER') || eqs.includes('TW')
-          if (tipo === 'CH') return t.includes('CH') || t.includes('CS') || oem.startsWith('CH') || oem.startsWith('CS') || nom.includes('LEVA') || nom.includes('CAM') || eqs.includes('CH')
-          if (tipo === 'PB') return t.includes('PB') || oem.startsWith('PB') || nom.includes('BUJE') || nom.includes('BUCHI') || nom.includes('BUSH') || eqs.includes('PB')
-          return t.includes(tipo) || oem.includes(tipo) || nom.includes(tipo) || eqs.includes(tipo)
-        })
-      }
-      if (isFilterActive(filterCasqueteShaft.value)) {
-        const tolShaft = getTol('casqueteShaft')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const s = r.diametro_munon_mm ?? dims.diametro_eje_min_mm ?? dims.shaft_mm ?? dims.diametro_munon_mm
-          return s != null && Math.abs(Number(s) - (filterCasqueteShaft.value || 0)) <= tolShaft
-        })
-      }
-      if (isFilterActive(filterCasqueteHousing.value)) {
-        const tolHousing = getTol('casqueteHousing')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const h = r.diametro_alojamiento_mm ?? dims.diametro_alojamiento_max_mm ?? dims.housing_mm ?? dims.diametro_alojamiento_mm
-          return h != null && Math.abs(Number(h) - (filterCasqueteHousing.value || 0)) <= tolHousing
-        })
-      }
-      if (isFilterActive(filterCasqueteTWall.value)) {
-        const tolTWall = getTol('casqueteTWall')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const w = dims.espesor_pared_max_mm ?? dims.t_wall_mm ?? dims.espesor_pared_mm ?? dims.espesor_mm
-          return w != null && Math.abs(Number(w) - (filterCasqueteTWall.value || 0)) <= tolTWall
-        })
-      }
-      if (isFilterActive(filterCasqueteLength.value)) {
-        const tolLength = getTol('casqueteLength')
-        list = list.filter(r => {
-          const dims = (r.dimensiones as any) || {}
-          const l = r.ancho_casquete_mm ?? dims.ancho_max_mm ?? dims.length_mm ?? dims.ancho_casquete_mm
-          return l != null && Math.abs(Number(l) - (filterCasqueteLength.value || 0)) <= tolLength
-        })
-      }
     }
 
-    // 2.b. Filtros de parámetros dinámicos para grupos nuevos / personalizados
+    // 2.b. Filtros de parámetros dinámicos para todas las familias (guiados por la definición técnica)
     if (Object.keys(dynamicParamFilters.value).length > 0) {
       for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
         if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
           const tolParam = getTol(key)
           list = list.filter(r => {
-            let partVal = r.dimensiones?.[key] ?? (r as any)[key]
-            if (partVal === undefined || partVal === null) {
-              if (key === 'diametro_interior_mm') partVal = r.diametro_cilindro_mm
-              else if (key === 'diametro_exterior_mm') partVal = (r.dimensiones as any)?.diametro_exterior_1_mm
-              else if (key === 'longitud_total_mm') partVal = (r.dimensiones as any)?.largo_mm ?? (r.dimensiones as any)?.altura_mm
-            }
+            const partVal = getPartParamValue(r, key)
             if (partVal === undefined || partVal === null) return false
 
             // Comparación numérica con tolerancia individual de este parámetro
@@ -1689,22 +1685,26 @@ const toggleMotorsWithPartsOnly = async () => {
 }
 
 const onGroupCreated = async (newGroup: GrupoRepuesto) => {
+  isAdminModalOpen.value = false
+  adminModalEditGroupId.value = null
   showToast(`✓ Familia "${newGroup.nombre}" creada con ${newGroup.parametros.length} parámetros técnicos`)
   await catalogStore.fetchGrupos()
   const found = componentGroups.value.find(g => g.id === newGroup.codigo || g.id === newGroup.id)
   if (found) {
     selectedComponent.value = found
+    await catalogStore.fetchRepuestosByGrupo(found.category, undefined, selectedBrand.value?.id)
   }
 }
 
 const onGroupUpdated = async (updatedGroup: GrupoRepuesto) => {
+  isAdminModalOpen.value = false
+  adminModalEditGroupId.value = null
   showToast(`✓ Familia "${updatedGroup.nombre}" actualizada con ${updatedGroup.parametros.length} parámetros técnicos`)
   await catalogStore.fetchGrupos()
-  if (selectedComponent.value?.id === updatedGroup.codigo || selectedComponent.value?.id === updatedGroup.id) {
-    const found = componentGroups.value.find(g => g.id === updatedGroup.codigo || g.id === updatedGroup.id)
-    if (found) {
-      selectedComponent.value = found
-    }
+  const found = componentGroups.value.find(g => g.id === updatedGroup.codigo || g.id === updatedGroup.id)
+  if (found) {
+    selectedComponent.value = found
+    await catalogStore.fetchRepuestosByGrupo(found.category, undefined, selectedBrand.value?.id)
   }
 }
 
@@ -2629,122 +2629,8 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 1. FILTROS PARA: AJUSTE DE VÁLVULA -->
-        <div v-if="selectedComponent.id === 'ajuste_valvula'" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Diám. interior (mm)
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['selloDiamInt']" :fallback="filterToleranciaMm" />
-            </div>
-            <input
-              v-model.number="filterSelloDiamInt"
-              type="number"
-              step="0.1"
-              placeholder="ej. 4.8"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Diám. exterior (mm)
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['selloDiamExt']" :fallback="filterToleranciaMm" />
-            </div>
-            <input
-              v-model.number="filterSelloDiamExt"
-              type="number"
-              step="0.1"
-              placeholder="ej. 10.8"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Altura (mm)
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['selloAltura']" :fallback="filterToleranciaMm" />
-            </div>
-            <input
-              v-model.number="filterSelloAltura"
-              type="number"
-              step="0.1"
-              placeholder="ej. 10.0"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-        </div>
-
-        <!-- 2. FILTROS PARA: VÁLVULA -->
-        <div v-else-if="selectedComponent.id === 'valvula'" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Hongo (mm)
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['valvulaHongo']" :fallback="filterToleranciaMm" />
-            </div>
-            <input
-              v-model.number="filterValvulaHongo"
-              type="number"
-              step="0.1"
-              placeholder="ej. 42.5"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Vástago (mm)
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['valvulaVastago']" :fallback="filterToleranciaMm" :step="0.01" />
-            </div>
-            <input
-              v-model.number="filterValvulaVastago"
-              type="number"
-              step="0.05"
-              placeholder="ej. 8.0"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">
-                Altura (mm)
-              </label>
-              <ToleranceBadge v-model="filterTolerancias['valvulaAltura']" :fallback="filterToleranciaMm" />
-            </div>
-            <input
-              v-model.number="filterValvulaAltura"
-              type="number"
-              step="0.5"
-              placeholder="ej. 103.5"
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-
-          <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5 truncate">
-              Cuñero / Ranura
-            </label>
-            <input
-              v-model="filterValvulaCunero"
-              type="text"
-              placeholder="ej. 1, 3, 1C..."
-              class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-            />
-          </div>
-        </div>
-
-        <!-- 3. FILTROS PARA: ANILLOS DE MOTOR (NOMENCLATURA OFICIAL RIK / TALLER) -->
-        <div v-else-if="selectedComponent.id === 'anillos_motor'" class="space-y-2.5">
+        <!-- FILTROS ESPECIALIZADOS PARA ANILLOS DE MOTOR (Mantiene estructura técnica RIK) -->
+        <div v-if="selectedComponent.id === 'anillos_motor'" class="space-y-2.5">
           <!-- Barra superior de selección de Anillo y Nota Técnica -->
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
             <!-- Tabs de navegación: Todos, 1, 2, 3, Anillo de aceite -->
@@ -3160,208 +3046,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 4. FILTROS PARA: JUEGO DE TORNILLOS DE CULATA -->
-        <div v-else-if="selectedComponent.id === 'tornillos_culata'" class="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Rosca</label>
-            <select
-              v-model="filterPernoMedidaRosca"
-              class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-            >
-              <option value="">Todas</option>
-              <option value="M10">M10</option>
-              <option value="M11">M11</option>
-              <option value="M12">M12</option>
-              <option value="M14">M14</option>
-            </select>
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Grosor (mm)</label>
-              <ToleranceBadge v-model="filterTolerancias['pernoGrosor']" :fallback="filterToleranciaMm" :step="0.5" />
-            </div>
-            <input
-              v-model.number="filterPernoGrosor"
-              type="number"
-              step="0.5"
-              placeholder="ej. 11.0"
-              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Paso (mm)</label>
-              <ToleranceBadge v-model="filterTolerancias['pernoPasoRosca']" :fallback="filterToleranciaMm" :step="0.05" />
-            </div>
-            <input
-              v-model.number="filterPernoPasoRosca"
-              type="number"
-              step="0.25"
-              placeholder="ej. 1.25"
-              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-0.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 truncate">Alto / Long. (mm)</label>
-              <ToleranceBadge v-model="filterTolerancias['pernoLongitud']" :fallback="filterToleranciaMm" :step="1.0" />
-            </div>
-            <input
-              v-model.number="filterPernoLongitud"
-              type="number"
-              step="1"
-              placeholder="ej. 120"
-              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-            />
-          </div>
-
-          <div>
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">Cantidad</label>
-            <input
-              v-model.number="filterPernoCantidad"
-              type="number"
-              step="1"
-              placeholder="ej. 18"
-              class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg"
-            />
-          </div>
-        </div>
-
-        <!-- 6. FILTROS PARA: CASQUETERÍA Y COJINETES (MS, CB, TW, CH, PB) -->
-        <div 
-          v-else-if="selectedComponent.id === 'casqueteria' || selectedComponent.category === 'Casquetería'"
-          class="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80"
-        >
-          <!-- Fila 1: Selector de tipo de cojinete (MS, TW, CB, CH, PB) -->
-          <div class="flex flex-wrap items-center gap-1.5 pb-1.5 border-b border-slate-200/60">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1">Tipo:</span>
-            <button
-              type="button"
-              @click="filterCasqueteTipo = ''"
-              class="px-2 py-0.5 rounded text-[11px] font-bold transition"
-              :class="filterCasqueteTipo === '' ? 'bg-[#04C4D9] text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'"
-            >
-              TODOS
-            </button>
-            <button
-              type="button"
-              @click="filterCasqueteTipo = 'MS'"
-              class="px-2 py-0.5 rounded text-[11px] font-bold transition"
-              :class="filterCasqueteTipo === 'MS' ? 'bg-[#004b97] text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'"
-              title="Bancada (Main Bearing Set)"
-            >
-              BANCO - MS
-            </button>
-            <button
-              type="button"
-              @click="filterCasqueteTipo = 'CB'"
-              class="px-2 py-0.5 rounded text-[11px] font-bold transition"
-              :class="filterCasqueteTipo === 'CB' ? 'bg-[#004b97] text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'"
-              title="Biela (Connecting Rod Bearing Set)"
-            >
-              CB - BIELA
-            </button>
-            <button
-              type="button"
-              @click="filterCasqueteTipo = 'TW'"
-              class="px-2 py-0.5 rounded text-[11px] font-bold transition"
-              :class="filterCasqueteTipo === 'TW' ? 'bg-[#004b97] text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'"
-              title="Axiales / Arandelas de empuje (Thrust Washer)"
-            >
-              LINEUP - TW
-            </button>
-            <button
-              type="button"
-              @click="filterCasqueteTipo = 'CH'"
-              class="px-2 py-0.5 rounded text-[11px] font-bold transition"
-              :class="filterCasqueteTipo === 'CH' ? 'bg-[#004b97] text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'"
-              title="Leva / Árbol de levas (Camshaft Bearing)"
-            >
-              CH - LEVA
-            </button>
-            <button
-              type="button"
-              @click="filterCasqueteTipo = 'PB'"
-              class="px-2 py-0.5 rounded text-[11px] font-bold transition"
-              :class="filterCasqueteTipo === 'PB' ? 'bg-[#004b97] text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'"
-              title="Buje de biela / perno (Pin Bushing)"
-            >
-              PB - BUCHI
-            </button>
-          </div>
-
-          <!-- Fila 2: Los 4 parámetros de búsqueda (SHAFT, HOUSING, T WALL, LENGTH) -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro de Eje o Muñón">
-                  SHAFT (Eje/Muñón)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['casqueteShaft']" :fallback="filterToleranciaMm" :step="0.02" />
-              </div>
-              <input
-                v-model.number="filterCasqueteShaft"
-                type="number"
-                step="0.05"
-                placeholder="ej. 47.98 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Diámetro de Alojamiento o Túnel">
-                  HOUSING (Alojamiento)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['casqueteHousing']" :fallback="filterToleranciaMm" :step="0.02" />
-              </div>
-              <input
-                v-model.number="filterCasqueteHousing"
-                type="number"
-                step="0.05"
-                placeholder="ej. 52.04 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Espesor de Pared">
-                  T WALL (Espesor)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['casqueteTWall']" :fallback="filterToleranciaMm" :step="0.01" />
-              </div>
-              <input
-                v-model.number="filterCasqueteTWall"
-                type="number"
-                step="0.01"
-                placeholder="ej. 2.00 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate" title="Ancho o Longitud del Casquete">
-                  LENGTH (Ancho/Largo)
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['casqueteLength']" :fallback="filterToleranciaMm" :step="0.1" />
-              </div>
-              <input
-                v-model.number="filterCasqueteLength"
-                type="number"
-                step="0.1"
-                placeholder="ej. 19.90 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- 6. FILTROS PARA OTROS GRUPOS PERSONALIZADOS / DINÁMICOS (SOPORTE SELECT / CASCADA) -->
+        <!-- FILTROS TÉCNICOS DINÁMICOS BASADOS EN PARÁMETROS DE LA FAMILIA (SUPABASE / STORE) -->
         <div 
           v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
           class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
@@ -3477,26 +3162,8 @@ onUnmounted(() => {
                 <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Código OEM</th>
                 <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
                 
-                <th v-if="selectedComponent?.id === 'ajuste_valvula' || selectedComponent?.category === 'Sellos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Medidas: Diám. Int / Diám. Ext / Altura (mm)
-                </th>
-                <th v-else-if="selectedComponent?.id === 'valvula' || selectedComponent?.category === 'Válvulas'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Medidas: Hongo / Vástago / Altura (mm) • Cuñero
-                </th>
-                <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                <th v-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Medidas: Diámetro / Grosor / Altura (mm)
-                </th>
-                <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Tornillos: Rosca / Grosor / Paso / Longitud / Cantidad
-                </th>
-                <th v-else-if="selectedComponent?.id === 'casqueteria' || selectedComponent?.category === 'Casquetería'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Casquetería: Tipo (MS/CB/TW/CH/PB) • SHAFT × HOUSING × T WALL × LENGTH
-                </th>
-                <th v-else-if="selectedComponent?.id === 'asientos_valvula' || selectedComponent?.category === 'Asientos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Asientos: Posición • Cilindros • Cruces
-                </th>
-                <th v-else-if="selectedComponent?.id === 'empaques_juntas' || selectedComponent?.category === 'Empaques'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Empaques: Diámetro / Espesor / Material
                 </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || selectedComponent?.category || 'COTAS').toUpperCase() }}: {{ currentGroupDefinition.parametros.filter(p => p.requerido).map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || currentGroupDefinition.parametros.map(p => p.etiqueta_corta || p.etiqueta).slice(0, 4).join(' × ') }}
@@ -3702,50 +3369,8 @@ onUnmounted(() => {
                 <!-- 4. MEDIDAS Y COTAS -->
                 <td class="py-2 px-3 align-middle border-b border-slate-100">
                   
-                  <!-- Caso A: Ajuste de válvula -->
-                  <div v-if="selectedComponent?.id === 'ajuste_valvula' || part.categoria === 'Sellos'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_interior_mm || 4.8, filterSelloDiamInt, getTol('selloDiamInt'))">
-                      Int: <strong>{{ part.diametro_interior_mm || 4.8 }} mm</strong>
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_exterior_mm || 10.8, filterSelloDiamExt, getTol('selloDiamExt'))">
-                      Ext: <strong>{{ part.diametro_exterior_mm || 10.8 }} mm</strong>
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.altura_mm || 10, filterSelloAltura, getTol('selloAltura'))">
-                      Alt: <strong>{{ part.altura_mm || 10 }} mm</strong>
-                    </span>
-                  </div>
-
-                  <!-- Caso B: Válvula -->
-                  <div v-else-if="selectedComponent?.id === 'valvula' || part.categoria === 'Válvulas'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
-                    <span 
-                      v-if="part.dimensiones?.tipo_valvula || part.dimensiones?.posicion" 
-                      class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider"
-                      :class="(part.dimensiones?.tipo_valvula === 'Admisión' || part.dimensiones?.posicion === 'IN') ? 'bg-cyan-100 text-cyan-800 border border-cyan-200' : 'bg-amber-100 text-amber-800 border border-amber-200'"
-                    >
-                      {{ part.dimensiones?.tipo_valvula || (part.dimensiones?.posicion === 'IN' ? 'Admisión' : (part.dimensiones?.posicion === 'EX' ? 'Escape' : part.dimensiones?.posicion)) }}
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_cabeza_mm || (part.dimensiones as any)?.hongo_mm || (part.dimensiones as any)?.diametro_cabeza_mm, filterValvulaHongo, getTol('valvulaHongo'))">
-                      Hongo: <strong>{{ (part.diametro_cabeza_mm || (part.dimensiones as any)?.hongo_mm || (part.dimensiones as any)?.diametro_cabeza_mm) ? `${part.diametro_cabeza_mm || (part.dimensiones as any)?.hongo_mm || (part.dimensiones as any)?.diametro_cabeza_mm} mm` : '—' }}</strong>
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.diametro_vastago_mm || (part.dimensiones as any)?.diametro_vastago_mm, filterValvulaVastago, getTol('valvulaVastago'))">
-                      Vástago: <strong>{{ (part.diametro_vastago_mm || (part.dimensiones as any)?.diametro_vastago_mm) ? `${part.diametro_vastago_mm || (part.dimensiones as any)?.diametro_vastago_mm} mm` : '—' }}</strong>
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded border text-[11px] transition" :class="getMeasurementMatchClass(part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm, filterValvulaAltura, getTol('valvulaAltura'))">
-                      Largo: <strong>{{ (part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm) ? `${part.longitud_total_mm || (part.dimensiones as any)?.longitud_total_mm} mm` : '—' }}</strong>
-                    </span>
-                    <span v-if="part.angulo_asiento_grados || (part.dimensiones as any)?.angulo_asiento_grados" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] border border-slate-200">
-                      Ángulo: <strong>{{ part.angulo_asiento_grados || (part.dimensiones as any)?.angulo_asiento_grados }}°</strong>
-                    </span>
-                    <span v-if="(part.dimensiones as any)?.stem_end || (part.dimensiones as any)?.cunero || (part.dimensiones as any)?.ranuras" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px]">
-                      Cuñero: <strong>{{ (part.dimensiones as any)?.stem_end || (part.dimensiones as any)?.cunero || (part.dimensiones as any)?.ranuras }}</strong>
-                    </span>
-                    <span v-if="(part.dimensiones as any)?.head_style" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] border border-slate-200">
-                      Plato: <strong>{{ (part.dimensiones as any).head_style }}</strong>
-                    </span>
-                  </div>
-
-                  <!-- Caso C: Anillos de motor (Diseño Limpio, Impeccable + Ponytail) -->
-                  <div v-else-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="py-1">
+                  <!-- Caso Especializado: Anillos de motor (Estructura RIK de 3 filas con resaltado exacto Verde / tolerancia Amarillo) -->
+                  <div v-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="py-1">
                     <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text">
                       <table class="border-collapse text-center text-xs">
                         <thead>
@@ -3774,19 +3399,19 @@ onUnmounted(() => {
                             </td>
                             <td 
                               class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
-                              :class="filterAnilloDiametro && getMeasurementMatchClass(ring.d1, filterAnilloDiametro, getTol('anilloDiametro')).includes('bg-emerald') ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
+                              :class="getRingDiametroCellClass(ring.d1)"
                             >
                               {{ formatRingVal(ring.d1) }}
                             </td>
                             <td 
                               class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
-                              :class="isRingGrosorMatched(ring, rIdx, getPartRingsList(part).length) ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
+                              :class="getRingGrosorCellClass(ring, rIdx, getPartRingsList(part).length)"
                             >
                               {{ formatRingVal(ring.h1) }}
                             </td>
                             <td 
                               class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="isRingAlturaMatched(ring, rIdx, getPartRingsList(part).length) ? '!bg-emerald-100 !text-emerald-950 font-black' : 'text-slate-900'"
+                              :class="getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length)"
                             >
                               {{ formatRingVal(ring.a1) }}
                             </td>
@@ -3817,99 +3442,51 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <!-- Caso D: Juego de tornillos de culata -->
-                  <div v-else-if="selectedComponent?.id === 'tornillos_culata' || part.categoria === 'Pernos'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      {{ part.medida_rosca || 'M12' }} × {{ part.paso_rosca_mm || 1.25 }}
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      L: {{ part.longitud_perno_mm || 120 }} mm
-                    </span>
-                    <span class="px-1.5 py-0.5 rounded bg-cyan-50 text-[#038391] border border-cyan-200 font-bold text-[11px]">
-                      {{ part.cantidad_piezas || 18 }} pcs
-                    </span>
-                  </div>
-
-                  <!-- Caso E: Casquetería (MS, CB, TW, CH, PB - SHAFT, HOUSING, T WALL, LENGTH) -->
-                  <div v-else-if="selectedComponent?.id === 'casqueteria' || part.categoria === 'Casquetería'" class="space-y-1 text-xs font-mono text-slate-800">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <span 
-                        v-if="part.tipo_cojinete || (part.dimensiones as any)?.tipo_cojinete" 
-                        class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white"
-                      >
-                        {{ 
-                          part.tipo_cojinete === 'MS' ? 'MS (Bancada)' :
-                          part.tipo_cojinete === 'CB' ? 'CB (Biela)' :
-                          part.tipo_cojinete === 'TW' ? 'TW (Lineup)' :
-                          part.tipo_cojinete === 'CH' ? 'CH (Leva)' :
-                          part.tipo_cojinete === 'PB' ? 'PB (Buchi)' :
-                          part.tipo_cojinete || (part.dimensiones as any)?.tipo_cojinete 
-                        }}
-                      </span>
-                      <span v-if="part.diametro_munon_mm || (part.dimensiones as any)?.diametro_eje_min_mm || (part.dimensiones as any)?.shaft_mm" class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]">
-                        Shaft: <strong>{{ part.diametro_munon_mm || (part.dimensiones as any)?.diametro_eje_min_mm || (part.dimensiones as any)?.shaft_mm }} mm</strong>
-                      </span>
-                      <span v-if="part.diametro_alojamiento_mm || (part.dimensiones as any)?.diametro_alojamiento_max_mm || (part.dimensiones as any)?.housing_mm" class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]">
-                        Housing: <strong>{{ part.diametro_alojamiento_mm || (part.dimensiones as any)?.diametro_alojamiento_max_mm || (part.dimensiones as any)?.housing_mm }} mm</strong>
-                      </span>
-                      <span v-if="(part.dimensiones as any)?.espesor_pared_max_mm || (part.dimensiones as any)?.t_wall_mm || (part.dimensiones as any)?.espesor_pared_mm" class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]">
-                        T Wall: <strong>{{ (part.dimensiones as any)?.espesor_pared_max_mm || (part.dimensiones as any)?.t_wall_mm || (part.dimensiones as any)?.espesor_pared_mm }} mm</strong>
-                      </span>
-                      <span v-if="part.ancho_casquete_mm || (part.dimensiones as any)?.ancho_max_mm || (part.dimensiones as any)?.length_mm" class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[11px]">
-                        Length: <strong>{{ part.ancho_casquete_mm || (part.dimensiones as any)?.ancho_max_mm || (part.dimensiones as any)?.length_mm }} mm</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Caso Asientos de válvula -->
-                  <div v-else-if="selectedComponent?.id === 'asientos_valvula' || part.categoria === 'Asientos'" class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800">
-                    <span v-if="(part.dimensiones as any)?.posicion" class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider" :class="((part.dimensiones as any)?.posicion === 'Admisión' || (part.dimensiones as any)?.posicion === 'IN') ? 'bg-cyan-100 text-[#038391] border border-cyan-200' : 'bg-amber-100 text-amber-900 border border-amber-200'">
-                      {{ (part.dimensiones as any)?.posicion }}
-                    </span>
-                    <span v-if="(part.dimensiones as any)?.cilindros" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold">
-                      {{ (part.dimensiones as any)?.cilindros }} Cilindros
-                    </span>
-                    <span v-if="(part.dimensiones as any)?.interchangeable && (part.dimensiones as any)?.interchangeable.length > 0" class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
-                      Cruces: {{ Array.isArray((part.dimensiones as any)?.interchangeable) ? (part.dimensiones as any).interchangeable.join(', ') : (part.dimensiones as any)?.interchangeable }}
-                    </span>
-                  </div>
-
-                  <!-- Caso F: Empaques -->
-                  <div v-else-if="selectedComponent?.id === 'empaques_juntas' || part.categoria === 'Empaques'" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-mono text-slate-800">
-                    <span v-if="part.diametro_cilindro_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Cil: <strong>{{ part.diametro_cilindro_mm }} mm</strong>
-                    </span>
-                    <span v-if="part.dimensiones?.espesor_mm" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px]">
-                      Espesor: <strong>{{ part.dimensiones.espesor_mm }} mm</strong>
-                    </span>
-                  </div>
-
-                  <!-- Caso H: Grupo Dinámico / Personalizado (Badges agrupados estilo Imagen 3) -->
+                  <!-- Caso Dinámico General: Todas las familias consultan parámetros técnicos de Supabase / Store -->
                   <div 
                     v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" 
                     class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800"
                   >
-                    <span 
+                    <template 
                       v-for="p in currentGroupDefinition.parametros.filter(p => p.requerido)" 
                       :key="p.clave"
-                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono font-bold"
-                      :class="[
-                        p.clave === 'posicion' 
-                          ? 'bg-cyan-100 text-[#038391] border-cyan-200 uppercase text-[10px]' 
-                          : getMeasurementMatchClass(part.dimensiones?.[p.clave] ?? (part as any)[p.clave], dynamicParamFilters[p.clave], getTol(p.clave))
-                      ]"
                     >
-                      <span v-if="p.clave !== 'posicion'" class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span> 
-                      <strong :class="p.clave === 'posicion' ? 'text-[#038391]' : 'text-slate-900'">
-                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? (p.clave === 'diametro_interior_mm' ? (r => r.diametro_cilindro_mm)(part) : undefined) ?? (p.clave === 'diametro_exterior_mm' ? (part.dimensiones as any)?.diametro_exterior_1_mm : undefined) ?? (p.clave === 'longitud_total_mm' ? ((part.dimensiones as any)?.largo_mm ?? (part.dimensiones as any)?.altura_mm) : undefined) ?? '—' }}
-                      </strong>
-                      <span v-if="p.unidad && (part.dimensiones?.[p.clave] ?? (part as any)[p.clave])" class="text-slate-400 text-[10px] font-sans">{{ p.unidad }}</span>
-                    </span>
+                      <!-- Caso A: Posición / Tipo de Válvula / Selección -->
+                      <span 
+                        v-if="p.tipo_dato === 'seleccion' || p.clave === 'posicion' || p.clave === 'tipo_valvula' || p.clave === 'tipo'"
+                        class="px-1.5 py-0.5 rounded border transition"
+                        :class="getPositionOrTypeBadgeClass(getPartParamValue(part, p.clave), dynamicParamFilters[p.clave])"
+                      >
+                        {{ getPartParamValue(part, p.clave) || p.etiqueta_corta || p.etiqueta }}
+                      </span>
+
+                      <!-- Caso B: Parámetro Numérico con Unidad y Resaltado Verde / Amarillo -->
+                      <span 
+                        v-else-if="p.tipo_dato === 'numero' || (p.unidad && p.unidad !== '')"
+                        class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
+                        :class="getMeasurementMatchClass(getPartParamValue(part, p.clave), dynamicParamFilters[p.clave], getTol(p.clave))"
+                      >
+                        <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
+                        <strong class="text-slate-900">
+                          {{ getPartParamValue(part, p.clave) != null ? `${getPartParamValue(part, p.clave)} ${p.unidad || ''}`.trim() : '—' }}
+                        </strong>
+                      </span>
+
+                      <!-- Caso C: Texto libre / Otro -->
+                      <span 
+                        v-else
+                        class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
+                        :class="dynamicParamFilters[p.clave] ? (String(getPartParamValue(part, p.clave) || '').toLowerCase().includes(String(dynamicParamFilters[p.clave]).toLowerCase()) ? 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs' : 'bg-slate-100 text-slate-500 opacity-60') : 'bg-slate-100 text-slate-800 border-slate-200'"
+                      >
+                        <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
+                        <strong class="text-slate-900">{{ getPartParamValue(part, p.clave) || '—' }}</strong>
+                      </span>
+                    </template>
                   </div>
 
-                  <!-- Caso I: Genérico / Otros -->
+                  <!-- Caso Fallback: Sin parámetros definidos -->
                   <div v-else class="text-[11px] text-slate-500 font-mono">
-                    {{ part.categoria }} • Ref: {{ part.subsistema }}
+                    {{ part.categoria }} • Ref: {{ part.subsistema || 'General' }}
                   </div>
 
                 </td>

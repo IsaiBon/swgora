@@ -1343,9 +1343,7 @@ const handleSaveGroup = async () => {
       })
 
       emit('group-updated', updated)
-      emit('group-created', updated)
-      selectedGroupCode.value = updated.codigo
-      activeTab.value = 'repuesto'
+      emit('close')
     } else {
       const created = await catalogStore.createGrupo({
         nombre: groupNombre.value.trim(),
@@ -1357,9 +1355,7 @@ const handleSaveGroup = async () => {
       })
 
       emit('group-created', created)
-      // Pasar automáticamente a crear un repuesto de este nuevo grupo
-      selectedGroupCode.value = created.codigo
-      activeTab.value = 'repuesto'
+      emit('close')
     }
   } catch (err: unknown) {
     console.error('Error al guardar grupo:', err)
