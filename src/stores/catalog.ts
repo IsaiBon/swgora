@@ -383,6 +383,25 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Elimina un repuesto técnico de Supabase y de la lista reactiva
+   */
+  async function deleteRepuesto(partId: string) {
+    isSaving.value = true
+    error.value = null
+    try {
+      await catalogService.deleteRepuesto(partId)
+      repuestos.value = repuestos.value.filter(r => r.id !== partId && r.codigo_oem !== partId)
+      return true
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar el repuesto'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
    * Carga los grupos o familias de piezas y sus esquemas paramétricos desde Supabase/local
    */
   async function fetchGrupos() {
@@ -503,6 +522,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     resetFilters,
     createRepuesto,
     updateRepuesto,
+    deleteRepuesto,
     toggleOnlyMotorsWithParts,
     setOnlyMotorsWithParts,
     initCatalog

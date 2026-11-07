@@ -1745,14 +1745,30 @@ const toggleMotorsWithPartsOnly = async () => {
     : 'Filtro desactivado: Mostrando todos los motores registrados')
 }
 
-const onGroupCreated = (newGroup: GrupoRepuesto) => {
+const onGroupCreated = async (newGroup: GrupoRepuesto) => {
   showToast(`✓ Familia "${newGroup.nombre}" creada con ${newGroup.parametros.length} parámetros técnicos`)
-  catalogStore.fetchGrupos()
+  await catalogStore.fetchGrupos()
+  const found = componentGroups.value.find(g => g.id === newGroup.codigo || g.id === newGroup.id)
+  if (found) {
+    selectedComponent.value = found
+  }
 }
 
-const onGroupUpdated = (updatedGroup: GrupoRepuesto) => {
+const onGroupUpdated = async (updatedGroup: GrupoRepuesto) => {
   showToast(`✓ Familia "${updatedGroup.nombre}" actualizada con ${updatedGroup.parametros.length} parámetros técnicos`)
-  catalogStore.fetchGrupos()
+  await catalogStore.fetchGrupos()
+  if (selectedComponent.value?.id === updatedGroup.codigo || selectedComponent.value?.id === updatedGroup.id) {
+    const found = componentGroups.value.find(g => g.id === updatedGroup.codigo || g.id === updatedGroup.id)
+    if (found) {
+      selectedComponent.value = found
+    }
+  }
+}
+
+const onPartDeleted = (_deletedPartId?: string) => {
+  showToast('✓ Repuesto eliminado exitosamente del catálogo')
+  adminModalEditPart.value = null
+  isAdminModalOpen.value = false
 }
 
 // Cerrar dropdowns al hacer clic fuera
@@ -3271,110 +3287,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 5. FILTROS PARA: CAMISAS DE CILINDRO -->
-        <div 
-          v-else-if="selectedComponent.id === 'camisas_cilindro' || selectedComponent.category === 'Camisas'"
-          class="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200/80"
-        >
-          <!-- Fila principal: Cotas maestras de maquinado (Int, Ext, Largo) -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Diámetro interior
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['diametro_interior_mm']" :fallback="filterToleranciaMm" />
-              </div>
-              <input
-                v-model.number="dynamicParamFilters['diametro_interior_mm']"
-                type="number"
-                step="0.5"
-                placeholder="ej. 88.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Diámetro exterior
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['diametro_exterior_mm']" :fallback="filterToleranciaMm" />
-              </div>
-              <input
-                v-model.number="dynamicParamFilters['diametro_exterior_mm']"
-                type="number"
-                step="0.5"
-                placeholder="ej. 93.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
-                  Largo / Altura
-                </label>
-                <ToleranceBadge v-model="filterTolerancias['longitud_total_mm']" :fallback="filterToleranciaMm" />
-              </div>
-              <input
-                v-model.number="dynamicParamFilters['longitud_total_mm']"
-                type="number"
-                step="1"
-                placeholder="ej. 182.0 mm"
-                class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-          </div>
-
-          <!-- Fila secundaria: Pestaña, Acabado y Tipo -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-200/60">
-            <div>
-              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Diámetro pestaña</label>
-              <input
-                v-model.number="dynamicParamFilters['diametro_pestana_mm']"
-                type="number"
-                step="0.5"
-                placeholder="ej. 97.0"
-                class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Espesor pestaña</label>
-              <input
-                v-model.number="dynamicParamFilters['espesor_pestana_mm']"
-                type="number"
-                step="0.1"
-                placeholder="ej. 7.0"
-                class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Acabado</label>
-              <select
-                v-model="dynamicParamFilters['acabado']"
-                class="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
-              >
-                <option value="">Todos</option>
-                <option value="F">Terminada (F)</option>
-                <option value="S">Semiterminada (S)</option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-[10px] font-bold text-slate-500 mb-0.5">Tipo</label>
-              <input
-                v-model="dynamicParamFilters['tipo']"
-                type="text"
-                placeholder="ej. D03"
-                class="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#04C4D9]"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- 6. FILTROS PARA: CASQUETERÍA Y COJINETES (MS, CB, TW, CH, PB) -->
         <div 
           v-else-if="selectedComponent.id === 'casqueteria' || selectedComponent.category === 'Casquetería'"
@@ -3715,9 +3627,6 @@ onUnmounted(() => {
                 <th v-else-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Medidas: Diámetro / Grosor / Altura (mm)
                 </th>
-                <th v-else-if="selectedComponent?.id === 'camisas_cilindro' || selectedComponent?.category === 'Camisas'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Cotas: A (Int) × B (Ext) × C (Largo) • Pestaña (D × E)
-                </th>
                 <th v-else-if="selectedComponent?.id === 'tornillos_culata' || selectedComponent?.category === 'Pernos'" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Tornillos: Rosca / Grosor / Paso / Longitud / Cantidad
                 </th>
@@ -3734,7 +3643,7 @@ onUnmounted(() => {
                   Empaques: Diámetro / Espesor / Material
                 </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Parámetros: {{ currentGroupDefinition.parametros.map(p => p.etiqueta).slice(0, 3).join(' / ') }}<span v-if="currentGroupDefinition.parametros.length > 3">...</span>
+                  {{ (selectedComponent?.title || selectedComponent?.category || 'COTAS').toUpperCase() }}: {{ currentGroupDefinition.parametros.filter(p => p.requerido).map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || currentGroupDefinition.parametros.map(p => p.etiqueta_corta || p.etiqueta).slice(0, 4).join(' × ') }}
                 </th>
                 <th v-else class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   Especificaciones Técnicas (mm)
@@ -4141,44 +4050,22 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Caso G: Camisas de cilindro (Ultra-compacto) -->
-                  <div v-else-if="selectedComponent?.id === 'camisas_cilindro' || part.categoria === 'Camisas'" class="space-y-0.5">
-                    <div class="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-bold text-slate-800">
-                      <span class="text-slate-500 text-[10px] uppercase font-sans">A (Int):</span>
-                      <strong class="text-slate-900 text-xs">{{ part.dimensiones?.diametro_interior_mm || part.diametro_cilindro_mm || '—' }}</strong>
-                      <span class="text-slate-300">×</span>
-                      <span class="text-slate-500 text-[10px] uppercase font-sans">B (Ext):</span>
-                      <strong class="text-slate-900 text-xs">{{ part.dimensiones?.diametro_exterior_mm || '—' }}</strong>
-                      <span class="text-slate-300">×</span>
-                      <span class="text-slate-500 text-[10px] uppercase font-sans">C:</span>
-                      <strong class="text-slate-900 text-xs">{{ part.dimensiones?.longitud_total_mm || part.longitud_total_mm || '—' }}</strong>
-                      <span class="text-slate-400 text-[10px]">mm</span>
-                    </div>
-
-                    <div class="flex items-center gap-1 flex-wrap text-[10px] font-mono text-slate-600">
-                      <span v-if="part.dimensiones?.diametro_pestana_mm || part.dimensiones?.espesor_pestana_mm" class="px-1 rounded bg-slate-50 border border-slate-200 text-[9px]">
-                        Pest: {{ part.dimensiones?.diametro_pestana_mm || '—' }}×{{ part.dimensiones?.espesor_pestana_mm || '—' }}mm
-                      </span>
-                      <span v-if="part.dimensiones?.acabado" class="px-1 rounded text-[9px] font-bold uppercase" :class="part.dimensiones.acabado === 'F' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'">
-                        {{ part.dimensiones.acabado === 'F' ? 'Terminada' : 'Semi' }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Caso H: Grupo Dinámico / Personalizado -->
+                  <!-- Caso H: Grupo Dinámico / Personalizado (Badges agrupados estilo Imagen 3) -->
                   <div 
                     v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" 
-                    class="flex flex-wrap items-center gap-1 text-xs font-mono text-slate-800"
+                    class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800"
                   >
                     <span 
                       v-for="p in currentGroupDefinition.parametros" 
                       :key="p.clave"
-                      class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px]"
+                      v-show="(part.dimensiones?.[p.clave] ?? (part as any)[p.clave]) !== undefined || p.requerido"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs font-mono font-bold text-slate-800"
                     >
-                      <span class="text-slate-500 font-sans">{{ p.etiqueta }}:</span> 
-                      <strong class="text-slate-900 ml-0.5">
-                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? '—' }}<span v-if="p.unidad" class="text-slate-400 ml-0.5">{{ p.unidad }}</span>
+                      <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span> 
+                      <strong class="text-slate-900">
+                        {{ part.dimensiones?.[p.clave] ?? (part as any)[p.clave] ?? (p.clave === 'diametro_interior_mm' ? part.diametro_cilindro_mm : undefined) ?? '—' }}
                       </strong>
+                      <span v-if="p.unidad && (part.dimensiones?.[p.clave] ?? (part as any)[p.clave])" class="text-slate-400 text-[10px] font-sans">{{ p.unidad }}</span>
                     </span>
                   </div>
 
@@ -4712,6 +4599,7 @@ onUnmounted(() => {
       @close="isAdminModalOpen = false; adminModalEditGroupId = null; adminModalEditPart = null"
       @part-created="onPartCreated"
       @part-updated="onPartUpdated"
+      @part-deleted="onPartDeleted"
       @group-created="onGroupCreated"
       @group-updated="onGroupUpdated"
     />

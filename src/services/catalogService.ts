@@ -377,6 +377,16 @@ function saveLocalCustomRepuesto(part: RepuestoTecnico): void {
   }
 }
 
+function removeLocalCustomRepuesto(partId: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalCustomRepuestos().filter(p => p.id !== partId && p.codigo_oem !== partId)
+    localStorage.setItem(LOCAL_PARTS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error eliminando repuesto de localStorage:', e)
+  }
+}
+
 export const mockFabricantes: Fabricante[] = [
   { id: 'fab-1', nombre: 'Toyota', pais_origen: 'Japón', logo_url: 'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?w=120&auto=format&fit=crop&q=80', activo: true, orden_visual: 1, engines_count: 5 },
   { id: 'fab-2', nombre: 'Nissan', pais_origen: 'Japón', logo_url: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=120&auto=format&fit=crop&q=80', activo: true, orden_visual: 2, engines_count: 4 },
@@ -1854,6 +1864,42 @@ export const catalogService = {
       mockRepuestos[mIdx] = updatedLocalPart
     }
     return updatedLocalPart
+  },
+
+  /**
+   * Elimina un repuesto técnico de Supabase y del almacenamiento local
+   */
+  async deleteRepuesto(partId: string): Promise<boolean> {
+    try {
+      // 1. Eliminar equivalencias asociadas en Supabase
+      await supabase
+        .from('equivalencias_repuestos')
+        .delete()
+        .eq('repuesto_id', partId)
+
+      // 2. Eliminar repuesto técnico en Supabase
+      const { error } = await supabase
+        .from('repuestos_tecnicos')
+        .delete()
+        .or(`id.eq.${partId},codigo_oem.eq.${partId}`)
+
+      if (error) {
+        console.warn('[CatalogService] Advertencia al eliminar en Supabase:', error.message)
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error eliminando repuesto en Supabase:', err)
+    }
+
+    // 3. Eliminar de localStorage
+    removeLocalCustomRepuesto(partId)
+
+    // 4. Eliminar de mockRepuestos en memoria si existe
+    const mockIdx = mockRepuestos.findIndex(r => r.id === partId || r.codigo_oem === partId)
+    if (mockIdx >= 0) {
+      mockRepuestos.splice(mockIdx, 1)
+    }
+
+    return true
   },
 
   /**

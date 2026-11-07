@@ -30,7 +30,8 @@ import {
   Lock,
   Filter,
   Table,
-  CheckCircle2
+  CheckCircle2,
+  Copy
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -46,6 +47,7 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'part-created', part: RepuestoTecnico): void
   (e: 'part-updated', part: RepuestoTecnico): void
+  (e: 'part-deleted', partId: string): void
   (e: 'group-created', group: GrupoRepuesto): void
   (e: 'group-updated', group: GrupoRepuesto): void
 }>()
@@ -57,8 +59,27 @@ const activeTab = ref<'repuesto' | 'grupo'>(props.initialTab || 'repuesto')
 
 const isEditPartMode = ref<boolean>(false)
 const editingPartId = ref<string | null>(null)
+const isDeletingPart = ref<boolean>(false)
+const showDeleteConfirm = ref<boolean>(false)
 const hasThirdRing = ref<boolean>(false)
 const saveErrorMessage = ref<string>('')
+
+const handleDeletePart = async () => {
+  if (!editingPartId.value) return
+  isDeletingPart.value = true
+  try {
+    const pId = editingPartId.value
+    await catalogStore.deleteRepuesto(pId)
+    emit('part-deleted', pId)
+    emit('close')
+  } catch (err: unknown) {
+    console.error('Error al eliminar repuesto:', err)
+    saveErrorMessage.value = 'Error al eliminar el repuesto: ' + (err instanceof Error ? err.message : String(err))
+  } finally {
+    isDeletingPart.value = false
+    showDeleteConfirm.value = false
+  }
+}
 
 watch(() => props.initialTab, (newTab) => {
   if (newTab) activeTab.value = newTab
@@ -74,6 +95,8 @@ watch(() => props.isOpen, (open) => {
   if (open) {
     saveErrorMessage.value = ''
     formErrors.value = {}
+    showDeleteConfirm.value = false
+    isDeletingPart.value = false
     if (props.initialTab) activeTab.value = props.initialTab
     if (props.editPart) {
       loadPartForEditing(props.editPart)
@@ -103,15 +126,20 @@ watch(() => props.isOpen, (open) => {
       catalogStore.fetchFabricantes()
     }
 
-    if (props.editGroupId) {
-      const grp = catalogStore.grupos.find(g => g.codigo === props.editGroupId || g.id === props.editGroupId)
+    const targetGroup = props.editGroupId || props.preselectedGroupId
+    if (targetGroup) {
+      const grp = catalogStore.grupos.find(g => g.codigo === targetGroup || g.id === targetGroup)
       if (grp) {
-        activeTab.value = 'grupo'
-        loadGroupForEditing(grp)
+        selectedEditGroupId.value = grp.codigo || grp.id
+        if (props.editGroupId || props.initialTab === 'grupo') {
+          activeTab.value = 'grupo'
+          loadGroupForEditing(grp)
+        }
       }
     }
   } else {
     saveErrorMessage.value = ''
+    showDeleteConfirm.value = false
   }
 })
 
@@ -981,6 +1009,21 @@ const switchToCreateMode = () => {
   groupErrors.value = {}
 }
 
+const switchToEditMode = (groupId?: string) => {
+  isEditMode.value = true
+  const targetId = groupId || selectedEditGroupId.value || props.editGroupId || props.preselectedGroupId
+  if (targetId) {
+    const grp = catalogStore.grupos.find(g => g.codigo === targetId || g.id === targetId)
+    if (grp) {
+      loadGroupForEditing(grp)
+      return
+    }
+  }
+  if (catalogStore.grupos.length > 0) {
+    loadGroupForEditing(catalogStore.grupos[0])
+  }
+}
+
 const onSelectEditGroup = () => {
   if (!selectedEditGroupId.value) {
     switchToCreateMode()
@@ -1015,26 +1058,10 @@ const removeParamRow = (index: number) => {
   dynamicParams.value.splice(index, 1)
 }
 
-// --- Live Preview: Visibilidad, Abreviación Inline y Formato de Celdas ---
+// --- Live Preview: Visibilidad y Formato de Celdas ---
 const visibleTableColumns = computed(() => {
   return dynamicParams.value.filter(p => p.requerido)
 })
-
-const editingHeaderParamId = ref<string | null>(null)
-const inlineHeaderDraft = ref<string>('')
-
-const startEditingHeader = (param: DynamicParamRow) => {
-  editingHeaderParamId.value = param.id
-  inlineHeaderDraft.value = param.etiqueta_corta || param.etiqueta
-}
-
-const saveEditingHeader = (param: DynamicParamRow) => {
-  const val = inlineHeaderDraft.value.trim()
-  if (val) {
-    param.etiqueta_corta = val
-  }
-  editingHeaderParamId.value = null
-}
 
 const cycleDecimals = (param: DynamicParamRow) => {
   if (param.decimales === undefined || param.decimales === 2) {
@@ -1044,10 +1071,6 @@ const cycleDecimals = (param: DynamicParamRow) => {
   } else {
     param.decimales = 2
   }
-}
-
-const toggleUnitInCell = (param: DynamicParamRow) => {
-  param.mostrar_unidad = param.mostrar_unidad === false ? true : false
 }
 
 const formatSampleValue = (param: DynamicParamRow, rowIdx: number = 0): string => {
@@ -2125,7 +2148,7 @@ onUnmounted(() => {
               </button>
               <button
                 type="button"
-                @click="isEditMode = true"
+                @click="switchToEditMode()"
                 :class="[
                   'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
                   isEditMode ? 'bg-white text-[#04C4D9] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
@@ -2415,14 +2438,27 @@ onUnmounted(() => {
 
                     <!-- Fila de Campos del Parámetro -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <!-- Nombre / Etiqueta -->
-                      <div class="sm:col-span-2">
+                      <!-- Nombre / Etiqueta y Abreviatura en Tabla -->
+                      <div>
                         <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre / Etiqueta *</label>
                         <input
                           v-model="param.etiqueta"
                           @input="handleParamLabelChange(param)"
                           type="text"
-                          placeholder="Ej. Diámetro Interior"
+                          placeholder="Ej. Diámetro Interior (A)"
+                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+
+                      <div>
+                        <div class="flex items-center justify-between mb-1">
+                          <label class="block text-[11px] font-bold text-slate-700">Abreviatura (Tabla)</label>
+                          <span class="text-[9px] text-slate-400">Ej. Ø Int, A (Int)</span>
+                        </div>
+                        <input
+                          v-model="param.etiqueta_corta"
+                          type="text"
+                          :placeholder="param.etiqueta || 'Abrev.'"
                           class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
@@ -2625,138 +2661,161 @@ onUnmounted(() => {
                     <table class="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
-                          <th class="py-2 px-3 border-r border-slate-800 w-28 whitespace-nowrap">Código OEM</th>
-                          <th class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Descripción</th>
-
-                          <!-- Columnas Dinámicas OBLIGATORIAS únicamente -->
-                          <th
-                            v-for="param in visibleTableColumns"
-                            :key="`col-${param.id}`"
-                            class="py-2 px-3 border-r border-slate-800 text-[#04C4D9] whitespace-nowrap group cursor-pointer hover:bg-slate-800/80 transition"
-                            @click="startEditingHeader(param)"
-                            :title="'Clic para abreviar encabezado en tabla (actual: ' + (param.etiqueta_corta || param.etiqueta) + ')'"
-                          >
-                            <!-- Modo edición inline de cabecera -->
-                            <div v-if="editingHeaderParamId === param.id" class="flex items-center gap-1" @click.stop>
-                              <input
-                                v-model="inlineHeaderDraft"
-                                @keydown.enter="saveEditingHeader(param)"
-                                @blur="saveEditingHeader(param)"
-                                type="text"
-                                class="px-1.5 py-0.5 text-xs font-bold bg-slate-900 border border-[#04C4D9] rounded text-white focus:outline-none w-24"
-                                autoFocus
-                              />
-                              <button
-                                type="button"
-                                @click="saveEditingHeader(param)"
-                                class="p-0.5 text-emerald-400 hover:text-emerald-300"
-                                title="Guardar abreviatura"
-                              >
-                                <Check class="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-
-                            <!-- Modo visualización de cabecera -->
-                            <div v-else class="flex items-center gap-1.5 justify-between">
-                              <span class="font-mono font-black">
-                                {{ param.etiqueta_corta || param.etiqueta }}
+                          <!-- 1. COMPONENTE -->
+                          <th class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Componente</th>
+                          <!-- 2. CÓDIGO OEM -->
+                          <th class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">Código OEM</th>
+                          <!-- 3. CATÁLOGOS ALTERNOS -->
+                          <th class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">Catálogos Alternos</th>
+                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (HEADER DINÁMICO) -->
+                          <th class="py-2 px-3 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px]">
+                            <div class="flex items-center justify-between gap-2">
+                              <span class="truncate">
+                                {{ (groupNombre ? groupNombre.toUpperCase() : 'COTAS') }}: 
+                                {{ visibleTableColumns.map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || 'ESPECIFICACIONES TÉCNICAS' }}
                               </span>
-                              <span v-if="param.unidad" class="text-[9px] text-slate-400 font-sans lowercase">
-                                ({{ param.unidad }})
-                              </span>
-                              <Edit3 class="w-3 h-3 text-slate-600 group-hover:text-[#04C4D9] opacity-0 group-hover:opacity-100 transition" />
                             </div>
                           </th>
-
-                          <!-- Columna de aviso si no hay obligatorios -->
-                          <th v-if="visibleTableColumns.length === 0" class="py-2 px-4 text-amber-400 italic text-[11px] font-normal">
-                            ⚠️ Ninguna medida marcada como "En Tabla" (Obligatorio)
-                          </th>
-
-                          <th class="py-2 px-3 text-right w-24 whitespace-nowrap">Acción</th>
+                          <!-- 5. ACCIONES -->
+                          <th class="py-2 px-3 text-right w-24 whitespace-nowrap">Acciones</th>
                         </tr>
                       </thead>
 
-                      <!-- Filas de muestra interactivas -->
+                      <!-- Filas de muestra interactivas (5 Columnas Estandarizadas) -->
                       <tbody class="divide-y divide-slate-800/70 font-mono text-[11px]">
                         <!-- Fila de Prueba 1 -->
                         <tr class="hover:bg-slate-900/60 transition group">
-                          <td class="py-2 px-3 border-r border-slate-800/70 text-slate-300 font-bold">13011-54020</td>
-                          <td class="py-2 px-3 border-r border-slate-800/70 text-white font-sans font-bold">
-                            {{ groupNombre || 'Pieza Rectificada' }} STD
-                          </td>
-
-                          <td
-                            v-for="param in visibleTableColumns"
-                            :key="`row1-${param.id}`"
-                            class="py-2 px-3 border-r border-slate-800/70 text-emerald-400 font-bold whitespace-nowrap cursor-pointer hover:bg-slate-850 transition relative group/cell"
-                            @click="cycleDecimals(param)"
-                            :title="'Clic para alternar decimales (2 -> 1 -> 0). Shift+Clic para alternar unidad.'"
-                          >
-                            <div class="flex items-center justify-between gap-2">
-                              <span class="tabular-nums">
-                                {{ formatSampleValue(param, 0) }}
-                              </span>
-                              <!-- Controles de formato de celda en hover -->
-                              <div class="opacity-0 group-hover/cell:opacity-100 flex items-center gap-1 text-[9px] text-slate-400" @click.stop>
-                                <button
-                                  type="button"
-                                  @click="cycleDecimals(param)"
-                                  class="px-1 py-0.2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-mono"
-                                  :title="'Decimales actuales: ' + (param.decimales ?? 2)"
-                                >
-                                  .{{ param.decimales ?? 2 }}
-                                </button>
-                                <button
-                                  type="button"
-                                  @click="toggleUnitInCell(param)"
-                                  class="px-1 py-0.2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-sans"
-                                  title="Mostrar/ocultar sufijo de unidad"
-                                >
-                                  {{ param.mostrar_unidad === false ? 'No Uni' : 'Uni' }}
-                                </button>
+                          <!-- 1. COMPONENTE -->
+                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
+                            <div class="flex items-center gap-2">
+                              <div class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[#04C4D9] shrink-0">
+                                <Layers class="w-3.5 h-3.5" />
+                              </div>
+                              <div class="min-w-0">
+                                <div class="flex items-center gap-1.5">
+                                  <span class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">OEM</span>
+                                  <span class="text-xs font-black text-white truncate font-sans">{{ groupNombre || 'Pieza Rectificada' }} STD</span>
+                                </div>
+                                <p class="text-[10px] text-slate-400 font-sans truncate">
+                                  TOYOTA • {{ (groupSubsistema || 'BLOCK').toUpperCase() }} • MOTOR 2L • CATÁLOGO OEM
+                                </p>
                               </div>
                             </div>
                           </td>
 
-                          <td v-if="visibleTableColumns.length === 0" class="py-2 px-4 text-slate-500 italic">
-                            —
+                          <!-- 2. CÓDIGO OEM -->
+                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle whitespace-nowrap">
+                            <div class="flex items-center gap-1.5">
+                              <span>13011-54020</span>
+                              <Copy class="w-3 h-3 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
+                            </div>
                           </td>
 
-                          <td class="py-2 px-3 text-right">
-                            <span class="px-2 py-0.5 rounded bg-[#04C4D9]/20 text-[#04C4D9] font-bold text-[10px] border border-[#04C4D9]/40">
-                              + A Orden
-                            </span>
+                          <!-- 3. CATÁLOGOS ALTERNOS -->
+                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 align-middle whitespace-nowrap font-sans">
+                            <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
+                          </td>
+
+                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Badges horizontales idénticos a Imagen 3) -->
+                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                              <div
+                                v-for="param in visibleTableColumns"
+                                :key="`row1-${param.id}`"
+                                @click="cycleDecimals(param)"
+                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta)"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400 hover:border-slate-500 cursor-pointer transition select-none group/badge"
+                              >
+                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                                <span class="tabular-nums">{{ formatSampleValue(param, 0) }}</span>
+                              </div>
+                              <span v-if="visibleTableColumns.length === 0" class="text-amber-400 text-[10px] italic font-sans">
+                                ⚠️ Sin medidas marcadas "En Tabla" (Obligatorio)
+                              </span>
+                            </div>
+                          </td>
+
+                          <!-- 5. ACCIONES -->
+                          <td class="py-2.5 px-3 text-right align-middle whitespace-nowrap font-sans">
+                            <div class="flex items-center justify-end gap-1.5">
+                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
+                                Ficha
+                              </button>
+                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
+                                Editar
+                              </button>
+                              <span class="px-2 py-0.5 rounded bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-900 font-extrabold text-[10px] shadow-2xs cursor-pointer">
+                                + A Orden
+                              </span>
+                            </div>
                           </td>
                         </tr>
 
                         <!-- Fila de Prueba 2 -->
                         <tr class="hover:bg-slate-900/60 transition group bg-slate-950/40">
-                          <td class="py-2 px-3 border-r border-slate-800/70 text-slate-300 font-bold">13011-58010</td>
-                          <td class="py-2 px-3 border-r border-slate-800/70 text-white font-sans font-bold">
-                            {{ groupNombre || 'Pieza Rectificada' }} 0.50
+                          <!-- 1. COMPONENTE -->
+                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
+                            <div class="flex items-center gap-2">
+                              <div class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[#04C4D9] shrink-0">
+                                <Layers class="w-3.5 h-3.5" />
+                              </div>
+                              <div class="min-w-0">
+                                <div class="flex items-center gap-1.5">
+                                  <span class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">OEM</span>
+                                  <span class="text-xs font-black text-white truncate font-sans">{{ groupNombre || 'Pieza Rectificada' }} 0.50</span>
+                                </div>
+                                <p class="text-[10px] text-slate-400 font-sans truncate">
+                                  HONDA • {{ (groupSubsistema || 'BLOCK').toUpperCase() }} • MOTOR D17A • CATÁLOGO OEM
+                                </p>
+                              </div>
+                            </div>
                           </td>
 
-                          <td
-                            v-for="param in visibleTableColumns"
-                            :key="`row2-${param.id}`"
-                            class="py-2 px-3 border-r border-slate-800/70 text-emerald-400 font-bold whitespace-nowrap cursor-pointer hover:bg-slate-850 transition"
-                            @click="cycleDecimals(param)"
-                            :title="'Clic para alternar decimales'"
-                          >
-                            <span class="tabular-nums">
-                              {{ formatSampleValue(param, 1) }}
-                            </span>
+                          <!-- 2. CÓDIGO OEM -->
+                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle whitespace-nowrap">
+                            <div class="flex items-center gap-1.5">
+                              <span>13011-58010</span>
+                              <Copy class="w-3 h-3 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
+                            </div>
                           </td>
 
-                          <td v-if="visibleTableColumns.length === 0" class="py-2 px-4 text-slate-500 italic">
-                            —
+                          <!-- 3. CATÁLOGOS ALTERNOS -->
+                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 align-middle whitespace-nowrap font-sans">
+                            <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
                           </td>
 
-                          <td class="py-2 px-3 text-right">
-                            <span class="px-2 py-0.5 rounded bg-[#04C4D9]/20 text-[#04C4D9] font-bold text-[10px] border border-[#04C4D9]/40">
-                              + A Orden
-                            </span>
+                          <!-- 4. COTAS / MEDIDAS AGRUPADAS -->
+                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                              <div
+                                v-for="param in visibleTableColumns"
+                                :key="`row2-${param.id}`"
+                                @click="cycleDecimals(param)"
+                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta)"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400 hover:border-slate-500 cursor-pointer transition select-none group/badge"
+                              >
+                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                                <span class="tabular-nums">{{ formatSampleValue(param, 1) }}</span>
+                              </div>
+                              <span v-if="visibleTableColumns.length === 0" class="text-amber-400 text-[10px] italic font-sans">
+                                ⚠️ Sin medidas marcadas "En Tabla" (Obligatorio)
+                              </span>
+                            </div>
+                          </td>
+
+                          <!-- 5. ACCIONES -->
+                          <td class="py-2.5 px-3 text-right align-middle whitespace-nowrap font-sans">
+                            <div class="flex items-center justify-end gap-1.5">
+                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
+                                Ficha
+                              </button>
+                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
+                                Editar
+                              </button>
+                              <span class="px-2 py-0.5 rounded bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-900 font-extrabold text-[10px] shadow-2xs cursor-pointer">
+                                + A Orden
+                              </span>
+                            </div>
                           </td>
                         </tr>
                       </tbody>
@@ -2810,13 +2869,50 @@ onUnmounted(() => {
       <!-- MODAL FOOTER CON BOTÓN GUARDAR                                        -->
       <!-- ===================================================================== -->
       <div class="px-5 sm:px-7 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-        <button
-          type="button"
-          @click="emit('close')"
-          class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition"
-        >
-          Cancelar
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            @click="emit('close')"
+            class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition"
+          >
+            Cancelar
+          </button>
+
+          <!-- Botón Eliminar Repuesto (solo en modo edición de repuesto) -->
+          <div v-if="activeTab === 'repuesto' && isEditPartMode" class="relative">
+            <button
+              v-if="!showDeleteConfirm"
+              type="button"
+              @click="showDeleteConfirm = true"
+              class="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+              title="Eliminar permanentemente este repuesto"
+            >
+              <Trash2 class="w-3.5 h-3.5 text-rose-600" />
+              <span>Eliminar</span>
+            </button>
+
+            <!-- Confirmación Inline -->
+            <div v-else class="flex items-center gap-1.5 bg-rose-100 border border-rose-300 p-1 rounded-xl">
+              <span class="text-[11px] font-bold text-rose-900 px-2">¿Eliminar?</span>
+              <button
+                type="button"
+                @click="handleDeletePart"
+                :disabled="isDeletingPart"
+                class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black flex items-center gap-1"
+              >
+                <Loader2 v-if="isDeletingPart" class="w-3 h-3 animate-spin" />
+                <span v-else>Sí</span>
+              </button>
+              <button
+                type="button"
+                @click="showDeleteConfirm = false"
+                class="px-2 py-1 text-slate-600 hover:text-slate-900 text-xs font-bold"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div class="flex items-center gap-2">
           <!-- Botón Guardar según pestaña -->
