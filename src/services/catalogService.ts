@@ -265,10 +265,14 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
     activo: true,
     orden_visual: 3,
     parametros: [
-      { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de Cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Calibre del orificio del cilindro' },
-      { id: 'p_anil_2', clave: 'espesor_anillo1_mm', etiqueta: 'Espesor 1° Anillo (Compresión)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del aro superior' },
-      { id: 'p_anil_3', clave: 'espesor_anillo2_mm', etiqueta: 'Espesor 2° Anillo (Raspador)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del segundo aro' },
-      { id: 'p_anil_4', clave: 'espesor_aceite_mm', etiqueta: 'Espesor Anillo de Aceite', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Grosor del aro rascador de aceite' }
+      { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de Cilindro (d1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Calibre del orificio del cilindro' },
+      { id: 'p_anil_2', clave: 'anillo1_h1', etiqueta: '1° Anillo (Fuego) - Grosor (h1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Espesor o grosor del aro superior' },
+      { id: 'p_anil_3', clave: 'anillo1_a1', etiqueta: '1° Anillo (Fuego) - Altura (a1)', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Ancho radial del aro superior' },
+      { id: 'p_anil_4', clave: 'anillo2_h1', etiqueta: '2° Anillo (Compresión) - Grosor (h1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Espesor o grosor del segundo aro' },
+      { id: 'p_anil_5', clave: 'anillo2_a1', etiqueta: '2° Anillo (Compresión) - Altura (a1)', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Ancho radial del segundo aro' },
+      { id: 'p_anil_6', clave: 'aceite_h1', etiqueta: 'Anillo de Aceite - Grosor (h1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Espesor del aro rascador de aceite' },
+      { id: 'p_anil_7', clave: 'aceite_a1', etiqueta: 'Anillo de Aceite - Altura (a1)', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Ancho radial del aro rascador de aceite' },
+      { id: 'p_anil_8', clave: 'diseno_conico', etiqueta: 'Diseño Cónico / Keystone', unidad: '', tipo_dato: 'booleano', requerido: false, descripcion: '1° Anillo con diseño trapezoidal / keystone' }
     ]
   },
   {

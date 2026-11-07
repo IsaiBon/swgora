@@ -25,7 +25,8 @@ import {
   Search,
   ChevronDown,
   Check,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -2030,160 +2031,125 @@ onUnmounted(() => {
           </div>
 
           <!-- 2. Constructor Dinámico de Parámetros -->
-          <div class="space-y-4">
-            <div class="flex items-center justify-between border-b pb-2 border-slate-200">
-              <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-                Parámetros y Medidas
-              </h3>
+  <div class="space-y-4">
+    <div class="flex items-center justify-between border-b pb-2 border-slate-200">
+      <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+        <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
+        <span>Constructor de Medidas con Vista Previa de Tabla</span>
+      </h3>
+      <button
+        type="button"
+        @click="addParamRow"
+        class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs"
+      >
+        <Plus class="w-4 h-4" />
+        <span>+ Agregar Medida</span>
+      </button>
+    </div>
 
-              <button
-                type="button"
-                @click="addParamRow"
-                class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0"
+    <!-- VISTA PREVIA EN VIVO DE LA CABECERA Y TABLA DE CATÁLOGO -->
+    <div class="bg-slate-900 text-white rounded-2xl p-4 shadow-sm space-y-2.5">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div class="flex items-center gap-2">
+          <Eye class="w-4 h-4 text-[#04C4D9]" />
+          <span class="text-xs font-extrabold uppercase tracking-wide">
+            Vista Previa: Así se verá en la Tabla del Catálogo
+          </span>
+        </div>
+        <span class="text-[10px] font-mono text-slate-400">
+          {{ dynamicParams.length }} columnas técnicas activas
+        </span>
+      </div>
+
+      <!-- Simulación de la tabla técnica -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider">
+              <th class="py-1.5 px-2.5 border-r border-slate-700">OEM / Código</th>
+              <th class="py-1.5 px-2.5 border-r border-slate-700">Descripción</th>
+              <th
+                v-for="(p, pIdx) in dynamicParams"
+                :key="`preview-col-${pIdx}`"
+                class="py-1.5 px-2.5 border-r border-slate-700 text-[#04C4D9] font-mono whitespace-nowrap"
               >
-                <Plus class="w-4 h-4" />
-                <span>+ Medida</span>
-              </button>
-            </div>
-
-            <!-- Lista interactiva de parámetros dinámicos -->
-            <div class="space-y-3">
-              <div
-                v-for="(param, idx) in dynamicParams"
-                :key="param.id"
-                class="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 space-y-3 relative transition hover:border-slate-300"
+                {{ p.etiqueta || `Medida ${pIdx + 1}` }}
+                <span v-if="p.unidad" class="text-slate-400 font-sans text-[9px]">({{ p.unidad }})</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="bg-slate-850/60 text-slate-200 font-mono text-[11px]">
+              <td class="py-2 px-2.5 border-r border-slate-700 text-slate-400 font-bold">13011-58010</td>
+              <td class="py-2 px-2.5 border-r border-slate-700 text-white font-sans font-bold">{{ groupNombre || 'Pieza Rectificada' }}</td>
+              <td
+                v-for="(p, pIdx) in dynamicParams"
+                :key="`preview-cell-${pIdx}`"
+                class="py-2 px-2.5 border-r border-slate-700 text-emerald-400 font-bold"
               >
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                    <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px] flex items-center justify-center font-bold">
-                      {{ idx + 1 }}
-                    </span>
-                    Parámetro Técnico #{{ idx + 1 }}
-                  </span>
+                {{ p.tipo_dato === 'booleano' ? 'STD / Cónico' : (p.unidad === '°' ? '45°' : (p.unidad === 'mm' ? (pIdx === 0 ? '95.00' : '1.50') : '10 pzs')) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-                  <div class="flex items-center gap-3">
-                    <!-- Switch Obligatorio -->
-                    <label class="flex items-center gap-2 cursor-pointer select-none">
-                      <input 
-                        type="checkbox" 
-                        v-model="param.requerido" 
-                        class="w-4 h-4 rounded text-[#04C4D9] focus:ring-[#04C4D9]" 
-                      />
-                      <span class="text-xs font-bold" :class="param.requerido ? 'text-rose-700' : 'text-slate-500'">
-                        {{ param.requerido ? 'Obligatorio' : 'Opcional' }}
-                      </span>
-                    </label>
+    <!-- Editor de Parámetros Compacto -->
+    <div class="space-y-2.5">
+      <div
+        v-for="(param, idx) in dynamicParams"
+        :key="param.id"
+        class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      >
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[11px] font-mono font-bold flex items-center justify-center">
+            {{ idx + 1 }}
+          </span>
+          <input
+            v-model="param.etiqueta"
+            @input="handleParamLabelChange(param)"
+            type="text"
+            placeholder="Etiqueta columna..."
+            class="px-2.5 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] w-48"
+          />
+        </div>
 
-                    <button
-                      type="button"
-                      @click="removeParamRow(idx)"
-                      class="p-1 text-slate-400 hover:text-rose-600 rounded transition"
-                      title="Eliminar este parámetro"
-                    >
-                      <Trash2 class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+        <div class="flex items-center gap-2 flex-1 flex-wrap">
+          <input
+            v-model="param.clave"
+            type="text"
+            placeholder="clave_tecnica"
+            class="px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] flex-1 min-w-[120px]"
+          />
+          <select
+            v-model="param.unidad"
+            class="px-2 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] w-24"
+          >
+            <option value="mm">mm</option>
+            <option value="°">°</option>
+            <option value="pulgadas">pulgadas</option>
+            <option value="piezas">piezas</option>
+            <option value="">Sin unidad</option>
+          </select>
+        </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  <!-- Etiqueta -->
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Nombre / Etiqueta *</label>
-                    <input
-                      v-model="param.etiqueta"
-                      @input="handleParamLabelChange(param)"
-                      type="text"
-                      placeholder="Ej. Diámetro Interior"
-                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    />
-                  </div>
-
-                  <!-- Clave interna -->
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Clave Técnica *</label>
-                    <input
-                      v-model="param.clave"
-                      type="text"
-                      placeholder="diametro_interior_mm"
-                      class="w-full px-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    />
-                  </div>
-
-                  <!-- Unidad de Medida -->
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Unidad</label>
-                    <select
-                      v-model="param.unidad"
-                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    >
-                      <option value="mm">mm (Milímetros)</option>
-                      <option value="°">° (Grados)</option>
-                      <option value="pulgadas">pulgadas</option>
-                      <option value="piezas">piezas</option>
-                      <option value="Nm">Nm</option>
-                      <option value="">Sin unidad</option>
-                    </select>
-                  </div>
-
-                  <!-- Tipo de Dato -->
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Tipo de Entrada</label>
-                    <select
-                      v-model="param.tipo_dato"
-                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    >
-                      <option value="numero">Número Decimal (ej. cotas mm)</option>
-                      <option value="seleccion">Menú Desplegable / Opciones (ej. Admisión / Escape)</option>
-                      <option value="texto">Texto Libre</option>
-                      <option value="booleano">Booleano (Sí/No)</option>
-                    </select>
-                  </div>
-
-                  <!-- Opciones para Menú Desplegable (Cascada de selección) -->
-                  <div v-if="param.tipo_dato === 'seleccion'" class="sm:col-span-2 lg:col-span-4 bg-cyan-50/70 p-3 rounded-xl border border-cyan-200/80">
-                    <div class="flex items-center justify-between mb-1">
-                      <label class="block text-[11px] font-bold text-[#038391]">
-                        Opciones del Menú Desplegable (separadas por coma)
-                      </label>
-                      <span class="text-[10px] text-slate-500 font-medium">Ej: Admisión, Escape ó IN, EX</span>
-                    </div>
-                    <input
-                      v-model="param.opcionesStr"
-                      type="text"
-                      placeholder="Escribe las opciones separadas por coma (ej. Admisión, Escape)"
-                      class="w-full px-3 py-1.5 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
-                    />
-                    <div class="flex items-center gap-1.5 flex-wrap mt-2">
-                      <span class="text-[10px] text-slate-500 font-bold">Vista previa del menú:</span>
-                      <span
-                        v-for="opt in (param.opcionesStr || '').split(',').map(s => s.trim()).filter(Boolean)"
-                        :key="opt"
-                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white text-[#038391] text-[10px] font-bold border border-cyan-300 shadow-2xs"
-                      >
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
-                        {{ opt }}
-                      </span>
-                      <span v-if="!(param.opcionesStr || '').trim()" class="text-[10px] text-slate-400 italic">
-                        Escribe las opciones separadas por coma para definir las alternativas del filtro.
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Descripción -->
-                  <div class="sm:col-span-2 lg:col-span-4">
-                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Ayuda / Descripción Técnica</label>
-                    <input
-                      v-model="param.descripcion"
-                      type="text"
-                      placeholder="Ej. Cota de alesado interno para tolerancia de pistón"
-                      class="w-full px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="flex items-center gap-2 shrink-0 justify-end">
+          <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600 cursor-pointer">
+            <input type="checkbox" v-model="param.requerido" class="w-3.5 h-3.5 rounded text-[#04C4D9]" />
+            <span>Req</span>
+          </label>
+          <button
+            type="button"
+            @click="removeParamRow(idx)"
+            class="p-1 text-slate-400 hover:text-rose-600 rounded transition"
+          >
+            <Trash2 class="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
         </div>
       </div>
 
