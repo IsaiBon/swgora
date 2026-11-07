@@ -26,7 +26,11 @@ import {
   ChevronDown,
   Check,
   AlertCircle,
-  Eye
+  Eye,
+  Lock,
+  Filter,
+  Table,
+  CheckCircle2
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -736,17 +740,161 @@ const resetPartForm = () => {
 }
 
 // =============================================================================
-// TAB 2: CONSTRUCTOR DINÁMICO DE FAMILIAS / GRUPOS DE PIEZAS Y PARÁMETROS
+// TAB 2: CONSTRUCTOR DINÁMICO DE FAMILIAS / GRUPOS DE PIEZAS Y PARÁMETROS (WORKBENCH)
 // =============================================================================
+export interface DynamicParamRow {
+  id: string
+  etiqueta: string
+  etiqueta_corta?: string
+  clave: string
+  unidad: string
+  tipo_dato: 'numero' | 'texto' | 'booleano' | 'seleccion'
+  requerido: boolean
+  descripcion: string
+  opciones?: string[]
+  opcionesStr?: string
+  decimales?: number
+  mostrar_unidad?: boolean
+  valor_muestra?: string | number
+}
+
 const isEditMode = ref<boolean>(false)
 const editingGroupId = ref<string | null>(null)
 const selectedEditGroupId = ref<string>('')
 
 const groupNombre = ref<string>('')
 const groupCategoria = ref<string>('')
-const groupSubsistema = ref<string>('Block')
+const groupSubsistema = ref<string>('') // Opcional
 const groupDescripcion = ref<string>('')
 const groupIcono = ref<string>('Layers')
+
+// --- Creatable Combobox para Subsistema (Opcional, Inline, Cero Modales) ---
+const availableSubsistemas = ref<string[]>([
+  'Block',
+  'Culata',
+  'Cigüeñal',
+  'Bielas',
+  'Sellos y Juntas',
+  'Distribución',
+  'Admisión y Escape',
+  'Lubricación',
+  'Refrigeración',
+  'Inyección y Combustible',
+  'Sobrealimentación'
+])
+const isSubsistemaOpen = ref(false)
+const subsistemaSearch = ref('')
+
+const filteredSubsistemas = computed(() => {
+  const q = subsistemaSearch.value.trim().toLowerCase()
+  if (!q) return availableSubsistemas.value
+  return availableSubsistemas.value.filter(s => s.toLowerCase().includes(q))
+})
+
+const isCustomSubsistemaCandidate = computed(() => {
+  const q = subsistemaSearch.value.trim()
+  if (!q) return false
+  return !availableSubsistemas.value.some(s => s.toLowerCase() === q.toLowerCase())
+})
+
+const handleSelectSubsistema = (sub: string) => {
+  groupSubsistema.value = sub
+  subsistemaSearch.value = sub
+  isSubsistemaOpen.value = false
+}
+
+const handleClearSubsistema = () => {
+  groupSubsistema.value = ''
+  subsistemaSearch.value = ''
+  isSubsistemaOpen.value = false
+}
+
+const handleCreateAndSelectSubsistema = () => {
+  const clean = subsistemaSearch.value.trim()
+  if (!clean) return
+  if (!availableSubsistemas.value.some(s => s.toLowerCase() === clean.toLowerCase())) {
+    availableSubsistemas.value.push(clean)
+  }
+  groupSubsistema.value = clean
+  isSubsistemaOpen.value = false
+}
+
+// --- Generador de Clave Técnica Inmutable (ReadOnly) ---
+const generateTechnicalKey = (label: string, unit: string): string => {
+  const slug = label
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  if (!slug) return 'cota_param'
+  if (unit === 'mm') {
+    return slug.endsWith('_mm') ? slug : `${slug}_mm`
+  }
+  return slug
+}
+
+const handleParamLabelChange = (param: DynamicParamRow) => {
+  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('param_')) {
+    param.clave = generateTechnicalKey(param.etiqueta, param.unidad)
+  }
+  if (!param.etiqueta_corta || param.etiqueta_corta === param.etiqueta) {
+    param.etiqueta_corta = param.etiqueta
+  }
+}
+
+const handleParamUnitChange = (param: DynamicParamRow) => {
+  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('param_')) {
+    param.clave = generateTechnicalKey(param.etiqueta, param.unidad)
+  }
+}
+
+// Lista dinámica de parámetros
+const dynamicParams = ref<DynamicParamRow[]>([
+  {
+    id: `param-${Date.now()}-1`,
+    etiqueta: 'Diámetro Interior',
+    etiqueta_corta: 'Ø Int.',
+    clave: 'diametro_interior_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    descripcion: 'Medida del diámetro interno de la pieza',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 45.00
+  },
+  {
+    id: `param-${Date.now()}-2`,
+    etiqueta: 'Diámetro Exterior',
+    etiqueta_corta: 'Ø Ext.',
+    clave: 'diametro_exterior_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    descripcion: 'Medida del diámetro externo o de alojamiento',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 52.00
+  },
+  {
+    id: `param-${Date.now()}-3`,
+    etiqueta: 'Longitud Total',
+    etiqueta_corta: 'Long.',
+    clave: 'longitud_total_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: false,
+    descripcion: 'Largo total o altura en milímetros',
+    decimales: 1,
+    mostrar_unidad: true,
+    valor_muestra: 110.5
+  }
+])
+
+const groupErrors = ref<Record<string, string>>({})
+const isSubmittingGroup = ref(false)
 
 const loadGroupForEditing = (grp: GrupoRepuesto) => {
   isEditMode.value = true
@@ -754,19 +902,27 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
   selectedEditGroupId.value = grp.codigo || grp.id
   groupNombre.value = grp.nombre
   groupCategoria.value = grp.categoria
-  groupSubsistema.value = grp.subsistema || 'Block'
+  groupSubsistema.value = grp.subsistema || ''
+  subsistemaSearch.value = grp.subsistema || ''
+  if (grp.subsistema && !availableSubsistemas.value.includes(grp.subsistema)) {
+    availableSubsistemas.value.push(grp.subsistema)
+  }
   groupDescripcion.value = grp.descripcion || ''
   groupIcono.value = grp.icono || 'Layers'
   dynamicParams.value = grp.parametros.map((p, idx) => ({
     id: p.id || `param-${Date.now()}-${idx}`,
     etiqueta: p.etiqueta,
+    etiqueta_corta: p.etiqueta_corta || p.etiqueta,
     clave: p.clave,
     unidad: p.unidad,
     tipo_dato: p.tipo_dato,
     requerido: p.requerido,
     descripcion: p.descripcion || '',
     opciones: p.opciones || [],
-    opcionesStr: (p.opciones || []).join(', ')
+    opcionesStr: (p.opciones || []).join(', '),
+    decimales: p.unidad === '°' ? 0 : 2,
+    mostrar_unidad: true,
+    valor_muestra: p.valor_minimo || (50 + idx * 5)
   }))
   groupErrors.value = {}
 }
@@ -777,36 +933,49 @@ const switchToCreateMode = () => {
   selectedEditGroupId.value = ''
   groupNombre.value = ''
   groupCategoria.value = ''
-  groupSubsistema.value = 'Block'
+  groupSubsistema.value = ''
+  subsistemaSearch.value = ''
   groupDescripcion.value = ''
   groupIcono.value = 'Layers'
   dynamicParams.value = [
     {
       id: `param-${Date.now()}-1`,
       etiqueta: 'Diámetro Interior',
+      etiqueta_corta: 'Ø Int.',
       clave: 'diametro_interior_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Medida del diámetro interno de la pieza'
+      descripcion: 'Medida del diámetro interno de la pieza',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 45.00
     },
     {
       id: `param-${Date.now()}-2`,
       etiqueta: 'Diámetro Exterior',
+      etiqueta_corta: 'Ø Ext.',
       clave: 'diametro_exterior_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Medida del diámetro externo o de alojamiento'
+      descripcion: 'Medida del diámetro externo o de alojamiento',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 52.00
     },
     {
       id: `param-${Date.now()}-3`,
-      etiqueta: 'Longitud / Altura Total',
+      etiqueta: 'Longitud Total',
+      etiqueta_corta: 'Long.',
       clave: 'longitud_total_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Largo total o altura en milímetros'
+      requerido: false,
+      descripcion: 'Largo total o altura en milímetros',
+      decimales: 1,
+      mostrar_unidad: true,
+      valor_muestra: 110.5
     }
   ]
   groupErrors.value = {}
@@ -823,74 +992,22 @@ const onSelectEditGroup = () => {
   }
 }
 
-// Lista dinámica de parámetros del nuevo grupo
-const dynamicParams = ref<Array<{
-  id: string
-  etiqueta: string
-  clave: string
-  unidad: string
-  tipo_dato: 'numero' | 'texto' | 'booleano' | 'seleccion'
-  requerido: boolean
-  descripcion: string
-  opciones?: string[]
-  opcionesStr?: string
-}>>([
-  {
-    id: `param-${Date.now()}-1`,
-    etiqueta: 'Diámetro Interior',
-    clave: 'diametro_interior_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    descripcion: 'Medida del diámetro interno de la pieza'
-  },
-  {
-    id: `param-${Date.now()}-2`,
-    etiqueta: 'Diámetro Exterior',
-    clave: 'diametro_exterior_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    descripcion: 'Medida del diámetro externo o de alojamiento'
-  },
-  {
-    id: `param-${Date.now()}-3`,
-    etiqueta: 'Longitud / Altura Total',
-    clave: 'longitud_total_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    descripcion: 'Largo total o altura en milímetros'
-  }
-])
-
-const groupErrors = ref<Record<string, string>>({})
-const isSubmittingGroup = ref(false)
-
-// Auto-generar clave técnica al cambiar la etiqueta
-const handleParamLabelChange = (param: typeof dynamicParams.value[0]) => {
-  if (!param.clave || param.clave.startsWith('param_') || param.clave.includes('_mm')) {
-    const slug = param.etiqueta
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-    param.clave = param.unidad === 'mm' ? `${slug}_mm` : slug
-  }
-}
-
 const addParamRow = () => {
   const count = dynamicParams.value.length + 1
+  const defaultLabel = `Medida ${count}`
+  const defaultUnit = 'mm'
   dynamicParams.value.push({
-    id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-    etiqueta: `Medida ${count}`,
-    clave: `medida_${count}_mm`,
-    unidad: 'mm',
+    id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    etiqueta: defaultLabel,
+    etiqueta_corta: defaultLabel,
+    clave: generateTechnicalKey(defaultLabel, defaultUnit),
+    unidad: defaultUnit,
     tipo_dato: 'numero',
     requerido: true,
-    descripcion: ''
+    descripcion: '',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 50.00
   })
 }
 
@@ -898,40 +1015,126 @@ const removeParamRow = (index: number) => {
   dynamicParams.value.splice(index, 1)
 }
 
-// Cargar plantilla predefinida: Camisas de Cilindro (3 medidas requeridas)
+// --- Live Preview: Visibilidad, Abreviación Inline y Formato de Celdas ---
+const visibleTableColumns = computed(() => {
+  return dynamicParams.value.filter(p => p.requerido)
+})
+
+const editingHeaderParamId = ref<string | null>(null)
+const inlineHeaderDraft = ref<string>('')
+
+const startEditingHeader = (param: DynamicParamRow) => {
+  editingHeaderParamId.value = param.id
+  inlineHeaderDraft.value = param.etiqueta_corta || param.etiqueta
+}
+
+const saveEditingHeader = (param: DynamicParamRow) => {
+  const val = inlineHeaderDraft.value.trim()
+  if (val) {
+    param.etiqueta_corta = val
+  }
+  editingHeaderParamId.value = null
+}
+
+const cycleDecimals = (param: DynamicParamRow) => {
+  if (param.decimales === undefined || param.decimales === 2) {
+    param.decimales = 1
+  } else if (param.decimales === 1) {
+    param.decimales = 0
+  } else {
+    param.decimales = 2
+  }
+}
+
+const toggleUnitInCell = (param: DynamicParamRow) => {
+  param.mostrar_unidad = param.mostrar_unidad === false ? true : false
+}
+
+const formatSampleValue = (param: DynamicParamRow, rowIdx: number = 0): string => {
+  if (param.tipo_dato === 'booleano') {
+    return rowIdx === 0 ? 'Sí (STD)' : 'No (Cónico)'
+  }
+  if (param.tipo_dato === 'seleccion') {
+    const opts = param.opcionesStr ? param.opcionesStr.split(',').map(s => s.trim()).filter(Boolean) : (param.opciones || [])
+    if (opts.length > 0) {
+      return opts[rowIdx % opts.length]
+    }
+    return rowIdx === 0 ? 'Admisión' : 'Escape'
+  }
+  if (param.tipo_dato === 'texto') {
+    return rowIdx === 0 ? 'M10×1.25' : 'M12×1.50'
+  }
+  let raw = param.valor_muestra != null && param.valor_muestra !== '' ? Number(param.valor_muestra) : (rowIdx === 0 ? 85.50 : 92.25)
+  if (isNaN(raw)) raw = 0
+  if (rowIdx === 1) {
+    raw = raw + 2.5
+  }
+  const dec = param.decimales !== undefined ? param.decimales : 2
+  const numStr = raw.toFixed(dec)
+  const showUnit = param.mostrar_unidad !== false
+  return showUnit && param.unidad ? `${numStr} ${param.unidad}` : numStr
+}
+
+// Cargar plantilla predefinida: Camisas de Cilindro
 const loadTemplateCamisas = () => {
   groupNombre.value = 'Camisas de Cilindro'
   groupCategoria.value = 'Camisas'
   groupSubsistema.value = 'Block'
+  subsistemaSearch.value = 'Block'
   groupDescripcion.value = 'Camisas de cilindro secas, cromadas y con pestaña para encamisado y rectificación de block'
   groupIcono.value = 'Layers'
   dynamicParams.value = [
     {
       id: `param-${Date.now()}-1`,
       etiqueta: 'Diámetro Interior (Alesado)',
+      etiqueta_corta: 'A (Int)',
       clave: 'diametro_interior_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Diámetro interno semiterminado o terminado'
+      descripcion: 'Diámetro interno semiterminado o terminado',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 85.00
     },
     {
       id: `param-${Date.now()}-2`,
       etiqueta: 'Diámetro Exterior',
+      etiqueta_corta: 'B (Ext)',
       clave: 'diametro_exterior_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Diámetro externo para ajuste en el túnel del cilindro'
+      descripcion: 'Diámetro externo para ajuste en el túnel del cilindro',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 89.00
     },
     {
       id: `param-${Date.now()}-3`,
       etiqueta: 'Longitud Total',
+      etiqueta_corta: 'C (Largo)',
       clave: 'longitud_total_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Largo total de la camisa'
+      descripcion: 'Largo total de la camisa',
+      decimales: 1,
+      mostrar_unidad: true,
+      valor_muestra: 165.0
+    },
+    {
+      id: `param-${Date.now()}-4`,
+      etiqueta: 'Pestaña (D × E)',
+      etiqueta_corta: 'Pestaña',
+      clave: 'pestana_diametro_mm',
+      unidad: 'mm',
+      tipo_dato: 'numero',
+      requerido: false,
+      descripcion: 'Diámetro y espesor de la pestaña superior',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 94.00
     }
   ]
 }
@@ -940,36 +1143,62 @@ const loadTemplateCamisas = () => {
 const loadTemplatePistones = () => {
   groupNombre.value = 'Pistones de Motor'
   groupCategoria.value = 'Pistones'
-  groupSubsistema.value = 'Block'
+  groupSubsistema.value = 'Bielas'
+  subsistemaSearch.value = 'Bielas'
   groupDescripcion.value = 'Pistones con perno y pistas de anillos para maquinado de motor'
   groupIcono.value = 'CircleDot'
   dynamicParams.value = [
     {
       id: `param-${Date.now()}-1`,
       etiqueta: 'Diámetro de Pistón',
+      etiqueta_corta: 'Ø Pistón',
       clave: 'diametro_piston_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Diámetro de la falda del pistón'
+      descripcion: 'Diámetro de la falda del pistón',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 84.95
     },
     {
       id: `param-${Date.now()}-2`,
       etiqueta: 'Diámetro de Pasador (Bulón)',
+      etiqueta_corta: 'Ø Bulón',
       clave: 'diametro_bulon_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Diámetro exterior del perno de biela'
+      descripcion: 'Diámetro exterior del perno de biela',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 22.00
     },
     {
       id: `param-${Date.now()}-3`,
       etiqueta: 'Altura de Compresión',
+      etiqueta_corta: 'Alt. Comp.',
       clave: 'altura_compresion_mm',
       unidad: 'mm',
       tipo_dato: 'numero',
       requerido: true,
-      descripcion: 'Distancia de centro de bulón a cabeza de pistón'
+      descripcion: 'Distancia de centro de bulón a cabeza de pistón',
+      decimales: 2,
+      mostrar_unidad: true,
+      valor_muestra: 34.50
+    },
+    {
+      id: `param-${Date.now()}-4`,
+      etiqueta: 'Largo Total',
+      etiqueta_corta: 'Largo',
+      clave: 'largo_piston_mm',
+      unidad: 'mm',
+      tipo_dato: 'numero',
+      requerido: false,
+      descripcion: 'Longitud total de falda a cabeza',
+      decimales: 1,
+      mostrar_unidad: true,
+      valor_muestra: 65.0
     }
   ]
 }
@@ -1018,6 +1247,7 @@ const handleSaveGroup = async () => {
         id: p.id,
         clave: p.clave.trim(),
         etiqueta: p.etiqueta.trim(),
+        etiqueta_corta: p.etiqueta_corta ? p.etiqueta_corta.trim() : undefined,
         unidad: p.unidad.trim(),
         tipo_dato: p.tipo_dato,
         requerido: p.requerido,
@@ -1084,7 +1314,7 @@ onUnmounted(() => {
     class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
     @click.self="emit('close')"
   >
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden">
       
       <!-- ===================================================================== -->
       <!-- MODAL HEADER CON PESTAÑAS SEGMENTADAS                                 -->
@@ -1877,10 +2107,10 @@ onUnmounted(() => {
         <!-- ----------------------------------------------------------------- -->
         <!-- PESTAÑA 2: CONSTRUCTOR DINÁMICO DE NUEVA FAMILIA / GRUPO         -->
         <!-- ----------------------------------------------------------------- -->
-        <div v-else class="space-y-6">
+        <div v-else class="space-y-5">
 
           <!-- Selector de Modo: Crear Nuevo vs Modificar Existente -->
-          <div class="bg-slate-100 p-2.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-slate-200">
+          <div class="bg-slate-100 p-2 sm:p-2.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border border-slate-200">
             <div class="flex items-center gap-1.5">
               <button
                 type="button"
@@ -1927,7 +2157,7 @@ onUnmounted(() => {
             <div class="flex items-center gap-2">
               <Edit3 class="w-4 h-4 text-[#038391]" />
               <span class="text-xs text-[#038391] font-bold">
-                Editando familia: <strong>{{ groupNombre }}</strong> (Código: {{ editingGroupId }}). Puedes modificar nombres, agregar o eliminar parámetros requeridos.
+                Editando familia: <strong>{{ groupNombre }}</strong> (Código: {{ editingGroupId }}). Las modificaciones se sincronizan en tiempo real con la portada.
               </span>
             </div>
             <button
@@ -1939,217 +2169,619 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- Plantillas rápidas de taller (solo en modo creación) -->
-          <div v-if="!isEditMode" class="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <span class="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-              <Sparkles class="w-4 h-4 text-amber-600" />
-              Plantillas Rápidas:
-            </span>
-            <div class="flex items-center gap-2 flex-wrap shrink-0">
-              <button
-                type="button"
-                @click="loadTemplateCamisas"
-                class="px-3 py-1 rounded-xl bg-white text-amber-900 border border-amber-300 text-xs font-bold hover:bg-amber-100/70 transition shadow-2xs"
-              >
-                Camisas de Cilindro
-              </button>
-              <button
-                type="button"
-                @click="loadTemplatePistones"
-                class="px-3 py-1 rounded-xl bg-white text-amber-900 border border-amber-300 text-xs font-bold hover:bg-amber-100/70 transition shadow-2xs"
-              >
-                Pistones de Motor
-              </button>
+          <!-- =================================================================== -->
+          <!-- SPLIT-PANE WORKBENCH (12 COLUMNAS EN DESKTOP)                       -->
+          <!-- =================================================================== -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            
+            <!-- ================================================================= -->
+            <!-- PANEL IZQUIERDO (5 COLUMNAS): IDENTIDAD Y PARÁMETROS              -->
+            <!-- ================================================================= -->
+            <div class="lg:col-span-5 space-y-4">
+              
+              <!-- 1. IDENTIDAD DE LA FAMILIA -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
+                <div class="flex items-center justify-between border-b pb-2 border-slate-100">
+                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
+                    <span>Identidad de la Familia</span>
+                  </h3>
+                  <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Paso 1</span>
+                </div>
+
+                <div class="space-y-3">
+                  <!-- Nombre de Grupo (Obligatorio) -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="block text-xs font-bold text-slate-800">
+                        Nombre de Grupo / Familia <span class="text-rose-500">*</span>
+                      </label>
+                      <span class="text-[10px] text-rose-500 font-bold">Obligatorio</span>
+                    </div>
+                    <input
+                      v-model="groupNombre"
+                      type="text"
+                      placeholder="Ej. Camisas de Cilindro"
+                      class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
+                      :class="groupErrors.groupNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                    />
+                    <span v-if="groupErrors.groupNombre" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                      {{ groupErrors.groupNombre }}
+                    </span>
+                  </div>
+
+                  <!-- Categoría Técnica (Obligatorio) -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="block text-xs font-bold text-slate-800">
+                        Categoría Técnica <span class="text-rose-500">*</span>
+                      </label>
+                      <span class="text-[10px] text-rose-500 font-bold">Obligatorio</span>
+                    </div>
+                    <input
+                      v-model="groupCategoria"
+                      type="text"
+                      placeholder="Ej. Camisas, Pistones, Válvulas"
+                      class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
+                    />
+                  </div>
+
+                  <!-- Subsistema Mecánico (Creatable Combobox / Opcional) -->
+                  <div class="relative">
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="block text-xs font-bold text-slate-800">
+                        Subsistema Mecánico
+                      </label>
+                      <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                        Opcional
+                      </span>
+                    </div>
+
+                    <div class="relative flex items-center">
+                      <input
+                        v-model="subsistemaSearch"
+                        @focus="isSubsistemaOpen = true"
+                        @input="isSubsistemaOpen = true"
+                        @keydown.enter.prevent="isCustomSubsistemaCandidate ? handleCreateAndSelectSubsistema() : (filteredSubsistemas[0] ? handleSelectSubsistema(filteredSubsistemas[0]) : null)"
+                        type="text"
+                        placeholder="Escribe o selecciona subsistema (Block, Culata...)"
+                        class="w-full pl-3 pr-16 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
+                      />
+                      <div class="absolute right-2 flex items-center gap-1">
+                        <button
+                          v-if="groupSubsistema || subsistemaSearch"
+                          type="button"
+                          @click="handleClearSubsistema"
+                          class="p-1 text-slate-400 hover:text-slate-600 rounded"
+                          title="Limpiar subsistema"
+                        >
+                          <X class="w-3.5 h-3.5" />
+                        </button>
+                        <ChevronDown
+                          @click="isSubsistemaOpen = !isSubsistemaOpen"
+                          class="w-4 h-4 text-slate-400 cursor-pointer hover:text-slate-600"
+                        />
+                      </div>
+                    </div>
+
+                    <!-- Backdrop para cerrar al hacer clic afuera -->
+                    <div
+                      v-if="isSubsistemaOpen"
+                      class="fixed inset-0 z-40 cursor-default"
+                      @click="isSubsistemaOpen = false"
+                    ></div>
+
+                    <!-- Menú Desplegable Creatable (Inline) -->
+                    <div
+                      v-if="isSubsistemaOpen"
+                      class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto divide-y divide-slate-100"
+                    >
+                      <!-- Opción Crear Nuevo Inline si no coincide -->
+                      <div
+                        v-if="isCustomSubsistemaCandidate"
+                        @click="handleCreateAndSelectSubsistema"
+                        class="p-2.5 bg-cyan-50/80 hover:bg-cyan-100 cursor-pointer text-xs font-bold text-[#038391] flex items-center gap-1.5 transition"
+                      >
+                        <Plus class="w-3.5 h-3.5" />
+                        <span>+ Crear nuevo subsistema: <strong>"{{ subsistemaSearch.trim() }}"</strong></span>
+                      </div>
+
+                      <!-- Lista de existentes -->
+                      <div
+                        v-for="sub in filteredSubsistemas"
+                        :key="sub"
+                        @click="handleSelectSubsistema(sub)"
+                        :class="[
+                          'px-3 py-2 cursor-pointer text-xs font-semibold flex items-center justify-between transition',
+                          groupSubsistema === sub ? 'bg-cyan-50 text-[#038391] font-bold' : 'text-slate-700 hover:bg-slate-50'
+                        ]"
+                      >
+                        <span>{{ sub }}</span>
+                        <Check v-if="groupSubsistema === sub" class="w-3.5 h-3.5 text-[#04C4D9]" />
+                      </div>
+
+                      <div v-if="filteredSubsistemas.length === 0 && !isCustomSubsistemaCandidate" class="p-3 text-center text-xs text-slate-400">
+                        Presiona Enter para crear
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Descripción (Textarea compacto) -->
+                  <div>
+                    <label class="block text-xs font-bold text-slate-800 mb-1">
+                      Descripción Técnica
+                    </label>
+                    <textarea
+                      v-model="groupDescripcion"
+                      rows="2"
+                      placeholder="Notas y especificaciones técnicas de la familia..."
+                      class="w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition resize-none"
+                    ></textarea>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. GESTOR DE PARÁMETROS -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
+                <div class="flex items-center justify-between border-b pb-2.5 border-slate-100">
+                  <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
+                      <span>Gestor de Parámetros</span>
+                    </h3>
+                    <p class="text-[10px] text-slate-500 mt-0.5">
+                      Las cotas obligatorias se proyectan como columnas fijas en la portada.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    @click="addParamRow"
+                    class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95"
+                  >
+                    <Plus class="w-3.5 h-3.5" />
+                    <span>+ Medida</span>
+                  </button>
+                </div>
+
+                <!-- Plantillas Rápidas -->
+                <div v-if="!isEditMode" class="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2 flex-wrap">
+                  <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
+                    <Sparkles class="w-3.5 h-3.5 text-amber-600" />
+                    Plantillas:
+                  </span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      @click="loadTemplateCamisas"
+                      class="px-2.5 py-0.5 rounded-lg bg-white border border-amber-300 text-[10px] font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
+                    >
+                      Camisas
+                    </button>
+                    <button
+                      type="button"
+                      @click="loadTemplatePistones"
+                      class="px-2.5 py-0.5 rounded-lg bg-white border border-amber-300 text-[10px] font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
+                    >
+                      Pistones
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Lista de Parámetros Dinámicos -->
+                <div class="space-y-3">
+                  <div
+                    v-for="(param, idx) in dynamicParams"
+                    :key="param.id"
+                    class="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3.5 space-y-3 relative transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    <!-- Barra superior del parámetro -->
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex items-center gap-2">
+                        <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center">
+                          {{ idx + 1 }}
+                        </span>
+                        <span class="text-xs font-black text-slate-900 truncate">
+                          {{ param.etiqueta || `Medida #${idx + 1}` }}
+                        </span>
+                      </div>
+
+                      <div class="flex items-center gap-2.5">
+                        <!-- Switch Obligatorio (controla aparición en tabla) -->
+                        <label 
+                          class="flex items-center gap-1.5 cursor-pointer select-none px-2 py-1 rounded-lg border transition-all text-[11px] font-bold"
+                          :class="param.requerido 
+                            ? 'bg-cyan-50 border-cyan-300 text-[#038391]' 
+                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'"
+                          :title="param.requerido ? 'Visible como columna fija en la tabla de portada' : 'Opcional (se muestra en filtros y ficha técnica)'"
+                        >
+                          <input
+                            type="checkbox"
+                            v-model="param.requerido"
+                            class="w-3.5 h-3.5 rounded text-[#04C4D9] focus:ring-[#04C4D9]"
+                          />
+                          <span>{{ param.requerido ? 'En Tabla' : 'Solo Filtro' }}</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          @click="removeParamRow(idx)"
+                          class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          title="Eliminar parámetro"
+                        >
+                          <Trash2 class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Fila de Campos del Parámetro -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <!-- Nombre / Etiqueta -->
+                      <div class="sm:col-span-2">
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre / Etiqueta *</label>
+                        <input
+                          v-model="param.etiqueta"
+                          @input="handleParamLabelChange(param)"
+                          type="text"
+                          placeholder="Ej. Diámetro Interior"
+                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+
+                      <!-- Tipo de Entrada -->
+                      <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Tipo de Entrada</label>
+                        <select
+                          v-model="param.tipo_dato"
+                          class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        >
+                          <option value="numero">Número Decimal (mm)</option>
+                          <option value="seleccion">Menú Desplegable</option>
+                          <option value="booleano">Booleano (Sí/No)</option>
+                          <option value="texto">Texto Libre</option>
+                        </select>
+                      </div>
+
+                      <!-- Unidad de Medida -->
+                      <div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Unidad</label>
+                        <select
+                          v-model="param.unidad"
+                          @change="handleParamUnitChange(param)"
+                          class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        >
+                          <option value="mm">mm (Milímetros)</option>
+                          <option value="°">° (Grados)</option>
+                          <option value="pulgadas">pulgadas</option>
+                          <option value="piezas">piezas</option>
+                          <option value="Nm">Nm</option>
+                          <option value="">Sin unidad</option>
+                        </select>
+                      </div>
+
+                      <!-- Clave Técnica Inmutable (ReadOnly + Candado) -->
+                      <div class="sm:col-span-2">
+                        <div class="flex items-center justify-between mb-1">
+                          <label class="block text-[11px] font-bold text-slate-700">Clave Técnica (BD)</label>
+                          <span class="inline-flex items-center gap-1 text-[9px] font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.2 rounded border border-slate-200">
+                            <Lock class="w-2.5 h-2.5 text-slate-600" />
+                            Inmutable
+                          </span>
+                        </div>
+                        <div class="relative flex items-center">
+                          <input
+                            :value="param.clave"
+                            readonly
+                            tabindex="-1"
+                            class="w-full pl-7 pr-3 py-1.5 text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-all focus:outline-none shadow-inner"
+                            title="Clave técnica autogenerada e inmutable para garantizar integridad en BD"
+                          />
+                          <Lock class="w-3.5 h-3.5 text-slate-600 absolute left-2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      <!-- Opciones para Desplegable si aplica -->
+                      <div v-if="param.tipo_dato === 'seleccion'" class="sm:col-span-2 bg-cyan-50/80 p-2.5 rounded-xl border border-cyan-200">
+                        <label class="block text-[10px] font-bold text-[#038391] mb-1">Opciones (separadas por coma):</label>
+                        <input
+                          v-model="param.opcionesStr"
+                          type="text"
+                          placeholder="Admisión, Escape ó STD, Cónico"
+                          class="w-full px-2.5 py-1.5 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
+                        />
+                      </div>
+
+                      <!-- Descripción -->
+                      <div class="sm:col-span-2">
+                        <label class="block text-[10px] font-bold text-slate-600 mb-1">Ayuda / Descripción Técnica</label>
+                        <input
+                          v-model="param.descripcion"
+                          type="text"
+                          placeholder="Ej. Cota nominal tomada con micrómetro de exteriores"
+                          class="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <!-- 1. Definición General del Grupo -->
-          <div class="space-y-4">
-            <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-              {{ isEditMode ? `Datos de la Familia: ${groupNombre || ''}` : 'Datos de la Familia' }}
-            </h3>
+            <!-- ================================================================= -->
+            <!-- PANEL DERECHO (7 COLUMNAS): LIVE PREVIEW ("ESPEJO DE PORTADA")    -->
+            <!-- ================================================================= -->
+            <div class="lg:col-span-7 lg:sticky lg:top-0 space-y-4">
+              <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl text-white space-y-4">
+                
+                <!-- Header del Marco de Inspección -->
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-7 h-7 rounded-lg bg-cyan-500/20 border border-[#04C4D9]/40 flex items-center justify-center text-[#04C4D9]">
+                      <Eye class="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div class="flex items-center gap-2">
+                        <h4 class="text-xs font-black uppercase tracking-wider text-white">
+                          Espejo de Portada
+                        </h4>
+                        <span class="inline-flex items-center gap-1 px-2 py-0.2 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-bold">
+                          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          En Vivo
+                        </span>
+                      </div>
+                      <p class="text-[10px] text-slate-400">
+                        Así se presentará la familia <strong>{{ groupNombre || 'Nueva Familia' }}</strong> en el catálogo.
+                      </p>
+                    </div>
+                  </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Nombre del Grupo / Familia *
-                </label>
-                <input
-                  v-model="groupNombre"
-                  type="text"
-                  placeholder="Ej. Camisas de Cilindro"
-                  class="w-full px-3.5 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                  :class="groupErrors.groupNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                />
-                <span v-if="groupErrors.groupNombre" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                  {{ groupErrors.groupNombre }}
-                </span>
-              </div>
+                  <div class="text-right">
+                    <span class="font-mono text-xs font-black text-[#04C4D9]">
+                      {{ visibleTableColumns.length }}
+                    </span>
+                    <span class="text-[10px] text-slate-400 block font-sans">
+                      cols obligatorias
+                    </span>
+                  </div>
+                </div>
 
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Categoría Técnica *
-                </label>
-                <input
-                  v-model="groupCategoria"
-                  type="text"
-                  placeholder="Ej. Camisas, Pistones, Válvulas"
-                  class="w-full px-3.5 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                />
-              </div>
+                <!-- 1. PREVIEW DE FILTROS DE PORTADA -->
+                <div class="space-y-2 bg-slate-850/90 rounded-xl p-3 border border-slate-800">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <Filter class="w-3.5 h-3.5 text-[#04C4D9]" />
+                      <span>Filtros Reactivos de Portada</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-500">
+                      Barra superior sticky
+                    </span>
+                  </div>
 
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Subsistema Mecánico del Motor *
-                </label>
-                <select
-                  v-model="groupSubsistema"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                >
-                  <option value="Block">Block de Cilindros</option>
-                  <option value="Culata">Culata / Cabezote</option>
-                  <option value="Cigüeñal">Cigüeñal / Bancadas</option>
-                  <option value="Bielas">Bielas y Pistones</option>
-                  <option value="Sellos y Juntas">Sellos, Retenes y Juntas</option>
-                  <option value="Distribución">Distribución / Válvulas</option>
-                </select>
-              </div>
+                  <!-- Buscador universal simulado -->
+                  <div class="relative">
+                    <Search class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                    <input
+                      readonly
+                      type="text"
+                      :placeholder="`Buscar repuesto o cota en ${groupNombre || 'esta familia'}...`"
+                      class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700/80 rounded-lg text-slate-300 placeholder:text-slate-500 cursor-default"
+                    />
+                  </div>
 
-              <div class="sm:col-span-3">
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Descripción Técnica de la Familia
-                </label>
-                <input
-                  v-model="groupDescripcion"
-                  type="text"
-                  placeholder="Ej. Piezas para encamisado y rectificación de bloques automotrices"
-                  class="w-full px-3.5 py-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                />
+                  <!-- Chips / Inputs de filtros por parámetro dinámico -->
+                  <div class="pt-1.5 flex flex-wrap gap-2 items-center">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Cotas:</span>
+                    
+                    <div
+                      v-for="param in dynamicParams"
+                      :key="`preview-filter-${param.id}`"
+                      class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs"
+                    >
+                      <span class="text-[10px] font-bold text-slate-300">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                      
+                      <template v-if="param.tipo_dato === 'numero'">
+                        <span class="font-mono font-bold text-[#04C4D9] text-[11px]">
+                          {{ param.valor_muestra || '50.00' }}
+                        </span>
+                        <span v-if="param.unidad" class="text-[9px] text-slate-400">{{ param.unidad }}</span>
+                        <span class="text-[9px] font-mono font-bold px-1 rounded bg-slate-700 text-slate-300" title="Tolerancia universal">
+                          ±1.0
+                        </span>
+                      </template>
+
+                      <template v-else-if="param.tipo_dato === 'seleccion'">
+                        <span class="text-[10px] font-bold text-cyan-300">Todas</span>
+                      </template>
+
+                      <template v-else-if="param.tipo_dato === 'booleano'">
+                        <span class="text-[10px] font-bold text-amber-300">STD</span>
+                      </template>
+
+                      <template v-else>
+                        <span class="text-[10px] text-slate-400 italic">libre</span>
+                      </template>
+                    </div>
+
+                    <span v-if="dynamicParams.length === 0" class="text-[11px] text-slate-500 italic">
+                      Agrega parámetros a la izquierda para ver los filtros generados.
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 2. PREVIEW DE TABLA DE REPUESTOS -->
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <Table class="w-3.5 h-3.5 text-[#04C4D9]" />
+                      <span>Tabla de Catálogo (Solo Obligatorios)</span>
+                    </span>
+
+                    <span class="text-[10px] text-slate-400">
+                      💡 Haz clic en <strong>encabezado</strong> para abreviar o en <strong>celda</strong> para cambiar formato
+                    </span>
+                  </div>
+
+                  <!-- Contenedor con scroll horizontal de tabla -->
+                  <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-x-auto shadow-inner">
+                    <table class="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
+                          <th class="py-2 px-3 border-r border-slate-800 w-28 whitespace-nowrap">Código OEM</th>
+                          <th class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Descripción</th>
+
+                          <!-- Columnas Dinámicas OBLIGATORIAS únicamente -->
+                          <th
+                            v-for="param in visibleTableColumns"
+                            :key="`col-${param.id}`"
+                            class="py-2 px-3 border-r border-slate-800 text-[#04C4D9] whitespace-nowrap group cursor-pointer hover:bg-slate-800/80 transition"
+                            @click="startEditingHeader(param)"
+                            :title="'Clic para abreviar encabezado en tabla (actual: ' + (param.etiqueta_corta || param.etiqueta) + ')'"
+                          >
+                            <!-- Modo edición inline de cabecera -->
+                            <div v-if="editingHeaderParamId === param.id" class="flex items-center gap-1" @click.stop>
+                              <input
+                                v-model="inlineHeaderDraft"
+                                @keydown.enter="saveEditingHeader(param)"
+                                @blur="saveEditingHeader(param)"
+                                type="text"
+                                class="px-1.5 py-0.5 text-xs font-bold bg-slate-900 border border-[#04C4D9] rounded text-white focus:outline-none w-24"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                @click="saveEditingHeader(param)"
+                                class="p-0.5 text-emerald-400 hover:text-emerald-300"
+                                title="Guardar abreviatura"
+                              >
+                                <Check class="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <!-- Modo visualización de cabecera -->
+                            <div v-else class="flex items-center gap-1.5 justify-between">
+                              <span class="font-mono font-black">
+                                {{ param.etiqueta_corta || param.etiqueta }}
+                              </span>
+                              <span v-if="param.unidad" class="text-[9px] text-slate-400 font-sans lowercase">
+                                ({{ param.unidad }})
+                              </span>
+                              <Edit3 class="w-3 h-3 text-slate-600 group-hover:text-[#04C4D9] opacity-0 group-hover:opacity-100 transition" />
+                            </div>
+                          </th>
+
+                          <!-- Columna de aviso si no hay obligatorios -->
+                          <th v-if="visibleTableColumns.length === 0" class="py-2 px-4 text-amber-400 italic text-[11px] font-normal">
+                            ⚠️ Ninguna medida marcada como "En Tabla" (Obligatorio)
+                          </th>
+
+                          <th class="py-2 px-3 text-right w-24 whitespace-nowrap">Acción</th>
+                        </tr>
+                      </thead>
+
+                      <!-- Filas de muestra interactivas -->
+                      <tbody class="divide-y divide-slate-800/70 font-mono text-[11px]">
+                        <!-- Fila de Prueba 1 -->
+                        <tr class="hover:bg-slate-900/60 transition group">
+                          <td class="py-2 px-3 border-r border-slate-800/70 text-slate-300 font-bold">13011-54020</td>
+                          <td class="py-2 px-3 border-r border-slate-800/70 text-white font-sans font-bold">
+                            {{ groupNombre || 'Pieza Rectificada' }} STD
+                          </td>
+
+                          <td
+                            v-for="param in visibleTableColumns"
+                            :key="`row1-${param.id}`"
+                            class="py-2 px-3 border-r border-slate-800/70 text-emerald-400 font-bold whitespace-nowrap cursor-pointer hover:bg-slate-850 transition relative group/cell"
+                            @click="cycleDecimals(param)"
+                            :title="'Clic para alternar decimales (2 -> 1 -> 0). Shift+Clic para alternar unidad.'"
+                          >
+                            <div class="flex items-center justify-between gap-2">
+                              <span class="tabular-nums">
+                                {{ formatSampleValue(param, 0) }}
+                              </span>
+                              <!-- Controles de formato de celda en hover -->
+                              <div class="opacity-0 group-hover/cell:opacity-100 flex items-center gap-1 text-[9px] text-slate-400" @click.stop>
+                                <button
+                                  type="button"
+                                  @click="cycleDecimals(param)"
+                                  class="px-1 py-0.2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-mono"
+                                  :title="'Decimales actuales: ' + (param.decimales ?? 2)"
+                                >
+                                  .{{ param.decimales ?? 2 }}
+                                </button>
+                                <button
+                                  type="button"
+                                  @click="toggleUnitInCell(param)"
+                                  class="px-1 py-0.2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-sans"
+                                  title="Mostrar/ocultar sufijo de unidad"
+                                >
+                                  {{ param.mostrar_unidad === false ? 'No Uni' : 'Uni' }}
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td v-if="visibleTableColumns.length === 0" class="py-2 px-4 text-slate-500 italic">
+                            —
+                          </td>
+
+                          <td class="py-2 px-3 text-right">
+                            <span class="px-2 py-0.5 rounded bg-[#04C4D9]/20 text-[#04C4D9] font-bold text-[10px] border border-[#04C4D9]/40">
+                              + A Orden
+                            </span>
+                          </td>
+                        </tr>
+
+                        <!-- Fila de Prueba 2 -->
+                        <tr class="hover:bg-slate-900/60 transition group bg-slate-950/40">
+                          <td class="py-2 px-3 border-r border-slate-800/70 text-slate-300 font-bold">13011-58010</td>
+                          <td class="py-2 px-3 border-r border-slate-800/70 text-white font-sans font-bold">
+                            {{ groupNombre || 'Pieza Rectificada' }} 0.50
+                          </td>
+
+                          <td
+                            v-for="param in visibleTableColumns"
+                            :key="`row2-${param.id}`"
+                            class="py-2 px-3 border-r border-slate-800/70 text-emerald-400 font-bold whitespace-nowrap cursor-pointer hover:bg-slate-850 transition"
+                            @click="cycleDecimals(param)"
+                            :title="'Clic para alternar decimales'"
+                          >
+                            <span class="tabular-nums">
+                              {{ formatSampleValue(param, 1) }}
+                            </span>
+                          </td>
+
+                          <td v-if="visibleTableColumns.length === 0" class="py-2 px-4 text-slate-500 italic">
+                            —
+                          </td>
+
+                          <td class="py-2 px-3 text-right">
+                            <span class="px-2 py-0.5 rounded bg-[#04C4D9]/20 text-[#04C4D9] font-bold text-[10px] border border-[#04C4D9]/40">
+                              + A Orden
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- Banner Informativo del Formato y Reglas -->
+                  <div class="p-3 bg-slate-850 rounded-xl border border-slate-800 flex items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-2 text-slate-300">
+                      <CheckCircle2 class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                      <span class="text-[11px]">
+                        Alineación con <strong>tabular-nums</strong> y visualización en tiempo real de columnas fijas.
+                      </span>
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-mono shrink-0">
+                      Auto-sync Portada v2.0
+                    </span>
+                  </div>
+
+                </div>
+
               </div>
             </div>
+
           </div>
-
-          <!-- 2. Constructor Dinámico de Parámetros -->
-  <div class="space-y-4">
-    <div class="flex items-center justify-between border-b pb-2 border-slate-200">
-      <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-        <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-        <span>Constructor de Medidas con Vista Previa de Tabla</span>
-      </h3>
-      <button
-        type="button"
-        @click="addParamRow"
-        class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs"
-      >
-        <Plus class="w-4 h-4" />
-        <span>+ Agregar Medida</span>
-      </button>
-    </div>
-
-    <!-- VISTA PREVIA EN VIVO DE LA CABECERA Y TABLA DE CATÁLOGO -->
-    <div class="bg-slate-900 text-white rounded-2xl p-4 shadow-sm space-y-2.5">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-        <div class="flex items-center gap-2">
-          <Eye class="w-4 h-4 text-[#04C4D9]" />
-          <span class="text-xs font-extrabold uppercase tracking-wide">
-            Vista Previa: Así se verá en la Tabla del Catálogo
-          </span>
-        </div>
-        <span class="text-[10px] font-mono text-slate-400">
-          {{ dynamicParams.length }} columnas técnicas activas
-        </span>
-      </div>
-
-      <!-- Simulación de la tabla técnica -->
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs border-collapse">
-          <thead>
-            <tr class="bg-slate-800 text-slate-300 text-[10px] font-bold uppercase tracking-wider">
-              <th class="py-1.5 px-2.5 border-r border-slate-700">OEM / Código</th>
-              <th class="py-1.5 px-2.5 border-r border-slate-700">Descripción</th>
-              <th
-                v-for="(p, pIdx) in dynamicParams"
-                :key="`preview-col-${pIdx}`"
-                class="py-1.5 px-2.5 border-r border-slate-700 text-[#04C4D9] font-mono whitespace-nowrap"
-              >
-                {{ p.etiqueta || `Medida ${pIdx + 1}` }}
-                <span v-if="p.unidad" class="text-slate-400 font-sans text-[9px]">({{ p.unidad }})</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="bg-slate-850/60 text-slate-200 font-mono text-[11px]">
-              <td class="py-2 px-2.5 border-r border-slate-700 text-slate-400 font-bold">13011-58010</td>
-              <td class="py-2 px-2.5 border-r border-slate-700 text-white font-sans font-bold">{{ groupNombre || 'Pieza Rectificada' }}</td>
-              <td
-                v-for="(p, pIdx) in dynamicParams"
-                :key="`preview-cell-${pIdx}`"
-                class="py-2 px-2.5 border-r border-slate-700 text-emerald-400 font-bold"
-              >
-                {{ p.tipo_dato === 'booleano' ? 'STD / Cónico' : (p.unidad === '°' ? '45°' : (p.unidad === 'mm' ? (pIdx === 0 ? '95.00' : '1.50') : '10 pzs')) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Editor de Parámetros Compacto -->
-    <div class="space-y-2.5">
-      <div
-        v-for="(param, idx) in dynamicParams"
-        :key="param.id"
-        class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-      >
-        <div class="flex items-center gap-2 shrink-0">
-          <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[11px] font-mono font-bold flex items-center justify-center">
-            {{ idx + 1 }}
-          </span>
-          <input
-            v-model="param.etiqueta"
-            @input="handleParamLabelChange(param)"
-            type="text"
-            placeholder="Etiqueta columna..."
-            class="px-2.5 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] w-48"
-          />
-        </div>
-
-        <div class="flex items-center gap-2 flex-1 flex-wrap">
-          <input
-            v-model="param.clave"
-            type="text"
-            placeholder="clave_tecnica"
-            class="px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] flex-1 min-w-[120px]"
-          />
-          <select
-            v-model="param.unidad"
-            class="px-2 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] w-24"
-          >
-            <option value="mm">mm</option>
-            <option value="°">°</option>
-            <option value="pulgadas">pulgadas</option>
-            <option value="piezas">piezas</option>
-            <option value="">Sin unidad</option>
-          </select>
-        </div>
-
-        <div class="flex items-center gap-2 shrink-0 justify-end">
-          <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600 cursor-pointer">
-            <input type="checkbox" v-model="param.requerido" class="w-3.5 h-3.5 rounded text-[#04C4D9]" />
-            <span>Req</span>
-          </label>
-          <button
-            type="button"
-            @click="removeParamRow(idx)"
-            class="p-1 text-slate-400 hover:text-rose-600 rounded transition"
-          >
-            <Trash2 class="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
         </div>
       </div>
 

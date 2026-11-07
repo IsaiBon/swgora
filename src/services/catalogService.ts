@@ -67,6 +67,7 @@ export interface ParametroTecnicoDefinicion {
   id: string
   clave: string
   etiqueta: string
+  etiqueta_corta?: string
   unidad: string
   tipo_dato: ParametroTipoDato
   requerido: boolean
