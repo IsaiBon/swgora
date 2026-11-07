@@ -15,7 +15,6 @@ import {
   Save, 
   SlidersHorizontal, 
   Sparkles, 
-  Info, 
   Tag, 
   Hash, 
   Ruler, 
@@ -26,9 +25,7 @@ import {
   Search,
   ChevronDown,
   Check,
-  AlertCircle,
-  CircleDot,
-  Layers
+  AlertCircle
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -512,6 +509,16 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   if (part.longitud_perno_mm != null) loadedParams.longitud_perno_mm = part.longitud_perno_mm
   if (part.cantidad_piezas != null) loadedParams.cantidad_piezas = part.cantidad_piezas
 
+  // Cargar metadatos especiales para anillos (Keystone, Cilindros)
+  loadedParams.diseno_conico = Boolean(
+    part.diseno_conico ||
+    (part.dimensiones as any)?.diseno_conico ||
+    (part.especificaciones_tecnicas as any)?.diseno_conico ||
+    (part.dimensiones as any)?.keystone
+  )
+  loadedParams.keystone = (part.dimensiones as any)?.keystone || (part.especificaciones_tecnicas as any)?.keystone || ''
+  loadedParams.cilindros = (part.dimensiones as any)?.cilindros || null
+
   paramValues.value = loadedParams
 
   // Equivalencias
@@ -526,6 +533,11 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   }
 
   formErrors.value = {}
+}
+
+const formatRingVal = (val: number | null | undefined): string => {
+  if (val == null || isNaN(val) || val === 0) return '—'
+  return Number(val).toFixed(3).replace(/\.?0+$/, '')
 }
 
 const switchToCreatePartMode = () => {
@@ -629,6 +641,20 @@ const handleSavePart = async () => {
       if (roil_a1 != null) {
         dimensionesPayload.espesor_radial_aceite_mm = roil_a1
         dimensionesPayload.altura_radial_aceite_mm = roil_a1
+      }
+
+      // Metadatos de taller de anillos
+      if (paramValues.value.diseno_conico) {
+        dimensionesPayload.diseno_conico = true
+        dimensionesPayload.keystone = paramValues.value.keystone || '1ST=KEYSTONE'
+      } else {
+        delete dimensionesPayload.diseno_conico
+        delete dimensionesPayload.keystone
+      }
+      if (paramValues.value.cilindros && Number(paramValues.value.cilindros) > 0) {
+        dimensionesPayload.cilindros = Number(paramValues.value.cilindros)
+      } else {
+        delete dimensionesPayload.cilindros
       }
     }
 
@@ -1057,7 +1083,7 @@ onUnmounted(() => {
     class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
     @click.self="emit('close')"
   >
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
       
       <!-- ===================================================================== -->
       <!-- MODAL HEADER CON PESTAÑAS SEGMENTADAS                                 -->
@@ -1115,25 +1141,25 @@ onUnmounted(() => {
       <!-- ===================================================================== -->
       <!-- MODAL BODY CON SCROLL INTERNO                                         -->
       <!-- ===================================================================== -->
-      <div class="p-5 sm:p-7 overflow-y-auto space-y-6 flex-1 text-slate-800">
+      <div class="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 text-slate-800">
 
         <!-- ----------------------------------------------------------------- -->
         <!-- PESTAÑA 1: FORMULARIO REACTIVO DE ALTA / EDICIÓN DE REPUESTO     -->
         <!-- ----------------------------------------------------------------- -->
-        <div v-if="activeTab === 'repuesto'" class="space-y-6">
+        <div v-if="activeTab === 'repuesto'" class="space-y-4">
 
           <!-- Banner Informativo si está editando un repuesto existente -->
-          <div v-if="isEditPartMode" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
+          <div v-if="isEditPartMode" class="bg-cyan-50/80 border border-cyan-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xs">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-xl bg-cyan-100 flex items-center justify-center shrink-0">
-                <Edit3 class="w-4 h-4 text-[#038391]" />
+              <div class="w-7 h-7 rounded-lg bg-cyan-100 text-[#038391] flex items-center justify-center shrink-0">
+                <Edit3 class="w-3.5 h-3.5" />
               </div>
-              <div>
-                <p class="text-xs font-extrabold text-[#038391]">
-                  Modificando Repuesto Existente: <span class="font-mono text-slate-900 bg-white px-1.5 py-0.5 rounded border border-cyan-200">{{ partCodigoOem || editingPartId }}</span>
+              <div class="min-w-0">
+                <p class="text-xs font-black text-[#004B97] truncate">
+                  Editando Repuesto: <span class="font-mono text-slate-900 bg-white px-2 py-0.5 rounded border border-cyan-200">{{ partCodigoOem || editingPartId }}</span>
                 </p>
-                <p class="text-[11px] text-slate-500">
-                  Puede actualizar el código OEM, motor, cotas dimensionales de maquinado y equivalencias de marcas alternas.
+                <p class="text-[10px] text-slate-500 font-medium">
+                  Actualice cotas dimensionales, motor asociado o equivalencias multimarca.
                 </p>
               </div>
             </div>
@@ -1147,750 +1173,705 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- 1. Familia de Repuesto -->
-          <div class="bg-cyan-50/40 border border-cyan-200/80 rounded-2xl p-4.5 space-y-3">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label class="block text-xs font-extrabold uppercase tracking-wider text-slate-900">
-                Familia de Repuesto
-              </label>
+          <!-- ARQUITECTURA SPLIT-VIEW (2 COLUMNAS EN ESCRITORIO) -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
 
-              <button
-                type="button"
-                @click="activeTab = 'grupo'"
-                class="text-xs font-bold text-[#038896] hover:text-[#04C4D9] flex items-center gap-1 transition"
-              >
-                <Plus class="w-3.5 h-3.5" />
-                <span>+ Nueva Familia</span>
-              </button>
-            </div>
+            <!-- ============================================================= -->
+            <!-- COLUMNA IZQUIERDA: FAMILIA, IDENTIFICACIÓN, MOTOR Y COMERCIAL -->
+            <!-- ============================================================= -->
+            <div class="lg:col-span-5 space-y-3.5">
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              <button
-                v-for="grp in catalogStore.grupos"
-                :key="grp.id"
-                type="button"
-                @click="selectedGroupCode = grp.codigo"
-                :class="[
-                  'p-3 rounded-xl border text-left transition flex flex-col justify-between gap-2',
-                  selectedGroupCode === grp.codigo 
-                    ? 'border-[#04C4D9] bg-white ring-2 ring-[#04C4D9]/20 shadow-xs' 
-                    : 'border-slate-200 bg-white/70 hover:bg-white hover:border-slate-300'
-                ]"
-              >
+              <!-- 1. Familia Técnica (Selector Compacto de Alta Densidad) -->
+              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3 space-y-2">
                 <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full" :class="selectedGroupCode === grp.codigo ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                    <strong class="text-xs font-extrabold text-slate-900">{{ grp.nombre }}</strong>
-                  </div>
-                </div>
-                <div class="text-[10px] text-slate-500 flex items-center gap-1 font-semibold">
-                  <Ruler class="w-3 h-3 text-[#04C4D9]" />
-                  <span>{{ grp.parametros.length }} medidas configuradas</span>
-                </div>
-              </button>
-            </div>
-
-            <!-- Resumen del grupo seleccionado -->
-            <div v-if="activeGroup" class="pt-1 flex items-center gap-2 text-xs text-slate-600 font-medium">
-              <Info class="w-4 h-4 text-[#04C4D9] shrink-0" />
-              <span>
-                Familia: <strong class="text-slate-900">{{ activeGroup.nombre }}</strong> • 
-                Subsistema: <strong class="text-slate-900">{{ activeGroup.subsistema }}</strong> • 
-                <strong class="text-emerald-700">{{ activeGroup.parametros.filter(p => p.requerido).length }} medidas obligatorias</strong>
-              </span>
-            </div>
-          </div>
-
-          <!-- 2. Datos Generales del Repuesto -->
-          <div class="space-y-4">
-            <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <Tag class="w-4 h-4 text-[#04C4D9]" />
-              Datos del Repuesto
-            </h3>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              <!-- Código OEM -->
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Código OEM / Principal *
-                </label>
-                <input
-                  v-model="partCodigoOem"
-                  type="text"
-                  placeholder="Ej. 13711-54020, 8-97176-683-0"
-                  class="w-full px-3.5 py-2 text-xs font-mono font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 uppercase"
-                  :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                />
-                <span v-if="formErrors.partCodigoOem" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                  {{ formErrors.partCodigoOem }}
-                </span>
-              </div>
-
-              <!-- Nombre del Repuesto -->
-              <div class="sm:col-span-2">
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Nombre / Descripción Técnica *
-                </label>
-                <input
-                  v-model="partNombre"
-                  type="text"
-                  placeholder="Ej. Camisa de Cilindro Semiterminada 4JB1 STD"
-                  class="w-full px-3.5 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
-                  :class="formErrors.partNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                />
-                <span v-if="formErrors.partNombre" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                  {{ formErrors.partNombre }}
-                </span>
-              </div>
-
-              <!-- Motor Asociado (Buscador reactivo con autocompletado) -->
-              <div class="relative combobox-motor-asociado">
-                <div class="flex items-center justify-between mb-1">
-                  <label class="block text-xs font-bold text-slate-700">
-                    Motor Asociado (Opcional)
+                  <label class="text-[11px] font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
+                    <span>Familia Técnica</span>
                   </label>
-                  <span v-if="selectedMotor" class="text-[10px] font-bold text-[#038896] bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">
-                    {{ selectedMotor.codigo }}
-                  </span>
-                  <span v-else class="text-[10px] font-medium text-slate-400">
-                    Universal
-                  </span>
+                  <button
+                    type="button"
+                    @click="activeTab = 'grupo'"
+                    class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] transition"
+                  >
+                    + Gestionar Familias
+                  </button>
                 </div>
 
-                <div class="relative flex items-center">
-                  <Search class="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
-                  <input
-                    v-model="motorSearchQuery"
-                    type="text"
-                    placeholder="Buscar motor (ej. 3L, Z24, 4JB1, Hilux)..."
-                    @focus="onMotorFocus"
-                    @input="onMotorInput"
-                    class="w-full pl-9 pr-14 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
-                    :class="selectedMotor ? 'border-cyan-300 bg-cyan-50/20' : 'border-slate-300'"
-                  />
+                <div class="grid grid-cols-2 gap-1.5">
+                  <button
+                    v-for="grp in catalogStore.grupos"
+                    :key="grp.id"
+                    type="button"
+                    @click="selectedGroupCode = grp.codigo"
+                    :class="[
+                      'px-2.5 py-2 rounded-xl border text-left transition flex items-center justify-between gap-1.5',
+                      selectedGroupCode === grp.codigo
+                        ? 'border-[#004B97] bg-white ring-2 ring-[#004B97]/15 shadow-2xs'
+                        : 'border-slate-200 bg-white/60 hover:bg-white text-slate-700'
+                    ]"
+                  >
+                    <div class="flex items-center gap-1.5 min-w-0">
+                      <span 
+                        class="w-2 h-2 rounded-full shrink-0" 
+                        :class="selectedGroupCode === grp.codigo ? 'bg-[#04C4D9]' : 'bg-slate-300'"
+                      ></span>
+                      <span class="text-xs font-bold text-slate-900 truncate">{{ grp.nombre }}</span>
+                    </div>
+                    <span class="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono shrink-0">
+                      {{ grp.parametros.length }}
+                    </span>
+                  </button>
+                </div>
+              </div>
 
-                  <div class="absolute right-2 flex items-center gap-1">
-                    <button
-                      v-if="partMotorId || motorSearchQuery"
-                      type="button"
-                      @click="clearMotor"
-                      class="p-1 rounded-full text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition"
-                      title="Quitar motor y dejar como Universal"
-                    >
-                      <X class="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      @click="isMotorDropdownOpen = !isMotorDropdownOpen"
-                      class="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
-                      title="Ver lista de motores"
-                    >
-                      <ChevronDown class="w-3.5 h-3.5" />
-                    </button>
+              <!-- 2. Datos de Identificación del Repuesto -->
+              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Tag class="w-3.5 h-3.5 text-[#004B97]" />
+                    <span>Identificación</span>
+                  </h3>
+                  <span class="text-[10px] text-slate-500 font-medium">Campos obligatorios (*)</span>
+                </div>
+
+                <!-- Código OEM y Nombre -->
+                <div class="space-y-2.5">
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="text-[11px] font-bold text-slate-700">
+                        Código OEM / Parte Principal <span class="text-rose-600 font-black">*</span>
+                      </label>
+                      <span class="text-[9px] text-slate-400 font-mono">Original</span>
+                    </div>
+                    <input
+                      v-model="partCodigoOem"
+                      type="text"
+                      placeholder="Ej. 13011-28010, 8-97176-683-0"
+                      class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                      :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                    />
+                    <span v-if="formErrors.partCodigoOem" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                      {{ formErrors.partCodigoOem }}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nombre o Descripción Técnica <span class="text-rose-600 font-black">*</span>
+                    </label>
+                    <input
+                      v-model="partNombre"
+                      type="text"
+                      placeholder="Ej. Juego de Aros STD Toyota 3L / 5L"
+                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                      :class="formErrors.partNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                    />
+                    <span v-if="formErrors.partNombre" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                      {{ formErrors.partNombre }}
+                    </span>
                   </div>
                 </div>
 
-                <!-- Dropdown de resultados flotante -->
-                <div
-                  v-if="isMotorDropdownOpen"
-                  class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-100"
-                >
-                  <!-- Opción Universal -->
-                  <div
-                    @click="selectMotor(null)"
-                    class="px-3.5 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition"
-                    :class="!partMotorId ? 'bg-cyan-50 font-bold text-[#038896]' : 'text-slate-700'"
-                  >
-                    <div class="flex items-center gap-2">
-                      <span class="w-2 h-2 rounded-full" :class="!partMotorId ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                      <span>Universal / Todos los Motores</span>
-                    </div>
-                    <Check v-if="!partMotorId" class="w-3.5 h-3.5 text-[#038896]" />
+                <!-- Motor Asociado (Buscador reactivo con autocompletado) -->
+                <div class="relative combobox-motor-asociado pt-1">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-[11px] font-bold text-slate-700">
+                      Motor Asociado (Opcional)
+                    </label>
+                    <span v-if="selectedMotor" class="text-[10px] font-bold text-[#038896] bg-cyan-50 px-2 py-0.2 rounded-full border border-cyan-200">
+                      {{ selectedMotor.codigo }} ({{ getBrandName(selectedMotor.fabricante_id) }})
+                    </span>
+                    <span v-else class="text-[10px] font-medium text-slate-400">
+                      Universal
+                    </span>
                   </div>
 
-                  <!-- Lista de motores filtrados -->
-                  <div
-                    v-for="mot in filteredMotoresList"
-                    :key="mot.id"
-                    @click="selectMotor(mot)"
-                    class="px-3 py-2 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition"
-                    :class="partMotorId === mot.id ? 'bg-cyan-50 text-cyan-900 font-bold' : 'text-slate-800'"
-                  >
-                    <div class="min-w-0 pr-2">
-                      <div class="flex items-center gap-1.5 flex-wrap">
-                        <span 
-                          v-if="getBrandName(mot.fabricante_id)" 
-                          class="px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded bg-slate-200 text-slate-700"
-                        >
-                          {{ getBrandName(mot.fabricante_id) }}
-                        </span>
-                        <strong class="font-mono text-xs font-black text-slate-900">{{ mot.codigo }}</strong>
-                        <span v-if="mot.nombre_comercial" class="text-slate-600 font-medium truncate">
-                          {{ mot.nombre_comercial }}
-                        </span>
-                        <span v-if="mot.denominacion_venta" class="text-slate-400 text-[11px]">
-                          ({{ mot.denominacion_venta }})
-                        </span>
-                      </div>
-                    </div>
+                  <div class="relative flex items-center">
+                    <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <input
+                      v-model="motorSearchQuery"
+                      type="text"
+                      placeholder="Buscar motor (ej. 3L, Z24, 4JB1, Hilux)..."
+                      @focus="onMotorFocus"
+                      @input="onMotorInput"
+                      class="w-full pl-8 pr-12 py-1.5 text-xs font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                      :class="selectedMotor ? 'border-cyan-300 bg-cyan-50/10' : 'border-slate-300'"
+                    />
 
-                    <div class="shrink-0 flex items-center gap-2">
-                      <span v-if="mot.cilindros || mot.cilindrada_texto || mot.cilindrada_cc" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                        <template v-if="mot.cilindros">{{ mot.cilindros }} Cil<template v-if="mot.cilindrada_texto || mot.cilindrada_cc"> • </template></template><span v-if="mot.cilindrada_texto || mot.cilindrada_cc">{{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}</span>
-                      </span>
-                      <Check v-if="partMotorId === mot.id" class="w-3.5 h-3.5 text-[#038896]" />
+                    <div class="absolute right-1.5 flex items-center gap-0.5">
+                      <button
+                        v-if="partMotorId || motorSearchQuery"
+                        type="button"
+                        @click="clearMotor"
+                        class="p-1 rounded-full text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition"
+                        title="Quitar motor y dejar como Universal"
+                      >
+                        <X class="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        @click="isMotorDropdownOpen = !isMotorDropdownOpen"
+                        class="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                        title="Ver lista de motores"
+                      >
+                        <ChevronDown class="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
 
-                  <!-- Sin resultados -->
-                  <div v-if="filteredMotoresList.length === 0" class="p-3 text-center text-xs text-slate-500">
-                    <p class="font-medium">No se encontraron motores para "{{ motorSearchQuery }}"</p>
-                    <button
-                      type="button"
+                  <!-- Dropdown flotante de motores -->
+                  <div
+                    v-if="isMotorDropdownOpen"
+                    class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-52 overflow-y-auto divide-y divide-slate-100"
+                  >
+                    <div
                       @click="selectMotor(null)"
-                      class="mt-1.5 text-xs font-bold text-[#038896] hover:underline"
+                      class="px-3 py-1.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition"
+                      :class="!partMotorId ? 'bg-cyan-50 font-bold text-[#038391]' : 'text-slate-700'"
                     >
-                      Dejar como Universal / Sin motor
-                    </button>
+                      <div class="flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full" :class="!partMotorId ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                        <span>Universal / Todos los Motores</span>
+                      </div>
+                      <Check v-if="!partMotorId" class="w-3.5 h-3.5 text-[#038391]" />
+                    </div>
+
+                    <div
+                      v-for="mot in filteredMotoresList"
+                      :key="mot.id"
+                      @click="selectMotor(mot)"
+                      class="px-3 py-1.5 hover:bg-cyan-50/70 cursor-pointer text-xs flex items-center justify-between transition"
+                      :class="partMotorId === mot.id ? 'bg-cyan-50 text-cyan-900 font-bold' : 'text-slate-800'"
+                    >
+                      <div class="min-w-0 pr-2">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <strong class="font-extrabold text-[#004B97]">{{ mot.codigo }}</strong>
+                          <span class="text-slate-500 font-medium text-[11px]">{{ getBrandName(mot.fabricante_id) }}</span>
+                          <span v-if="mot.nombre_comercial" class="text-slate-600 text-[10px]">({{ mot.nombre_comercial }})</span>
+                        </div>
+                      </div>
+                      <Check v-if="partMotorId === mot.id" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                    </div>
+
+                    <div v-if="filteredMotoresList.length === 0" class="p-3 text-center text-xs text-slate-500 italic">
+                      No se encontraron motores para "{{ motorSearchQuery }}"
+                    </div>
                   </div>
                 </div>
+              </div>
 
-                <!-- Resumen técnico del motor seleccionado -->
-                <div v-if="selectedMotor" class="mt-1 flex items-center gap-1.5 text-[10px] text-slate-600 bg-slate-100/80 px-2 py-0.5 rounded-lg">
-                  <span class="font-bold text-slate-800">{{ getBrandName(selectedMotor.fabricante_id) }} {{ selectedMotor.codigo }}</span>
-                  <span v-if="selectedMotor.cilindrada_texto || selectedMotor.cilindrada_cc">• {{ selectedMotor.cilindrada_texto || `${selectedMotor.cilindrada_cc} cc` }}</span>
-                  <span v-if="selectedMotor.combustible">• {{ selectedMotor.combustible }}</span>
+              <!-- 3. Parámetros Comerciales & Stock -->
+              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Hash class="w-3.5 h-3.5 text-[#004B97]" />
+                    <span>Comercial & Stock</span>
+                  </h3>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Origen</label>
+                    <select
+                      v-model="partCatalogoOrigen"
+                      class="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                    >
+                      <option value="OEM">OEM Original</option>
+                      <option value="Rik">Rik / Riken</option>
+                      <option value="NPR">NPR</option>
+                      <option value="Dokuro">Dokuro</option>
+                      <option value="MRK">MRK</option>
+                      <option value="Ajusa">Ajusa</option>
+                      <option value="NDC">NDC</option>
+                      <option value="Pioneer">Pioneer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Precio ($)</label>
+                    <input
+                      v-model.number="partPrecio"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Stock (Pzs)</label>
+                    <input
+                      v-model.number="partStock"
+                      type="number"
+                      placeholder="12"
+                      class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <!-- Catálogo de Origen -->
-              <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">
-                  Marca de Catálogo / Origen
-                </label>
-                <select
-                  v-model="partCatalogoOrigen"
-                  class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                >
-                  <option value="OEM">OEM Original</option>
-                  <option value="Rik">Rik / Riken (Japón)</option>
-                  <option value="NPR">NPR (Japón)</option>
-                  <option value="MRK">MRK Guías (Japón)</option>
-                  <option value="Ajusa">Ajusa (España)</option>
-                  <option value="NDC">NDC Cojinetes (Japón)</option>
-                  <option value="Pioneer">Pioneer (USA)</option>
-                </select>
-              </div>
-
-              <!-- Precio y Stock -->
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Precio ($)</label>
-                  <input
-                    v-model.number="partPrecio"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                  />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Stock</label>
-                  <input
-                    v-model.number="partStock"
-                    type="number"
-                    placeholder="12"
-                    class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                  />
-                </div>
-              </div>
-
-              <!-- Selector y subida de Imagen Técnica / Diagrama de explosión -->
-              <div class="sm:col-span-2 lg:col-span-3 pt-2 border-t border-slate-200">
+              <!-- 4. Imagen Técnica / Diagrama de explosión (Compacto) -->
+              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3">
                 <PartImageUploader
                   v-model="partImagenUrl"
                   :part-code="partCodigoOem"
-                  label="Imagen Técnica / Diagrama de Explosión"
-                  hint="Sube la foto del repuesto, plano de despiece o cota CAD. Se optimizará automáticamente para carga rápida en taller."
+                  label="Diagrama / Foto de Pieza"
+                  hint="Opcional. Optimizado para visualización rápida en taller."
                 />
               </div>
-            </div>
-          </div>
 
-          <!-- 3. Parámetros Técnicos -->
-          <div class="space-y-4">
-            <div class="flex items-center justify-between border-b pb-2 border-slate-200">
-              <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Ruler class="w-4 h-4 text-[#04C4D9]" />
-                Cotas Técnicas
-              </h3>
-              <span v-if="activeGroup" class="text-[11px] font-bold text-cyan-800 bg-cyan-100 px-2 py-0.5 rounded-full">
-                {{ activeGroup.parametros.filter(p => p.requerido).length }} Obligatorios
-              </span>
             </div>
 
-            <!-- Si el grupo no tiene parámetros especiales -->
-            <div v-if="!activeGroup || activeGroup.parametros.length === 0" class="p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
-              Este grupo no tiene medidas dimensionales adicionales configuradas.
-            </div>
+            <!-- ============================================================= -->
+            <!-- COLUMNA DERECHA: COTAS TÉCNICAS (MATRIZ ANILLOS) Y EQUIVS    -->
+            <!-- ============================================================= -->
+            <div class="lg:col-span-7 space-y-3.5">
 
-            <!-- Bloque especial integral para Anillos de Motor (3 o 4 aros) -->
-            <div 
-              v-if="isRingsGroup" 
-              class="space-y-4 bg-gradient-to-br from-cyan-50/70 via-white to-blue-50/40 p-4 sm:p-5 rounded-2xl border border-cyan-200 shadow-2xs"
-            >
-              <!-- Cabecera de Anillos y Toggle para 3 o 4 aros -->
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-cyan-100">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-xl bg-[#004B97] text-white flex items-center justify-center shadow-xs">
-                    <Layers class="w-4 h-4 text-[#04C4D9]" />
+              <!-- 1. Cotas Dimensionales Técnicas -->
+              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded-lg bg-[#004B97] text-white flex items-center justify-center">
+                      <Ruler class="w-3.5 h-3.5 text-[#04C4D9]" />
+                    </div>
+                    <div>
+                      <h3 class="text-xs font-black uppercase tracking-wider text-slate-900">
+                        Cotas Técnicas de Maquinado
+                      </h3>
+                      <p class="text-[10px] text-slate-500 font-medium">
+                        {{ isRingsGroup ? 'Matriz tabular por posición de ranura de pistón' : (activeGroup?.nombre || 'Medidas requeridas') }}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 class="text-xs font-black text-[#004B97] uppercase tracking-wide">
-                      Dimensiones Técnicas de Juego de Aros
-                    </h4>
-                    <p class="text-[10px] text-slate-500 font-medium">
-                      Configure el diámetro de cilindro (d1) y el desglose de aros (h1 axial y a1 radial)
+
+                  <span v-if="activeGroup" class="text-[10px] font-extrabold text-[#004B97] bg-white border border-cyan-200 px-2 py-0.5 rounded-full">
+                    {{ isRingsGroup ? (hasThirdRing ? '4 Aros' : '3 Aros') : `${activeGroup.parametros.filter(p => p.requerido).length} Obligatorios` }}
+                  </span>
+                </div>
+
+                <!-- A. MATRIZ TABULAR PARA ANILLOS DE MOTOR (ESPEJO DE LA TABLA DEL CATÁLOGO) -->
+                <div v-if="isRingsGroup" class="space-y-3">
+                  
+                  <!-- Tabla de medidas compacta -->
+                  <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs font-mono select-text">
+                    <table class="border-collapse text-center text-xs w-full">
+                      <thead>
+                        <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
+                          <th class="px-3 py-2 text-left border-r border-slate-200">Ranura / Posición</th>
+                          <th class="px-2.5 py-2 border-r border-slate-200">
+                            <span>Diámetro (d1)</span>
+                            <span class="block text-[9px] text-slate-400 font-normal">Calibre mm *</span>
+                          </th>
+                          <th class="px-2.5 py-2 border-r border-slate-200">
+                            <span>Grosor (h1)</span>
+                            <span class="block text-[9px] text-slate-400 font-normal">Axial mm *</span>
+                          </th>
+                          <th class="px-2.5 py-2 border-r border-slate-200">
+                            <span>Radial (a1)</span>
+                            <span class="block text-[9px] text-slate-400 font-normal">Espesor mm</span>
+                          </th>
+                          <th class="px-2 py-2">
+                            <span>Atributo</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 text-[11px]">
+                        
+                        <!-- 1° Compresión (Fuego) -->
+                        <tr class="hover:bg-slate-50/70 transition" :class="formErrors.espesor_anillo1_mm || formErrors.diametro_cilindro_mm ? 'bg-rose-50/20' : ''">
+                          <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
+                            <div class="flex items-center gap-1.5">
+                              <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                              <strong class="font-extrabold text-slate-900">1° Compresión</strong>
+                            </div>
+                            <span class="text-[9px] text-slate-500 font-normal">Fuego / Top</span>
+                          </td>
+                          <!-- Diámetro común STD -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <div class="relative flex items-center justify-center">
+                              <input
+                                v-model.number="paramValues.diametro_cilindro_mm"
+                                type="number"
+                                step="0.001"
+                                placeholder="86.000"
+                                class="w-20 px-1.5 py-1 text-center font-mono font-black text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                                :class="formErrors.diametro_cilindro_mm ? 'border-rose-400 bg-rose-50' : 'border-slate-300'"
+                              />
+                            </div>
+                          </td>
+                          <!-- Grosor h1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.espesor_anillo1_mm"
+                              type="number"
+                              step="0.001"
+                              placeholder="1.500"
+                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              :class="formErrors.espesor_anillo1_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
+                            />
+                          </td>
+                          <!-- Radial a1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.altura_radial1_mm"
+                              type="number"
+                              step="0.01"
+                              placeholder="3.40"
+                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </td>
+                          <!-- Toggle Keystone / Cónico -->
+                          <td class="px-2 py-1.5 whitespace-nowrap">
+                            <button
+                              type="button"
+                              @click="paramValues.diseno_conico = !paramValues.diseno_conico"
+                              class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase transition border"
+                              :class="paramValues.diseno_conico 
+                                ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs' 
+                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:text-slate-800'"
+                              :title="paramValues.diseno_conico ? 'Diseño Keystone activado (1ST=KEYSTONE)' : 'Hacer clic para marcar como cónico (Keystone)'"
+                            >
+                              {{ paramValues.diseno_conico ? '★ Cónico' : 'Plano' }}
+                            </button>
+                          </td>
+                        </tr>
+
+                        <!-- 2° Compresión (Raspador) -->
+                        <tr class="hover:bg-slate-50/70 transition" :class="formErrors.espesor_anillo2_mm ? 'bg-rose-50/20' : ''">
+                          <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
+                            <div class="flex items-center gap-1.5">
+                              <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                              <strong class="font-extrabold text-slate-900">2° Compresión</strong>
+                            </div>
+                            <span class="text-[9px] text-slate-500 font-normal">Raspador</span>
+                          </td>
+                          <!-- Diámetro heredado -->
+                          <td class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
+                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
+                          </td>
+                          <!-- Grosor h1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.espesor_anillo2_mm"
+                              type="number"
+                              step="0.001"
+                              placeholder="1.500"
+                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              :class="formErrors.espesor_anillo2_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
+                            />
+                          </td>
+                          <!-- Radial a1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.altura_radial2_mm"
+                              type="number"
+                              step="0.01"
+                              placeholder="3.40"
+                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </td>
+                          <td class="px-2 py-1.5 text-center text-[10px] text-slate-400 font-sans">
+                            STD
+                          </td>
+                        </tr>
+
+                        <!-- 3° Compresión (Opcional - Juegos de 4 Aros) -->
+                        <tr v-if="hasThirdRing" class="hover:bg-slate-50/70 transition bg-amber-50/20" :class="formErrors.espesor_anillo3_mm ? 'bg-rose-50/20' : ''">
+                          <td class="px-3 py-1.5 bg-amber-50/60 font-bold text-amber-950 border-r border-slate-200 text-left whitespace-nowrap">
+                            <div class="flex items-center gap-1.5">
+                              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                              <strong class="font-extrabold text-amber-900">3° Compresión</strong>
+                            </div>
+                            <span class="text-[9px] text-amber-700 font-normal">Extra / Diésel</span>
+                          </td>
+                          <!-- Diámetro heredado -->
+                          <td class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
+                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
+                          </td>
+                          <!-- Grosor h1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.espesor_anillo3_mm"
+                              type="number"
+                              step="0.001"
+                              placeholder="2.000"
+                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500"
+                              :class="formErrors.espesor_anillo3_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : ''"
+                            />
+                          </td>
+                          <!-- Radial a1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.altura_radial3_mm"
+                              type="number"
+                              step="0.01"
+                              placeholder="3.40"
+                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500"
+                            />
+                          </td>
+                          <td class="px-2 py-1.5 text-center">
+                            <button
+                              type="button"
+                              @click="hasThirdRing = false"
+                              class="p-1 rounded text-slate-400 hover:text-rose-600 transition"
+                              title="Quitar 3° anillo de compresión"
+                            >
+                              <Trash2 class="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+
+                        <!-- Anillo de Aceite (Rascador) -->
+                        <tr class="hover:bg-slate-50/70 transition" :class="formErrors.espesor_aceite_mm ? 'bg-rose-50/20' : ''">
+                          <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
+                            <div class="flex items-center gap-1.5">
+                              <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+                              <strong class="font-extrabold text-slate-900">Anillo Aceite</strong>
+                            </div>
+                            <span class="text-[9px] text-slate-500 font-normal">Rascador / Oil</span>
+                          </td>
+                          <!-- Diámetro heredado -->
+                          <td class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
+                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
+                          </td>
+                          <!-- Grosor h1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.espesor_aceite_mm"
+                              type="number"
+                              step="0.001"
+                              placeholder="3.000"
+                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              :class="formErrors.espesor_aceite_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
+                            />
+                          </td>
+                          <!-- Radial a1 -->
+                          <td class="px-2 py-1.5 border-r border-slate-200">
+                            <input
+                              v-model.number="paramValues.altura_radial_aceite_mm"
+                              type="number"
+                              step="0.01"
+                              placeholder="2.80"
+                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </td>
+                          <td class="px-2 py-1.5 text-center text-[10px] text-slate-400 font-sans">
+                            Oil
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- Controles auxiliares bajo la tabla -->
+                  <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                    <button
+                      v-if="!hasThirdRing"
+                      type="button"
+                      @click="hasThirdRing = true"
+                      class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
+                    >
+                      <Plus class="w-3 h-3 text-[#04C4D9]" />
+                      <span>+ Agregar 3° Anillo (Juego de 4 Aros)</span>
+                    </button>
+                    <span v-else class="text-[11px] text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      Juego de 4 Aros activo
+                    </span>
+
+                    <div class="flex items-center gap-3">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] font-bold text-slate-600">Cilindros:</span>
+                        <input
+                          v-model.number="paramValues.cilindros"
+                          type="number"
+                          placeholder="4"
+                          class="w-12 px-1.5 py-0.5 text-center text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS (VÁLVULAS, SELLOS, PERNOS, ETC.) -->
+                <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div 
+                    v-for="param in activeGroup.parametros" 
+                    :key="param.id"
+                    class="bg-white p-3 rounded-xl border transition shadow-2xs"
+                    :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
+                  >
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
+                        <span>{{ param.etiqueta }}</span>
+                        <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
+                      </label>
+                      <span 
+                        :class="[
+                          'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full uppercase',
+                          param.requerido ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-slate-100 text-slate-500'
+                        ]"
+                      >
+                        {{ param.requerido ? 'Req' : 'Opc' }}
+                      </span>
+                    </div>
+
+                    <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
+                      <input
+                        v-model.number="paramValues[param.clave]"
+                        type="number"
+                        step="0.001"
+                        :placeholder="`Valor en ${param.unidad || 'mm'}`"
+                        class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                      />
+                      <span class="absolute right-2.5 text-[9px] font-black text-slate-400 uppercase pointer-events-none">
+                        {{ param.unidad || 'mm' }}
+                      </span>
+                    </div>
+
+                    <div v-else-if="param.tipo_dato === 'seleccion'" class="relative">
+                      <select
+                        v-model="paramValues[param.clave]"
+                        class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                      >
+                        <option value="">Selecciona opción</option>
+                        <option v-for="opt in param.opciones || []" :key="opt" :value="opt">
+                          {{ opt }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
+                      <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                        <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
+                        <span>Sí</span>
+                      </label>
+                      <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                        <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
+                        <span>No</span>
+                      </label>
+                    </div>
+
+                    <div v-else class="relative">
+                      <input
+                        v-model="paramValues[param.clave]"
+                        type="text"
+                        placeholder="Texto descriptivo"
+                        class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                      />
+                    </div>
+
+                    <p v-if="formErrors[param.clave]" class="text-[9px] text-rose-600 font-bold mt-1">
+                      {{ formErrors[param.clave] }}
                     </p>
                   </div>
                 </div>
 
-                <!-- Botón Toggle para 3 o 4 Aros -->
-                <button
-                  type="button"
-                  @click="hasThirdRing = !hasThirdRing"
-                  class="self-start sm:self-auto px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition border shadow-2xs"
-                  :class="hasThirdRing 
-                    ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600' 
-                    : 'bg-white hover:bg-cyan-50 text-[#004B97] border-cyan-300'"
-                >
-                  <Plus v-if="!hasThirdRing" class="w-3.5 h-3.5 text-[#04C4D9]" />
-                  <Trash2 v-else class="w-3.5 h-3.5 text-white" />
-                  <span>{{ hasThirdRing ? 'Quitar 3° Anillo (Juego de 3 Aros STD)' : '+ Agregar 3° Anillo (Juego de 4 Aros)' }}</span>
-                </button>
+                <div v-else class="p-4 text-center bg-white border border-slate-200 rounded-xl text-xs text-slate-500">
+                  Este grupo no tiene medidas dimensionales adicionales.
+                </div>
               </div>
 
-              <!-- Campo Principal: Diámetro de Cilindro d1 -->
-              <div 
-                class="bg-white p-3.5 rounded-xl border transition shadow-2xs"
-                :class="formErrors.diametro_cilindro_mm ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-cyan-200/80'"
-              >
-                <div class="flex items-center justify-between mb-1.5">
-                  <label class="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                    <CircleDot class="w-3.5 h-3.5 text-[#004B97]" />
-                    <span>Diámetro de Cilindro (d1 mm - Calibre Nominal STD)</span>
-                    <span class="text-rose-600 font-black text-sm">*</span>
-                  </label>
-                  <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase bg-amber-100 text-amber-900 border border-amber-200">
-                    Requerido
-                  </span>
-                </div>
-                <div class="relative flex items-center max-w-xs">
-                  <input
-                    v-model.number="paramValues.diametro_cilindro_mm"
-                    type="number"
-                    step="0.001"
-                    placeholder="ej. 86.000"
-                    class="w-full pl-3 pr-12 py-2 text-xs font-mono font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                  />
-                  <span class="absolute right-3 text-[10px] font-black text-slate-400 pointer-events-none uppercase">
-                    mm
-                  </span>
-                </div>
-                <p v-if="formErrors.diametro_cilindro_mm" class="text-[10px] text-rose-600 font-bold mt-1">
-                  {{ formErrors.diametro_cilindro_mm }}
-                </p>
-              </div>
-
-              <!-- Grilla de Desglose de Cada Anillo (1°, 2°, [3° opcional], Aceite) -->
-              <div class="space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <span class="text-[11px] font-black uppercase tracking-wider text-slate-700">
-                    Desglose por Posición de Ranura ({{ hasThirdRing ? '4 Anillos' : '3 Anillos' }})
-                  </span>
-                  <span class="text-[10px] text-slate-500 font-bold">
-                    h1 = Grosor/Altura Axial | a1 = Espesor Radial
-                  </span>
+              <!-- 2. Equivalencias Multimarca (Compacto en la Columna Derecha) -->
+              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Equivalencias Multimarca
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    @click="addEquivalenceRow"
+                    class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition"
+                  >
+                    <Plus class="w-3 h-3 text-[#04C4D9]" />
+                    <span>+ Agregar Marca</span>
+                  </button>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  <!-- 1° Anillo (Compresión / Fuego) -->
+                <div class="space-y-1.5">
                   <div 
-                    class="bg-white p-3 rounded-xl border transition shadow-2xs space-y-2"
-                    :class="formErrors.espesor_anillo1_mm ? 'border-rose-400 bg-rose-50/20 ring-1 ring-rose-300' : 'border-slate-200'"
+                    v-for="(eq, idx) in equivalencias" 
+                    :key="idx" 
+                    class="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs"
                   >
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                      <span class="text-xs font-black text-[#004B97] flex items-center gap-1">
-                        <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                        1° Compresión
-                      </span>
-                      <span class="text-[9px] font-extrabold text-slate-500 uppercase">Top / Fuego</span>
-                    </div>
+                    <select
+                      v-model="eq.marca_alterna"
+                      class="w-28 px-2 py-1 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                    >
+                      <option v-for="brand in availableAltBrands" :key="brand" :value="brand">
+                        {{ brand }}
+                      </option>
+                    </select>
 
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-700 block mb-0.5">
-                        Grosor h1 (mm) <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.espesor_anillo1_mm"
-                          type="number"
-                          step="0.001"
-                          placeholder="ej. 1.500"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                      <p v-if="formErrors.espesor_anillo1_mm" class="text-[9px] text-rose-600 font-bold mt-0.5">
-                        {{ formErrors.espesor_anillo1_mm }}
-                      </p>
-                    </div>
+                    <input
+                      v-model="eq.codigo_alterno"
+                      type="text"
+                      placeholder="Código alterno (ej. 20002)"
+                      class="flex-1 px-2.5 py-1 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] uppercase"
+                    />
 
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-600 block mb-0.5">
-                        Radial a1 (mm) <span class="text-slate-400 font-normal">(Opcional)</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.altura_radial1_mm"
-                          type="number"
-                          step="0.01"
-                          placeholder="ej. 3.40"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                    </div>
+                    <input
+                      v-model="eq.notas"
+                      type="text"
+                      placeholder="Notas (ej. STD Japón)"
+                      class="w-32 sm:w-36 px-2.5 py-1 text-[11px] font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                    />
+
+                    <button
+                      type="button"
+                      @click="removeEquivalenceRow(idx)"
+                      class="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                      title="Eliminar fila"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
-                  <!-- 2° Anillo (Compresión / Raspador) -->
-                  <div 
-                    class="bg-white p-3 rounded-xl border transition shadow-2xs space-y-2"
-                    :class="formErrors.espesor_anillo2_mm ? 'border-rose-400 bg-rose-50/20 ring-1 ring-rose-300' : 'border-slate-200'"
-                  >
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                      <span class="text-xs font-black text-[#004B97] flex items-center gap-1">
-                        <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                        2° Compresión
-                      </span>
-                      <span class="text-[9px] font-extrabold text-slate-500 uppercase">Raspador</span>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-700 block mb-0.5">
-                        Grosor h1 (mm) <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.espesor_anillo2_mm"
-                          type="number"
-                          step="0.001"
-                          placeholder="ej. 1.500"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                      <p v-if="formErrors.espesor_anillo2_mm" class="text-[9px] text-rose-600 font-bold mt-0.5">
-                        {{ formErrors.espesor_anillo2_mm }}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-600 block mb-0.5">
-                        Radial a1 (mm) <span class="text-slate-400 font-normal">(Opcional)</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.altura_radial2_mm"
-                          type="number"
-                          step="0.01"
-                          placeholder="ej. 3.40"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 3° Anillo (Solo si hasThirdRing es true) -->
-                  <div 
-                    v-if="hasThirdRing"
-                    class="bg-amber-50/40 p-3 rounded-xl border border-amber-300/80 transition shadow-2xs space-y-2 ring-1 ring-amber-200"
-                    :class="formErrors.espesor_anillo3_mm ? 'border-rose-400 bg-rose-50/20 ring-1 ring-rose-300' : ''"
-                  >
-                    <div class="flex items-center justify-between border-b border-amber-200 pb-1.5">
-                      <span class="text-xs font-black text-amber-900 flex items-center gap-1">
-                        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                        3° Compresión
-                      </span>
-                      <span class="text-[9px] font-extrabold text-amber-700 uppercase">Diesel / Extra</span>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-700 block mb-0.5">
-                        Grosor h1 (mm) <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.espesor_anillo3_mm"
-                          type="number"
-                          step="0.001"
-                          placeholder="ej. 2.000"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                      <p v-if="formErrors.espesor_anillo3_mm" class="text-[9px] text-rose-600 font-bold mt-0.5">
-                        {{ formErrors.espesor_anillo3_mm }}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-600 block mb-0.5">
-                        Radial a1 (mm) <span class="text-slate-400 font-normal">(Opcional)</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.altura_radial3_mm"
-                          type="number"
-                          step="0.01"
-                          placeholder="ej. 3.40"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Anillo de Aceite (Rascador) -->
-                  <div 
-                    class="bg-white p-3 rounded-xl border transition shadow-2xs space-y-2"
-                    :class="formErrors.espesor_aceite_mm ? 'border-rose-400 bg-rose-50/20 ring-1 ring-rose-300' : 'border-slate-200'"
-                  >
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                      <span class="text-xs font-black text-[#04C4D9] flex items-center gap-1">
-                        <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-                        Anillo de Aceite
-                      </span>
-                      <span class="text-[9px] font-extrabold text-slate-500 uppercase">Rascador</span>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-700 block mb-0.5">
-                        Grosor h1 (mm) <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.espesor_aceite_mm"
-                          type="number"
-                          step="0.001"
-                          placeholder="ej. 3.000"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
-                      <p v-if="formErrors.espesor_aceite_mm" class="text-[9px] text-rose-600 font-bold mt-0.5">
-                        {{ formErrors.espesor_aceite_mm }}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label class="text-[10px] font-bold text-slate-600 block mb-0.5">
-                        Radial a1 (mm) <span class="text-slate-400 font-normal">(Opcional)</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues.altura_radial_aceite_mm"
-                          type="number"
-                          step="0.01"
-                          placeholder="ej. 2.80"
-                          class="w-full pl-2.5 pr-9 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2 text-[9px] font-black text-slate-400">mm</span>
-                      </div>
+                  <!-- Añadir marca personalizada si no está en la lista -->
+                  <div class="pt-1">
+                    <button
+                      v-if="!showNewBrandInput"
+                      type="button"
+                      @click="showNewBrandInput = true"
+                      class="text-[10px] text-slate-500 hover:text-[#038391] font-bold flex items-center gap-1 transition"
+                    >
+                      <Plus class="w-3 h-3 text-[#04C4D9]" />
+                      <span>+ Otra marca no listada (ej. Mahle, Teikin, TP)</span>
+                    </button>
+                    <div v-else class="flex items-center gap-1.5 pt-1">
+                      <input
+                        v-model="newBrandInputName"
+                        type="text"
+                        placeholder="Nombre de la nueva marca..."
+                        class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-cyan-300 rounded-lg focus:outline-none"
+                        @keydown.enter.prevent="handleAddNewAltBrand"
+                      />
+                      <button
+                        type="button"
+                        @click="handleAddNewAltBrand"
+                        class="px-2.5 py-1 rounded-lg bg-[#04C4D9] text-white text-xs font-bold hover:bg-[#038896] transition"
+                      >
+                        Agregar
+                      </button>
+                      <button
+                        type="button"
+                        @click="showNewBrandInput = false"
+                        class="px-2 py-1 text-xs text-slate-400 hover:text-slate-600 font-bold transition"
+                      >
+                        Cancelar
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
+
             </div>
 
-            <!-- Grilla reactiva de campos de parámetros -->
-            <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              <div 
-                v-for="param in activeGroup.parametros" 
-                :key="param.id"
-                class="bg-slate-50/70 p-3.5 rounded-2xl border transition"
-                :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/40 ring-1 ring-rose-300' : 'border-slate-200'"
-              >
-                <div class="flex items-center justify-between mb-1.5">
-                  <label class="text-xs font-extrabold text-slate-900 flex items-center gap-1">
-                    <span>{{ param.etiqueta }}</span>
-                    <span v-if="param.requerido" class="text-rose-600 font-black text-sm">*</span>
-                  </label>
-                  <span 
-                    :class="[
-                      'text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider',
-                      param.requerido ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-slate-200 text-slate-600'
-                    ]"
-                  >
-                    {{ param.requerido ? 'Requerido' : 'Opcional' }}
-                  </span>
-                </div>
-
-                <!-- Input numérico con unidad -->
-                <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
-                  <input
-                    v-model.number="paramValues[param.clave]"
-                    type="number"
-                    step="0.001"
-                    :placeholder="`Valor en ${param.unidad || 'mm'} (ej. 93.000)`"
-                    class="w-full pl-3 pr-11 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                  />
-                  <span class="absolute right-3 text-[10px] font-black text-slate-400 pointer-events-none uppercase">
-                    {{ param.unidad || 'mm' }}
-                  </span>
-                </div>
-
-                <!-- Input de selección -->
-                <div v-else-if="param.tipo_dato === 'seleccion'" class="relative">
-                  <select
-                    v-model="paramValues[param.clave]"
-                    class="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
-                  >
-                    <option value="">Selecciona opción</option>
-                    <option v-for="opt in param.opciones || []" :key="opt" :value="opt">
-                      {{ opt }}
-                    </option>
-                  </select>
-                </div>
-
-                <!-- Input booleano -->
-                <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
-                  <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                    <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                    <span>Sí</span>
-                  </label>
-                  <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                    <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                    <span>No</span>
-                  </label>
-                </div>
-
-                <!-- Input de texto -->
-                <div v-else>
-                  <input
-                    v-model="paramValues[param.clave]"
-                    type="text"
-                    :placeholder="`Valor para ${param.etiqueta}`"
-                    class="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
-                  />
-                </div>
-
-                <!-- Ayuda contextual / Error específico -->
-                <p v-if="formErrors[param.clave]" class="text-[10px] text-rose-600 font-bold mt-1">
-                  {{ formErrors[param.clave] }}
-                </p>
-                <p v-else-if="param.descripcion" class="text-[10px] text-slate-400 mt-1">
-                  {{ param.descripcion }}
-                </p>
-              </div>
-            </div>
           </div>
 
-          <!-- 4. Cruces y Marcas Alternas -->
-          <div class="space-y-3">
-            <div class="flex items-center justify-between border-b pb-2 border-slate-200">
-              <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Hash class="w-4 h-4 text-[#04C4D9]" />
-                Marcas Alternas
-              </h3>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  @click="showNewBrandInput = !showNewBrandInput"
-                  class="text-xs font-bold text-[#004B97] hover:text-[#04C4D9] flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 hover:border-[#04C4D9] bg-white transition"
-                  title="Agregar marca personalizada a la lista"
-                >
-                  <Plus class="w-3.5 h-3.5" />
-                  <span>+ Nueva Marca</span>
-                </button>
-                <button
-                  type="button"
-                  @click="addEquivalenceRow"
-                  class="text-xs font-bold text-[#038896] hover:text-[#04C4D9] flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 border border-cyan-200 hover:bg-cyan-100 transition"
-                >
-                  <Plus class="w-3.5 h-3.5" />
-                  <span>+ Cruce Alterno</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Input rápido para registrar nueva marca alterna permanente -->
-            <div v-if="showNewBrandInput" class="p-3 bg-cyan-50 rounded-xl border border-cyan-200 flex items-center gap-2">
-              <input
-                v-model="newBrandInputName"
-                @keydown.enter.prevent="handleAddNewAltBrand"
-                type="text"
-                placeholder="Nombre de la nueva marca (ej. Hastings, Cofap, Mahle)"
-                class="flex-1 px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-              />
-              <button
-                type="button"
-                @click="handleAddNewAltBrand"
-                class="px-3 py-1.5 bg-[#004B97] hover:bg-[#003870] text-white font-bold text-xs rounded-lg transition"
-              >
-                Guardar Marca
-              </button>
-              <button
-                type="button"
-                @click="showNewBrandInput = false; newBrandInputName = ''"
-                class="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
-              >
-                <X class="w-4 h-4" />
-              </button>
-            </div>
-
-            <div class="space-y-2">
-              <div 
-                v-for="(eq, idx) in equivalencias" 
-                :key="idx" 
-                class="flex items-center gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200"
-              >
-                <select
-                  v-model="eq.marca_alterna"
-                  class="w-36 px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none"
-                >
-                  <option v-for="brand in availableAltBrands" :key="brand" :value="brand">
-                    {{ brand }}
-                  </option>
-                </select>
-
-                <input
-                  v-model="eq.codigo_alterno"
-                  type="text"
-                  placeholder="Código de parte alterna"
-                  class="flex-1 px-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none uppercase"
-                />
-
-                <input
-                  v-model="eq.notas"
-                  type="text"
-                  placeholder="Notas (ej. Japón STD)"
-                  class="flex-1 px-3 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none"
-                />
-
-                <button
-                  type="button"
-                  @click="removeEquivalenceRow(idx)"
-                  class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
-                  title="Eliminar fila"
-                >
-                  <Trash2 class="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
+
 
         <!-- ----------------------------------------------------------------- -->
         <!-- PESTAÑA 2: CONSTRUCTOR DINÁMICO DE NUEVA FAMILIA / GRUPO         -->
