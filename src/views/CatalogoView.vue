@@ -7,7 +7,8 @@ import {
   type RepuestoTecnico, 
   type Fabricante,
   type GrupoRepuesto,
-  type Equivalencia
+  type Equivalencia,
+  normalizeText
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
 import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
@@ -753,16 +754,40 @@ const handleClearSelectedBrand = async () => {
 
 // 2. Filtrado de MODELOS (CASCADA NIVEL 2)
 const filteredModels = computed(() => {
-  const q = modelInput.value.toLowerCase().trim()
+  const q = normalizeText(modelInput.value)
   const list = catalogStore.availableModelos
-  if (!q || (selectedModel.value && q === selectedModel.value.nombre.toLowerCase().trim())) {
+  if (!q || (selectedModel.value && q === normalizeText(selectedModel.value.nombre))) {
     return list
   }
   return list.filter(m => 
-    m.nombre.toLowerCase().includes(q) ||
-    (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
+    normalizeText(m.nombre).includes(q) ||
+    (m.fabricante_id && normalizeText(getBrandName(m.fabricante_id)).includes(q))
   )
 })
+
+// Alta de modelo cuando lo escrito no existe para la marca seleccionada
+const isCreatingModel = ref<boolean>(false)
+const canCreateModel = computed(() => {
+  const q = normalizeText(modelInput.value)
+  if (!selectedBrand.value || q.length < 2 || isCreatingModel.value) return false
+  return !catalogStore.modelos.some(
+    m => m.fabricante_id === selectedBrand.value?.id && normalizeText(m.nombre) === q
+  )
+})
+
+const handleCreateModel = async () => {
+  if (!selectedBrand.value || !canCreateModel.value) return
+  isCreatingModel.value = true
+  try {
+    const nuevo = await catalogStore.createModelo(selectedBrand.value.id, modelInput.value)
+    showToast(`Modelo "${nuevo.nombre}" agregado a ${selectedBrand.value.nombre}`)
+    await handleSelectModel(nuevo)
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : 'No se pudo crear el modelo')
+  } finally {
+    isCreatingModel.value = false
+  }
+}
 
 const handleSelectModel = async (mod: Modelo) => {
   selectedModel.value = mod
@@ -789,7 +814,7 @@ const handleSelectModel = async (mod: Modelo) => {
 
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
-    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id, mod.id)
   } else {
     activeViewTab.value = 'motores'
   }
@@ -888,7 +913,7 @@ const handleClearSelectedMotor = async () => {
   catalogStore.selectedMotorId = null
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
-    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id, selectedModel.value?.id)
   } else {
     catalogStore.repuestos = []
     activeViewTab.value = 'motores'
@@ -939,7 +964,7 @@ const handleSelectComponent = async (comp: ComponentGroup) => {
   } else {
     // Al solo tener seleccionado el componente (con o sin marca seleccionada):
     // Cargar todos los repuestos de este grupo directamente desde Supabase!
-    await catalogStore.fetchRepuestosByGrupo(comp.category, undefined, selectedBrand.value?.id)
+    await catalogStore.fetchRepuestosByGrupo(comp.category, undefined, selectedBrand.value?.id, selectedModel.value?.id)
   }
 }
 
@@ -1004,7 +1029,7 @@ const handleClearSearch = () => {
   if (selectedMotor.value) {
     catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
   } else if (selectedComponent.value) {
-    catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+    catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id, selectedModel.value?.id)
   } else {
     catalogStore.repuestos = []
     if (selectedBrand.value) {
@@ -2102,7 +2127,15 @@ onUnmounted(() => {
                 <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
-            <div v-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
+            <div
+              v-if="canCreateModel"
+              @click="handleCreateModel"
+              class="px-3 py-2 cursor-pointer text-xs font-bold text-[#038391] hover:bg-cyan-50/70 flex items-center gap-2 transition"
+            >
+              <Plus class="w-3.5 h-3.5" />
+              <span>Agregar modelo «{{ modelInput.trim() }}» a {{ selectedBrand?.nombre }}</span>
+            </div>
+            <div v-else-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
               No hay modelos para esta selección
             </div>
           </div>
