@@ -99,14 +99,32 @@ router.beforeEach(async (to, _from) => {
     document.title = to.meta.title as string
   }
 
+  const rawHash = (typeof window !== 'undefined' ? window.location.hash : '') || to.hash || ''
+  const isRecoveryOrAuthErrorInHash =
+    rawHash.includes('type=recovery') ||
+    rawHash.includes('error_code=') ||
+    rawHash.includes('error=access_denied')
+
+  if (to.path !== '/login' && isRecoveryOrAuthErrorInHash) {
+    return {
+      path: '/login',
+      query: { ...to.query, ...(rawHash.includes('type=recovery') ? { mode: 'reset' } : {}) },
+      hash: rawHash,
+    }
+  }
+
   // Permitir siempre la vista de login
   if (to.path === '/login') {
     return true
   }
 
-   const authStore = useAuthStore()
+  const authStore = useAuthStore()
 
   await authStore.init()
+
+  if (authStore.isPasswordRecovery) {
+    return { path: '/login', query: { mode: 'reset' } }
+  }
 
   if (!authStore.isAuthenticated) {
     return '/login'

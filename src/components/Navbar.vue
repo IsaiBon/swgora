@@ -104,8 +104,8 @@ const roleIcon = computed(() => {
 const roleBadgeClass = computed(() => {
   const r = normalizeRole(authStore.user?.role)
   if (r === 'Administrador') return 'bg-[#05C7F2]/15 text-[#05F2F2] border-[#05C7F2]/40'
-  if (r === 'Operador') return 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-  return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40'
+  if (r === 'Operador') return 'bg-[#04C4D9]/15 text-[#04C4D9] border-[#04C4D9]/40'
+  return 'bg-[#F2F2F2]/10 text-[#F2F2F2] border-[#F2F2F2]/25'
 })
 
 const handleNewOrder = () => {

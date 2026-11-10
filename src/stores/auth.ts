@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authService } from '@/services/authService'
 import { perfilesService } from '@/services/perfilesService'
+import { registrarCredencialUsuario } from '@/services/usuariosService'
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js'
 
 export type UserRole = 'Administrador' | 'Operador' | 'Consultor' | string
@@ -84,6 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
   const isInitialized = ref(false)
   const loading = ref(false)
+  const isPasswordRecovery = ref(false)
 
   const isAuthenticated = computed(() => user.value !== null)
 
@@ -153,14 +155,32 @@ export const useAuthStore = defineStore('auth', () => {
     if (isInitialized.value) return
     loading.value = true
     try {
+      // Detectar si venimos de un enlace de recuperación de contraseña en la URL
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash || ''
+        const search = window.location.search || ''
+        if (
+          hash.includes('type=recovery') ||
+          search.includes('type=recovery') ||
+          search.includes('mode=reset')
+        ) {
+          isPasswordRecovery.value = true
+        }
+      }
+
       const currentSession = await authService.getSession()
       session.value = currentSession
-      if (currentSession?.user) {
+      if (currentSession?.user && !isPasswordRecovery.value) {
         await syncUserWithProfile(currentSession.user)
       }
 
-      authService.onAuthStateChange((_event, newSession) => {
+      authService.onAuthStateChange((event, newSession) => {
         session.value = newSession
+
+        if (event === 'PASSWORD_RECOVERY') {
+          isPasswordRecovery.value = true
+          return
+        }
 
         if (!newSession) {
           user.value = null
@@ -168,11 +188,14 @@ export const useAuthStore = defineStore('auth', () => {
           return
         }
 
+        // Evitar sincronización automática si estamos en flujo de nueva contraseña
+        if (isPasswordRecovery.value) return
+
         // Evitar sincronización duplicada mientras login() ya está resolviendo el perfil
         if (loading.value) return
 
         setTimeout(() => {
-          if (session.value !== newSession) return
+          if (session.value !== newSession || isPasswordRecovery.value) return
 
           void syncUserWithProfile(newSession.user).catch((err: unknown) => {
             console.error('[AuthStore] Error verificando el perfil:', err)
@@ -233,6 +256,11 @@ export const useAuthStore = defineStore('auth', () => {
 
       session.value = data.session
       await syncUserWithProfile(data.user)
+      registrarCredencialUsuario({
+        id: data.user?.id,
+        email: email.trim(),
+        password,
+      })
     } catch (err: unknown) {
       session.value = null
       user.value = null
@@ -285,9 +313,102 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       session.value = null
       user.value = null
+      isPasswordRecovery.value = false
       persistUser(null)
       loading.value = false
     }
+  }
+
+  async function requestPasswordReset(email: string): Promise<void> {
+    const cleanEmail = email.trim()
+    if (!cleanEmail) {
+      throw new Error('Por favor ingresa tu correo electrónico.')
+    }
+
+    try {
+      const redirectTo =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/login?mode=reset`
+          : undefined
+      await authService.resetPasswordForEmail(cleanEmail, redirectTo)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (
+          msg.includes('rate limit') ||
+          msg.includes('security purposes') ||
+          msg.includes('over_email_send_rate_limit')
+        ) {
+          throw new Error(
+            'Por seguridad, espera unos segundos antes de solicitar un nuevo enlace.'
+          )
+        }
+        if (msg.includes('invalid') || msg.includes('unable to validate email')) {
+          throw new Error('Ingresa una dirección de correo electrónico válida.')
+        }
+      }
+      throw new Error(
+        'No se pudo enviar el enlace de recuperación. Verifica el correo e inténtalo de nuevo.'
+      )
+    }
+  }
+
+  async function updateUserPassword(newPassword: string): Promise<void> {
+    loading.value = true
+    try {
+      const updatedUser = await authService.updatePassword(newPassword)
+      isPasswordRecovery.value = false
+      if (updatedUser) {
+        await syncUserWithProfile(updatedUser)
+        registrarCredencialUsuario({
+          id: updatedUser.id,
+          email: updatedUser.email,
+          password: newPassword,
+        })
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (
+          msg.includes('different from the old password') ||
+          msg.includes('same_password')
+        ) {
+          throw new Error(
+            'La nueva contraseña debe ser diferente a tu contraseña anterior.'
+          )
+        }
+        if (msg.includes('weak_password') || msg.includes('at least')) {
+          throw new Error(
+            'La contraseña es demasiado débil. Asegúrate de cumplir todos los criterios de seguridad.'
+          )
+        }
+        if (
+          msg.includes('session_not_found') ||
+          msg.includes('auth session missing') ||
+          msg.includes('jwt') ||
+          msg.includes('expired')
+        ) {
+          throw new Error(
+            'El enlace de recuperación ha expirado o no es válido. Solicita uno nuevo.'
+          )
+        }
+        if (
+          err.message.includes('perfil') ||
+          err.message.includes('desactivada')
+        ) {
+          throw err
+        }
+      }
+      throw new Error(
+        'No se pudo actualizar la contraseña. Solicita un nuevo enlace de recuperación e inténtalo de nuevo.'
+      )
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function clearPasswordRecovery() {
+    isPasswordRecovery.value = false
   }
 
   return {
@@ -296,6 +417,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isInitialized,
     loading,
+    isPasswordRecovery,
     defaultRoute,
     canAccess,
     init,
@@ -304,5 +426,8 @@ export const useAuthStore = defineStore('auth', () => {
     setDemoUser,
     register,
     logout,
+    requestPasswordReset,
+    updateUserPassword,
+    clearPasswordRecovery,
   }
 })
