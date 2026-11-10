@@ -326,6 +326,62 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
       { id: 'p_emp_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de Cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Diámetro del barreno del cilindro' },
       { id: 'p_emp_2', clave: 'espesor_mm', etiqueta: 'Espesor de Junta', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Grosor nominal comprimido' }
     ]
+  },
+  {
+    id: 'grp-7',
+    codigo: 'camisas_cilindro',
+    nombre: 'Camisas de cilindro',
+    categoria: 'Camisas',
+    subsistema: 'Block',
+    descripcion: 'Camisas de cilindro terminadas y semiterminadas para bloque',
+    icono: 'Layers',
+    activo: true,
+    orden_visual: 7,
+    parametros: [
+      { id: 'p_cam_1', clave: 'diametro_interior_mm', etiqueta: 'Diámetro Interior (A)', etiqueta_corta: 'A (INT)', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro interior de la camisa (Cota A)' },
+      { id: 'p_cam_2', clave: 'diametro_exterior_mm', etiqueta: 'Diámetro Exterior (B)', etiqueta_corta: 'B (EXT)', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro exterior de la camisa (Cota B)' },
+      { id: 'p_cam_3', clave: 'longitud_total_mm', etiqueta: 'Longitud Total (C)', etiqueta_corta: 'C (LARGO)', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Largo o altura total de la camisa (Cota C)' },
+      { id: 'p_cam_4', clave: 'diametro_pestana_mm', etiqueta: 'Diámetro Pestaña (D)', etiqueta_corta: 'D (PEST)', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro exterior de la pestaña (Cota D)' },
+      { id: 'p_cam_5', clave: 'espesor_pestana_mm', etiqueta: 'Espesor Pestaña (E)', etiqueta_corta: 'E (ESP)', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor o altura de la pestaña (Cota E)' },
+      { id: 'p_cam_6', clave: 'acabado', etiqueta: 'Acabado', etiqueta_corta: 'Acabado', unidad: '', tipo_dato: 'seleccion', opciones: ['Terminada', 'Semiterminada'], requerido: false, filtrable: true, descripcion: 'Acabado de la camisa' },
+      { id: 'p_cam_7', clave: 'tipo_camisa', etiqueta: 'Tipo', etiqueta_corta: 'Tipo', unidad: '', tipo_dato: 'texto', requerido: false, filtrable: true, descripcion: 'Tipo de camisa' }
+    ]
+  },
+  {
+    id: 'grp-8',
+    codigo: 'guias_valvula',
+    nombre: 'Guías de válvula',
+    categoria: 'Guías',
+    subsistema: 'Culata',
+    descripcion: 'Guías de válvula para culata de motor (Admisión y Escape)',
+    icono: 'Layers',
+    activo: true,
+    orden_visual: 8,
+    parametros: [
+      { id: 'p_gui_1', clave: 'posicion', etiqueta: 'Posición', etiqueta_corta: 'POS', unidad: '', tipo_dato: 'seleccion', opciones: ['IN (Admisión)', 'EX (Escape)'], requerido: true, filtrable: true, descripcion: 'Posición en culata' },
+      { id: 'p_gui_2', clave: 'diametro_interior_mm', etiqueta: 'Diámetro Interior', etiqueta_corta: 'Ø Int', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro interior de la guía' },
+      { id: 'p_gui_3', clave: 'diametro_exterior_mm', etiqueta: 'Diámetro Exterior', etiqueta_corta: 'Ø Ext', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro exterior de la guía' },
+      { id: 'p_gui_4', clave: 'longitud_total_mm', etiqueta: 'Longitud Total', etiqueta_corta: 'Largo', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Largo total de la guía' },
+      { id: 'p_gui_5', clave: 'juego_set', etiqueta: 'Juego / Set', etiqueta_corta: 'Set', unidad: 'piezas', tipo_dato: 'numero', requerido: false, filtrable: false, descripcion: 'Cantidad por juego' }
+    ]
+  },
+  {
+    id: 'grp-9',
+    codigo: 'asientos_valvula',
+    nombre: 'Asientos de válvula',
+    categoria: 'Asientos',
+    subsistema: 'Culata',
+    descripcion: 'Asientos de válvula para culata de cilindros',
+    icono: 'CircleDot',
+    activo: true,
+    orden_visual: 9,
+    parametros: [
+      { id: 'p_asi_1', clave: 'posicion', etiqueta: 'Posición', etiqueta_corta: 'POS', unidad: '', tipo_dato: 'seleccion', opciones: ['IN (Admisión)', 'EX (Escape)'], requerido: true, filtrable: true, descripcion: 'Posición en culata' },
+      { id: 'p_asi_2', clave: 'diametro_exterior_mm', etiqueta: 'Diámetro Exterior', etiqueta_corta: 'Ø Ext', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro exterior del asiento' },
+      { id: 'p_asi_3', clave: 'diametro_interior_mm', etiqueta: 'Diámetro Interior', etiqueta_corta: 'Ø Int', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro interior del asiento' },
+      { id: 'p_asi_4', clave: 'altura_mm', etiqueta: 'Altura / Espesor', etiqueta_corta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Altura o espesor del asiento' },
+      { id: 'p_asi_5', clave: 'angulo_asiento_grados', etiqueta: 'Ángulo de Asiento', etiqueta_corta: 'Ángulo', unidad: '°', tipo_dato: 'numero', requerido: false, filtrable: true, descripcion: 'Ángulo de rectificación' }
+    ]
   }
 ]
 

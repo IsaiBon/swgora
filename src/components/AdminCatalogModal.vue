@@ -14,7 +14,6 @@ import {
   Trash2, 
   Save, 
   SlidersHorizontal, 
-  Sparkles, 
   Tag, 
   Hash, 
   Ruler, 
@@ -30,7 +29,6 @@ import {
   Lock,
   Filter,
   Table,
-  CheckCircle2,
   Copy,
   Columns
 } from 'lucide-vue-next'
@@ -398,13 +396,6 @@ const getRingRowTitle = (row: RingFormRow, idx: number): string => {
   if (row.tipo_aro === 'fuego' || idx === 0) return '1° Anillo (Fuego)'
   if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) return 'Anillo de Aceite'
   return `${idx + 1}° Anillo (Compresión)`
-}
-
-const getRingRowSubtitle = (row: RingFormRow, idx: number): string => {
-  if (row.tipo_aro === 'fuego' || idx === 0) return 'Fuego / Top'
-  if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) return 'Rascador / Expansor'
-  if (idx === 1) return 'Compresión / Raspador'
-  return 'Compresión Extra / Diésel'
 }
 
 // Valores dinámicos de parámetros técnicos: clave -> valor
@@ -1385,134 +1376,6 @@ const formatSampleValue = (param: DynamicParamRow, rowIdx: number = 0): string =
   return showUnit && param.unidad ? `${numStr} ${param.unidad}` : numStr
 }
 
-// Cargar plantilla predefinida: Camisas de Cilindro
-const loadTemplateCamisas = () => {
-  groupNombre.value = 'Camisas de Cilindro'
-  groupCategoria.value = 'Camisas'
-  groupSubsistema.value = 'Block'
-  subsistemaSearch.value = 'Block'
-  groupDescripcion.value = 'Camisas de cilindro secas, cromadas y con pestaña para encamisado y rectificación de block'
-  groupIcono.value = 'Layers'
-  dynamicParams.value = [
-    {
-      id: `param-${Date.now()}-1`,
-      etiqueta: 'Diámetro Interior (Alesado)',
-      etiqueta_corta: 'A (Int)',
-      clave: 'diametro_interior_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Diámetro interno semiterminado o terminado',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 85.00
-    },
-    {
-      id: `param-${Date.now()}-2`,
-      etiqueta: 'Diámetro Exterior',
-      etiqueta_corta: 'B (Ext)',
-      clave: 'diametro_exterior_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Diámetro externo para ajuste en el túnel del cilindro',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 89.00
-    },
-    {
-      id: `param-${Date.now()}-3`,
-      etiqueta: 'Longitud Total',
-      etiqueta_corta: 'C (Largo)',
-      clave: 'longitud_total_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Largo total de la camisa',
-      decimales: 1,
-      mostrar_unidad: true,
-      valor_muestra: 165.0
-    },
-    {
-      id: `param-${Date.now()}-4`,
-      etiqueta: 'Pestaña (D × E)',
-      etiqueta_corta: 'Pestaña',
-      clave: 'pestana_diametro_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: false,
-      descripcion: 'Diámetro y espesor de la pestaña superior',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 94.00
-    }
-  ]
-}
-
-// Cargar plantilla predefinida: Pistones y Bulones
-const loadTemplatePistones = () => {
-  groupNombre.value = 'Pistones de Motor'
-  groupCategoria.value = 'Pistones'
-  groupSubsistema.value = 'Bielas'
-  subsistemaSearch.value = 'Bielas'
-  groupDescripcion.value = 'Pistones con perno y pistas de anillos para maquinado de motor'
-  groupIcono.value = 'CircleDot'
-  dynamicParams.value = [
-    {
-      id: `param-${Date.now()}-1`,
-      etiqueta: 'Diámetro de Pistón',
-      etiqueta_corta: 'Ø Pistón',
-      clave: 'diametro_piston_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Diámetro de la falda del pistón',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 84.95
-    },
-    {
-      id: `param-${Date.now()}-2`,
-      etiqueta: 'Diámetro de Pasador (Bulón)',
-      etiqueta_corta: 'Ø Bulón',
-      clave: 'diametro_bulon_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Diámetro exterior del perno de biela',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 22.00
-    },
-    {
-      id: `param-${Date.now()}-3`,
-      etiqueta: 'Altura de Compresión',
-      etiqueta_corta: 'Alt. Comp.',
-      clave: 'altura_compresion_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      descripcion: 'Distancia de centro de bulón a cabeza de pistón',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 34.50
-    },
-    {
-      id: `param-${Date.now()}-4`,
-      etiqueta: 'Largo Total',
-      etiqueta_corta: 'Largo',
-      clave: 'largo_piston_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: false,
-      descripcion: 'Longitud total de falda a cabeza',
-      decimales: 1,
-      mostrar_unidad: true,
-      valor_muestra: 65.0
-    }
-  ]
-}
-
 const validateGroupForm = (): boolean => {
   const errors: Record<string, string> = {}
   if (!groupNombre.value.trim()) {
@@ -1653,7 +1516,7 @@ onUnmounted(() => {
           <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
           <span>Edición de Repuesto</span>
         </div>
-        <div v-else-if="props.editGroupId" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs font-bold text-[#038391] shrink-0">
+        <div v-else-if="props.editGroupId || (isEditMode && activeTab === 'grupo')" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs font-bold text-[#038391] shrink-0">
           <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
           <span>Edición de Familia Técnica</span>
         </div>
@@ -1718,9 +1581,6 @@ onUnmounted(() => {
               <div class="min-w-0">
                 <p class="text-xs font-black text-[#004B97] truncate">
                   Editando Repuesto: <span class="font-mono text-slate-900 bg-white px-2 py-0.5 rounded border border-cyan-200">{{ partCodigoOem || editingPartId }}</span>
-                </p>
-                <p class="text-[10px] text-slate-500 font-medium">
-                  Modifique cotas dimensionales, motor asociado o equivalencias multimarca de esta pieza.
                 </p>
               </div>
             </div>
@@ -1795,22 +1655,17 @@ onUnmounted(() => {
               <!-- 2. Bloque A: Códigos Originales del Fabricante (OEM) e Identificación -->
               <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
                 <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div>
-                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <Tag class="w-3.5 h-3.5 text-[#004B97]" />
-                      <span>Códigos Originales del Fabricante (OEM)</span>
-                    </h3>
-                    <p class="text-[10px] text-slate-500 font-medium">
-                      Códigos originales de fábrica (separados de cruces multimarca alternos)
-                    </p>
-                  </div>
+                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Tag class="w-3.5 h-3.5 text-[#004B97]" />
+                    <span>Códigos Originales del Fabricante (OEM)</span>
+                  </h3>
                   <button
                     type="button"
                     @click="addCodigoOemAdicional"
                     class="text-[10px] font-extrabold text-[#004B97] hover:text-[#038391] flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0"
                   >
                     <Plus class="w-3 h-3 text-[#04C4D9]" />
-                    <span>+ Agregar Código Original</span>
+                    <span>+ Agregar Código</span>
                   </button>
                 </div>
 
@@ -1828,7 +1683,7 @@ onUnmounted(() => {
                       @input="onPrimaryOemInput"
                       @blur="normalizeOemInputs"
                       type="text"
-                      placeholder="Ej. 11701-54030, 11701-54040"
+                      placeholder="Código OEM"
                       class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -1852,30 +1707,27 @@ onUnmounted(() => {
                         @input="handleAdditionalOemInput(oemIdx)"
                         @blur="normalizeOemInputs"
                         type="text"
-                        placeholder="Ej. 11701-54040 (Otro código original de fábrica)"
+                        placeholder="Código adicional"
                         class="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       />
                       <button
                         type="button"
                         @click="removeCodigoOemAdicional(oemIdx)"
                         class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
-                        title="Quitar código OEM adicional"
+                        title="Quitar código adicional"
                       >
                         <Trash2 class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
 
-                  <!-- Cuadritos detectados en vivo -->
-                  <div v-if="allOemCodesPreview.length > 0" class="flex flex-wrap items-center gap-1.5 pt-1.5">
-                    <span class="text-[9px] font-bold text-slate-500 uppercase">Códigos OEM:</span>
+                  <!-- Cuadritos detectados en vivo (mismo color para todos) -->
+                  <div v-if="allOemCodesPreview.length > 0" class="flex flex-wrap items-center gap-1.5 pt-1">
                     <span
                       v-for="(codeToken, cIdx) in allOemCodesPreview"
                       :key="`preview-oem-${cIdx}`"
-                      class="inline-flex items-center gap-1 font-mono font-bold text-[10px] px-2 py-0.5 rounded border shadow-2xs"
-                      :class="cIdx === 0 ? 'bg-slate-100 text-slate-900 border-slate-200' : 'bg-amber-50 text-amber-950 border-amber-300'"
+                      class="inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-900 shadow-2xs"
                     >
-                      <span v-if="cIdx > 0" class="text-[8px] font-sans font-black text-amber-800">OEM:</span>
                       {{ codeToken }}
                     </span>
                   </div>
@@ -1887,7 +1739,7 @@ onUnmounted(() => {
                     <input
                       v-model="partNombre"
                       type="text"
-                      placeholder="Ej. Juego de Aros STD Toyota 3L / 5L"
+                      placeholder="Nombre o descripción"
                       class="w-full px-3 py-1.5 text-xs font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       :class="formErrors.partNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -1916,7 +1768,7 @@ onUnmounted(() => {
                     <input
                       v-model="motorSearchQuery"
                       type="text"
-                      placeholder="Buscar motor (ej. 3L, Z24, 4JB1, Hilux)..."
+                      placeholder="Buscar motor..."
                       @focus="onMotorFocus"
                       @input="onMotorInput"
                       class="w-full pl-8 pr-12 py-1.5 text-xs font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
@@ -2039,7 +1891,6 @@ onUnmounted(() => {
                   v-model="partImagenUrl"
                   :part-code="partCodigoOem"
                   label="Diagrama / Foto de Pieza"
-                  hint="Opcional. Optimizado para visualización rápida en taller."
                 />
               </div>
 
@@ -2061,9 +1912,6 @@ onUnmounted(() => {
                       <h3 class="text-xs font-black uppercase tracking-wider text-slate-900">
                         Cotas Técnicas de Maquinado
                       </h3>
-                      <p class="text-[10px] text-slate-500 font-medium">
-                        {{ isRingsGroup ? 'Matriz tabular por posición de ranura de pistón' : (activeGroup?.nombre || 'Medidas requeridas') }}
-                      </p>
                     </div>
                   </div>
 
@@ -2081,22 +1929,10 @@ onUnmounted(() => {
                       <thead>
                         <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
                           <th class="px-3 py-2 text-left border-r border-slate-200">Ranura / Posición</th>
-                          <th class="px-2 py-2 border-r border-slate-200">
-                            <span>Diámetro (d1)</span>
-                            <span class="block text-[9px] text-slate-400 font-normal">Calibre mm *</span>
-                          </th>
-                          <th class="px-2 py-2 border-r border-slate-200">
-                            <span>Grosor (h1)</span>
-                            <span class="block text-[9px] text-slate-400 font-normal">Axial mm *</span>
-                          </th>
-                          <th class="px-2 py-2 border-r border-slate-200">
-                            <span>Radial (a1)</span>
-                            <span class="block text-[9px] text-slate-400 font-normal">Espesor mm</span>
-                          </th>
-                          <th class="px-2.5 py-2">
-                            <span>Perfil / Expansor</span>
-                            <span class="block text-[9px] text-slate-400 font-normal">Geometría</span>
-                          </th>
+                          <th class="px-2 py-2 border-r border-slate-200">Diámetro (d1)</th>
+                          <th class="px-2 py-2 border-r border-slate-200">Grosor (h1)</th>
+                          <th class="px-2 py-2 border-r border-slate-200">Radial (a1)</th>
+                          <th class="px-2.5 py-2">Perfil / Expansor</th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-slate-100 text-[11px]">
@@ -2129,7 +1965,6 @@ onUnmounted(() => {
                                 <Trash2 class="w-3.5 h-3.5" />
                               </button>
                             </div>
-                            <span class="text-[9px] text-slate-500 font-normal">{{ getRingRowSubtitle(ring, rIdx) }}</span>
                           </td>
 
                           <!-- Diámetro común STD (Editable en 1er aro, heredado en los demás) -->
@@ -2197,21 +2032,16 @@ onUnmounted(() => {
                     </table>
                   </div>
 
-                  <!-- Controles auxiliares bajo la tabla: + Agregar Anillo (5 o 6+ aros) -->
+                  <!-- Controles auxiliares bajo la tabla: + Agregar Anillo -->
                   <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
-                    <div class="flex items-center gap-2">
-                      <button
-                        type="button"
-                        @click="addRingRow"
-                        class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
-                      >
-                        <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                        <span>+ Agregar Anillo</span>
-                      </button>
-                      <span class="text-[10px] font-bold text-slate-500">
-                        Soporta 3, 4, 5 o 6+ aros (Diésel pesado / Compresores)
-                      </span>
-                    </div>
+                    <button
+                      type="button"
+                      @click="addRingRow"
+                      class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
+                    >
+                      <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                      <span>+ Agregar Anillo</span>
+                    </button>
 
                     <div class="flex items-center gap-3">
                       <div class="flex items-center gap-1.5">
@@ -2228,7 +2058,7 @@ onUnmounted(() => {
 
                 </div>
 
-                <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS (VÁLVULAS, SELLOS, PERNOS, ETC.) -->
+                <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS -->
                 <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div 
                     v-for="param in activeGroup.parametros" 
@@ -2256,7 +2086,7 @@ onUnmounted(() => {
                         v-model.number="paramValues[param.clave]"
                         type="number"
                         step="0.001"
-                        :placeholder="`Valor en ${param.unidad || 'mm'}`"
+                        placeholder="0.00"
                         class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                       />
                       <span class="absolute right-2.5 text-[9px] font-black text-slate-400 uppercase pointer-events-none">
@@ -2291,7 +2121,7 @@ onUnmounted(() => {
                       <input
                         v-model="paramValues[param.clave]"
                         type="text"
-                        placeholder="Texto descriptivo"
+                        placeholder="Valor"
                         class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                       />
                     </div>
@@ -2307,19 +2137,14 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- 2. Bloque B: Equivalencias Multimarca Alternas (Compacto en la Columna Derecha) -->
+              <!-- 2. Bloque B: Equivalencias Multimarca Alternas -->
               <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
                 <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div>
-                    <div class="flex items-center gap-1.5">
-                      <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
-                      <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
-                        Equivalencias Multimarca Alternas
-                      </h3>
-                    </div>
-                    <p class="text-[10px] text-slate-500 font-medium">
-                      NDC, Taiho, Dokuro, RIK, NPR, Ajusa, Pioneer (No mezclar con códigos OEM originales)
-                    </p>
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Equivalencias Multimarca Alternas
+                    </h3>
                   </div>
                   <button
                     type="button"
@@ -2349,14 +2174,14 @@ onUnmounted(() => {
                     <input
                       v-model="eq.codigo_alterno"
                       type="text"
-                      placeholder="Código alterno (ej. 20002)"
+                      placeholder="Código alterno"
                       class="flex-1 px-2.5 py-1 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] uppercase"
                     />
 
                     <input
                       v-model="eq.notas"
                       type="text"
-                      placeholder="Notas (ej. STD Japón)"
+                      placeholder="Notas"
                       class="w-32 sm:w-36 px-2.5 py-1 text-[11px] font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                     />
 
@@ -2379,13 +2204,13 @@ onUnmounted(() => {
                       class="text-[10px] text-slate-500 hover:text-[#038391] font-bold flex items-center gap-1 transition"
                     >
                       <Plus class="w-3 h-3 text-[#04C4D9]" />
-                      <span>+ Otra marca no listada (ej. Mahle, Teikin, TP)</span>
+                      <span>+ Otra marca</span>
                     </button>
                     <div v-else class="flex items-center gap-1.5 pt-1">
                       <input
                         v-model="newBrandInputName"
                         type="text"
-                        placeholder="Nombre de la nueva marca..."
+                        placeholder="Nombre de la marca..."
                         class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-cyan-300 rounded-lg focus:outline-none"
                         @keydown.enter.prevent="handleAddNewAltBrand"
                       />
@@ -2464,11 +2289,11 @@ onUnmounted(() => {
           </div>
 
           <!-- Banner Informativo si está editando -->
-          <div v-if="isEditMode && editingGroupId" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+          <div v-if="isEditMode && editingGroupId" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xs">
             <div class="flex items-center gap-2">
               <Edit3 class="w-4 h-4 text-[#038391]" />
               <span class="text-xs text-[#038391] font-bold">
-                Editando familia técnica: <strong>{{ groupNombre }}</strong> (Código: {{ editingGroupId }}). Las modificaciones se sincronizan en tiempo real con la portada.
+                Editando familia: <strong>{{ groupNombre }}</strong>
               </span>
             </div>
             <button
@@ -2477,7 +2302,7 @@ onUnmounted(() => {
               @click="switchToCreateMode"
               class="text-[11px] font-bold text-cyan-800 underline hover:text-cyan-900 shrink-0"
             >
-              Cambiar a crear nueva
+              Crear nueva
             </button>
           </div>
 
@@ -2498,22 +2323,18 @@ onUnmounted(() => {
                     <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
                     <span>Identidad de la Familia</span>
                   </h3>
-                  <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Paso 1</span>
                 </div>
 
                 <div class="space-y-3">
                   <!-- Nombre de Grupo (Obligatorio) -->
                   <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <label class="block text-xs font-bold text-slate-800">
-                        Nombre de Grupo / Familia <span class="text-rose-500">*</span>
-                      </label>
-                      <span class="text-[10px] text-rose-500 font-bold">Obligatorio</span>
-                    </div>
+                    <label class="block text-xs font-bold text-slate-800 mb-1">
+                      Nombre de Grupo / Familia <span class="text-rose-500">*</span>
+                    </label>
                     <input
                       v-model="groupNombre"
                       type="text"
-                      placeholder="Ej. Camisas de Cilindro"
+                      placeholder="Nombre de la familia"
                       class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
                       :class="groupErrors.groupNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -2524,30 +2345,22 @@ onUnmounted(() => {
 
                   <!-- Categoría Técnica (Obligatorio) -->
                   <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <label class="block text-xs font-bold text-slate-800">
-                        Categoría Técnica <span class="text-rose-500">*</span>
-                      </label>
-                      <span class="text-[10px] text-rose-500 font-bold">Obligatorio</span>
-                    </div>
+                    <label class="block text-xs font-bold text-slate-800 mb-1">
+                      Categoría Técnica <span class="text-rose-500">*</span>
+                    </label>
                     <input
                       v-model="groupCategoria"
                       type="text"
-                      placeholder="Ej. Camisas, Pistones, Válvulas"
+                      placeholder="Categoría técnica"
                       class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
                     />
                   </div>
 
                   <!-- Subsistema Mecánico (Creatable Combobox / Opcional) -->
                   <div class="relative">
-                    <div class="flex items-center justify-between mb-1">
-                      <label class="block text-xs font-bold text-slate-800">
-                        Subsistema Mecánico
-                      </label>
-                      <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 border border-slate-200">
-                        Opcional
-                      </span>
-                    </div>
+                    <label class="block text-xs font-bold text-slate-800 mb-1">
+                      Subsistema Mecánico
+                    </label>
 
                     <div class="relative flex items-center">
                       <input
@@ -2556,7 +2369,7 @@ onUnmounted(() => {
                         @input="isSubsistemaOpen = true"
                         @keydown.enter.prevent="isCustomSubsistemaCandidate ? handleCreateAndSelectSubsistema() : (filteredSubsistemas[0] ? handleSelectSubsistema(filteredSubsistemas[0]) : null)"
                         type="text"
-                        placeholder="Escribe o selecciona subsistema (Block, Culata...)"
+                        placeholder="Subsistema (Block, Culata...)"
                         class="w-full pl-3 pr-16 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
                       />
                       <div class="absolute right-2 flex items-center gap-1">
@@ -2626,7 +2439,7 @@ onUnmounted(() => {
                     <textarea
                       v-model="groupDescripcion"
                       rows="2"
-                      placeholder="Notas y especificaciones técnicas de la familia..."
+                      placeholder="Descripción técnica..."
                       class="w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition resize-none"
                     ></textarea>
                   </div>
@@ -2636,15 +2449,10 @@ onUnmounted(() => {
               <!-- 2. GESTOR DE PARÁMETROS -->
               <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
                 <div class="flex items-center justify-between border-b pb-2.5 border-slate-100">
-                  <div>
-                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-                      <span>Gestor de Parámetros</span>
-                    </h3>
-                    <p class="text-[10px] text-slate-500 mt-0.5">
-                      Las cotas obligatorias se proyectan como columnas fijas en la portada.
-                    </p>
-                  </div>
+                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
+                    <span>Gestor de Parámetros</span>
+                  </h3>
                   <button
                     type="button"
                     @click="addParamRow"
@@ -2655,43 +2463,14 @@ onUnmounted(() => {
                   </button>
                 </div>
 
-                <!-- Plantillas Rápidas -->
-                <div v-if="!isEditMode" class="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2 flex-wrap">
-                  <span class="text-[11px] font-bold text-amber-900 flex items-center gap-1">
-                    <Sparkles class="w-3.5 h-3.5 text-amber-600" />
-                    Plantillas:
-                  </span>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      @click="loadTemplateCamisas"
-                      class="px-2.5 py-0.5 rounded-lg bg-white border border-amber-300 text-[10px] font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
-                    >
-                      Camisas
-                    </button>
-                    <button
-                      type="button"
-                      @click="loadTemplatePistones"
-                      class="px-2.5 py-0.5 rounded-lg bg-white border border-amber-300 text-[10px] font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
-                    >
-                      Pistones
-                    </button>
-                  </div>
-                </div>
-
                 <!-- Opción Global: Ocultar en filtros los que no se muestren en la tabla -->
                 <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl transition-all">
                   <div class="flex items-center gap-2.5">
                     <div class="w-7 h-7 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center text-[#038391] shrink-0">
                       <Filter class="w-3.5 h-3.5" />
                     </div>
-                    <div>
-                      <div class="text-xs font-black text-slate-800">
-                        Ocultar en filtros los que no se muestren en la tabla
-                      </div>
-                      <div class="text-[10px] text-slate-500">
-                        Las cotas fuera de tabla se excluyen automáticamente de los filtros en portada.
-                      </div>
+                    <div class="text-xs font-black text-slate-800">
+                      Ocultar en filtros los que no se muestren en la tabla
                     </div>
                   </div>
                   <label class="relative inline-flex items-center cursor-pointer select-none shrink-0 ml-3">
@@ -2776,16 +2555,13 @@ onUnmounted(() => {
                           v-model="param.etiqueta"
                           @input="handleParamLabelChange(param)"
                           type="text"
-                          placeholder="Ej. Diámetro Interior (A)"
+                          placeholder="Nombre de la medida"
                           class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
 
                       <div>
-                        <div class="flex items-center justify-between mb-1">
-                          <label class="block text-[11px] font-bold text-slate-700">Abreviatura (Tabla)</label>
-                          <span class="text-[9px] text-slate-400">Ej. Ø Int, A (Int)</span>
-                        </div>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Abreviatura (Tabla)</label>
                         <input
                           v-model="param.etiqueta_corta"
                           type="text"
@@ -2852,18 +2628,18 @@ onUnmounted(() => {
                         <input
                           v-model="param.opcionesStr"
                           type="text"
-                          placeholder="Admisión, Escape ó STD, Cónico"
+                          placeholder="Opciones (separadas por coma)"
                           class="w-full px-2.5 py-1.5 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
                         />
                       </div>
 
                       <!-- Descripción -->
                       <div class="sm:col-span-2">
-                        <label class="block text-[10px] font-bold text-slate-600 mb-1">Ayuda / Descripción Técnica</label>
+                        <label class="block text-[10px] font-bold text-slate-600 mb-1">Descripción</label>
                         <input
                           v-model="param.descripcion"
                           type="text"
-                          placeholder="Ej. Cota nominal tomada con micrómetro de exteriores"
+                          placeholder="Descripción técnica..."
                           class="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
@@ -2895,9 +2671,6 @@ onUnmounted(() => {
                           En Vivo
                         </span>
                       </div>
-                      <p class="text-[10px] text-slate-400">
-                        Así se presentará la familia <strong>{{ groupNombre || 'Nueva Familia' }}</strong> en el catálogo.
-                      </p>
                     </div>
                   </div>
 
@@ -2917,9 +2690,6 @@ onUnmounted(() => {
                     <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                       <Filter class="w-3.5 h-3.5 text-[#04C4D9]" />
                       <span>Filtros Reactivos de Portada</span>
-                    </span>
-                    <span class="text-[10px] font-mono text-slate-500">
-                      Barra superior sticky
                     </span>
                   </div>
 
@@ -2981,10 +2751,6 @@ onUnmounted(() => {
                       <Table class="w-3.5 h-3.5 text-[#04C4D9]" />
                       <span>Tabla de Catálogo (Solo Obligatorios)</span>
                     </span>
-
-                    <span class="text-[10px] text-slate-400">
-                      💡 Haz clic en <strong>encabezado</strong> para abreviar o en <strong>celda</strong> para cambiar formato
-                    </span>
                   </div>
 
                   <!-- Contenedor con scroll horizontal de tabla -->
@@ -3040,14 +2806,8 @@ onUnmounted(() => {
                               <div
                                 v-for="(codePreview, cIdx) in (allOemCodesPreview.length > 0 ? allOemCodesPreview : ['13011-54020', '13011-54030'])"
                                 :key="cIdx"
-                                :class="[
-                                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]',
-                                  cIdx === 0
-                                    ? 'bg-slate-800 text-slate-200 border-slate-700'
-                                    : 'bg-amber-950/40 text-amber-300 border-amber-800/60'
-                                ]"
+                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-200 text-[10px]"
                               >
-                                <span v-if="cIdx > 0" class="text-[8px] font-sans font-black text-amber-400">OEM:</span>
                                 <span>{{ codePreview }}</span>
                                 <Copy class="w-2.5 h-2.5 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
                               </div>
@@ -3163,19 +2923,6 @@ onUnmounted(() => {
                         </tr>
                       </tbody>
                     </table>
-                  </div>
-
-                  <!-- Banner Informativo del Formato y Reglas -->
-                  <div class="p-3 bg-slate-850 rounded-xl border border-slate-800 flex items-center justify-between gap-3 text-xs">
-                    <div class="flex items-center gap-2 text-slate-300">
-                      <CheckCircle2 class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                      <span class="text-[11px]">
-                        Alineación con <strong>tabular-nums</strong> y visualización en tiempo real de columnas fijas.
-                      </span>
-                    </div>
-                    <span class="text-[10px] text-slate-400 font-mono shrink-0">
-                      Auto-sync Portada v2.0
-                    </span>
                   </div>
 
                 </div>
