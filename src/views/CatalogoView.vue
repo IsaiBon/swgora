@@ -1729,21 +1729,28 @@ const getPartCatalogBrand = (part: RepuestoTecnico | null | undefined): string |
   return orig || null
 }
 
+const splitCleanCodes = (val: unknown): string[] => {
+  if (!val) return []
+  return String(val)
+    .split(/[,\/;|\n]+/)
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean)
+}
+
 /**
  * Obtiene todos los Códigos Originales de Fabricante (OEM) de un repuesto (principal + adicionales),
- * garantizando separación estricta respecto a las Equivalencias Multimarca Alternas.
+ * garantizando separación estricta respecto a las Equivalencias Multimarca Alternas y dividiendo
+ * cualquier lista separada por comas, barras o espacios en badges independientes.
  */
 const getPartOemCodes = (part: RepuestoTecnico | null | undefined): string[] => {
   if (!part) return []
   const spec = (part.especificaciones_tecnicas || {}) as Record<string, any>
   const dims = (part.dimensiones || {}) as Record<string, any>
-  const primaryDisplayCode = String(
-    spec.codigo_dokuro || spec.codigo_mrk || spec.codigo_rik || spec.codigo_npr || part.codigo_oem || ''
-  ).trim().toUpperCase()
+  const primaryDisplayCode = spec.codigo_dokuro || spec.codigo_mrk || spec.codigo_rik || spec.codigo_npr || part.codigo_oem || ''
 
   const candidates: string[] = []
-  if (primaryDisplayCode) candidates.push(primaryDisplayCode)
-  if (part.codigo_oem) candidates.push(String(part.codigo_oem).trim().toUpperCase())
+  if (primaryDisplayCode) candidates.push(...splitCleanCodes(primaryDisplayCode))
+  if (part.codigo_oem) candidates.push(...splitCleanCodes(part.codigo_oem))
 
   const extraSources = [
     part.codigos_oem_adicionales,
@@ -1754,9 +1761,10 @@ const getPartOemCodes = (part: RepuestoTecnico | null | undefined): string[] => 
   for (const src of extraSources) {
     if (Array.isArray(src)) {
       for (const item of src) {
-        const clean = String(item || '').trim().toUpperCase()
-        if (clean) candidates.push(clean)
+        candidates.push(...splitCleanCodes(item))
       }
+    } else if (typeof src === 'string') {
+      candidates.push(...splitCleanCodes(src))
     }
   }
 
@@ -1764,22 +1772,12 @@ const getPartOemCodes = (part: RepuestoTecnico | null | undefined): string[] => 
   if (Array.isArray(part.equivalencias)) {
     for (const eq of part.equivalencias) {
       if (String(eq.marca_alterna || '').trim().toUpperCase() === 'OEM') {
-        const clean = String(eq.codigo_alterno || '').trim().toUpperCase()
-        if (clean) candidates.push(clean)
+        candidates.push(...splitCleanCodes(eq.codigo_alterno))
       }
     }
   }
 
   return Array.from(new Set(candidates.filter(Boolean)))
-}
-
-const getPartAdditionalOemCodes = (part: RepuestoTecnico | null | undefined): string[] => {
-  if (!part) return []
-  const spec = (part.especificaciones_tecnicas || {}) as Record<string, any>
-  const primaryDisplayCode = String(
-    spec.codigo_dokuro || spec.codigo_mrk || spec.codigo_rik || spec.codigo_npr || part.codigo_oem || ''
-  ).trim().toUpperCase()
-  return getPartOemCodes(part).filter(c => c !== primaryDisplayCode)
 }
 
 // Filtra equivalencias multimarca alternas (excluyendo códigos OEM originales que van en su propia columna)
@@ -1904,7 +1902,7 @@ const handleEditGroup = (grpId?: string | null) => {
 
 const handleEditPart = (part: RepuestoTecnico) => {
   adminModalTab.value = 'repuesto'
-  adminModalEditGroupId.value = resolveGroupIdFromPart(part)
+  adminModalEditGroupId.value = null
   adminModalEditPart.value = part
   isAdminModalOpen.value = true
 }
@@ -3663,35 +3661,36 @@ onUnmounted(() => {
                       >
                         AJUSA
                       </span>
-                      <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                        {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem }}
-                      </span>
-                      <button
-                        type="button"
-                        @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem, getPartCatalogBrand(part) || 'OEM')"
-                        class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
-                        title="Copiar código principal"
-                      >
-                        <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
-                        <Copy v-else class="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                      <!-- Cuadritos independientes para cada código OEM (separados si vienen por coma) -->
+                      <div v-if="getPartOemCodes(part).length > 0" class="flex flex-wrap items-center gap-1.5">
+                        <div
+                          v-for="(oemCode, oIdx) in getPartOemCodes(part)"
+                          :key="`table-oem-${part.id}-${oIdx}-${oemCode}`"
+                          :class="[
+                            'inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border transition shadow-2xs',
+                            oIdx === 0 
+                              ? 'bg-slate-100 text-slate-900 border-slate-200 hover:bg-slate-200/70 hover:border-slate-300' 
+                              : 'bg-amber-50/90 text-amber-950 border-amber-300 hover:bg-amber-100'
+                          ]"
+                          :title="`Código OEM #${oIdx + 1}: ${oemCode} (clic para copiar)`"
+                        >
+                          <span v-if="oIdx > 0" class="font-sans text-[8px] font-black uppercase text-amber-800">OEM:</span>
+                          <span>{{ oemCode }}</span>
+                          <button
+                            type="button"
+                            @click.stop="copyToClipboard(oemCode, 'OEM')"
+                            class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
+                            :title="`Copiar código ${oemCode}`"
+                          >
+                            <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-emerald-600" />
+                            <Copy v-else class="w-3.5 h-3.5 hover:text-slate-700" />
+                          </button>
+                        </div>
+                      </div>
 
-                    <!-- Códigos Originales OEM Adicionales (Agrupados y copiables con 1 clic) -->
-                    <div v-if="getPartAdditionalOemCodes(part).length > 0" class="flex flex-wrap gap-1">
-                      <button
-                        v-for="oemCode in getPartAdditionalOemCodes(part)"
-                        :key="`oem-extra-${oemCode}`"
-                        type="button"
-                        @click="copyToClipboard(oemCode, 'OEM')"
-                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono bg-amber-50/90 hover:bg-amber-100 text-amber-950 border-amber-300 cursor-pointer transition"
-                        :title="`Clic para copiar Código Original OEM: ${oemCode}`"
-                      >
-                        <span class="font-sans text-[8px] font-black uppercase text-amber-800">OEM:</span>
-                        <strong class="font-bold">{{ oemCode }}</strong>
-                        <Check v-if="copiedCode === oemCode" class="w-2.5 h-2.5 text-emerald-600" />
-                        <Copy v-else class="w-2.5 h-2.5 text-amber-600 opacity-80" />
-                      </button>
+                      <span v-else class="text-xs text-slate-400 font-mono italic">
+                        {{ part.codigo_oem || '—' }}
+                      </span>
                     </div>
                   </div>
                 </td>

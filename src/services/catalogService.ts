@@ -859,14 +859,32 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     (Array.isArray(spec.referencias_oem) ? spec.referencias_oem : null) ||
     []
 
-  const codigosOemAdicionales = (rawAdditionalOems as unknown[])
-    .map(c => String(c || '').trim().toUpperCase())
-    .filter(c => c.length > 0 && c !== String(item.codigo_oem || '').trim().toUpperCase())
+  // Separar códigos si vienen con comas, barras o saltos de línea
+  const rawOemParts = String(item.codigo_oem || '')
+    .split(/[,\/;|\n]+/)
+    .map(c => c.trim().toUpperCase())
+    .filter(Boolean)
+
+  const primaryOem = rawOemParts[0] || String(item.codigo_oem || '')
+  const oemFromMain = rawOemParts.slice(1)
+
+  const extraFlat: string[] = []
+  if (Array.isArray(rawAdditionalOems)) {
+    for (const add of rawAdditionalOems) {
+      extraFlat.push(...String(add || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+    }
+  } else if (typeof rawAdditionalOems === 'string') {
+    extraFlat.push(...String(rawAdditionalOems).split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+  }
+
+  const codigosOemAdicionales = Array.from(
+    new Set([...oemFromMain, ...extraFlat].filter(c => c.length > 0 && c !== primaryOem))
+  )
 
   return {
     id: String(item.id),
     motor_id: item.motor_id ? String(item.motor_id) : undefined,
-    codigo_oem: String(item.codigo_oem),
+    codigo_oem: primaryOem,
     codigos_oem_adicionales: codigosOemAdicionales,
     nombre: String(item.nombre),
     subsistema: String(item.subsistema),
@@ -1834,9 +1852,22 @@ export const catalogService = {
     part: Partial<RepuestoTecnico>,
     equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
   ): Promise<RepuestoTecnico> {
+    const rawOemParts = String(part.codigo_oem || '')
+      .split(/[,\/;|\n]+/)
+      .map(c => c.trim().toUpperCase())
+      .filter(Boolean)
+    const primaryOem = rawOemParts[0] || (part.codigo_oem || '').trim().toUpperCase()
+    const oemFromMain = rawOemParts.slice(1)
+    const rawAdditional = Array.isArray(part.codigos_oem_adicionales) ? part.codigos_oem_adicionales : []
+    const extraFlat: string[] = []
+    for (const a of rawAdditional) {
+      extraFlat.push(...String(a || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+    }
+    const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
+
     const insertPayload = {
       motor_id: part.motor_id || null,
-      codigo_oem: (part.codigo_oem || '').trim().toUpperCase(),
+      codigo_oem: primaryOem,
       nombre: (part.nombre || '').trim(),
       subsistema: part.subsistema || 'Culata',
       categoria: part.categoria || 'Válvulas',
@@ -1868,11 +1899,11 @@ export const catalogService = {
         longitud1_mm: part.longitud1_mm,
         longitud2_mm: part.longitud2_mm,
         espesor_anillo3_mm: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : null,
-        codigos_oem_adicionales: part.codigos_oem_adicionales || [],
+        codigos_oem_adicionales: finalAdditional,
         ...(part.dimensiones || {})
       },
       especificaciones_tecnicas: {
-        codigos_oem_adicionales: part.codigos_oem_adicionales || [],
+        codigos_oem_adicionales: finalAdditional,
         ...(part.especificaciones_tecnicas || {})
       }
     }
@@ -1979,9 +2010,23 @@ export const catalogService = {
     part: Partial<RepuestoTecnico>,
     equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
   ): Promise<RepuestoTecnico> {
+    const rawOemParts = part.codigo_oem !== undefined
+      ? String(part.codigo_oem || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean)
+      : []
+    const primaryOem = rawOemParts.length > 0
+      ? rawOemParts[0]
+      : (part.codigo_oem !== undefined ? (part.codigo_oem || '').trim().toUpperCase() : undefined)
+    const oemFromMain = rawOemParts.slice(1)
+    const rawAdditional = Array.isArray(part.codigos_oem_adicionales) ? part.codigos_oem_adicionales : []
+    const extraFlat: string[] = []
+    for (const a of rawAdditional) {
+      extraFlat.push(...String(a || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+    }
+    const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
+
     const updatePayload: Record<string, unknown> = {
       motor_id: part.motor_id !== undefined ? (part.motor_id || null) : undefined,
-      codigo_oem: part.codigo_oem !== undefined ? (part.codigo_oem || '').trim().toUpperCase() : undefined,
+      codigo_oem: primaryOem,
       nombre: part.nombre !== undefined ? (part.nombre || '').trim() : undefined,
       subsistema: part.subsistema !== undefined ? part.subsistema : undefined,
       categoria: part.categoria !== undefined ? part.categoria : undefined,
@@ -2001,8 +2046,14 @@ export const catalogService = {
       diametro_munon_mm: part.diametro_munon_mm !== undefined ? (part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null) : undefined,
       diametro_alojamiento_mm: part.diametro_alojamiento_mm !== undefined ? (part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null) : undefined,
       ancho_casquete_mm: part.ancho_casquete_mm !== undefined ? (part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null) : undefined,
-      dimensiones: part.dimensiones !== undefined ? part.dimensiones : undefined,
-      especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? part.especificaciones_tecnicas : undefined,
+      dimensiones: part.dimensiones !== undefined ? {
+        ...(part.dimensiones || {}),
+        codigos_oem_adicionales: finalAdditional
+      } : undefined,
+      especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? {
+        ...(part.especificaciones_tecnicas || {}),
+        codigos_oem_adicionales: finalAdditional
+      } : undefined,
       updated_at: new Date().toISOString()
     }
 

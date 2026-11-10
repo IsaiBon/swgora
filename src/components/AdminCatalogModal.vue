@@ -124,16 +124,45 @@ watch(() => props.isOpen, (open) => {
     formErrors.value = {}
     showDeleteConfirm.value = false
     isDeletingPart.value = false
-    if (props.initialTab) activeTab.value = props.initialTab
+
     if (props.editPart) {
+      // 1. MODO EDICIÓN EXCLUSIVA DE REPUESTO (Directo y enfocado únicamente en la pieza)
+      activeTab.value = 'repuesto'
+      isEditPartMode.value = true
+      editingPartId.value = props.editPart.id
+      isEditMode.value = false
+      editingGroupId.value = null
       loadPartForEditing(props.editPart)
+    } else if (props.editGroupId || props.initialTab === 'grupo') {
+      // 2. MODO EDICIÓN O CREACIÓN EXCLUSIVA DE FAMILIA TÉCNICA
+      activeTab.value = 'grupo'
+      isEditPartMode.value = false
+      editingPartId.value = null
+
+      const targetGroup = props.editGroupId || props.preselectedGroupId || selectedGroupCode.value
+      if (props.editGroupId || targetGroup) {
+        const grp = resolveGroupByTarget(props.editGroupId || targetGroup)
+        if (grp) {
+          selectedGroupCode.value = grp.codigo
+          selectedEditGroupId.value = grp.codigo || grp.id
+          loadGroupForEditing(grp)
+        } else {
+          switchToCreateMode()
+        }
+      } else {
+        switchToCreateMode()
+      }
     } else {
+      // 3. MODO CREACIÓN GENERAL DE NUEVO REPUESTO
+      activeTab.value = 'repuesto'
+      isEditPartMode.value = false
+      editingPartId.value = null
+      isEditMode.value = false
+      editingGroupId.value = null
       resetPartForm()
-      const resolvedPre = resolveGroupByTarget(props.editGroupId || props.preselectedGroupId)
+      const resolvedPre = resolveGroupByTarget(props.preselectedGroupId)
       if (resolvedPre) {
         selectedGroupCode.value = resolvedPre.codigo
-      } else if (props.preselectedGroupId) {
-        selectedGroupCode.value = props.preselectedGroupId
       } else if (!selectedGroupCode.value && catalogStore.grupos.length > 0) {
         selectedGroupCode.value = catalogStore.grupos[0].codigo
       }
@@ -155,22 +184,15 @@ watch(() => props.isOpen, (open) => {
     if (catalogStore.fabricantes.length === 0) {
       catalogStore.fetchFabricantes()
     }
-
-    const targetGroup = props.editGroupId || props.preselectedGroupId || selectedGroupCode.value
-    if (targetGroup) {
-      const grp = resolveGroupByTarget(targetGroup)
-      if (grp) {
-        selectedGroupCode.value = grp.codigo
-        selectedEditGroupId.value = grp.codigo || grp.id
-        if (props.editGroupId || props.initialTab === 'grupo') {
-          activeTab.value = 'grupo'
-          loadGroupForEditing(grp)
-        }
-      }
-    }
   } else {
     saveErrorMessage.value = ''
     showDeleteConfirm.value = false
+    isDeletingPart.value = false
+    isEditPartMode.value = false
+    editingPartId.value = null
+    isEditMode.value = false
+    editingGroupId.value = null
+    selectedEditGroupId.value = ''
   }
 })
 
@@ -278,6 +300,58 @@ const addCodigoOemAdicional = () => {
 const removeCodigoOemAdicional = (idx: number) => {
   partCodigosOemAdicionales.value.splice(idx, 1)
 }
+
+/**
+ * Normaliza las entradas de código OEM dividiendo por comas, barras o espacios
+ * para asegurar que cada código se mantenga en su propia caja individual
+ */
+const normalizeOemInputs = () => {
+  if (!partCodigoOem.value) return
+  const rawTokens = partCodigoOem.value
+    .split(/[,\/;|\n]+/)
+    .map(c => c.trim().toUpperCase())
+    .filter(Boolean)
+  if (rawTokens.length > 1) {
+    partCodigoOem.value = rawTokens[0]
+    const extraTokens = rawTokens.slice(1)
+    const existingClean = partCodigosOemAdicionales.value
+      .map(c => c.trim().toUpperCase())
+      .filter(Boolean)
+    const merged = Array.from(new Set([...existingClean, ...extraTokens].filter(c => c !== partCodigoOem.value)))
+    partCodigosOemAdicionales.value = merged
+  }
+}
+
+const onPrimaryOemInput = () => {
+  if (/[,\/;|\n]/.test(partCodigoOem.value)) {
+    normalizeOemInputs()
+  }
+}
+
+const handleAdditionalOemInput = (idx: number) => {
+  const currentVal = partCodigosOemAdicionales.value[idx] || ''
+  if (/[,\/;|\n]/.test(currentVal)) {
+    const tokens = currentVal.split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean)
+    if (tokens.length > 0) {
+      partCodigosOemAdicionales.value.splice(idx, 1, ...tokens)
+      const main = partCodigoOem.value.trim().toUpperCase()
+      partCodigosOemAdicionales.value = Array.from(new Set(partCodigosOemAdicionales.value.filter(c => c && c !== main)))
+    }
+  }
+}
+
+const allOemCodesPreview = computed<string[]>(() => {
+  const list: string[] = []
+  if (partCodigoOem.value) {
+    list.push(...partCodigoOem.value.split(/[,\/;|\n]+/).map(s => s.trim().toUpperCase()).filter(Boolean))
+  }
+  for (const extra of partCodigosOemAdicionales.value) {
+    if (extra) {
+      list.push(...extra.split(/[,\/;|\n]+/).map(s => s.trim().toUpperCase()).filter(Boolean))
+    }
+  }
+  return Array.from(new Set(list))
+})
 
 const addRingRow = () => {
   const oilIdx = ringRows.value.findIndex(r => r.tipo_aro === 'aceite')
@@ -482,18 +556,33 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   editingPartId.value = part.id
   activeTab.value = 'repuesto'
 
-  partCodigoOem.value = part.codigo_oem || ''
+  const rawMainTokens = String(part.codigo_oem || '')
+    .split(/[,\/;|\n]+/)
+    .map(c => c.trim().toUpperCase())
+    .filter(Boolean)
+
+  partCodigoOem.value = rawMainTokens[0] || (part.codigo_oem || '')
+  const oemFromMain = rawMainTokens.slice(1)
+
   const rawAddOem =
     part.codigos_oem_adicionales ||
     (part.especificaciones_tecnicas as any)?.codigos_oem_adicionales ||
     (part.dimensiones as any)?.codigos_oem_adicionales ||
     (part.especificaciones_tecnicas as any)?.referencias_oem ||
     []
-  partCodigosOemAdicionales.value = Array.isArray(rawAddOem)
-    ? rawAddOem
-        .map(c => String(c || '').trim().toUpperCase())
-        .filter(c => c.length > 0 && c !== (part.codigo_oem || '').trim().toUpperCase())
-    : []
+
+  const rawAddTokens: string[] = []
+  if (Array.isArray(rawAddOem)) {
+    for (const item of rawAddOem) {
+      rawAddTokens.push(...String(item || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+    }
+  } else if (typeof rawAddOem === 'string') {
+    rawAddTokens.push(...String(rawAddOem).split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+  }
+
+  partCodigosOemAdicionales.value = Array.from(
+    new Set([...oemFromMain, ...rawAddTokens].filter(c => c.length > 0 && c !== partCodigoOem.value))
+  )
 
   partNombre.value = part.nombre || ''
   partSubsistema.value = part.subsistema || 'Block'
@@ -697,10 +786,6 @@ const formatRingVal = (val: number | null | undefined): string => {
   return Number(val).toFixed(3).replace(/\.?0+$/, '')
 }
 
-const switchToCreatePartMode = () => {
-  resetPartForm()
-}
-
 const handleSavePart = async () => {
   if (!validatePartForm()) {
     return
@@ -805,13 +890,20 @@ const handleSavePart = async () => {
       }
     }
 
-    const primaryOemClean = partCodigoOem.value.trim().toUpperCase()
+    normalizeOemInputs()
+    const allMainTokens = partCodigoOem.value
+      .split(/[,\/;|\n]+/)
+      .map(c => c.trim().toUpperCase())
+      .filter(Boolean)
+    const primaryOemClean = allMainTokens[0] || partCodigoOem.value.trim().toUpperCase()
+    const extraFromMain = allMainTokens.slice(1)
+
+    const extraFlat: string[] = []
+    for (const item of partCodigosOemAdicionales.value) {
+      extraFlat.push(...String(item || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+    }
     const codigosOemAdicionalesClean = Array.from(
-      new Set(
-        partCodigosOemAdicionales.value
-          .map(c => c.trim().toUpperCase())
-          .filter(c => c.length > 0 && c !== primaryOemClean)
-      )
+      new Set([...extraFromMain, ...extraFlat].filter(c => c && c !== primaryOemClean))
     )
     dimensionesPayload.codigos_oem_adicionales = codigosOemAdicionalesClean
 
@@ -1536,14 +1628,37 @@ onUnmounted(() => {
       <!-- ===================================================================== -->
       <div class="px-5 sm:px-7 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>
-          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <SlidersHorizontal class="w-5 h-5 text-[#04C4D9]" />
-            {{ isEditPartMode && activeTab === 'repuesto' ? 'Editar Repuesto' : (isEditMode && activeTab === 'grupo' ? 'Editar Familia' : (activeTab === 'repuesto' ? 'Nuevo Repuesto' : 'Nueva Familia')) }}
+          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+            <SlidersHorizontal class="w-5 h-5 text-[#04C4D9] shrink-0" />
+            <template v-if="isEditPartMode">
+              <span>Editar Repuesto:</span>
+              <span class="font-mono text-xs sm:text-sm bg-cyan-50 text-[#004B97] border border-cyan-200 px-2.5 py-0.5 rounded-lg">
+                {{ partCodigoOem || props.editPart?.codigo_oem || 'Repuesto' }}
+              </span>
+            </template>
+            <template v-else-if="props.editGroupId || (isEditMode && activeTab === 'grupo')">
+              <span>Editar Familia:</span>
+              <span class="text-xs sm:text-sm bg-cyan-50 text-[#004B97] border border-cyan-200 px-2.5 py-0.5 rounded-lg">
+                {{ groupNombre || 'Familia' }}
+              </span>
+            </template>
+            <template v-else>
+              <span>{{ activeTab === 'repuesto' ? 'Nuevo Repuesto' : 'Nueva Familia' }}</span>
+            </template>
           </h2>
         </div>
 
-        <!-- Selector de pestañas segmentado -->
-        <div class="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-2xl shrink-0 self-start sm:self-auto">
+        <!-- Indicador contextual exclusivo si se está editando una pieza o una familia (sin pestañas distractoras) -->
+        <div v-if="isEditPartMode" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs font-bold text-[#038391] shrink-0">
+          <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span>Edición de Repuesto</span>
+        </div>
+        <div v-else-if="props.editGroupId" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs font-bold text-[#038391] shrink-0">
+          <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span>Edición de Familia Técnica</span>
+        </div>
+        <!-- Selector de pestañas segmentado (solo en creación general) -->
+        <div v-else class="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-2xl shrink-0 self-start sm:self-auto">
           <button
             type="button"
             @click="activeTab = 'repuesto'"
@@ -1605,18 +1720,10 @@ onUnmounted(() => {
                   Editando Repuesto: <span class="font-mono text-slate-900 bg-white px-2 py-0.5 rounded border border-cyan-200">{{ partCodigoOem || editingPartId }}</span>
                 </p>
                 <p class="text-[10px] text-slate-500 font-medium">
-                  Actualice cotas dimensionales, motor asociado o equivalencias multimarca.
+                  Modifique cotas dimensionales, motor asociado o equivalencias multimarca de esta pieza.
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              @click="switchToCreatePartMode"
-              class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition shrink-0 shadow-2xs hover:border-[#04C4D9]"
-              title="Limpiar formulario para dar de alta un repuesto nuevo"
-            >
-              + Nuevo Repuesto
-            </button>
           </div>
 
           <!-- ARQUITECTURA SPLIT-VIEW (2 COLUMNAS EN ESCRITORIO) -->
@@ -1635,6 +1742,7 @@ onUnmounted(() => {
                     <span>Familia Técnica</span>
                   </label>
                   <button
+                    v-if="!isEditPartMode"
                     type="button"
                     @click="openFamilyTabForCurrentContext"
                     class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] transition"
@@ -1643,7 +1751,21 @@ onUnmounted(() => {
                   </button>
                 </div>
 
-                <div class="grid grid-cols-2 gap-1.5">
+                <!-- Si está editando una pieza, mostrar la familia asignada fija -->
+                <div v-if="isEditPartMode" class="flex items-center justify-between p-2.5 bg-white border border-cyan-200 rounded-xl shadow-2xs">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="w-2.5 h-2.5 rounded-full bg-[#04C4D9] shrink-0"></span>
+                    <span class="text-xs font-bold text-slate-900 truncate">{{ activeGroup?.nombre || 'Familia asignada' }}</span>
+                    <span class="text-[9px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-bold shrink-0">
+                      {{ activeGroup?.parametros?.length || 0 }} parámetros
+                    </span>
+                  </div>
+                  <span class="text-[10px] font-bold text-[#004B97] bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200 shrink-0">
+                    {{ activeGroup?.subsistema || 'Block' }}
+                  </span>
+                </div>
+
+                <div v-else class="grid grid-cols-2 gap-1.5">
                   <button
                     v-for="grp in catalogStore.grupos"
                     :key="grp.id"
@@ -1703,8 +1825,10 @@ onUnmounted(() => {
                     </div>
                     <input
                       v-model="partCodigoOem"
+                      @input="onPrimaryOemInput"
+                      @blur="normalizeOemInputs"
                       type="text"
-                      placeholder="Ej. 11701-54030, 13011-28010"
+                      placeholder="Ej. 11701-54030, 11701-54040"
                       class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -1725,6 +1849,8 @@ onUnmounted(() => {
                       </span>
                       <input
                         v-model="partCodigosOemAdicionales[oemIdx]"
+                        @input="handleAdditionalOemInput(oemIdx)"
+                        @blur="normalizeOemInputs"
                         type="text"
                         placeholder="Ej. 11701-54040 (Otro código original de fábrica)"
                         class="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
@@ -1738,6 +1864,20 @@ onUnmounted(() => {
                         <Trash2 class="w-3.5 h-3.5" />
                       </button>
                     </div>
+                  </div>
+
+                  <!-- Cuadritos detectados en vivo -->
+                  <div v-if="allOemCodesPreview.length > 0" class="flex flex-wrap items-center gap-1.5 pt-1.5">
+                    <span class="text-[9px] font-bold text-slate-500 uppercase">Códigos OEM:</span>
+                    <span
+                      v-for="(codeToken, cIdx) in allOemCodesPreview"
+                      :key="`preview-oem-${cIdx}`"
+                      class="inline-flex items-center gap-1 font-mono font-bold text-[10px] px-2 py-0.5 rounded border shadow-2xs"
+                      :class="cIdx === 0 ? 'bg-slate-100 text-slate-900 border-slate-200' : 'bg-amber-50 text-amber-950 border-amber-300'"
+                    >
+                      <span v-if="cIdx > 0" class="text-[8px] font-sans font-black text-amber-800">OEM:</span>
+                      {{ codeToken }}
+                    </span>
                   </div>
 
                   <div>
@@ -2280,8 +2420,8 @@ onUnmounted(() => {
         <!-- ----------------------------------------------------------------- -->
         <div v-else class="space-y-5">
 
-          <!-- Selector de Modo: Crear Nuevo vs Modificar Existente -->
-          <div class="bg-slate-100 p-2 sm:p-2.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border border-slate-200">
+          <!-- Selector de Modo: Crear Nuevo vs Modificar Existente (Solo cuando NO se especificó un editGroupId directo) -->
+          <div v-if="!props.editGroupId" class="bg-slate-100 p-2 sm:p-2.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border border-slate-200">
             <div class="flex items-center gap-1.5">
               <button
                 type="button"
@@ -2324,14 +2464,15 @@ onUnmounted(() => {
           </div>
 
           <!-- Banner Informativo si está editando -->
-          <div v-if="isEditMode && editingGroupId" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+          <div v-if="isEditMode && editingGroupId" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-2xs">
             <div class="flex items-center gap-2">
               <Edit3 class="w-4 h-4 text-[#038391]" />
               <span class="text-xs text-[#038391] font-bold">
-                Editando familia: <strong>{{ groupNombre }}</strong> (Código: {{ editingGroupId }}). Las modificaciones se sincronizan en tiempo real con la portada.
+                Editando familia técnica: <strong>{{ groupNombre }}</strong> (Código: {{ editingGroupId }}). Las modificaciones se sincronizan en tiempo real con la portada.
               </span>
             </div>
             <button
+              v-if="!props.editGroupId"
               type="button"
               @click="switchToCreateMode"
               class="text-[11px] font-bold text-cyan-800 underline hover:text-cyan-900 shrink-0"
@@ -2894,10 +3035,22 @@ onUnmounted(() => {
                           </td>
 
                           <!-- 2. CÓDIGO OEM -->
-                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle whitespace-nowrap">
-                            <div class="flex items-center gap-1.5">
-                              <span>13011-54020</span>
-                              <Copy class="w-3 h-3 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
+                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                              <div
+                                v-for="(codePreview, cIdx) in (allOemCodesPreview.length > 0 ? allOemCodesPreview : ['13011-54020', '13011-54030'])"
+                                :key="cIdx"
+                                :class="[
+                                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px]',
+                                  cIdx === 0
+                                    ? 'bg-slate-800 text-slate-200 border-slate-700'
+                                    : 'bg-amber-950/40 text-amber-300 border-amber-800/60'
+                                ]"
+                              >
+                                <span v-if="cIdx > 0" class="text-[8px] font-sans font-black text-amber-400">OEM:</span>
+                                <span>{{ codePreview }}</span>
+                                <Copy class="w-2.5 h-2.5 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
+                              </div>
                             </div>
                           </td>
 
