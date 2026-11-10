@@ -63,7 +63,119 @@ const selectedBrand = ref<Fabricante | null>(null)
 const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
+const selectedYear = ref<string>('')
 const showAllMotors = ref<boolean>(false)
+
+// Lista de años compatibles (1975 - 2026)
+const availableYears = computed<number[]>(() => {
+  return Array.from({ length: 2026 - 1975 + 1 }, (_, i) => 2026 - i)
+})
+
+function doesYearMatchText(text: string | number | undefined | null, targetYear: number): boolean {
+  if (text === undefined || text === null || text === '') return false
+  const raw = String(text).trim()
+  if (!raw || raw === '—') return false
+  if (raw.includes(String(targetYear))) return true
+
+  // Buscar rangos de 4 dígitos como "1995-2006", "1998 - 2005", "1995/2004", "1995 al 2006"
+  const rangeRegex = /\b(19\d{2}|20\d{2})\s*(?:[-–—/]|al|a|hasta)\s*(19\d{2}|20\d{2}|act(?:ual)?|presente)?\b/gi
+  let match: RegExpExecArray | null
+  while ((match = rangeRegex.exec(raw)) !== null) {
+    const start = Number(match[1])
+    const endRaw = (match[2] || '').toLowerCase()
+    const end = (!endRaw || endRaw.startsWith('act') || endRaw.startsWith('pres')) ? 2026 : Number(endRaw)
+    if (!isNaN(start) && !isNaN(end) && targetYear >= Math.min(start, end) && targetYear <= Math.max(start, end)) {
+      return true
+    }
+  }
+
+  // Buscar "1998+" o "desde 1998"
+  const openStartRegex = /\b(19\d{2}|20\d{2})\s*\+/g
+  while ((match = openStartRegex.exec(raw)) !== null) {
+    const start = Number(match[1])
+    if (!isNaN(start) && targetYear >= start) return true
+  }
+
+  return false
+}
+
+// Estado para modales rápidos de creación de Marca y Motor desde la barra superior
+const isQuickCreateBrandOpen = ref<boolean>(false)
+const quickBrandName = ref<string>('')
+const quickBrandCountry = ref<string>('Japón')
+const isSavingQuickBrand = ref<boolean>(false)
+
+const isQuickCreateMotorOpen = ref<boolean>(false)
+const quickMotorBrandId = ref<string>('')
+const quickMotorCode = ref<string>('')
+const quickMotorName = ref<string>('')
+const quickMotorSeries = ref<string>('')
+const quickMotorCylinders = ref<number>(4)
+const quickMotorCc = ref<number | undefined>(undefined)
+const quickMotorFuel = ref<string>('Diésel')
+const quickMotorYears = ref<string>('')
+const isSavingQuickMotor = ref<boolean>(false)
+
+const openQuickCreateBrandModal = (initialName?: string) => {
+  quickBrandName.value = (initialName || brandInput.value || '').trim().toUpperCase()
+  quickBrandCountry.value = 'Japón'
+  isBrandOpen.value = false
+  isQuickCreateBrandOpen.value = true
+}
+
+const handleSaveQuickBrand = async () => {
+  const cleanName = quickBrandName.value.trim().toUpperCase()
+  if (!cleanName) return
+  isSavingQuickBrand.value = true
+  try {
+    const created = await catalogStore.createFabricante({
+      nombre: cleanName,
+      pais_origen: quickBrandCountry.value.trim() || 'Japón'
+    })
+    isQuickCreateBrandOpen.value = false
+    await handleSelectBrand(created)
+    showToast(`✓ Marca "${created.nombre}" registrada y seleccionada`)
+  } finally {
+    isSavingQuickBrand.value = false
+  }
+}
+
+const openQuickCreateMotorModal = (initialCode?: string) => {
+  quickMotorCode.value = (initialCode || motorInput.value || '').trim().toUpperCase()
+  quickMotorBrandId.value = selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || '11111111-1111-1111-1111-111111111101'
+  quickMotorName.value = quickMotorCode.value ? `Motor ${quickMotorCode.value}` : ''
+  quickMotorSeries.value = ''
+  quickMotorCylinders.value = 4
+  quickMotorCc.value = undefined
+  quickMotorFuel.value = 'Diésel'
+  quickMotorYears.value = selectedYear.value || ''
+  isMotorOpen.value = false
+  isQuickCreateMotorOpen.value = true
+}
+
+const handleSaveQuickMotor = async () => {
+  const cleanCode = quickMotorCode.value.trim().toUpperCase()
+  if (!cleanCode) return
+  isSavingQuickMotor.value = true
+  try {
+    const created = await catalogStore.createMotor({
+      fabricante_id: quickMotorBrandId.value || selectedBrand.value?.id || '11111111-1111-1111-1111-111111111101',
+      modelo_id: selectedModel.value?.id,
+      codigo: cleanCode,
+      nombre_comercial: quickMotorName.value.trim() || `Motor ${cleanCode}`,
+      denominacion_venta: quickMotorSeries.value.trim() || undefined,
+      cilindros: Number(quickMotorCylinders.value) || 4,
+      cilindrada_cc: quickMotorCc.value ? Number(quickMotorCc.value) : undefined,
+      combustible: quickMotorFuel.value || 'Diésel',
+      anios: quickMotorYears.value.trim() || undefined
+    })
+    isQuickCreateMotorOpen.value = false
+    await handleSelectMotor(created)
+    showToast(`✓ Motor "${created.codigo}" registrado y seleccionado`)
+  } finally {
+    isSavingQuickMotor.value = false
+  }
+}
 
 // Control de visibilidad de filtros en vista móvil para liberar espacio vertical
 const isMobileFiltersOpen = ref<boolean>(false)
@@ -73,6 +185,7 @@ const activeFilterCount = computed<number>(() => {
   if (selectedBrand.value || brandInput.value) count++
   if (selectedMotor.value || motorInput.value) count++
   if (selectedModel.value || modelInput.value) count++
+  if (selectedYear.value) count++
   if (selectedComponent.value) count++
   return count
 })
@@ -627,9 +740,10 @@ const copyToClipboard = async (text: string, label?: string) => {
 
 // Copiar Ficha Técnica Cruzada
 const copyFullCross = async (part: RepuestoTecnico) => {
+  const oemCodes = getPartOemCodes(part)
   const lines: string[] = [
     `REPARACIÓN: ${part.nombre} [${part.subsistema}]`,
-    `OEM: ${part.codigo_oem}`
+    `OEM: ${oemCodes.length > 0 ? oemCodes.join(' / ') : part.codigo_oem}`
   ]
   const eqs = getPartEquivalencias(part)
   if (eqs && eqs.length > 0) {
@@ -971,6 +1085,7 @@ const handleResetAll = async () => {
   selectedModel.value = null
   selectedMotor.value = null
   selectedComponent.value = null
+  selectedYear.value = ''
   showAllMotors.value = false
   isBrandOpen.value = false
   isModelOpen.value = false
@@ -1017,7 +1132,29 @@ const handleClearSearch = () => {
 // TABLA DE MOTORES DE LA MARCA (ESTILO TECDOC / AJUSA)
 // =============================================================================
 const brandMotorsList = computed<Motor[]>(() => {
-  return availableMotors.value
+  let list = availableMotors.value
+  if (selectedYear.value) {
+    const yr = Number(selectedYear.value)
+    if (!isNaN(yr) && yr > 0) {
+      list = list.filter(mot => {
+        if ((mot as any).anios && doesYearMatchText((mot as any).anios, yr)) return true
+        if (mot.denominacion_venta && doesYearMatchText(mot.denominacion_venta, yr)) return true
+        if (mot.nombre_comercial && doesYearMatchText(mot.nombre_comercial, yr)) return true
+        if (mot.modelo_id) {
+          const mod = catalogStore.modelos.find(m => m.id === mot.modelo_id)
+          if (mod && mod.anio_inicio) {
+            const end = mod.anio_fin || 2026
+            if (yr >= mod.anio_inicio && yr <= end) return true
+            return false
+          }
+        }
+        // Si el motor tiene un rango explícito en anios y no coincidió, excluirlo
+        if ((mot as any).anios && String((mot as any).anios).trim() !== '') return false
+        return true
+      })
+    }
+  }
+  return list
 })
 
 const motorCurrentPage = ref<number>(1)
@@ -1035,7 +1172,7 @@ const goToPrevMotorPage = () => { if (motorCurrentPage.value > 1) motorCurrentPa
 const goToNextMotorPage = () => { if (motorCurrentPage.value < motorTotalPages.value) motorCurrentPage.value++ }
 const goToLastMotorPage = () => { motorCurrentPage.value = motorTotalPages.value }
 
-watch([selectedBrand, selectedModel], () => {
+watch([selectedBrand, selectedModel, selectedYear], () => {
   motorCurrentPage.value = 1
 })
 
@@ -1051,7 +1188,13 @@ const isPartConical = (part: RepuestoTecnico | null | undefined): boolean => {
   if (!part) return false
   const dims = part.dimensiones as any
   const spec = part.especificaciones_tecnicas as any
+  const rings = dims?.anillos as any[] | undefined
+  const hasConicalRing = Array.isArray(rings) && rings.some(r =>
+    (r.perfil && (String(r.perfil).toUpperCase().includes('CÓNIC') || String(r.perfil).toUpperCase().includes('CONIC') || String(r.perfil).toUpperCase().includes('KEYSTONE'))) ||
+    (r.forma && (String(r.forma).toUpperCase().includes('KEYSTONE') || String(r.forma).toUpperCase().includes('CÓNIC') || String(r.forma).toUpperCase().includes('CONIC')))
+  )
   return Boolean(
+    hasConicalRing ||
     part.diseno_conico ||
     dims?.diseno_conico ||
     spec?.diseno_conico ||
@@ -1074,6 +1217,7 @@ interface PartRingItem {
   d1: number | null
   h1: number | null
   a1: number | null
+  perfil?: string
 }
 
 const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
@@ -1082,12 +1226,21 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
     const total = rings.length
     return rings.map((r, idx) => {
       const isLast = idx === total - 1
-      const isOil = String(r.posicion || '').toLowerCase().includes('oil') || isLast
+      const isOil = String(r.posicion || '').toLowerCase().includes('oil') || String(r.posicion || '').toLowerCase().includes('aceite') || isLast
+      const rawPerfil = r.perfil || (r.forma && (
+        String(r.forma).toUpperCase().includes('KEYSTONE') ||
+        String(r.forma).toUpperCase().includes('CÓNIC') ||
+        String(r.forma).toUpperCase().includes('CONIC') ||
+        String(r.forma).toUpperCase().includes('ESPIRAL') ||
+        String(r.forma).toUpperCase().includes('ESCALON') ||
+        String(r.forma).toUpperCase().includes('RASPADOR')
+      ) ? String(r.forma) : undefined) || (idx === 0 && isPartConical(part) ? 'Cónico / Keystone' : undefined)
       return {
         posicion: isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`,
         d1: r.d1 != null ? Number(r.d1) : (part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null),
         h1: r.h1 != null ? Number(r.h1) : null,
-        a1: r.a1 != null ? Number(r.a1) : null
+        a1: r.a1 != null ? Number(r.a1) : null,
+        perfil: rawPerfil
       }
     })
   }
@@ -1095,8 +1248,19 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
   const d = part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null
   const dims = part.dimensiones as any
   const fallback: PartRingItem[] = [
-    { posicion: 'Anillo 1', d1: d, h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null, a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : (dims?.altura_radial1_mm ? Number(dims.altura_radial1_mm) : null) },
-    { posicion: 'Anillo 2', d1: d, h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null, a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : (dims?.altura_radial2_mm ? Number(dims.altura_radial2_mm) : null) }
+    {
+      posicion: 'Anillo 1',
+      d1: d,
+      h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null,
+      a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : (dims?.altura_radial1_mm ? Number(dims.altura_radial1_mm) : null),
+      perfil: isPartConical(part) ? 'Cónico / Keystone' : undefined
+    },
+    {
+      posicion: 'Anillo 2',
+      d1: d,
+      h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null,
+      a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : (dims?.altura_radial2_mm ? Number(dims.altura_radial2_mm) : null)
+    }
   ]
   if (part.espesor_anillo3_mm != null || dims?.espesor_anillo3_mm != null || dims?.altura_radial3_mm != null || dims?.espesor_radial3_mm != null) {
     fallback.push({
@@ -1236,8 +1400,16 @@ const getRingMateriales = (part: RepuestoTecnico): string | null => {
 const getRingDetail = (part: RepuestoTecnico | null | undefined, ringIdx: number, prop: string): string => {
   if (!part) return '—'
   const rings = (part.dimensiones as any)?.anillos as any[] | undefined
-  if (rings && rings[ringIdx] && rings[ringIdx][prop] != null && rings[ringIdx][prop] !== '') {
-    return String(rings[ringIdx][prop])
+  if (rings && rings[ringIdx]) {
+    if (prop === 'forma') {
+      const f = rings[ringIdx].forma
+      const p = rings[ringIdx].perfil
+      if (f && p && f !== p && p !== 'Plano' && p !== 'Estándar') return `${p} (${f})`
+      if (p && p !== 'Plano' && p !== 'Estándar') return String(p)
+      if (f) return String(f)
+    } else if (rings[ringIdx][prop] != null && rings[ringIdx][prop] !== '') {
+      return String(rings[ringIdx][prop])
+    }
   }
   const dims = part.dimensiones as any
   if (ringIdx === 0) {
@@ -1439,12 +1611,29 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     }
   }
 
-  // 3. Búsqueda por texto local dentro de la tabla
+  // 2.c. Filtro por Año de compatibilidad vehicular
+  if (selectedYear.value) {
+    const yr = Number(selectedYear.value)
+    if (!isNaN(yr) && yr > 0) {
+      list = list.filter(r => {
+        const spec = (r.especificaciones_tecnicas || {}) as Record<string, any>
+        const dims = (r.dimensiones || {}) as Record<string, any>
+        const yearText = spec.ano || spec.anos || dims.anos || dims.ano || (r.motor as any)?.anios
+        if (yearText && String(yearText).trim() !== '' && String(yearText).trim() !== '—') {
+          return doesYearMatchText(yearText, yr)
+        }
+        return true
+      })
+    }
+  }
+
+  // 3. Búsqueda por texto local dentro de la tabla (incluye códigos OEM adicionales y equivalencias)
   if (tableSearchFilter.value.trim()) {
     const q = tableSearchFilter.value.toLowerCase().trim()
     list = list.filter(r => 
       r.nombre.toLowerCase().includes(q) ||
       r.codigo_oem.toLowerCase().includes(q) ||
+      getPartOemCodes(r).some(c => c.toLowerCase().includes(q)) ||
       r.equivalencias?.some(eq => eq.codigo_alterno.toLowerCase().includes(q) || eq.marca_alterna.toLowerCase().includes(q))
     )
   }
@@ -1540,33 +1729,74 @@ const getPartCatalogBrand = (part: RepuestoTecnico | null | undefined): string |
   return orig || null
 }
 
-// Filtra equivalencias para evitar duplicar el código principal de sí mismo (ej. RIK-12510 vs Rik: 12510)
-const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equivalencia[] => {
+/**
+ * Obtiene todos los Códigos Originales de Fabricante (OEM) de un repuesto (principal + adicionales),
+ * garantizando separación estricta respecto a las Equivalencias Multimarca Alternas.
+ */
+const getPartOemCodes = (part: RepuestoTecnico | null | undefined): string[] => {
   if (!part) return []
-  const list: Equivalencia[] = [...(part.equivalencias || [])]
-  const seenCodes = new Set(list.map(e => (e.codigo_alterno || '').trim().toUpperCase()))
+  const spec = (part.especificaciones_tecnicas || {}) as Record<string, any>
+  const dims = (part.dimensiones || {}) as Record<string, any>
+  const primaryDisplayCode = String(
+    spec.codigo_dokuro || spec.codigo_mrk || spec.codigo_rik || spec.codigo_npr || part.codigo_oem || ''
+  ).trim().toUpperCase()
 
-  // Agregar referencias OEM guardadas en especificaciones técnicas si faltan en la lista
-  const refsOem = (part.especificaciones_tecnicas as any)?.referencias_oem as string[] | undefined
-  if (refsOem && Array.isArray(refsOem)) {
-    for (const ref of refsOem) {
-      const cleanRef = String(ref).trim().toUpperCase()
-      if (cleanRef && cleanRef !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(cleanRef)) {
-        seenCodes.add(cleanRef)
-        list.push({
-          id: `ref-oem-${cleanRef}`,
-          repuesto_id: part.id,
-          marca_alterna: 'OEM',
-          codigo_alterno: cleanRef,
-          tipo_referencia: 'Referencia Original OEM'
-        })
+  const candidates: string[] = []
+  if (primaryDisplayCode) candidates.push(primaryDisplayCode)
+  if (part.codigo_oem) candidates.push(String(part.codigo_oem).trim().toUpperCase())
+
+  const extraSources = [
+    part.codigos_oem_adicionales,
+    spec.codigos_oem_adicionales,
+    dims.codigos_oem_adicionales,
+    spec.referencias_oem
+  ]
+  for (const src of extraSources) {
+    if (Array.isArray(src)) {
+      for (const item of src) {
+        const clean = String(item || '').trim().toUpperCase()
+        if (clean) candidates.push(clean)
       }
     }
   }
 
+  // También rescatar equivalencias que fueron etiquetadas como marca 'OEM'
+  if (Array.isArray(part.equivalencias)) {
+    for (const eq of part.equivalencias) {
+      if (String(eq.marca_alterna || '').trim().toUpperCase() === 'OEM') {
+        const clean = String(eq.codigo_alterno || '').trim().toUpperCase()
+        if (clean) candidates.push(clean)
+      }
+    }
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)))
+}
+
+const getPartAdditionalOemCodes = (part: RepuestoTecnico | null | undefined): string[] => {
+  if (!part) return []
+  const spec = (part.especificaciones_tecnicas || {}) as Record<string, any>
+  const primaryDisplayCode = String(
+    spec.codigo_dokuro || spec.codigo_mrk || spec.codigo_rik || spec.codigo_npr || part.codigo_oem || ''
+  ).trim().toUpperCase()
+  return getPartOemCodes(part).filter(c => c !== primaryDisplayCode)
+}
+
+// Filtra equivalencias multimarca alternas (excluyendo códigos OEM originales que van en su propia columna)
+const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equivalencia[] => {
+  if (!part) return []
+  const oemSet = new Set(getPartOemCodes(part))
+  const list: Equivalencia[] = (part.equivalencias || []).filter(eq => {
+    const brand = String(eq.marca_alterna || '').trim().toUpperCase()
+    const code = String(eq.codigo_alterno || '').trim().toUpperCase()
+    if (brand === 'OEM' || oemSet.has(code)) return false
+    return true
+  })
+  const seenCodes = new Set(list.map(e => (e.codigo_alterno || '').trim().toUpperCase()))
+
   // Agregar código Dokuro si está en especificaciones y no es el código principal mostrado
   const dokCode = ((part.especificaciones_tecnicas as any)?.codigo_dokuro as string | undefined)?.trim()?.toUpperCase()
-  if (dokCode && dokCode !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(dokCode)) {
+  if (dokCode && dokCode !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(dokCode) && !oemSet.has(dokCode)) {
     seenCodes.add(dokCode)
     list.unshift({
       id: `dok-${dokCode}`,
@@ -1579,7 +1809,7 @@ const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equival
 
   // Agregar código MRK si está en especificaciones y no es el código principal mostrado
   const mrkCode = ((part.especificaciones_tecnicas as any)?.codigo_mrk as string | undefined)?.trim()?.toUpperCase()
-  if (mrkCode && mrkCode !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(mrkCode)) {
+  if (mrkCode && mrkCode !== (part.codigo_oem || '').trim().toUpperCase() && !seenCodes.has(mrkCode) && !oemSet.has(mrkCode)) {
     seenCodes.add(mrkCode)
     list.unshift({
       id: `mrk-${mrkCode}`,
@@ -1632,7 +1862,6 @@ const closeTechnicalSheet = () => {
 }
 
 // =============================================================================
-// =============================================================================
 // MODAL ADMINISTRATIVO DE CATÁLOGO (NUEVO REPUESTO / NUEVA FAMILIA DINÁMICA / EDITAR GRUPO)
 // =============================================================================
 const isAdminModalOpen = ref<boolean>(false)
@@ -1640,20 +1869,42 @@ const adminModalTab = ref<'repuesto' | 'grupo'>('repuesto')
 const adminModalEditGroupId = ref<string | null>(null)
 const adminModalEditPart = ref<RepuestoTecnico | null>(null)
 
+const resolveGroupIdFromPart = (part?: RepuestoTecnico | null): string | null => {
+  if (!part) return selectedComponent.value?.id || null
+  const cat = (part.categoria || '').toLowerCase().trim()
+  const matched = catalogStore.grupos.find(g =>
+    g.codigo.toLowerCase() === cat ||
+    g.categoria.toLowerCase() === cat ||
+    g.nombre.toLowerCase() === cat
+  )
+  if (matched) return matched.codigo
+  if (cat.includes('anillo')) return 'anillos_motor'
+  if (cat.includes('sello')) return 'ajuste_valvula'
+  if (cat.includes('guía') || cat.includes('guia')) return 'guias_valvula'
+  if (cat.includes('asiento')) return 'asientos_valvula'
+  if (cat.includes('válvula') || cat.includes('valvula')) return 'valvula'
+  if (cat.includes('perno') || cat.includes('tornillo')) return 'tornillos_culata'
+  if (cat.includes('casquet') || cat.includes('cojinet')) return 'casqueteria'
+  if (cat.includes('camisa')) return 'camisas_cilindro'
+  if (cat.includes('empaque') || cat.includes('junta')) return 'empaques_juntas'
+  return selectedComponent.value?.id || null
+}
+
 const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroupId?: string | null) => {
   adminModalTab.value = tab
-  adminModalEditGroupId.value = editGroupId || null
+  adminModalEditGroupId.value = editGroupId || (tab === 'grupo' ? (selectedComponent.value?.id || null) : null)
   adminModalEditPart.value = null
   isAdminModalOpen.value = true
 }
 
-const handleEditGroup = (grpId: string) => {
-  openAdminCatalogModal('grupo', grpId)
+const handleEditGroup = (grpId?: string | null) => {
+  const targetId = grpId || selectedComponent.value?.id || resolveGroupIdFromPart(modalPart.value)
+  openAdminCatalogModal('grupo', targetId)
 }
 
 const handleEditPart = (part: RepuestoTecnico) => {
   adminModalTab.value = 'repuesto'
-  adminModalEditGroupId.value = null
+  adminModalEditGroupId.value = resolveGroupIdFromPart(part)
   adminModalEditPart.value = part
   isAdminModalOpen.value = true
 }
@@ -1880,16 +2131,27 @@ onUnmounted(() => {
         :class="[
           'gap-2.5 items-end transition-all duration-200',
           isMobileFiltersOpen 
-            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 pt-1' 
-            : 'hidden lg:grid lg:grid-cols-4'
+            ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 pt-1' 
+            : 'hidden lg:grid lg:grid-cols-5'
         ]"
       >
         
         <!-- 1. FABRICANTE -->
         <div class="relative combobox-brand">
-          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            Fabricante
-          </label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Fabricante
+            </label>
+            <button
+              type="button"
+              @click="openQuickCreateBrandModal(brandInput)"
+              class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition"
+              title="Registrar una nueva marca o fabricante"
+            >
+              <Plus class="w-3 h-3" />
+              <span>Nueva marca</span>
+            </button>
+          </div>
 
           <div class="relative flex items-center">
             <input
@@ -1921,7 +2183,7 @@ onUnmounted(() => {
           <!-- Dropdown Marcas -->
           <div
             v-if="isBrandOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
           >
             <div
               v-for="(fab, fIdx) in filteredBrands"
@@ -1943,9 +2205,22 @@ onUnmounted(() => {
                 <Check v-if="selectedBrand?.id === fab.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
-            <div v-if="filteredBrands.length === 0" class="p-3 text-center text-xs text-slate-400">
+            <div v-if="filteredBrands.length === 0" class="p-2.5 text-center text-xs text-slate-400">
               No hay marcas coincidentes
             </div>
+            <!-- Acción rápida para registrar marca no existente -->
+            <button
+              v-if="brandInput.trim().length > 0 && !catalogStore.fabricantes.some(f => f.nombre.toLowerCase() === brandInput.trim().toLowerCase())"
+              type="button"
+              @mousedown.prevent="openQuickCreateBrandModal(brandInput)"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
+            >
+              <span class="flex items-center gap-1.5 truncate">
+                <Plus class="w-3.5 h-3.5 shrink-0" />
+                <span class="truncate">+ Registrar nueva marca "{{ brandInput.trim().toUpperCase() }}"</span>
+              </span>
+              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Crear</span>
+            </button>
           </div>
         </div>
 
@@ -1955,18 +2230,29 @@ onUnmounted(() => {
             <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
               Motor
             </label>
-            <button
-              type="button"
-              @click="toggleMotorsWithPartsOnly"
-              class="text-[10px] font-bold px-1.5 py-0.5 rounded transition flex items-center gap-1 cursor-pointer"
-              :class="catalogStore.onlyMotorsWithParts 
-                ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40' 
-                : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
-              :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
-            >
-              <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-              <span>{{ catalogStore.onlyMotorsWithParts ? 'Con repuestos' : 'Todos' }}</span>
-            </button>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                @click="openQuickCreateMotorModal(motorInput)"
+                class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition"
+                title="Registrar un nuevo código de motor"
+              >
+                <Plus class="w-3 h-3" />
+                <span>Nuevo</span>
+              </button>
+              <button
+                type="button"
+                @click="toggleMotorsWithPartsOnly"
+                class="text-[10px] font-bold px-1.5 py-0.5 rounded transition flex items-center gap-1 cursor-pointer"
+                :class="catalogStore.onlyMotorsWithParts 
+                  ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40' 
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
+                :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
+                <span>{{ catalogStore.onlyMotorsWithParts ? 'Con repuestos' : 'Todos' }}</span>
+              </button>
+            </div>
           </div>
 
           <div class="relative flex items-center">
@@ -1999,7 +2285,7 @@ onUnmounted(() => {
           <!-- Dropdown Motores -->
           <div
             v-if="isMotorOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
           >
             <div
               v-for="(mot, mIdx) in filteredMotors"
@@ -2032,9 +2318,22 @@ onUnmounted(() => {
                 <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
-            <div v-if="filteredMotors.length === 0" class="p-3 text-center text-xs text-slate-400">
+            <div v-if="filteredMotors.length === 0" class="p-2.5 text-center text-xs text-slate-400">
               No hay motores coincidentes
             </div>
+            <!-- Acción rápida para registrar nuevo motor no existente -->
+            <button
+              v-if="motorInput.trim().length > 0 && !availableMotors.some(m => m.codigo.toLowerCase() === motorInput.trim().toLowerCase())"
+              type="button"
+              @mousedown.prevent="openQuickCreateMotorModal(motorInput)"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
+            >
+              <span class="flex items-center gap-1.5 truncate">
+                <Plus class="w-3.5 h-3.5 shrink-0" />
+                <span class="truncate">+ Registrar nuevo motor "{{ motorInput.trim().toUpperCase() }}"</span>
+              </span>
+              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Crear</span>
+            </button>
           </div>
         </div>
 
@@ -2108,7 +2407,35 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 4. COMPONENTE -->
+        <!-- 4. AÑO DE COMPATIBILIDAD -->
+        <div class="relative">
+          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+            Año
+          </label>
+          <div class="relative flex items-center">
+            <select
+              v-model="selectedYear"
+              class="w-full pl-3 pr-7 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition appearance-none cursor-pointer"
+            >
+              <option value="">Todos los años</option>
+              <option v-for="yr in availableYears" :key="yr" :value="String(yr)">
+                {{ yr }}
+              </option>
+            </select>
+            <button
+              v-if="selectedYear"
+              type="button"
+              @click="selectedYear = ''"
+              class="absolute right-6 p-1 text-slate-400 hover:text-slate-600"
+              title="Limpiar año"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+            <ChevronDown class="w-4 h-4 text-slate-400 absolute right-2.5 pointer-events-none" />
+          </div>
+        </div>
+
+        <!-- 5. COMPONENTE -->
         <div class="relative combobox-component">
           <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             Componente
@@ -2189,7 +2516,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Barra informativa activa de selección en cascada (Minimalista) -->
-      <div v-if="selectedBrand || selectedModel || selectedMotor || selectedComponent" class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div v-if="selectedBrand || selectedModel || selectedMotor || selectedYear || selectedComponent" class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div class="flex items-center gap-1.5 flex-wrap">
           <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Activos:</span>
           
@@ -2207,6 +2534,13 @@ onUnmounted(() => {
           <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-xs">
             <span>{{ selectedMotor.codigo }}</span>
             <button type="button" @click="handleClearSelectedMotor" class="text-slate-400 hover:text-rose-400 ml-0.5">
+              <X class="w-3 h-3" />
+            </button>
+          </span>
+
+          <span v-if="selectedYear" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-mono font-bold text-xs">
+            <span>Año {{ selectedYear }}</span>
+            <button type="button" @click="selectedYear = ''" class="text-amber-500 hover:text-rose-500 ml-0.5">
               <X class="w-3 h-3" />
             </button>
           </span>
@@ -3289,56 +3623,76 @@ onUnmounted(() => {
                   </div>
                 </td>
 
-                <!-- 2. Código OEM / Principal de Catálogo -->
+                <!-- 2. Código OEM / Principal de Catálogo (Soporta múltiples códigos OEM originales) -->
                 <td class="py-2 px-2.5 align-middle border-b border-slate-100">
-                  <div class="flex items-center gap-1">
-                    <span 
-                      v-if="getPartCatalogBrand(part) === 'DOKURO' || part.catalogo_origen?.toLowerCase() === 'dokuro' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'DOKURO'"
-                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300"
-                      title="Código oficial del catálogo Dokuro"
-                    >
-                      DOKURO
-                    </span>
-                    <span 
-                      v-else-if="getPartCatalogBrand(part) === 'MRK' || part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK' || (part.especificaciones_tecnicas as any)?.codigo_mrk"
-                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-300"
-                      title="Código oficial del catálogo MRK"
-                    >
-                      MRK
-                    </span>
-                    <span 
-                      v-else-if="getPartCatalogBrand(part) === 'RIK' || part.catalogo_origen?.toLowerCase() === 'rik' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'RIK' || (part.especificaciones_tecnicas as any)?.codigo_rik || part.codigo_oem?.startsWith('RIK-') || part.nombre?.includes('RIK')"
-                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-300"
-                      title="Código oficial del catálogo RIK"
-                    >
-                      RIK
-                    </span>
-                    <span 
-                      v-else-if="getPartCatalogBrand(part) === 'NPR' || part.catalogo_origen?.toLowerCase() === 'npr' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'NPR' || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem?.startsWith('NPR-') || part.nombre?.includes('NPR')"
-                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300"
-                      title="Código oficial del catálogo NPR"
-                    >
-                      NPR
-                    </span>
-                    <span 
-                      v-else-if="getPartCatalogBrand(part) === 'AJUSA' || part.catalogo_origen?.toLowerCase() === 'ajusa' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'AJUSA' || (part.especificaciones_tecnicas as any)?.codigo_ajusa"
-                      class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-[#0f2d59] text-white border border-blue-950"
-                      title="Código oficial del catálogo Ajusa"
-                    >
-                      AJUSA
-                    </span>
-                    <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem }}
-                    </span>
-                    <button
-                      type="button"
-                      @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem, getPartCatalogBrand(part) || 'OEM')"
-                      class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
-                      title="Copiar código principal"
-                    >
-                      <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
-                      <Copy v-else class="w-3.5 h-3.5" />
-                    </button>
+                  <div class="flex flex-col gap-1">
+                    <!-- Código Principal -->
+                    <div class="flex items-center gap-1 flex-wrap">
+                      <span 
+                        v-if="getPartCatalogBrand(part) === 'DOKURO' || part.catalogo_origen?.toLowerCase() === 'dokuro' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'DOKURO'"
+                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300"
+                        title="Código oficial del catálogo Dokuro"
+                      >
+                        DOKURO
+                      </span>
+                      <span 
+                        v-else-if="getPartCatalogBrand(part) === 'MRK' || part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK' || (part.especificaciones_tecnicas as any)?.codigo_mrk"
+                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-300"
+                        title="Código oficial del catálogo MRK"
+                      >
+                        MRK
+                      </span>
+                      <span 
+                        v-else-if="getPartCatalogBrand(part) === 'RIK' || part.catalogo_origen?.toLowerCase() === 'rik' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'RIK' || (part.especificaciones_tecnicas as any)?.codigo_rik || part.codigo_oem?.startsWith('RIK-') || part.nombre?.includes('RIK')"
+                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-300"
+                        title="Código oficial del catálogo RIK"
+                      >
+                        RIK
+                      </span>
+                      <span 
+                        v-else-if="getPartCatalogBrand(part) === 'NPR' || part.catalogo_origen?.toLowerCase() === 'npr' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'NPR' || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem?.startsWith('NPR-') || part.nombre?.includes('NPR')"
+                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300"
+                        title="Código oficial del catálogo NPR"
+                      >
+                        NPR
+                      </span>
+                      <span 
+                        v-else-if="getPartCatalogBrand(part) === 'AJUSA' || part.catalogo_origen?.toLowerCase() === 'ajusa' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'AJUSA' || (part.especificaciones_tecnicas as any)?.codigo_ajusa"
+                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-[#0f2d59] text-white border border-blue-950"
+                        title="Código oficial del catálogo Ajusa"
+                      >
+                        AJUSA
+                      </span>
+                      <span class="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        {{ (part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem }}
+                      </span>
+                      <button
+                        type="button"
+                        @click="copyToClipboard((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem, getPartCatalogBrand(part) || 'OEM')"
+                        class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
+                        title="Copiar código principal"
+                      >
+                        <Check v-if="copiedCode === ((part.especificaciones_tecnicas as any)?.codigo_dokuro || (part.especificaciones_tecnicas as any)?.codigo_mrk || (part.especificaciones_tecnicas as any)?.codigo_rik || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem)" class="w-3.5 h-3.5 text-emerald-600" />
+                        <Copy v-else class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <!-- Códigos Originales OEM Adicionales (Agrupados y copiables con 1 clic) -->
+                    <div v-if="getPartAdditionalOemCodes(part).length > 0" class="flex flex-wrap gap-1">
+                      <button
+                        v-for="oemCode in getPartAdditionalOemCodes(part)"
+                        :key="`oem-extra-${oemCode}`"
+                        type="button"
+                        @click="copyToClipboard(oemCode, 'OEM')"
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono bg-amber-50/90 hover:bg-amber-100 text-amber-950 border-amber-300 cursor-pointer transition"
+                        :title="`Clic para copiar Código Original OEM: ${oemCode}`"
+                      >
+                        <span class="font-sans text-[8px] font-black uppercase text-amber-800">OEM:</span>
+                        <strong class="font-bold">{{ oemCode }}</strong>
+                        <Check v-if="copiedCode === oemCode" class="w-2.5 h-2.5 text-emerald-600" />
+                        <Copy v-else class="w-2.5 h-2.5 text-amber-600 opacity-80" />
+                      </button>
+                    </div>
                   </div>
                 </td>
 
@@ -3390,11 +3744,14 @@ onUnmounted(() => {
                             <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
                               <span>{{ ring.posicion }}</span>
                               <span
-                                v-if="rIdx === 0 && isPartConical(part)"
-                                class="ml-1 text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-900 font-extrabold border border-amber-300 uppercase tracking-tight"
-                                :title="getKeystoneLabel(part) || 'Diseño cónico Keystone'"
+                                v-if="(ring.perfil && ring.perfil !== 'Plano' && ring.perfil !== 'Estándar') || (rIdx === 0 && isPartConical(part))"
+                                class="ml-1 text-[9px] px-1 py-0.2 rounded font-extrabold border uppercase tracking-tight"
+                                :class="(ring.perfil && (ring.perfil.toLowerCase().includes('cónico') || ring.perfil.toLowerCase().includes('conico') || ring.perfil.toLowerCase().includes('keystone'))) || (rIdx === 0 && isPartConical(part))
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : 'bg-cyan-50 text-[#038391] border-cyan-300'"
+                                :title="ring.perfil || getKeystoneLabel(part) || 'Perfil técnico de anillo'"
                               >
-                                Cónico
+                                {{ ring.perfil ? (ring.perfil.includes('Keystone') ? 'Cónico' : ring.perfil) : 'Cónico' }}
                               </span>
                             </td>
                             <td 
@@ -3767,9 +4124,38 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <!-- Bloque A: Códigos Originales del Fabricante (OEM) -->
+            <div class="bg-amber-50/60 border border-amber-200/80 p-3 rounded-xl">
+              <div class="flex items-center justify-between mb-1.5">
+                <h4 class="text-xs font-extrabold uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span>Códigos Originales del Fabricante (OEM)</span>
+                </h4>
+                <span class="text-[10px] font-mono font-bold text-amber-800">
+                  {{ getPartOemCodes(modalPart).length }} código(s)
+                </span>
+              </div>
+              <div v-if="getPartOemCodes(modalPart).length > 0" class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="oemCode in getPartOemCodes(modalPart)"
+                  :key="`modal-oem-${oemCode}`"
+                  type="button"
+                  @click="copyToClipboard(oemCode, 'OEM')"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-amber-300 bg-white hover:bg-amber-100/80 text-slate-900 font-mono text-xs cursor-pointer transition shadow-2xs"
+                  :title="`Clic para copiar Código OEM: ${oemCode}`"
+                >
+                  <span class="px-1 py-0.2 rounded bg-amber-100 text-amber-900 text-[9px] font-sans font-black uppercase">OEM</span>
+                  <strong class="font-black">{{ oemCode }}</strong>
+                  <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-emerald-600" />
+                  <Copy v-else class="w-3 h-3 text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Bloque B: Equivalencias Multimarca Alternas -->
             <div>
               <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                Equivalencias Cruzadas Multimarca
+                Equivalencias Cruzadas Multimarca (Alternos)
               </h4>
               <div v-if="getPartEquivalencias(modalPart).length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div
@@ -3993,8 +4379,236 @@ onUnmounted(() => {
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- MODAL ADMINISTRATIVO: NUEVO REPUESTO / GRUPO DINÁMICO                     -->
+    <!-- MODAL RÁPIDO 3A: REGISTRAR NUEVA MARCA / FABRICANTE                        -->
     <!-- ========================================================================= -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="isQuickCreateBrandOpen"
+        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        @click.self="isQuickCreateBrandOpen = false"
+      >
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Sparkles class="w-4 h-4 text-[#04C4D9]" />
+              <h3 class="text-sm font-bold text-white">Registrar Nueva Marca / Fabricante</h3>
+            </div>
+            <button
+              type="button"
+              @click="isQuickCreateBrandOpen = false"
+              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <form @submit.prevent="handleSaveQuickBrand" class="p-4 space-y-3 text-xs">
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Nombre de la Marca / Fabricante *
+              </label>
+              <input
+                v-model="quickBrandName"
+                type="text"
+                required
+                placeholder="ej. CUMMINS, HINO, SUBARU, VOLVO..."
+                class="w-full px-3 py-2 text-xs font-bold uppercase bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                País de Origen
+              </label>
+              <select
+                v-model="quickBrandCountry"
+                class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              >
+                <option value="Japón">Japón</option>
+                <option value="Corea del Sur">Corea del Sur</option>
+                <option value="Estados Unidos">Estados Unidos</option>
+                <option value="Alemania">Alemania</option>
+                <option value="Europa">Europa</option>
+                <option value="China">China</option>
+                <option value="Brasil">Brasil</option>
+                <option value="Internacional">Internacional</option>
+              </select>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                @click="isQuickCreateBrandOpen = false"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="isSavingQuickBrand || !quickBrandName.trim()"
+                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+              >
+                <Check class="w-3.5 h-3.5" />
+                <span>Guardar y Seleccionar</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL RÁPIDO 3B: REGISTRAR NUEVO CÓDIGO DE MOTOR                          -->
+    <!-- ========================================================================= -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="isQuickCreateMotorOpen"
+        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        @click.self="isQuickCreateMotorOpen = false"
+      >
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Wrench class="w-4 h-4 text-[#04C4D9]" />
+              <h3 class="text-sm font-bold text-white">Registrar Nuevo Motor en Catálogo</h3>
+            </div>
+            <button
+              type="button"
+              @click="isQuickCreateMotorOpen = false"
+              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <form @submit.prevent="handleSaveQuickMotor" class="p-4 space-y-3 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Marca / Fabricante *
+                </label>
+                <select
+                  v-model="quickMotorBrandId"
+                  required
+                  class="w-full px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                >
+                  <option v-for="fab in catalogStore.fabricantes" :key="fab.id" :value="fab.id">
+                    {{ fab.nombre.toUpperCase() }}
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Código de Motor *
+                </label>
+                <input
+                  v-model="quickMotorCode"
+                  type="text"
+                  required
+                  placeholder="ej. 7L, 1GD-FTV, 4JJ3..."
+                  class="w-full px-2.5 py-2 text-xs font-mono font-black uppercase bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Denominación / Serie
+                </label>
+                <input
+                  v-model="quickMotorSeries"
+                  type="text"
+                  placeholder="ej. Serie L / Hilux / Dyna"
+                  class="w-full px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Años de Aplicación
+                </label>
+                <input
+                  v-model="quickMotorYears"
+                  type="text"
+                  placeholder="ej. 1998-2026"
+                  class="w-full px-2.5 py-1.5 text-xs font-mono font-semibold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Cilindros</label>
+                <input
+                  v-model.number="quickMotorCylinders"
+                  type="number"
+                  min="1"
+                  max="16"
+                  class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Cilindrada (cc)</label>
+                <input
+                  v-model.number="quickMotorCc"
+                  type="number"
+                  placeholder="ej. 2977"
+                  class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Combustible</label>
+                <select
+                  v-model="quickMotorFuel"
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                >
+                  <option value="Diésel">Diésel</option>
+                  <option value="Turbo Diésel">Turbo Diésel</option>
+                  <option value="Gasolina">Gasolina</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                @click="isQuickCreateMotorOpen = false"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="isSavingQuickMotor || !quickMotorCode.trim()"
+                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+              >
+                <Check class="w-3.5 h-3.5" />
+                <span>Guardar Motor</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+
     <!-- ========================================================================= -->
     <!-- LIGHTBOX MODAL: VISOR DE DIAGRAMAS / IMÁGENES TÉCNICAS EN ALTA DEFINICIÓN -->
     <!-- ========================================================================= -->
@@ -4007,7 +4621,7 @@ onUnmounted(() => {
     <AdminCatalogModal
       :is-open="isAdminModalOpen"
       :initial-tab="adminModalTab"
-      :preselected-group-id="selectedComponent?.id"
+      :preselected-group-id="selectedComponent?.id || adminModalEditGroupId || undefined"
       :preselected-motor-id="selectedMotor?.id || null"
       :edit-group-id="adminModalEditGroupId"
       :edit-part="adminModalEditPart"

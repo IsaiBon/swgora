@@ -449,13 +449,57 @@ export const useCatalogStore = defineStore('catalog', () => {
       const updated = await catalogService.updateGrupo(idOrCode, grupoData)
       const idx = grupos.value.findIndex(g => g.id === updated.id || g.codigo === updated.codigo || g.id === idOrCode || g.codigo === idOrCode)
       if (idx >= 0) {
-        grupos.value[idx] = updated
+        const next = [...grupos.value]
+        next[idx] = updated
+        grupos.value = next
       } else {
-        grupos.value.push(updated)
+        grupos.value = [...grupos.value, updated]
       }
       return updated
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al actualizar el grupo en Supabase'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
+   * Registra un nuevo fabricante/marca y lo selecciona reactivamente
+   */
+  async function createFabricante(fabData: { nombre: string; pais_origen?: string }) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const created = await catalogService.createFabricante(fabData)
+      if (!fabricantes.value.some(f => f.id === created.id || f.nombre.toLowerCase() === created.nombre.toLowerCase())) {
+        fabricantes.value = [...fabricantes.value, created]
+      }
+      return created
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al registrar el fabricante'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
+   * Registra un nuevo motor y lo incorpora reactivamente al catálogo
+   */
+  async function createMotor(motorData: Partial<Motor>) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const created = await catalogService.createMotor(motorData)
+      if (!motores.value.some(m => m.id === created.id)) {
+        motores.value = [created, ...motores.value]
+      }
+      return created
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al registrar el motor'
       error.value = msg
       throw err
     } finally {
@@ -515,6 +559,8 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchGrupos,
     createGrupo,
     updateGrupo,
+    createFabricante,
+    createMotor,
     searchParts,
     selectFabricante,
     selectModelo,

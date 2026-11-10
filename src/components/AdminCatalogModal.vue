@@ -58,12 +58,38 @@ const catalogStore = useCatalogStore()
 // Pestaña activa ('repuesto' | 'grupo')
 const activeTab = ref<'repuesto' | 'grupo'>(props.initialTab || 'repuesto')
 
+export interface RingFormRow {
+  id: string
+  tipo_aro: 'fuego' | 'compresion' | 'aceite'
+  h1: number | null
+  a1: number | null
+  perfil: string
+}
+
+const createDefaultRingRows = (): RingFormRow[] => [
+  { id: 'ring-1', tipo_aro: 'fuego', h1: null, a1: null, perfil: 'Plano' },
+  { id: 'ring-2', tipo_aro: 'compresion', h1: null, a1: null, perfil: 'Plano' },
+  { id: 'ring-oil', tipo_aro: 'aceite', h1: null, a1: null, perfil: 'Estándar' }
+]
+
 const isEditPartMode = ref<boolean>(false)
 const editingPartId = ref<string | null>(null)
 const isDeletingPart = ref<boolean>(false)
 const showDeleteConfirm = ref<boolean>(false)
 const hasThirdRing = ref<boolean>(false)
+const ringRows = ref<RingFormRow[]>(createDefaultRingRows())
 const saveErrorMessage = ref<string>('')
+
+const resolveGroupByTarget = (target?: string | null): GrupoRepuesto | null => {
+  if (!target) return null
+  const clean = target.trim().toLowerCase()
+  return (
+    catalogStore.grupos.find(g => g.codigo.toLowerCase() === clean || g.id.toLowerCase() === clean) ||
+    catalogStore.grupos.find(g => g.categoria.toLowerCase() === clean || g.nombre.toLowerCase() === clean) ||
+    catalogStore.grupos.find(g => g.codigo.toLowerCase().includes(clean) || clean.includes(g.codigo.toLowerCase()) || g.categoria.toLowerCase().includes(clean)) ||
+    null
+  )
+}
 
 const handleDeletePart = async () => {
   if (!editingPartId.value) return
@@ -103,7 +129,10 @@ watch(() => props.isOpen, (open) => {
       loadPartForEditing(props.editPart)
     } else {
       resetPartForm()
-      if (props.preselectedGroupId) {
+      const resolvedPre = resolveGroupByTarget(props.editGroupId || props.preselectedGroupId)
+      if (resolvedPre) {
+        selectedGroupCode.value = resolvedPre.codigo
+      } else if (props.preselectedGroupId) {
         selectedGroupCode.value = props.preselectedGroupId
       } else if (!selectedGroupCode.value && catalogStore.grupos.length > 0) {
         selectedGroupCode.value = catalogStore.grupos[0].codigo
@@ -127,10 +156,11 @@ watch(() => props.isOpen, (open) => {
       catalogStore.fetchFabricantes()
     }
 
-    const targetGroup = props.editGroupId || props.preselectedGroupId
+    const targetGroup = props.editGroupId || props.preselectedGroupId || selectedGroupCode.value
     if (targetGroup) {
-      const grp = catalogStore.grupos.find(g => g.codigo === targetGroup || g.id === targetGroup)
+      const grp = resolveGroupByTarget(targetGroup)
       if (grp) {
+        selectedGroupCode.value = grp.codigo
         selectedEditGroupId.value = grp.codigo || grp.id
         if (props.editGroupId || props.initialTab === 'grupo') {
           activeTab.value = 'grupo'
@@ -232,6 +262,7 @@ onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick)
 })
 const partCodigoOem = ref<string>('')
+const partCodigosOemAdicionales = ref<string[]>([])
 const partNombre = ref<string>('')
 const partSubsistema = ref<string>('Block')
 const partPrecio = ref<number | null>(null)
@@ -239,6 +270,68 @@ const partStock = ref<number>(12)
 const partEstado = ref<'Disponible' | 'Bajo Stock' | 'Agotado'>('Disponible')
 const partCatalogoOrigen = ref<string>('OEM')
 const partImagenUrl = ref<string>('')
+
+const addCodigoOemAdicional = () => {
+  partCodigosOemAdicionales.value.push('')
+}
+
+const removeCodigoOemAdicional = (idx: number) => {
+  partCodigosOemAdicionales.value.splice(idx, 1)
+}
+
+const addRingRow = () => {
+  const oilIdx = ringRows.value.findIndex(r => r.tipo_aro === 'aceite')
+  const newRing: RingFormRow = {
+    id: `ring-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    tipo_aro: 'compresion',
+    h1: null,
+    a1: null,
+    perfil: 'Plano'
+  }
+  if (oilIdx >= 0) {
+    ringRows.value.splice(oilIdx, 0, newRing)
+  } else {
+    ringRows.value.push(newRing)
+  }
+  hasThirdRing.value = ringRows.value.length >= 4
+}
+
+const removeRingRow = (idx: number) => {
+  if (ringRows.value.length <= 2) return
+  const target = ringRows.value[idx]
+  if (!target || target.tipo_aro === 'fuego' || target.tipo_aro === 'aceite') return
+  if (idx === 1 && ringRows.value.filter(r => r.tipo_aro === 'compresion').length <= 1) {
+    // Permitir eliminar aros intermedios desde el 2do aro si hay más aros o si desea configuración de 2 aros
+  }
+  ringRows.value.splice(idx, 1)
+  hasThirdRing.value = ringRows.value.length >= 4
+}
+
+const getRingProfileOptions = (row: RingFormRow, idx: number): string[] => {
+  if (row.tipo_aro === 'fuego' || idx === 0) {
+    return ['Plano', 'Cónico / Keystone', 'Semi-cónico']
+  }
+  if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) {
+    return ['Estándar', '1 Espiral', 'Doble Espiral']
+  }
+  if (idx === 1) {
+    return ['Plano', 'Cónico / Keystone', 'Raspador con escalón']
+  }
+  return ['Plano', 'Cónico / Keystone', 'Escalonado']
+}
+
+const getRingRowTitle = (row: RingFormRow, idx: number): string => {
+  if (row.tipo_aro === 'fuego' || idx === 0) return '1° Anillo (Fuego)'
+  if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) return 'Anillo de Aceite'
+  return `${idx + 1}° Anillo (Compresión)`
+}
+
+const getRingRowSubtitle = (row: RingFormRow, idx: number): string => {
+  if (row.tipo_aro === 'fuego' || idx === 0) return 'Fuego / Top'
+  if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) return 'Rascador / Expansor'
+  if (idx === 1) return 'Compresión / Raspador'
+  return 'Compresión Extra / Diésel'
+}
 
 // Valores dinámicos de parámetros técnicos: clave -> valor
 const paramValues = ref<Record<string, any>>({})
@@ -305,9 +398,11 @@ const isRingsGroup = computed<boolean>(() => {
 watch(activeGroup, (grp) => {
   if (grp) {
     partSubsistema.value = grp.subsistema || 'Block'
+    selectedEditGroupId.value = grp.codigo || grp.id
     if (!isEditPartMode.value) {
       paramValues.value = {}
       hasThirdRing.value = false
+      ringRows.value = createDefaultRingRows()
     }
     // Mantener valores previos o inicializar vacíos
     const current = { ...paramValues.value }
@@ -350,27 +445,11 @@ const validatePartForm = (): boolean => {
       errors.diametro_cilindro_mm = 'El Diámetro de Cilindro (d1 en mm) es obligatorio'
     }
 
-    const h1Val = paramValues.value.espesor_anillo1_mm
-    if (h1Val === null || h1Val === undefined || h1Val === '' || isNaN(Number(h1Val)) || Number(h1Val) <= 0) {
-      errors.espesor_anillo1_mm = 'El grosor h1 del 1° Anillo es obligatorio'
-    }
-
-    const h2Val = paramValues.value.espesor_anillo2_mm
-    if (h2Val === null || h2Val === undefined || h2Val === '' || isNaN(Number(h2Val)) || Number(h2Val) <= 0) {
-      errors.espesor_anillo2_mm = 'El grosor h1 del 2° Anillo es obligatorio'
-    }
-
-    if (hasThirdRing.value) {
-      const h3Val = paramValues.value.espesor_anillo3_mm
-      if (h3Val === null || h3Val === undefined || h3Val === '' || isNaN(Number(h3Val)) || Number(h3Val) <= 0) {
-        errors.espesor_anillo3_mm = 'El grosor h1 del 3° Anillo es obligatorio'
+    ringRows.value.forEach((row, idx) => {
+      if (row.h1 === null || row.h1 === undefined || String(row.h1) === '' || isNaN(Number(row.h1)) || Number(row.h1) <= 0) {
+        errors[`ring_h1_${idx}`] = `El grosor h1 de ${getRingRowTitle(row, idx)} es obligatorio`
       }
-    }
-
-    const hoilVal = paramValues.value.espesor_aceite_mm
-    if (hoilVal === null || hoilVal === undefined || hoilVal === '' || isNaN(Number(hoilVal)) || Number(hoilVal) <= 0) {
-      errors.espesor_aceite_mm = 'El grosor h1 del Anillo de Aceite es obligatorio'
-    }
+    })
   } else if (activeGroup.value && activeGroup.value.parametros) {
     // Validar parámetros requeridos del grupo seleccionado
     for (const param of activeGroup.value.parametros) {
@@ -404,6 +483,18 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   activeTab.value = 'repuesto'
 
   partCodigoOem.value = part.codigo_oem || ''
+  const rawAddOem =
+    part.codigos_oem_adicionales ||
+    (part.especificaciones_tecnicas as any)?.codigos_oem_adicionales ||
+    (part.dimensiones as any)?.codigos_oem_adicionales ||
+    (part.especificaciones_tecnicas as any)?.referencias_oem ||
+    []
+  partCodigosOemAdicionales.value = Array.isArray(rawAddOem)
+    ? rawAddOem
+        .map(c => String(c || '').trim().toUpperCase())
+        .filter(c => c.length > 0 && c !== (part.codigo_oem || '').trim().toUpperCase())
+    : []
+
   partNombre.value = part.nombre || ''
   partSubsistema.value = part.subsistema || 'Block'
   partPrecio.value = part.precio != null ? part.precio : null
@@ -499,38 +590,70 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
 
   // Desempaquetar array `anillos` de dimensiones si existe
   const ringItems = Array.isArray((part.dimensiones as any)?.anillos) ? (part.dimensiones as any).anillos : []
-  if (ringItems.length >= 4 || (part.dimensiones as any)?.espesor_anillo3_mm != null || part.espesor_anillo3_mm != null) {
-    hasThirdRing.value = true
-  } else {
-    hasThirdRing.value = false
-  }
+  const isPartConico = Boolean(
+    part.diseno_conico ||
+    (part.dimensiones as any)?.diseno_conico ||
+    (part.especificaciones_tecnicas as any)?.diseno_conico ||
+    (part.dimensiones as any)?.keystone
+  )
 
   if (ringItems.length > 0) {
-    if (loadedParams.diametro_cilindro_mm == null && ringItems[0]?.d1 != null) loadedParams.diametro_cilindro_mm = ringItems[0].d1
-    if (loadedParams.espesor_anillo1_mm == null && ringItems[0]?.h1 != null) loadedParams.espesor_anillo1_mm = ringItems[0].h1
-    if (loadedParams.espesor_anillo2_mm == null && ringItems[1]?.h1 != null) loadedParams.espesor_anillo2_mm = ringItems[1].h1
-
-    if (ringItems.length >= 4) {
-      if (loadedParams.espesor_anillo3_mm == null && ringItems[2]?.h1 != null) loadedParams.espesor_anillo3_mm = ringItems[2].h1
-      if (loadedParams.espesor_aceite_mm == null && ringItems[3]?.h1 != null) loadedParams.espesor_aceite_mm = ringItems[3].h1
-
-      loadedParams.altura_radial1_mm = ringItems[0]?.a1 ?? (part.dimensiones as any)?.espesor_radial1_mm ?? null
-      loadedParams.altura_radial2_mm = ringItems[1]?.a1 ?? (part.dimensiones as any)?.espesor_radial2_mm ?? null
-      loadedParams.altura_radial3_mm = ringItems[2]?.a1 ?? (part.dimensiones as any)?.espesor_radial3_mm ?? null
-      loadedParams.altura_radial_aceite_mm = ringItems[3]?.a1 ?? (part.dimensiones as any)?.espesor_radial_aceite_mm ?? null
-    } else {
-      if (loadedParams.espesor_aceite_mm == null && ringItems[ringItems.length - 1]?.h1 != null) loadedParams.espesor_aceite_mm = ringItems[ringItems.length - 1].h1
-
-      loadedParams.altura_radial1_mm = ringItems[0]?.a1 ?? (part.dimensiones as any)?.espesor_radial1_mm ?? null
-      loadedParams.altura_radial2_mm = ringItems[1]?.a1 ?? (part.dimensiones as any)?.espesor_radial2_mm ?? null
-      loadedParams.altura_radial3_mm = (part.dimensiones as any)?.espesor_radial3_mm ?? (part.dimensiones as any)?.altura_radial3_mm ?? null
-      loadedParams.altura_radial_aceite_mm = ringItems[ringItems.length - 1]?.a1 ?? (part.dimensiones as any)?.espesor_radial_aceite_mm ?? null
+    if (loadedParams.diametro_cilindro_mm == null && ringItems[0]?.d1 != null) {
+      loadedParams.diametro_cilindro_mm = ringItems[0].d1
     }
+    ringRows.value = ringItems.map((ri: any, idx: number) => {
+      const isLast = idx === ringItems.length - 1
+      const tipoAro: 'fuego' | 'compresion' | 'aceite' = idx === 0 ? 'fuego' : (isLast ? 'aceite' : 'compresion')
+      let perfil = ri.perfil || ri.forma || ''
+      if (!perfil) {
+        if (idx === 0) perfil = isPartConico ? 'Cónico / Keystone' : 'Plano'
+        else if (isLast) perfil = 'Estándar'
+        else perfil = 'Plano'
+      }
+      return {
+        id: `ring-${idx}-${Date.now()}`,
+        tipo_aro: tipoAro,
+        h1: ri.h1 != null ? Number(ri.h1) : null,
+        a1: ri.a1 != null ? Number(ri.a1) : null,
+        perfil
+      }
+    })
+    hasThirdRing.value = ringRows.value.length >= 4
   } else {
-    loadedParams.altura_radial1_mm = (part.dimensiones as any)?.espesor_radial1_mm ?? (part.dimensiones as any)?.altura_radial1_mm ?? null
-    loadedParams.altura_radial2_mm = (part.dimensiones as any)?.espesor_radial2_mm ?? (part.dimensiones as any)?.altura_radial2_mm ?? null
-    loadedParams.altura_radial3_mm = (part.dimensiones as any)?.espesor_radial3_mm ?? (part.dimensiones as any)?.altura_radial3_mm ?? null
-    loadedParams.altura_radial_aceite_mm = (part.dimensiones as any)?.espesor_radial_aceite_mm ?? (part.dimensiones as any)?.altura_radial_aceite_mm ?? null
+    const builtRows: RingFormRow[] = [
+      {
+        id: 'ring-1',
+        tipo_aro: 'fuego',
+        h1: loadedParams.espesor_anillo1_mm ?? null,
+        a1: (part.dimensiones as any)?.espesor_radial1_mm ?? (part.dimensiones as any)?.altura_radial1_mm ?? null,
+        perfil: isPartConico ? 'Cónico / Keystone' : 'Plano'
+      },
+      {
+        id: 'ring-2',
+        tipo_aro: 'compresion',
+        h1: loadedParams.espesor_anillo2_mm ?? null,
+        a1: (part.dimensiones as any)?.espesor_radial2_mm ?? (part.dimensiones as any)?.altura_radial2_mm ?? null,
+        perfil: 'Plano'
+      }
+    ]
+    if ((part.dimensiones as any)?.espesor_anillo3_mm != null || part.espesor_anillo3_mm != null) {
+      builtRows.push({
+        id: 'ring-3',
+        tipo_aro: 'compresion',
+        h1: loadedParams.espesor_anillo3_mm ?? (part.dimensiones as any)?.espesor_anillo3_mm ?? null,
+        a1: (part.dimensiones as any)?.espesor_radial3_mm ?? (part.dimensiones as any)?.altura_radial3_mm ?? null,
+        perfil: 'Plano'
+      })
+    }
+    builtRows.push({
+      id: 'ring-oil',
+      tipo_aro: 'aceite',
+      h1: loadedParams.espesor_aceite_mm ?? null,
+      a1: (part.dimensiones as any)?.espesor_radial_aceite_mm ?? (part.dimensiones as any)?.altura_radial_aceite_mm ?? null,
+      perfil: 'Estándar'
+    })
+    ringRows.value = builtRows
+    hasThirdRing.value = ringRows.value.length >= 4
   }
 
   if (part.tipo_cojinete != null) loadedParams.tipo_cojinete = part.tipo_cojinete
@@ -609,82 +732,72 @@ const handleSavePart = async () => {
         ? Number(dimensionesPayload.diametro_cilindro_mm) 
         : (paramValues.value.diametro_cilindro_mm != null ? Number(paramValues.value.diametro_cilindro_mm) : (props.editPart?.diametro_cilindro_mm != null ? Number(props.editPart.diametro_cilindro_mm) : null))
 
-      const prevRings = Array.isArray(prevDimensions.anillos) ? prevDimensions.anillos : []
-      const r1_a1 = paramValues.value.altura_radial1_mm != null && paramValues.value.altura_radial1_mm !== '' 
-        ? Number(paramValues.value.altura_radial1_mm) 
-        : (prevRings[0]?.a1 ?? prevDimensions.espesor_radial1_mm ?? null)
-      const r2_a1 = paramValues.value.altura_radial2_mm != null && paramValues.value.altura_radial2_mm !== '' 
-        ? Number(paramValues.value.altura_radial2_mm) 
-        : (prevRings[1]?.a1 ?? prevDimensions.espesor_radial2_mm ?? null)
-      const r3_a1 = hasThirdRing.value && paramValues.value.altura_radial3_mm != null && paramValues.value.altura_radial3_mm !== '' 
-        ? Number(paramValues.value.altura_radial3_mm) 
-        : (hasThirdRing.value ? (prevRings[2]?.a1 ?? prevDimensions.espesor_radial3_mm ?? null) : null)
-      const roil_a1 = paramValues.value.altura_radial_aceite_mm != null && paramValues.value.altura_radial_aceite_mm !== '' 
-        ? Number(paramValues.value.altura_radial_aceite_mm) 
-        : (prevRings[prevRings.length - 1]?.a1 ?? prevDimensions.espesor_radial_aceite_mm ?? null)
+      const serializedRings = ringRows.value.map((r, idx) => {
+        const isOil = r.tipo_aro === 'aceite' || idx === ringRows.value.length - 1
+        return {
+          posicion: isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`,
+          tipo_aro: isOil ? 'aceite' : (idx === 0 ? 'fuego' : 'compresion'),
+          d1: d,
+          h1: r.h1 != null && !isNaN(Number(r.h1)) ? Number(r.h1) : null,
+          a1: r.a1 != null && !isNaN(Number(r.a1)) ? Number(r.a1) : null,
+          perfil: r.perfil,
+          forma: r.perfil
+        }
+      })
 
-      const h1_val = paramValues.value.espesor_anillo1_mm != null && paramValues.value.espesor_anillo1_mm !== ''
-        ? Number(paramValues.value.espesor_anillo1_mm)
-        : (dimensionesPayload.espesor_anillo1_mm != null ? Number(dimensionesPayload.espesor_anillo1_mm) : (prevRings[0]?.h1 ?? null))
-      const h2_val = paramValues.value.espesor_anillo2_mm != null && paramValues.value.espesor_anillo2_mm !== ''
-        ? Number(paramValues.value.espesor_anillo2_mm)
-        : (dimensionesPayload.espesor_anillo2_mm != null ? Number(dimensionesPayload.espesor_anillo2_mm) : (prevRings[1]?.h1 ?? null))
-      const h3_val = hasThirdRing.value && paramValues.value.espesor_anillo3_mm != null && paramValues.value.espesor_anillo3_mm !== ''
-        ? Number(paramValues.value.espesor_anillo3_mm)
-        : (hasThirdRing.value ? (dimensionesPayload.espesor_anillo3_mm != null ? Number(dimensionesPayload.espesor_anillo3_mm) : (prevRings[2]?.h1 ?? null)) : null)
-      const hoil_val = paramValues.value.espesor_aceite_mm != null && paramValues.value.espesor_aceite_mm !== ''
-        ? Number(paramValues.value.espesor_aceite_mm)
-        : (dimensionesPayload.espesor_aceite_mm != null ? Number(dimensionesPayload.espesor_aceite_mm) : (prevRings[prevRings.length - 1]?.h1 ?? null))
+      const r1 = serializedRings[0]
+      const rOil = serializedRings[serializedRings.length - 1]
+      const r2 = serializedRings.length >= 3 ? serializedRings[1] : null
+      const r3 = serializedRings.length >= 4 ? serializedRings[2] : null
 
       dimensionesPayload.diametro_cilindro_mm = d
-      dimensionesPayload.espesor_anillo1_mm = h1_val
-      dimensionesPayload.espesor_anillo2_mm = h2_val
-      dimensionesPayload.espesor_aceite_mm = hoil_val
+      dimensionesPayload.espesor_anillo1_mm = r1?.h1 ?? null
+      dimensionesPayload.espesor_anillo2_mm = r2?.h1 ?? null
+      dimensionesPayload.espesor_aceite_mm = rOil?.h1 ?? null
+      dimensionesPayload.anillos = serializedRings
 
-      if (hasThirdRing.value) {
-        dimensionesPayload.espesor_anillo3_mm = h3_val
-        dimensionesPayload.anillos = [
-          { posicion: 'Anillo 1', d1: d, h1: h1_val, a1: r1_a1 },
-          { posicion: 'Anillo 2', d1: d, h1: h2_val, a1: r2_a1 },
-          { posicion: 'Anillo 3', d1: d, h1: h3_val, a1: r3_a1 },
-          { posicion: 'Anillo de aceite', d1: d, h1: hoil_val, a1: roil_a1 }
-        ]
-        if (r3_a1 != null) {
-          dimensionesPayload.espesor_radial3_mm = r3_a1
-          dimensionesPayload.altura_radial3_mm = r3_a1
+      if (r3?.h1 != null) {
+        dimensionesPayload.espesor_anillo3_mm = r3.h1
+        if (r3.a1 != null) {
+          dimensionesPayload.espesor_radial3_mm = r3.a1
+          dimensionesPayload.altura_radial3_mm = r3.a1
         }
       } else {
         delete dimensionesPayload.espesor_anillo3_mm
         delete dimensionesPayload.espesor_radial3_mm
         delete dimensionesPayload.altura_radial3_mm
-        dimensionesPayload.anillos = [
-          { posicion: 'Anillo 1', d1: d, h1: h1_val, a1: r1_a1 },
-          { posicion: 'Anillo 2', d1: d, h1: h2_val, a1: r2_a1 },
-          { posicion: 'Anillo de aceite', d1: d, h1: hoil_val, a1: roil_a1 }
-        ]
       }
 
-      if (r1_a1 != null) {
-        dimensionesPayload.espesor_radial1_mm = r1_a1
-        dimensionesPayload.altura_radial1_mm = r1_a1
+      if (r1?.a1 != null) {
+        dimensionesPayload.espesor_radial1_mm = r1.a1
+        dimensionesPayload.altura_radial1_mm = r1.a1
       }
-      if (r2_a1 != null) {
-        dimensionesPayload.espesor_radial2_mm = r2_a1
-        dimensionesPayload.altura_radial2_mm = r2_a1
+      if (r2?.a1 != null) {
+        dimensionesPayload.espesor_radial2_mm = r2.a1
+        dimensionesPayload.altura_radial2_mm = r2.a1
       }
-      if (roil_a1 != null) {
-        dimensionesPayload.espesor_radial_aceite_mm = roil_a1
-        dimensionesPayload.altura_radial_aceite_mm = roil_a1
+      if (rOil?.a1 != null) {
+        dimensionesPayload.espesor_radial_aceite_mm = rOil.a1
+        dimensionesPayload.altura_radial_aceite_mm = rOil.a1
       }
 
-      // Metadatos de taller de anillos
-      if (paramValues.value.diseno_conico) {
+      const anyConico = serializedRings.some(r =>
+        (r.perfil || '').toLowerCase().includes('cónico') ||
+        (r.perfil || '').toLowerCase().includes('conico') ||
+        (r.perfil || '').toLowerCase().includes('keystone')
+      )
+
+      if (anyConico || paramValues.value.diseno_conico) {
         dimensionesPayload.diseno_conico = true
-        dimensionesPayload.keystone = paramValues.value.keystone || '1ST=KEYSTONE'
+        const conicoLabels = serializedRings
+          .map((r, i) => ((r.perfil || '').toLowerCase().includes('cónico') || (r.perfil || '').toLowerCase().includes('keystone')) ? `${i + 1}°=${r.perfil}` : null)
+          .filter(Boolean)
+        dimensionesPayload.keystone = conicoLabels.length > 0 ? conicoLabels.join(', ') : (paramValues.value.keystone || 'KEYSTONE')
       } else {
         delete dimensionesPayload.diseno_conico
         delete dimensionesPayload.keystone
       }
+
       if (paramValues.value.cilindros && Number(paramValues.value.cilindros) > 0) {
         dimensionesPayload.cilindros = Number(paramValues.value.cilindros)
       } else {
@@ -692,9 +805,28 @@ const handleSavePart = async () => {
       }
     }
 
+    const primaryOemClean = partCodigoOem.value.trim().toUpperCase()
+    const codigosOemAdicionalesClean = Array.from(
+      new Set(
+        partCodigosOemAdicionales.value
+          .map(c => c.trim().toUpperCase())
+          .filter(c => c.length > 0 && c !== primaryOemClean)
+      )
+    )
+    dimensionesPayload.codigos_oem_adicionales = codigosOemAdicionalesClean
+
+    const prevSpec = (editingPartId.value && props.editPart?.especificaciones_tecnicas)
+      ? { ...(props.editPart.especificaciones_tecnicas as Record<string, unknown>) }
+      : {}
+    const especificacionesPayload: Record<string, unknown> = {
+      ...prevSpec,
+      codigos_oem_adicionales: codigosOemAdicionalesClean
+    }
+
     const partPayload = {
       motor_id: partMotorId.value || undefined,
-      codigo_oem: partCodigoOem.value.trim().toUpperCase(),
+      codigo_oem: primaryOemClean,
+      codigos_oem_adicionales: codigosOemAdicionalesClean,
       nombre: partNombre.value.trim(),
       subsistema: partSubsistema.value,
       categoria: activeGroup.value?.categoria || 'General',
@@ -704,6 +836,7 @@ const handleSavePart = async () => {
       catalogo_origen: partCatalogoOrigen.value,
       imagen_url: partImagenUrl.value ? partImagenUrl.value.trim() : undefined,
       dimensiones: dimensionesPayload,
+      especificaciones_tecnicas: especificacionesPayload,
       // Mapear cotas estándar si coinciden con nombres típicos
       diametro_cabeza_mm: dimensionesPayload.diametro_cabeza_mm || dimensionesPayload.diametro_cabeza,
       diametro_vastago_mm: dimensionesPayload.diametro_vastago_mm || dimensionesPayload.diametro_vastago,
@@ -714,7 +847,7 @@ const handleSavePart = async () => {
       diametro_cilindro_mm: dimensionesPayload.diametro_cilindro_mm || dimensionesPayload.diametro_cilindro,
       espesor_anillo1_mm: dimensionesPayload.espesor_anillo1_mm || dimensionesPayload.espesor_anillo1,
       espesor_anillo2_mm: dimensionesPayload.espesor_anillo2_mm || dimensionesPayload.espesor_anillo2,
-      espesor_anillo3_mm: hasThirdRing.value ? (dimensionesPayload.espesor_anillo3_mm || dimensionesPayload.espesor_anillo3) : null,
+      espesor_anillo3_mm: dimensionesPayload.espesor_anillo3_mm ?? null,
       espesor_aceite_mm: dimensionesPayload.espesor_aceite_mm || dimensionesPayload.espesor_aceite,
       medida_rosca: dimensionesPayload.medida_rosca,
       paso_rosca_mm: dimensionesPayload.paso_rosca_mm,
@@ -751,6 +884,7 @@ const resetPartForm = () => {
   isEditPartMode.value = false
   editingPartId.value = null
   partCodigoOem.value = ''
+  partCodigosOemAdicionales.value = []
   partNombre.value = ''
   partSubsistema.value = activeGroup.value?.subsistema || 'Block'
   partMotorId.value = ''
@@ -764,6 +898,7 @@ const resetPartForm = () => {
   paramValues.value = {}
   formErrors.value = {}
   hasThirdRing.value = false
+  ringRows.value = createDefaultRingRows()
   saveErrorMessage.value = ''
   equivalencias.value = [{ marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }]
 }
@@ -1027,9 +1162,9 @@ const switchToCreateMode = () => {
 
 const switchToEditMode = (groupId?: string) => {
   isEditMode.value = true
-  const targetId = groupId || selectedEditGroupId.value || props.editGroupId || props.preselectedGroupId
+  const targetId = groupId || selectedGroupCode.value || props.editGroupId || props.preselectedGroupId || selectedEditGroupId.value
   if (targetId) {
-    const grp = catalogStore.grupos.find(g => g.codigo === targetId || g.id === targetId)
+    const grp = resolveGroupByTarget(targetId)
     if (grp) {
       loadGroupForEditing(grp)
       return
@@ -1038,6 +1173,14 @@ const switchToEditMode = (groupId?: string) => {
   if (catalogStore.grupos.length > 0) {
     loadGroupForEditing(catalogStore.grupos[0])
   }
+}
+
+const openFamilyTabForCurrentContext = () => {
+  const targetGroupCode = selectedGroupCode.value || props.editGroupId || props.preselectedGroupId || selectedEditGroupId.value
+  if (targetGroupCode) {
+    switchToEditMode(targetGroupCode)
+  }
+  activeTab.value = 'grupo'
 }
 
 const onSelectEditGroup = () => {
@@ -1417,7 +1560,7 @@ onUnmounted(() => {
 
           <button
             type="button"
-            @click="activeTab = 'grupo'"
+            @click="openFamilyTabForCurrentContext"
             :class="[
               'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
               activeTab === 'grupo' 
@@ -1493,7 +1636,7 @@ onUnmounted(() => {
                   </label>
                   <button
                     type="button"
-                    @click="activeTab = 'grupo'"
+                    @click="openFamilyTabForCurrentContext"
                     class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] transition"
                   >
                     + Gestionar Familias
@@ -1527,35 +1670,74 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- 2. Datos de Identificación del Repuesto -->
+              <!-- 2. Bloque A: Códigos Originales del Fabricante (OEM) e Identificación -->
               <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
                 <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <Tag class="w-3.5 h-3.5 text-[#004B97]" />
-                    <span>Identificación</span>
-                  </h3>
-                  <span class="text-[10px] text-slate-500 font-medium">Campos obligatorios (*)</span>
+                  <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Tag class="w-3.5 h-3.5 text-[#004B97]" />
+                      <span>Códigos Originales del Fabricante (OEM)</span>
+                    </h3>
+                    <p class="text-[10px] text-slate-500 font-medium">
+                      Códigos originales de fábrica (separados de cruces multimarca alternos)
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    @click="addCodigoOemAdicional"
+                    class="text-[10px] font-extrabold text-[#004B97] hover:text-[#038391] flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0"
+                  >
+                    <Plus class="w-3 h-3 text-[#04C4D9]" />
+                    <span>+ Agregar Código Original</span>
+                  </button>
                 </div>
 
-                <!-- Código OEM y Nombre -->
+                <!-- Código OEM Principal + Adicionales y Nombre -->
                 <div class="space-y-2.5">
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <label class="text-[11px] font-bold text-slate-700">
-                        Código OEM / Parte Principal <span class="text-rose-600 font-black">*</span>
+                        Código OEM Principal <span class="text-rose-600 font-black">*</span>
                       </label>
-                      <span class="text-[9px] text-slate-400 font-mono">Original</span>
+                      <span class="text-[9px] text-[#004B97] bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-mono font-bold">OEM #1</span>
                     </div>
                     <input
                       v-model="partCodigoOem"
                       type="text"
-                      placeholder="Ej. 13011-28010, 8-97176-683-0"
+                      placeholder="Ej. 11701-54030, 13011-28010"
                       class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
                     <span v-if="formErrors.partCodigoOem" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
                       {{ formErrors.partCodigoOem }}
                     </span>
+                  </div>
+
+                  <!-- Listado dinámico de Códigos OEM Adicionales -->
+                  <div v-if="partCodigosOemAdicionales.length > 0" class="space-y-1.5 pt-0.5">
+                    <div
+                      v-for="(_, oemIdx) in partCodigosOemAdicionales"
+                      :key="oemIdx"
+                      class="flex items-center gap-1.5"
+                    >
+                      <span class="text-[9px] font-mono font-extrabold text-[#004B97] bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-lg shrink-0">
+                        OEM #{{ oemIdx + 2 }}
+                      </span>
+                      <input
+                        v-model="partCodigosOemAdicionales[oemIdx]"
+                        type="text"
+                        placeholder="Ej. 11701-54040 (Otro código original de fábrica)"
+                        class="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                      />
+                      <button
+                        type="button"
+                        @click="removeCodigoOemAdicional(oemIdx)"
+                        class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
+                        title="Quitar código OEM adicional"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div>
@@ -1746,11 +1928,11 @@ onUnmounted(() => {
                   </div>
 
                   <span v-if="activeGroup" class="text-[10px] font-extrabold text-[#004B97] bg-white border border-cyan-200 px-2 py-0.5 rounded-full">
-                    {{ isRingsGroup ? (hasThirdRing ? '4 Aros' : '3 Aros') : `${activeGroup.parametros.filter(p => p.requerido).length} Obligatorios` }}
+                    {{ isRingsGroup ? `${ringRows.length} Aros Configurados` : `${activeGroup.parametros.filter(p => p.requerido).length} Obligatorios` }}
                   </span>
                 </div>
 
-                <!-- A. MATRIZ TABULAR PARA ANILLOS DE MOTOR (ESPEJO DE LA TABLA DEL CATÁLOGO) -->
+                <!-- A. MATRIZ TABULAR DINÁMICA PARA ANILLOS DE MOTOR (3, 4, 5 O 6+ AROS) -->
                 <div v-if="isRingsGroup" class="space-y-3">
                   
                   <!-- Tabla de medidas compacta -->
@@ -1759,36 +1941,59 @@ onUnmounted(() => {
                       <thead>
                         <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
                           <th class="px-3 py-2 text-left border-r border-slate-200">Ranura / Posición</th>
-                          <th class="px-2.5 py-2 border-r border-slate-200">
+                          <th class="px-2 py-2 border-r border-slate-200">
                             <span>Diámetro (d1)</span>
                             <span class="block text-[9px] text-slate-400 font-normal">Calibre mm *</span>
                           </th>
-                          <th class="px-2.5 py-2 border-r border-slate-200">
+                          <th class="px-2 py-2 border-r border-slate-200">
                             <span>Grosor (h1)</span>
                             <span class="block text-[9px] text-slate-400 font-normal">Axial mm *</span>
                           </th>
-                          <th class="px-2.5 py-2 border-r border-slate-200">
+                          <th class="px-2 py-2 border-r border-slate-200">
                             <span>Radial (a1)</span>
                             <span class="block text-[9px] text-slate-400 font-normal">Espesor mm</span>
                           </th>
-                          <th class="px-2 py-2">
-                            <span>Atributo</span>
+                          <th class="px-2.5 py-2">
+                            <span>Perfil / Expansor</span>
+                            <span class="block text-[9px] text-slate-400 font-normal">Geometría</span>
                           </th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-slate-100 text-[11px]">
-                        
-                        <!-- 1° Compresión (Fuego) -->
-                        <tr class="hover:bg-slate-50/70 transition" :class="formErrors.espesor_anillo1_mm || formErrors.diametro_cilindro_mm ? 'bg-rose-50/20' : ''">
+                        <tr
+                          v-for="(ring, rIdx) in ringRows"
+                          :key="ring.id"
+                          class="hover:bg-slate-50/70 transition"
+                          :class="[
+                            formErrors[`ring_h1_${rIdx}`] || (rIdx === 0 && formErrors.diametro_cilindro_mm) ? 'bg-rose-50/20' : '',
+                            rIdx >= 2 && ring.tipo_aro !== 'aceite' ? 'bg-amber-50/20' : ''
+                          ]"
+                        >
+                          <!-- Ranura / Posición -->
                           <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
-                            <div class="flex items-center gap-1.5">
-                              <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                              <strong class="font-extrabold text-slate-900">1° Compresión</strong>
+                            <div class="flex items-center justify-between gap-1.5">
+                              <div class="flex items-center gap-1.5">
+                                <span
+                                  class="w-2 h-2 rounded-full shrink-0"
+                                  :class="ring.tipo_aro === 'aceite' ? 'bg-[#04C4D9]' : (rIdx >= 2 ? 'bg-amber-500' : 'bg-[#004B97]')"
+                                ></span>
+                                <strong class="font-extrabold text-slate-900">{{ getRingRowTitle(ring, rIdx) }}</strong>
+                              </div>
+                              <button
+                                v-if="ring.tipo_aro !== 'fuego' && ring.tipo_aro !== 'aceite' && ringRows.length > 2"
+                                type="button"
+                                @click="removeRingRow(rIdx)"
+                                class="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                :title="`Quitar ${getRingRowTitle(ring, rIdx)}`"
+                              >
+                                <Trash2 class="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                            <span class="text-[9px] text-slate-500 font-normal">Fuego / Top</span>
+                            <span class="text-[9px] text-slate-500 font-normal">{{ getRingRowSubtitle(ring, rIdx) }}</span>
                           </td>
-                          <!-- Diámetro común STD -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
+
+                          <!-- Diámetro común STD (Editable en 1er aro, heredado en los demás) -->
+                          <td v-if="rIdx === 0" class="px-2 py-1.5 border-r border-slate-200">
                             <div class="relative flex items-center justify-center">
                               <input
                                 v-model.number="paramValues.diametro_cilindro_mm"
@@ -1800,184 +2005,73 @@ onUnmounted(() => {
                               />
                             </div>
                           </td>
+                          <td v-else class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
+                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
+                          </td>
+
                           <!-- Grosor h1 -->
                           <td class="px-2 py-1.5 border-r border-slate-200">
                             <input
-                              v-model.number="paramValues.espesor_anillo1_mm"
+                              v-model.number="ring.h1"
                               type="number"
                               step="0.001"
-                              placeholder="1.500"
+                              :placeholder="ring.tipo_aro === 'aceite' ? '3.000' : '1.500'"
                               class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              :class="formErrors.espesor_anillo1_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
+                              :class="formErrors[`ring_h1_${rIdx}`] ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
                             />
                           </td>
+
                           <!-- Radial a1 -->
                           <td class="px-2 py-1.5 border-r border-slate-200">
                             <input
-                              v-model.number="paramValues.altura_radial1_mm"
+                              v-model.number="ring.a1"
                               type="number"
                               step="0.01"
-                              placeholder="3.40"
+                              :placeholder="ring.tipo_aro === 'aceite' ? '2.80' : '3.40'"
                               class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                             />
                           </td>
-                          <!-- Toggle Keystone / Cónico -->
+
+                          <!-- Selector de Perfil Geométrico / Tipo de Expansor -->
                           <td class="px-2 py-1.5 whitespace-nowrap">
-                            <button
-                              type="button"
-                              @click="paramValues.diseno_conico = !paramValues.diseno_conico"
-                              class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase transition border"
-                              :class="paramValues.diseno_conico 
-                                ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs' 
-                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:text-slate-800'"
-                              :title="paramValues.diseno_conico ? 'Diseño Keystone activado (1ST=KEYSTONE)' : 'Hacer clic para marcar como cónico (Keystone)'"
+                            <select
+                              v-model="ring.perfil"
+                              class="w-full min-w-[130px] px-2 py-1 rounded-lg text-[10px] font-sans font-extrabold transition border focus:outline-none focus:border-[#04C4D9]"
+                              :class="(ring.perfil || '').toLowerCase().includes('cónico') || (ring.perfil || '').toLowerCase().includes('keystone')
+                                ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
+                                : ((ring.perfil || '').toLowerCase().includes('espiral') || (ring.perfil || '').toLowerCase().includes('escalon') || (ring.perfil || '').toLowerCase().includes('raspador')
+                                  ? 'bg-cyan-50 text-[#004B97] border-cyan-300'
+                                  : 'bg-slate-50 text-slate-700 border-slate-200')"
                             >
-                              {{ paramValues.diseno_conico ? '★ Cónico' : 'Plano' }}
-                            </button>
-                          </td>
-                        </tr>
-
-                        <!-- 2° Compresión (Raspador) -->
-                        <tr class="hover:bg-slate-50/70 transition" :class="formErrors.espesor_anillo2_mm ? 'bg-rose-50/20' : ''">
-                          <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
-                            <div class="flex items-center gap-1.5">
-                              <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                              <strong class="font-extrabold text-slate-900">2° Compresión</strong>
-                            </div>
-                            <span class="text-[9px] text-slate-500 font-normal">Raspador</span>
-                          </td>
-                          <!-- Diámetro heredado -->
-                          <td class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
-                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
-                          </td>
-                          <!-- Grosor h1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="paramValues.espesor_anillo2_mm"
-                              type="number"
-                              step="0.001"
-                              placeholder="1.500"
-                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              :class="formErrors.espesor_anillo2_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
-                            />
-                          </td>
-                          <!-- Radial a1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="paramValues.altura_radial2_mm"
-                              type="number"
-                              step="0.01"
-                              placeholder="3.40"
-                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                            />
-                          </td>
-                          <td class="px-2 py-1.5 text-center text-[10px] text-slate-400 font-sans">
-                            STD
-                          </td>
-                        </tr>
-
-                        <!-- 3° Compresión (Opcional - Juegos de 4 Aros) -->
-                        <tr v-if="hasThirdRing" class="hover:bg-slate-50/70 transition bg-amber-50/20" :class="formErrors.espesor_anillo3_mm ? 'bg-rose-50/20' : ''">
-                          <td class="px-3 py-1.5 bg-amber-50/60 font-bold text-amber-950 border-r border-slate-200 text-left whitespace-nowrap">
-                            <div class="flex items-center gap-1.5">
-                              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                              <strong class="font-extrabold text-amber-900">3° Compresión</strong>
-                            </div>
-                            <span class="text-[9px] text-amber-700 font-normal">Extra / Diésel</span>
-                          </td>
-                          <!-- Diámetro heredado -->
-                          <td class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
-                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
-                          </td>
-                          <!-- Grosor h1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="paramValues.espesor_anillo3_mm"
-                              type="number"
-                              step="0.001"
-                              placeholder="2.000"
-                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:border-amber-500"
-                              :class="formErrors.espesor_anillo3_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : ''"
-                            />
-                          </td>
-                          <!-- Radial a1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="paramValues.altura_radial3_mm"
-                              type="number"
-                              step="0.01"
-                              placeholder="3.40"
-                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-amber-500"
-                            />
-                          </td>
-                          <td class="px-2 py-1.5 text-center">
-                            <button
-                              type="button"
-                              @click="hasThirdRing = false"
-                              class="p-1 rounded text-slate-400 hover:text-rose-600 transition"
-                              title="Quitar 3° anillo de compresión"
-                            >
-                              <Trash2 class="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-
-                        <!-- Anillo de Aceite (Rascador) -->
-                        <tr class="hover:bg-slate-50/70 transition" :class="formErrors.espesor_aceite_mm ? 'bg-rose-50/20' : ''">
-                          <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
-                            <div class="flex items-center gap-1.5">
-                              <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
-                              <strong class="font-extrabold text-slate-900">Anillo Aceite</strong>
-                            </div>
-                            <span class="text-[9px] text-slate-500 font-normal">Rascador / Oil</span>
-                          </td>
-                          <!-- Diámetro heredado -->
-                          <td class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
-                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
-                          </td>
-                          <!-- Grosor h1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="paramValues.espesor_aceite_mm"
-                              type="number"
-                              step="0.001"
-                              placeholder="3.000"
-                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              :class="formErrors.espesor_aceite_mm ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
-                            />
-                          </td>
-                          <!-- Radial a1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="paramValues.altura_radial_aceite_mm"
-                              type="number"
-                              step="0.01"
-                              placeholder="2.80"
-                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                            />
-                          </td>
-                          <td class="px-2 py-1.5 text-center text-[10px] text-slate-400 font-sans">
-                            Oil
+                              <option
+                                v-for="opt in getRingProfileOptions(ring, rIdx)"
+                                :key="opt"
+                                :value="opt"
+                              >
+                                {{ opt }}
+                              </option>
+                            </select>
                           </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
 
-                  <!-- Controles auxiliares bajo la tabla -->
+                  <!-- Controles auxiliares bajo la tabla: + Agregar Anillo (5 o 6+ aros) -->
                   <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
-                    <button
-                      v-if="!hasThirdRing"
-                      type="button"
-                      @click="hasThirdRing = true"
-                      class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
-                    >
-                      <Plus class="w-3 h-3 text-[#04C4D9]" />
-                      <span>+ Agregar 3° Anillo (Juego de 4 Aros)</span>
-                    </button>
-                    <span v-else class="text-[11px] text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                      Juego de 4 Aros activo
-                    </span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        @click="addRingRow"
+                        class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
+                      >
+                        <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                        <span>+ Agregar Anillo</span>
+                      </button>
+                      <span class="text-[10px] font-bold text-slate-500">
+                        Soporta 3, 4, 5 o 6+ aros (Diésel pesado / Compresores)
+                      </span>
+                    </div>
 
                     <div class="flex items-center gap-3">
                       <div class="flex items-center gap-1.5">
@@ -2073,19 +2167,24 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- 2. Equivalencias Multimarca (Compacto en la Columna Derecha) -->
+              <!-- 2. Bloque B: Equivalencias Multimarca Alternas (Compacto en la Columna Derecha) -->
               <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
                 <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
-                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Equivalencias Multimarca
-                    </h3>
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
+                      <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
+                        Equivalencias Multimarca Alternas
+                      </h3>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-medium">
+                      NDC, Taiho, Dokuro, RIK, NPR, Ajusa, Pioneer (No mezclar con códigos OEM originales)
+                    </p>
                   </div>
                   <button
                     type="button"
                     @click="addEquivalenceRow"
-                    class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition"
+                    class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0"
                   >
                     <Plus class="w-3 h-3 text-[#04C4D9]" />
                     <span>+ Agregar Marca</span>

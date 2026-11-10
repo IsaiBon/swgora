@@ -109,6 +109,7 @@ export interface RepuestoTecnico {
   id: string
   motor_id?: string
   codigo_oem: string
+  codigos_oem_adicionales?: string[]
   nombre: string
   subsistema: 'Culata' | 'Cigüeñal' | 'Block' | 'Bielas' | 'Sellos y Juntas' | string
   categoria: 'Válvulas' | 'Anillos' | 'Casquetería' | 'Sellos' | 'Empaques' | 'Pernos' | string
@@ -220,6 +221,8 @@ export interface CatalogProduct {
 
 export const LOCAL_GROUPS_STORAGE_KEY = 'swgora_grupos_repuestos_v1'
 export const LOCAL_PARTS_STORAGE_KEY = 'swgora_custom_repuestos_v1'
+export const LOCAL_BRANDS_STORAGE_KEY = 'swgora_custom_fabricantes_v1'
+export const LOCAL_MOTORS_STORAGE_KEY = 'swgora_custom_motores_v1'
 
 export const mockGruposRepuestos: GrupoRepuesto[] = [
   {
@@ -385,6 +388,58 @@ function removeLocalCustomRepuesto(partId: string): void {
     localStorage.setItem(LOCAL_PARTS_STORAGE_KEY, JSON.stringify(list))
   } catch (e) {
     console.error('Error eliminando repuesto de localStorage:', e)
+  }
+}
+
+function getLocalCustomFabricantes(): Fabricante[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LOCAL_BRANDS_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalCustomFabricante(fab: Fabricante): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalCustomFabricantes()
+    const idx = list.findIndex(f => f.id === fab.id || f.nombre.toLowerCase() === fab.nombre.toLowerCase())
+    if (idx >= 0) {
+      list[idx] = fab
+    } else {
+      list.push(fab)
+    }
+    localStorage.setItem(LOCAL_BRANDS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error guardando fabricante en localStorage:', e)
+  }
+}
+
+function getLocalCustomMotores(): Motor[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LOCAL_MOTORS_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalCustomMotor(motor: Motor): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalCustomMotores()
+    const idx = list.findIndex(m => m.id === motor.id || (m.codigo.toLowerCase() === motor.codigo.toLowerCase() && m.fabricante_id === motor.fabricante_id))
+    if (idx >= 0) {
+      list[idx] = motor
+    } else {
+      list.push(motor)
+    }
+    localStorage.setItem(LOCAL_MOTORS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error guardando motor en localStorage:', e)
   }
 }
 
@@ -797,10 +852,22 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
   const dims = (item.dimensiones as Record<string, unknown>) || {}
   const spec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
 
+  const rawAdditionalOems =
+    (Array.isArray(item.codigos_oem_adicionales) ? item.codigos_oem_adicionales : null) ||
+    (Array.isArray(spec.codigos_oem_adicionales) ? spec.codigos_oem_adicionales : null) ||
+    (Array.isArray(dims.codigos_oem_adicionales) ? dims.codigos_oem_adicionales : null) ||
+    (Array.isArray(spec.referencias_oem) ? spec.referencias_oem : null) ||
+    []
+
+  const codigosOemAdicionales = (rawAdditionalOems as unknown[])
+    .map(c => String(c || '').trim().toUpperCase())
+    .filter(c => c.length > 0 && c !== String(item.codigo_oem || '').trim().toUpperCase())
+
   return {
     id: String(item.id),
     motor_id: item.motor_id ? String(item.motor_id) : undefined,
     codigo_oem: String(item.codigo_oem),
+    codigos_oem_adicionales: codigosOemAdicionales,
     nombre: String(item.nombre),
     subsistema: String(item.subsistema),
     categoria: String(item.categoria),
@@ -865,6 +932,7 @@ export const catalogService = {
    * Obtiene la lista de fabricantes disponibles desde Supabase con recuento dinámico de motores
    */
   async getFabricantes(): Promise<Fabricante[]> {
+    const localFabs = getLocalCustomFabricantes()
     try {
       const { data, error } = await supabase
         .from('fabricantes')
@@ -873,7 +941,13 @@ export const catalogService = {
         .order('orden_visual', { ascending: true })
 
       if (error || !data || data.length === 0) {
-        return mockFabricantes
+        const merged = [...mockFabricantes]
+        for (const loc of localFabs) {
+          if (!merged.some(f => f.id === loc.id || f.nombre.toLowerCase() === loc.nombre.toLowerCase())) {
+            merged.push(loc)
+          }
+        }
+        return merged
       }
 
       // Conteo dinámico de motores por fabricante
@@ -893,7 +967,7 @@ export const catalogService = {
         // Silencioso
       }
 
-      return data.map((item: Record<string, unknown>) => ({
+      const dbFabs: Fabricante[] = data.map((item: Record<string, unknown>) => ({
         id: String(item.id),
         nombre: String(item.nombre),
         pais_origen: item.pais_origen ? String(item.pais_origen) : undefined,
@@ -902,9 +976,64 @@ export const catalogService = {
         orden_visual: Number(item.orden_visual || 0),
         engines_count: countMap[String(item.id)] || undefined
       }))
+
+      for (const loc of localFabs) {
+        if (!dbFabs.some(f => f.id === loc.id || f.nombre.toLowerCase() === loc.nombre.toLowerCase())) {
+          dbFabs.push(loc)
+        }
+      }
+
+      return dbFabs
     } catch {
-      return mockFabricantes
+      const merged = [...mockFabricantes]
+      for (const loc of localFabs) {
+        if (!merged.some(f => f.id === loc.id || f.nombre.toLowerCase() === loc.nombre.toLowerCase())) {
+          merged.push(loc)
+        }
+      }
+      return merged
     }
+  },
+
+  /**
+   * Registra un nuevo fabricante/marca en Supabase con respaldo local inmediato
+   */
+  async createFabricante(fabData: { nombre: string; pais_origen?: string; tipo?: FabricanteTipo }): Promise<Fabricante> {
+    const cleanName = fabData.nombre.trim()
+    const newFab: Fabricante = {
+      id: `fab-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      nombre: cleanName,
+      pais_origen: fabData.pais_origen?.trim() || 'Internacional',
+      tipo: fabData.tipo || 'OEM',
+      activo: true,
+      orden_visual: 50,
+      engines_count: 0
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('fabricantes')
+        .insert({
+          nombre: newFab.nombre,
+          pais_origen: newFab.pais_origen,
+          activo: true,
+          orden_visual: newFab.orden_visual
+        })
+        .select('*')
+        .single()
+
+      if (!error && data) {
+        newFab.id = String(data.id)
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Inserción de fabricante en Supabase falló, guardando localmente:', err)
+    }
+
+    saveLocalCustomFabricante(newFab)
+    if (!mockFabricantes.some(f => f.id === newFab.id || f.nombre.toLowerCase() === newFab.nombre.toLowerCase())) {
+      mockFabricantes.push(newFab)
+    }
+    return newFab
   },
 
   /**
@@ -944,6 +1073,7 @@ export const catalogService = {
    * Obtiene motores filtrados por fabricante o modelo directamente desde Supabase
    */
   async getMotores(fabricanteId?: string, modeloId?: string, onlyWithParts: boolean = false): Promise<Motor[]> {
+    const localMotors = getLocalCustomMotores()
     try {
       const selectFields = onlyWithParts
         ? '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos!inner(id)'
@@ -961,6 +1091,11 @@ export const catalogService = {
 
       if (error || !data || data.length === 0) {
         let filtered = [...mockMotores]
+        for (const loc of localMotors) {
+          if (!filtered.some(m => m.id === loc.id || (m.codigo.toLowerCase() === loc.codigo.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
+            filtered.push(loc)
+          }
+        }
         if (fabricanteId) {
           filtered = filtered.filter(m => m.fabricante_id === fabricanteId)
         }
@@ -970,7 +1105,7 @@ export const catalogService = {
         return filtered.length > 0 ? filtered : mockMotores
       }
 
-      return data.map((item: Record<string, unknown>) => {
+      const dbMotors: Motor[] = data.map((item: Record<string, unknown>) => {
         const espec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
         const repArray = Array.isArray(item.repuestos_tecnicos) ? item.repuestos_tecnicos : []
         return {
@@ -992,16 +1127,104 @@ export const catalogService = {
           carrera_piston_mm: item.carrera_piston_mm ? Number(item.carrera_piston_mm) : undefined,
           configuracion: item.configuracion ? String(item.configuracion) : undefined,
           aspiracion: item.aspiracion ? String(item.aspiracion) : undefined,
-          anios: item.anios ? String(item.anios) : undefined,
+          anios: item.anios ? String(item.anios) : (espec.anios ? String(espec.anios) : undefined),
           especificaciones_tecnicas: espec,
           fabricante: item.fabricante as Fabricante | undefined,
           modelo: item.modelo as Modelo | undefined,
           parts_count: repArray.length
         }
       })
+
+      for (const loc of localMotors) {
+        if (fabricanteId && loc.fabricante_id !== fabricanteId) continue
+        if (!dbMotors.some(m => m.id === loc.id || (m.codigo.toLowerCase() === loc.codigo.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
+          dbMotors.push(loc)
+        }
+      }
+
+      return dbMotors
     } catch {
-      return mockMotores
+      const merged = [...mockMotores]
+      for (const loc of localMotors) {
+        if (!merged.some(m => m.id === loc.id)) merged.push(loc)
+      }
+      return merged
     }
+  },
+
+  /**
+   * Registra un nuevo motor en Supabase con respaldo local inmediato
+   */
+  async createMotor(motorData: Partial<Motor>): Promise<Motor> {
+    const cleanCodigo = (motorData.codigo || '').trim().toUpperCase()
+    const fabList = await this.getFabricantes()
+    const matchedFab = fabList.find(f => f.id === motorData.fabricante_id) || fabList[0]
+    const fabName = matchedFab ? matchedFab.nombre.toUpperCase() : 'MOTOR'
+
+    const espec: Record<string, unknown> = {
+      denominacion_venta: motorData.denominacion_venta || '',
+      cilindrada_texto: motorData.cilindrada_cc
+        ? `${motorData.cilindrada_cc} cc / ${(Number(motorData.cilindrada_cc) / 1000).toFixed(1)} l`
+        : undefined,
+      kw: motorData.kw || undefined,
+      cv: motorData.cv || undefined,
+      anios: motorData.anios || undefined,
+      ...(motorData.especificaciones_tecnicas || {})
+    }
+
+    const newMotor: Motor = {
+      id: `mot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      fabricante_id: matchedFab?.id || motorData.fabricante_id || 'fab-1',
+      modelo_id: motorData.modelo_id || undefined,
+      codigo: cleanCodigo,
+      nombre_comercial: motorData.nombre_comercial || `${fabName} - ${cleanCodigo}`,
+      denominacion_venta: motorData.denominacion_venta || '',
+      cilindrada_cc: motorData.cilindrada_cc ? Number(motorData.cilindrada_cc) : undefined,
+      cilindrada_texto: espec.cilindrada_texto as string | undefined,
+      combustible: motorData.combustible || 'Diésel',
+      cilindros: motorData.cilindros ? Number(motorData.cilindros) : 4,
+      valvulas: motorData.valvulas ? Number(motorData.valvulas) : 8,
+      diametro_cilindro_std_mm: motorData.diametro_cilindro_std_mm ? Number(motorData.diametro_cilindro_std_mm) : undefined,
+      aspiracion: motorData.aspiracion || 'Natural',
+      anios: motorData.anios || undefined,
+      especificaciones_tecnicas: espec,
+      fabricante: matchedFab,
+      parts_count: 0
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('motores')
+        .insert({
+          fabricante_id: newMotor.fabricante_id,
+          modelo_id: newMotor.modelo_id || null,
+          codigo: newMotor.codigo,
+          nombre_comercial: newMotor.nombre_comercial,
+          cilindrada_cc: newMotor.cilindrada_cc || null,
+          combustible: newMotor.combustible,
+          cilindros: newMotor.cilindros || 4,
+          valvulas: newMotor.valvulas || 8,
+          diametro_cilindro_std_mm: newMotor.diametro_cilindro_std_mm || null,
+          aspiracion: newMotor.aspiracion || null,
+          anios: newMotor.anios || null,
+          especificaciones_tecnicas: espec
+        })
+        .select('*, fabricante:fabricantes(*), modelo:modelos(*)')
+        .single()
+
+      if (!error && data) {
+        newMotor.id = String(data.id)
+        if (data.fabricante) newMotor.fabricante = data.fabricante as Fabricante
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Inserción de motor en Supabase falló, guardando localmente:', err)
+    }
+
+    saveLocalCustomMotor(newMotor)
+    if (!mockMotores.some(m => m.id === newMotor.id)) {
+      mockMotores.unshift(newMotor)
+    }
+    return newMotor
   },
 
   /**
@@ -1407,12 +1630,13 @@ export const catalogService = {
 
     const matches = mockRepuestos.filter(r => {
       const matchOem = r.codigo_oem.toLowerCase().replace(/[-\s]/g, '').includes(q)
+      const matchAdditionalOem = r.codigos_oem_adicionales?.some(c => c.toLowerCase().replace(/[-\s]/g, '').includes(q))
       const matchNombre = r.nombre.toLowerCase().includes(clean.toLowerCase())
       const matchEquiv = r.equivalencias?.some(eq =>
         eq.codigo_alterno.toLowerCase().replace(/[-\s]/g, '').includes(q) ||
         eq.marca_alterna.toLowerCase().includes(clean.toLowerCase())
       )
-      return matchOem || matchNombre || matchEquiv
+      return matchOem || matchAdditionalOem || matchNombre || matchEquiv
     })
 
     return matches.map(r => {
@@ -1644,9 +1868,13 @@ export const catalogService = {
         longitud1_mm: part.longitud1_mm,
         longitud2_mm: part.longitud2_mm,
         espesor_anillo3_mm: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : null,
+        codigos_oem_adicionales: part.codigos_oem_adicionales || [],
         ...(part.dimensiones || {})
       },
-      especificaciones_tecnicas: part.especificaciones_tecnicas || {}
+      especificaciones_tecnicas: {
+        codigos_oem_adicionales: part.codigos_oem_adicionales || [],
+        ...(part.especificaciones_tecnicas || {})
+      }
     }
 
     try {
@@ -1707,6 +1935,7 @@ export const catalogService = {
       id: fallbackId,
       motor_id: part.motor_id,
       codigo_oem: insertPayload.codigo_oem,
+      codigos_oem_adicionales: part.codigos_oem_adicionales || [],
       nombre: insertPayload.nombre,
       subsistema: insertPayload.subsistema,
       categoria: insertPayload.categoria,
