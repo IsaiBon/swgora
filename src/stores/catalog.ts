@@ -21,6 +21,8 @@ export const useCatalogStore = defineStore('catalog', () => {
   // Filtros reactivos en cascada (Fabricante -> Modelo -> Motor)
   const selectedFabricanteId = ref<string | null>(null)
   const selectedModeloId = ref<string | null>(null)
+  // Modelos que comparten el motor seleccionado (relación N:M)
+  const modeloIdsDelMotor = ref<string[]>([])
   const selectedMotorId = ref<string | null>(null)
   const selectedComponentId = ref<string | null>(null) // 'ajuste_valvula' | 'valvula' | 'anillos_motor' | 'tornillos_culata' | null
   const onlyMotorsWithParts = ref<boolean>(true) // Por defecto: omitir motores sin repuestos asociados en catálogo
@@ -72,6 +74,7 @@ export const useCatalogStore = defineStore('catalog', () => {
       if (mot) {
         const matching = list.filter(m => 
           m.id === mot.modelo_id ||
+          modeloIdsDelMotor.value.includes(m.id) ||
           (mot.denominacion_venta && mot.denominacion_venta.toLowerCase().includes(m.nombre.toLowerCase())) ||
           (mot.nombre_comercial && mot.nombre_comercial.toLowerCase().includes(m.nombre.toLowerCase()))
         )
@@ -89,15 +92,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     if (selectedFabricanteId.value) {
       list = list.filter(m => m.fabricante_id === selectedFabricanteId.value)
     }
-    if (selectedModeloId.value) {
-      const mod = modelos.value.find(m => m.id === selectedModeloId.value)
-      const modName = mod?.nombre.toLowerCase() || ''
-      list = list.filter(m => 
-        m.modelo_id === selectedModeloId.value ||
-        (modName && m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(modName)) ||
-        (modName && m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(modName))
-      )
-    }
+    // El filtro por modelo ya lo aplica catalogService.getMotores (relación N:M modelo_motor)
     if (onlyMotorsWithParts.value) {
       list = list.filter(m => m.parts_count === undefined || m.parts_count > 0)
     }
@@ -138,6 +133,17 @@ export const useCatalogStore = defineStore('catalog', () => {
     } finally {
       loadingModelos.value = false
     }
+  }
+
+  /**
+   * Crea (o recupera) un modelo para el fabricante y lo agrega a la lista sin recargar
+   */
+  async function createModelo(fabricanteId: string, nombre: string): Promise<Modelo> {
+    const nuevo = await catalogService.createModelo(fabricanteId, nombre)
+    if (!modelos.value.some(m => m.id === nuevo.id)) {
+      modelos.value = [...modelos.value, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre))
+    }
+    return nuevo
   }
 
   /**
@@ -194,7 +200,7 @@ export const useCatalogStore = defineStore('catalog', () => {
   /**
    * Carga todos los repuestos pertenecientes a un grupo/categoría técnica directamente desde Supabase
    */
-  async function fetchRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string) {
+  async function fetchRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string, modeloId?: string) {
     if (!categoria) {
       repuestos.value = []
       return
@@ -203,7 +209,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     loadingRepuestos.value = true
     repuestosError.value = null
     try {
-      repuestos.value = await catalogService.getRepuestosByGrupo(categoria, subsistema, fabricanteId)
+      repuestos.value = await catalogService.getRepuestosByGrupo(categoria, subsistema, fabricanteId, modeloId)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al cargar repuestos del grupo'
       repuestosError.value = msg
@@ -290,10 +296,12 @@ export const useCatalogStore = defineStore('catalog', () => {
    */
   async function selectMotor(motorId: string | null) {
     selectedMotorId.value = motorId
+    modeloIdsDelMotor.value = []
     if (!motorId) {
       repuestos.value = []
       return
     }
+    modeloIdsDelMotor.value = await catalogService.getModeloIdsByMotor(motorId).catch(() => [])
 
     const mot = motores.value.find(m => m.id === motorId)
     if (mot) {
@@ -556,6 +564,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchMotores,
     fetchRepuestosByMotor,
     fetchRepuestosByGrupo,
+    createModelo,
     fetchGrupos,
     createGrupo,
     updateGrupo,

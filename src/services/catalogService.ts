@@ -998,6 +998,13 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
   }
 }
 
+/**
+ * Normaliza texto para comparar/buscar: minúsculas, sin tildes y sin espacios repetidos.
+ * Debe coincidir con la función SQL public.normalizar_texto.
+ */
+export const normalizeText = (t: string): string =>
+  (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+
 export const catalogService = {
   /**
    * Obtiene la lista de fabricantes disponibles
@@ -1122,12 +1129,9 @@ export const catalogService = {
 
       const { data, error } = await query.order('nombre', { ascending: true })
 
-      if (error || !data || data.length === 0) {
-        if (fabricanteId) {
-          const filtered = mockModelos.filter(m => m.fabricante_id === fabricanteId)
-          return filtered.length > 0 ? filtered : mockModelos
-        }
-        return mockModelos
+      // Solo se usan datos de respaldo si hubo error, o si la BD está vacía y no se filtró por marca
+      if (error || !data || (data.length === 0 && !fabricanteId)) {
+        return fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : mockModelos
       }
 
       return data.map((item: Record<string, unknown>) => ({
@@ -1141,6 +1145,53 @@ export const catalogService = {
     } catch {
       return fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : mockModelos
     }
+  },
+
+  /**
+   * Crea un modelo para un fabricante (o devuelve el existente si ya hay uno equivalente,
+   * sin distinguir mayúsculas ni tildes). Usa la función SQL public.crear_modelo.
+   */
+  async createModelo(fabricanteId: string, nombre: string): Promise<Modelo> {
+    const limpio = nombre.replace(/\s+/g, ' ').trim()
+    if (!fabricanteId || !limpio) throw new Error('Indica la marca y el nombre del modelo')
+
+    const { data, error } = await supabase.rpc('crear_modelo', { p_fabricante_id: fabricanteId, p_nombre: limpio })
+    if (error) throw new Error(error.message)
+
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown>
+    return {
+      id: String(row.id),
+      fabricante_id: String(row.fabricante_id),
+      nombre: String(row.nombre),
+      anio_inicio: row.anio_inicio ? Number(row.anio_inicio) : undefined,
+      anio_fin: row.anio_fin ? Number(row.anio_fin) : undefined,
+      activo: row.activo === undefined ? true : Boolean(row.activo)
+    }
+  },
+
+  /**
+   * IDs de motores asociados a un modelo (relación N:M modelo_motor + vínculo antiguo motores.modelo_id)
+   */
+  async getMotorIdsByModelo(modeloId: string): Promise<string[]> {
+    const ids = new Set<string>()
+    const { data: links } = await supabase
+      .from('modelo_motor').select('motor_id').eq('modelo_id', modeloId).not('motor_id', 'is', null)
+    ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.motor_id)))
+    const { data: legacy } = await supabase.from('motores').select('id').eq('modelo_id', modeloId)
+    ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.id)))
+    return [...ids]
+  },
+
+  /**
+   * IDs de modelos que comparten un motor (el mismo motor puede montarse en varios modelos)
+   */
+  async getModeloIdsByMotor(motorId: string): Promise<string[]> {
+    const ids = new Set<string>()
+    const { data: links } = await supabase.from('modelo_motor').select('modelo_id').eq('motor_id', motorId)
+    ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
+    const { data: legacy } = await supabase.from('motores').select('modelo_id').eq('id', motorId).not('modelo_id', 'is', null)
+    ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
+    return [...ids]
   },
 
   /**
@@ -1158,12 +1209,15 @@ export const catalogService = {
         query = query.eq('fabricante_id', fabricanteId)
       }
       if (modeloId) {
-        query = query.eq('modelo_id', modeloId)
+        const motorIds = await this.getMotorIdsByModelo(modeloId)
+        // Si no hay ningún motor vinculado se devuelve lista vacía (no los de otros modelos)
+        if (motorIds.length === 0) return []
+        query = query.in('id', motorIds)
       }
 
       const { data, error } = await query.order('codigo', { ascending: true }).limit(1000)
 
-      if (error || !data || data.length === 0) {
+      if (error || !data || (data.length === 0 && !fabricanteId && !modeloId)) {
         let filtered = [...mockMotores]
         for (const loc of localMotors) {
           if (!filtered.some(m => m.id === loc.id || (m.codigo.toLowerCase() === loc.codigo.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
@@ -1346,8 +1400,16 @@ export const catalogService = {
   /**
    * Obtiene todos los repuestos pertenecientes a una categoría/grupo técnico desde Supabase
    */
-  async getRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string): Promise<RepuestoTecnico[]> {
+  async getRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string, modeloId?: string): Promise<RepuestoTecnico[]> {
     try {
+      // Motores compatibles con el modelo; los repuestos universales (sin motor) siempre se conservan
+      const motorIdsModelo = modeloId ? new Set(await this.getMotorIdsByModelo(modeloId)) : null
+      const filtrar = (list: RepuestoTecnico[]) => list.filter(r => {
+        if (!r.motor_id) return true
+        if (fabricanteId && r.motor?.fabricante_id !== fabricanteId) return false
+        if (motorIdsModelo && !motorIdsModelo.has(r.motor_id)) return false
+        return true
+      })
       let query = supabase
         .from('repuestos_tecnicos')
         .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
@@ -1363,11 +1425,7 @@ export const catalogService = {
       const { data, error } = await query.order('codigo_oem', { ascending: true })
 
       if (!error && data && data.length > 0) {
-        let mapped = data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
-        if (fabricanteId) {
-          mapped = mapped.filter(r => r.motor?.fabricante_id === fabricanteId)
-        }
-        return mapped
+        return filtrar(data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item)))
       }
 
       // Si no hubo resultados por coincidencia exacta, probar búsqueda flexible por nombre o categoría
@@ -1379,11 +1437,7 @@ export const catalogService = {
           .order('codigo_oem', { ascending: true })
 
         if (altData && altData.length > 0) {
-          let mapped = altData.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
-          if (fabricanteId) {
-            mapped = mapped.filter(r => r.motor?.fabricante_id === fabricanteId)
-          }
-          return mapped
+          return filtrar(altData.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item)))
         }
       }
     } catch (err) {
