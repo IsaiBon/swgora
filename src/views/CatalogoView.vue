@@ -8,7 +8,8 @@ import {
   type Fabricante,
   type GrupoRepuesto,
   type Equivalencia,
-  normalizeText
+  normalizeText,
+  sortMotorsByRelevance
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
 import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
@@ -1191,13 +1192,14 @@ const filteredMotors = computed(() => {
   ))) {
     return list
   }
-  return list.filter(m => 
+  const matched = list.filter(m => 
     m.codigo.toLowerCase().includes(q) || 
     (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
     (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
     m.combustible.toLowerCase().includes(q) ||
     (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
   )
+  return sortMotorsByRelevance(matched, q)
 })
 
 const handleSelectMotor = async (mot: Motor) => {
@@ -1374,6 +1376,25 @@ const handleClearSearch = () => {
 // =============================================================================
 const brandMotorsList = computed<Motor[]>(() => {
   let list = availableMotors.value
+
+  const q = motorInput.value.trim().toLowerCase()
+  const isSelectedMotorCurrent = selectedMotor.value && (
+    q === selectedMotor.value.codigo.toLowerCase().trim() ||
+    (selectedMotor.value.nombre_comercial && q === selectedMotor.value.nombre_comercial.toLowerCase().trim()) ||
+    (selectedMotor.value.denominacion_venta && q === selectedMotor.value.denominacion_venta.toLowerCase().trim())
+  )
+
+  if (q && !isSelectedMotorCurrent) {
+    const matched = list.filter(m => 
+      m.codigo.toLowerCase().includes(q) || 
+      (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
+      (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
+      m.combustible.toLowerCase().includes(q) ||
+      (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
+    )
+    list = sortMotorsByRelevance(matched, q)
+  }
+
   if (selectedYear.value) {
     const yr = Number(selectedYear.value)
     if (!isNaN(yr) && yr > 0) {
@@ -1413,7 +1434,7 @@ const goToPrevMotorPage = () => { if (motorCurrentPage.value > 1) motorCurrentPa
 const goToNextMotorPage = () => { if (motorCurrentPage.value < motorTotalPages.value) motorCurrentPage.value++ }
 const goToLastMotorPage = () => { motorCurrentPage.value = motorTotalPages.value }
 
-watch([selectedBrand, selectedModel, selectedYear], () => {
+watch([selectedBrand, selectedModel, selectedYear, motorInput], () => {
   motorCurrentPage.value = 1
 })
 

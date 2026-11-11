@@ -12,7 +12,7 @@ import {
   type DocumentType
 } from '@/services/ordersService'
 import { clientesService, type Cliente, type ClientType } from '@/services/clientesService'
-import { catalogService, type CatalogProduct } from '@/services/catalogService'
+import { catalogService, type CatalogProduct, sortMotorsByRelevance } from '@/services/catalogService'
 import { useCatalogStore } from '@/stores/catalog'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
 import { 
@@ -121,9 +121,9 @@ const filteredEngineSuggestions = computed(() => {
   }
   
   if (!q) return engines.slice(0, 12).map(m => m.codigo)
-  return engines
-    .filter(m => m.codigo.toLowerCase().includes(q) || (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)))
-    .slice(0, 12)
+  const matched = engines.filter(m => m.codigo.toLowerCase().includes(q) || (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)))
+  return sortMotorsByRelevance(matched, q)
+    .slice(0, 15)
     .map(m => m.codigo)
 })
 
