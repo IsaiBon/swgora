@@ -44,6 +44,12 @@ export const useCatalogStore = defineStore('catalog', () => {
   const error = ref<string | null>(null)
   const repuestosError = ref<string | null>(null)
 
+  // Paginación por cursor y streaming eficiente de repuestos
+  const hasMoreRepuestos = ref<boolean>(false)
+  const repuestosCursor = ref<string | null>(null)
+  const totalRepuestosCount = ref<number>(0)
+  const isLoadingMore = ref<boolean>(false)
+
   // ===========================================================================
   // GETTERS COMPUTADOS
   // ===========================================================================
@@ -198,23 +204,85 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
-   * Carga todos los repuestos pertenecientes a un grupo/categoría técnica directamente desde Supabase
+   * Carga repuestos pertenecientes a un grupo/categoría técnica directamente desde Supabase
+   * Soporta selección estricta de columnas, paginación por cursor y streaming reactivo
    */
-  async function fetchRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string, modeloId?: string) {
+  async function fetchRepuestosByGrupo(
+    categoria: string, 
+    subsistema?: string, 
+    fabricanteId?: string, 
+    modeloId?: string,
+    options?: { append?: boolean; cursor?: string; limit?: number }
+  ) {
     if (!categoria) {
       repuestos.value = []
+      hasMoreRepuestos.value = false
+      repuestosCursor.value = null
+      totalRepuestosCount.value = 0
       return
     }
 
-    loadingRepuestos.value = true
+    if (options?.append) {
+      isLoadingMore.value = true
+    } else {
+      loadingRepuestos.value = true
+      repuestosCursor.value = null
+    }
     repuestosError.value = null
+
     try {
-      repuestos.value = await catalogService.getRepuestosByGrupo(categoria, subsistema, fabricanteId, modeloId)
+      const res = await catalogService.getRepuestosByGrupo(
+        categoria, 
+        subsistema, 
+        fabricanteId, 
+        modeloId,
+        { cursor: options?.cursor, limit: options?.limit ?? 150 }
+      )
+
+      if (options?.append) {
+        const existingIds = new Set(repuestos.value.map(r => r.id))
+        const newItems = res.filter(r => !existingIds.has(r.id))
+        repuestos.value = [...repuestos.value, ...newItems]
+      } else {
+        repuestos.value = res
+      }
+
+      hasMoreRepuestos.value = Boolean(res.hasMore)
+      repuestosCursor.value = res.nextCursor || null
+      totalRepuestosCount.value = res.totalCount ?? repuestos.value.length
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al cargar repuestos del grupo'
       repuestosError.value = msg
     } finally {
       loadingRepuestos.value = false
+      isLoadingMore.value = false
+    }
+  }
+
+  /**
+   * Carga el siguiente lote de repuestos técnicos desde Supabase mediante cursor
+   */
+  async function loadMoreRepuestos() {
+    if (!hasMoreRepuestos.value || !repuestosCursor.value || isLoadingMore.value) return
+    if (!selectedComponentId.value) return
+    const currentGrupo = grupos.value.find(g => g.codigo === selectedComponentId.value)
+    const categoria = currentGrupo?.categoria || selectedComponentId.value
+
+    await fetchRepuestosByGrupo(
+      categoria,
+      undefined,
+      selectedFabricanteId.value || undefined,
+      selectedModeloId.value || undefined,
+      { append: true, cursor: repuestosCursor.value, limit: 150 }
+    )
+  }
+
+  /**
+   * Carga todos los lotes restantes sucesivamente
+   */
+  async function loadAllRepuestos() {
+    while (hasMoreRepuestos.value && repuestosCursor.value && !isLoadingMore.value) {
+      await loadMoreRepuestos()
     }
   }
 
@@ -330,6 +398,10 @@ export const useCatalogStore = defineStore('catalog', () => {
     searchQuery.value = ''
     activeBrandFilter.value = 'Todas las marcas'
     repuestos.value = []
+    hasMoreRepuestos.value = false
+    repuestosCursor.value = null
+    totalRepuestosCount.value = 0
+    isLoadingMore.value = false
     error.value = null
     repuestosError.value = null
     await Promise.all([
@@ -550,6 +622,10 @@ export const useCatalogStore = defineStore('catalog', () => {
     isSaving,
     error,
     repuestosError,
+    hasMoreRepuestos,
+    repuestosCursor,
+    totalRepuestosCount,
+    isLoadingMore,
 
     // Computados
     selectedFabricante,
@@ -564,6 +640,8 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchMotores,
     fetchRepuestosByMotor,
     fetchRepuestosByGrupo,
+    loadMoreRepuestos,
+    loadAllRepuestos,
     createModelo,
     fetchGrupos,
     createGrupo,

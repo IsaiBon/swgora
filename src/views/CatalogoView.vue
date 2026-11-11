@@ -1209,8 +1209,15 @@ const getBrandName = (fabId: string): string => {
 // =============================================================================
 // FUNCIONES AUXILIARES PARA CUADRO TÉCNICO DE ANILLOS RIK / TALLER: d1 (D), h1 (B), a1 (T)
 // =============================================================================
+const conicalCache = new WeakMap<RepuestoTecnico, boolean>()
+const ringsCache = new WeakMap<RepuestoTecnico, PartRingItem[]>()
+const oemCache = new WeakMap<RepuestoTecnico, string[]>()
+
 const isPartConical = (part: RepuestoTecnico | null | undefined): boolean => {
   if (!part) return false
+  const cached = conicalCache.get(part)
+  if (cached !== undefined) return cached
+
   const dims = part.dimensiones as any
   const spec = part.especificaciones_tecnicas as any
   const rings = dims?.anillos as any[] | undefined
@@ -1218,7 +1225,7 @@ const isPartConical = (part: RepuestoTecnico | null | undefined): boolean => {
     (r.perfil && (String(r.perfil).toUpperCase().includes('CÓNIC') || String(r.perfil).toUpperCase().includes('CONIC') || String(r.perfil).toUpperCase().includes('KEYSTONE'))) ||
     (r.forma && (String(r.forma).toUpperCase().includes('KEYSTONE') || String(r.forma).toUpperCase().includes('CÓNIC') || String(r.forma).toUpperCase().includes('CONIC')))
   )
-  return Boolean(
+  const res = Boolean(
     hasConicalRing ||
     part.diseno_conico ||
     dims?.diseno_conico ||
@@ -1228,6 +1235,8 @@ const isPartConical = (part: RepuestoTecnico | null | undefined): boolean => {
     (dims?.forma1 && String(dims.forma1).toUpperCase().includes('KEYSTONE')) ||
     (spec?.forma1 && String(spec.forma1).toUpperCase().includes('KEYSTONE'))
   )
+  conicalCache.set(part, res)
+  return res
 }
 
 const getKeystoneLabel = (part: RepuestoTecnico | null | undefined): string => {
@@ -1246,10 +1255,15 @@ interface PartRingItem {
 }
 
 const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
+  if (!part) return []
+  const cached = ringsCache.get(part)
+  if (cached) return cached
+
+  let result: PartRingItem[]
   const rings = (part.dimensiones as any)?.anillos as any[] | undefined
   if (rings && rings.length > 0) {
     const total = rings.length
-    return rings.map((r, idx) => {
+    result = rings.map((r, idx) => {
       const isLast = idx === total - 1
       const isOil = String(r.posicion || '').toLowerCase().includes('oil') || String(r.posicion || '').toLowerCase().includes('aceite') || isLast
       const rawPerfil = r.perfil || (r.forma && (
@@ -1268,40 +1282,43 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
         perfil: rawPerfil
       }
     })
+  } else {
+    const d = part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null
+    const dims = part.dimensiones as any
+    const fallback: PartRingItem[] = [
+      {
+        posicion: 'Anillo 1',
+        d1: d,
+        h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null,
+        a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : (dims?.altura_radial1_mm ? Number(dims.altura_radial1_mm) : null),
+        perfil: isPartConical(part) ? 'Cónico / Keystone' : undefined
+      },
+      {
+        posicion: 'Anillo 2',
+        d1: d,
+        h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null,
+        a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : (dims?.altura_radial2_mm ? Number(dims.altura_radial2_mm) : null)
+      }
+    ]
+    if (part.espesor_anillo3_mm != null || dims?.espesor_anillo3_mm != null || dims?.altura_radial3_mm != null || dims?.espesor_radial3_mm != null) {
+      fallback.push({
+        posicion: 'Anillo 3',
+        d1: d,
+        h1: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : (dims?.espesor_anillo3_mm != null ? Number(dims.espesor_anillo3_mm) : null),
+        a1: dims?.altura_radial3_mm != null ? Number(dims.altura_radial3_mm) : (dims?.espesor_radial3_mm != null ? Number(dims.espesor_radial3_mm) : null)
+      })
+    }
+    fallback.push({
+      posicion: 'Anillo de aceite',
+      d1: d,
+      h1: part.espesor_aceite_mm ? Number(part.espesor_aceite_mm) : null,
+      a1: dims?.altura_radial_aceite_mm ? Number(dims.altura_radial_aceite_mm) : (dims?.espesor_radial_aceite_mm ? Number(dims.espesor_radial_aceite_mm) : null)
+    })
+    result = fallback
   }
 
-  const d = part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null
-  const dims = part.dimensiones as any
-  const fallback: PartRingItem[] = [
-    {
-      posicion: 'Anillo 1',
-      d1: d,
-      h1: part.espesor_anillo1_mm ? Number(part.espesor_anillo1_mm) : null,
-      a1: dims?.espesor_radial1_mm ? Number(dims.espesor_radial1_mm) : (dims?.altura_radial1_mm ? Number(dims.altura_radial1_mm) : null),
-      perfil: isPartConical(part) ? 'Cónico / Keystone' : undefined
-    },
-    {
-      posicion: 'Anillo 2',
-      d1: d,
-      h1: part.espesor_anillo2_mm ? Number(part.espesor_anillo2_mm) : null,
-      a1: dims?.espesor_radial2_mm ? Number(dims.espesor_radial2_mm) : (dims?.altura_radial2_mm ? Number(dims.altura_radial2_mm) : null)
-    }
-  ]
-  if (part.espesor_anillo3_mm != null || dims?.espesor_anillo3_mm != null || dims?.altura_radial3_mm != null || dims?.espesor_radial3_mm != null) {
-    fallback.push({
-      posicion: 'Anillo 3',
-      d1: d,
-      h1: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : (dims?.espesor_anillo3_mm != null ? Number(dims.espesor_anillo3_mm) : null),
-      a1: dims?.altura_radial3_mm != null ? Number(dims.altura_radial3_mm) : (dims?.espesor_radial3_mm != null ? Number(dims.espesor_radial3_mm) : null)
-    })
-  }
-  fallback.push({
-    posicion: 'Anillo de aceite',
-    d1: d,
-    h1: part.espesor_aceite_mm ? Number(part.espesor_aceite_mm) : null,
-    a1: dims?.altura_radial_aceite_mm ? Number(dims.altura_radial_aceite_mm) : (dims?.espesor_radial_aceite_mm ? Number(dims.espesor_radial_aceite_mm) : null)
-  })
-  return fallback
+  ringsCache.set(part, result)
+  return result
 }
 
 const getRingDiametroCellClass = (d1: number | null | undefined): string => {
@@ -1466,6 +1483,16 @@ const closeMotorInfo = () => {
 // TABLA DE REPUESTOS Y FILTRADO POR MEDIDAS TÉCNICAS
 // =============================================================================
 const tableSearchFilter = ref<string>('')
+const debouncedTableSearchFilter = ref<string>('')
+let tableSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(tableSearchFilter, (val) => {
+  if (tableSearchDebounceTimer) clearTimeout(tableSearchDebounceTimer)
+  tableSearchDebounceTimer = setTimeout(() => {
+    debouncedTableSearchFilter.value = val
+  }, 150)
+}, { immediate: true })
+
 const tableBrandFilter = ref<string>('Todas las marcas')
 
 const displayedParts = computed<RepuestoTecnico[]>(() => {
@@ -1652,9 +1679,9 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     }
   }
 
-  // 3. Búsqueda por texto local dentro de la tabla (incluye códigos OEM adicionales y equivalencias)
-  if (tableSearchFilter.value.trim()) {
-    const q = tableSearchFilter.value.toLowerCase().trim()
+  // 3. Búsqueda por texto local dentro de la tabla (con debounce de 150ms para fluidez total)
+  if (debouncedTableSearchFilter.value.trim()) {
+    const q = debouncedTableSearchFilter.value.toLowerCase().trim()
     list = list.filter(r => 
       r.nombre.toLowerCase().includes(q) ||
       r.codigo_oem.toLowerCase().includes(q) ||
@@ -1703,6 +1730,47 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
   }
 
   return list
+})
+
+// =============================================================================
+// PAGINACIÓN Y CONTROL DE RENDERIZADO DEL LADO DEL CLIENTE
+// =============================================================================
+const partsPerPage = ref<number>(50)
+const currentPartsPage = ref<number>(1)
+
+const partsTotalPages = computed(() => {
+  if (partsPerPage.value === -1) return 1
+  return Math.max(1, Math.ceil(displayedParts.value.length / partsPerPage.value))
+})
+
+const paginatedParts = computed<RepuestoTecnico[]>(() => {
+  if (partsPerPage.value === -1) return displayedParts.value
+  const start = (currentPartsPage.value - 1) * partsPerPage.value
+  return displayedParts.value.slice(start, start + partsPerPage.value)
+})
+
+const goToFirstPartsPage = () => { currentPartsPage.value = 1 }
+const goToPrevPartsPage = () => { if (currentPartsPage.value > 1) currentPartsPage.value-- }
+const goToNextPartsPage = () => { if (currentPartsPage.value < partsTotalPages.value) currentPartsPage.value++ }
+const goToLastPartsPage = () => { currentPartsPage.value = partsTotalPages.value }
+
+// Reiniciar a primera página cuando cambian los filtros reactivos
+watch([
+  debouncedTableSearchFilter, 
+  tableBrandFilter, 
+  selectedComponent, 
+  selectedBrand, 
+  selectedMotor, 
+  filterAnilloTab, 
+  filterAnilloDiametro, 
+  filterAnilloGrosor1, 
+  filterAnilloRadial1, 
+  filterAnilloGrosor2, 
+  filterAnilloRadial2, 
+  filterAnilloGrosorAceite, 
+  filterAnilloRadialAceite
+], () => {
+  currentPartsPage.value = 1
 })
 
 // Badges de marcas y catálogos
@@ -1769,6 +1837,9 @@ const splitCleanCodes = (val: unknown): string[] => {
  */
 const getPartOemCodes = (part: RepuestoTecnico | null | undefined): string[] => {
   if (!part) return []
+  const cached = oemCache.get(part)
+  if (cached) return cached
+
   const spec = (part.especificaciones_tecnicas || {}) as Record<string, any>
   const dims = (part.dimensiones || {}) as Record<string, any>
   const primaryDisplayCode = spec.codigo_dokuro || spec.codigo_mrk || spec.codigo_rik || spec.codigo_npr || part.codigo_oem || ''
@@ -1802,7 +1873,9 @@ const getPartOemCodes = (part: RepuestoTecnico | null | undefined): string[] => 
     }
   }
 
-  return Array.from(new Set(candidates.filter(Boolean)))
+  const result = Array.from(new Set(candidates.filter(Boolean)))
+  oemCache.set(part, result)
+  return result
 }
 
 // Filtra equivalencias multimarca alternas (excluyendo códigos OEM originales que van en su propia columna)
@@ -3554,7 +3627,7 @@ onUnmounted(() => {
 
             <tbody v-else class="divide-y divide-slate-100">
               <tr
-                v-for="part in displayedParts"
+                v-for="part in paginatedParts"
                 :key="part.id"
                 class="hover:bg-slate-50 transition group"
               >
@@ -3945,6 +4018,115 @@ onUnmounted(() => {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Pie de Tabla con Paginación y Carga Eficiente de Repuestos -->
+        <div class="bg-slate-50 py-2.5 px-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+          <div class="flex items-center gap-3">
+            <span class="text-[11px] text-slate-600 font-medium">
+              Mostrando
+              <strong class="font-mono text-slate-900">
+                {{ displayedParts.length === 0 ? 0 : (currentPartsPage - 1) * (partsPerPage === -1 ? displayedParts.length : partsPerPage) + 1 }}-{{ Math.min(currentPartsPage * (partsPerPage === -1 ? displayedParts.length : partsPerPage), displayedParts.length) }}
+              </strong>
+              de
+              <strong class="font-mono text-slate-900">{{ displayedParts.length }}</strong>
+              registros
+            </span>
+
+            <!-- Botones de Streaming desde BD cuando hay más lotes -->
+            <div v-if="catalogStore.hasMoreRepuestos" class="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <span class="text-[10px] text-slate-500 font-mono">
+                ({{ catalogStore.repuestos.length }} de ~{{ catalogStore.totalRepuestosCount }} en BD)
+              </span>
+              <button
+                type="button"
+                @click="catalogStore.loadMoreRepuestos()"
+                :disabled="catalogStore.isLoadingMore"
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-50 text-[#004b97] hover:bg-sky-100 border border-sky-200 text-[11px] font-bold transition disabled:opacity-50"
+                title="Cargar siguiente lote de 150 repuestos mediante cursor de base de datos"
+              >
+                <Loader2 v-if="catalogStore.isLoadingMore" class="w-3 h-3 animate-spin" />
+                <Plus v-else class="w-3 h-3" />
+                <span>+ Cargar más (+150)</span>
+              </button>
+              <button
+                type="button"
+                @click="catalogStore.loadAllRepuestos()"
+                :disabled="catalogStore.isLoadingMore"
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 text-[11px] font-semibold transition disabled:opacity-50"
+                title="Cargar todos los registros restantes"
+              >
+                <span>Cargar todos</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Selector de filas por página y controles de paginación -->
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span>Por pág:</span>
+              <select
+                v-model.number="partsPerPage"
+                @change="currentPartsPage = 1"
+                class="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-[#04C4D9]"
+              >
+                <option :value="25">25</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+                <option :value="-1">Todos</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1">
+              <span class="text-[11px] text-slate-500 mr-1.5 font-mono">
+                Pág. {{ currentPartsPage }} / {{ partsTotalPages }}
+              </span>
+
+              <button
+                type="button"
+                @click="goToFirstPartsPage"
+                :disabled="currentPartsPage === 1"
+                class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+                title="Primera página"
+              >
+                <ChevronsLeft class="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                @click="goToPrevPartsPage"
+                :disabled="currentPartsPage === 1"
+                class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+                title="Página anterior"
+              >
+                <ChevronLeft class="w-3.5 h-3.5" />
+              </button>
+
+              <span class="px-2 font-mono font-bold text-slate-700 text-xs">
+                {{ currentPartsPage }}
+              </span>
+
+              <button
+                type="button"
+                @click="goToNextPartsPage"
+                :disabled="currentPartsPage === partsTotalPages"
+                class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+                title="Página siguiente"
+              >
+                <ChevronRight class="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                @click="goToLastPartsPage"
+                :disabled="currentPartsPage === partsTotalPages"
+                class="p-1 rounded hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-500"
+                title="Última página"
+              >
+                <ChevronsRight class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
       </div>

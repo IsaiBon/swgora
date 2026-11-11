@@ -216,6 +216,70 @@ export interface CatalogProduct {
 }
 
 // =============================================================================
+// SELECCIÓN ESTRICTA DE COLUMNAS, PAGINACIÓN POR CURSOR Y CACHÉ EN MEMORIA
+// =============================================================================
+
+export type PaginatedRepuestosList = RepuestoTecnico[] & {
+  totalCount?: number
+  hasMore?: boolean
+  nextCursor?: string | null
+}
+
+export interface CatalogQueryOptions {
+  cursor?: string
+  limit?: number
+  bypassCache?: boolean
+}
+
+export const REPUESTO_STRICT_COLUMNS = 
+  'id,motor_id,codigo_oem,nombre,subsistema,categoria,precio,stock,estado,imagen_url,' +
+  'diametro_cabeza_mm,diametro_vastago_mm,longitud_total_mm,angulo_asiento_grados,' +
+  'diametro_cilindro_mm,espesor_anillo1_mm,espesor_anillo2_mm,espesor_aceite_mm,' +
+  'tipo_cojinete,diametro_munon_mm,diametro_alojamiento_mm,ancho_casquete_mm,' +
+  'dimensiones,especificaciones_tecnicas,' +
+  'equivalencias:equivalencias_repuestos(id,repuesto_id,marca_alterna,codigo_alterno,tipo_referencia,notas,especificaciones_tecnicas),' +
+  'motor:motores(id,fabricante_id,modelo_id,codigo,nombre_comercial,cilindrada_cc,combustible,cilindros,valvulas,diametro_cilindro_std_mm,anios,especificaciones_tecnicas,fabricante:fabricantes(id,nombre,logo_url),modelo:modelos(id,nombre))'
+
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+}
+const CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutos
+
+const partsCache = new Map<string, CacheEntry<PaginatedRepuestosList>>()
+const countCache = new Map<string, CacheEntry<number>>()
+
+export function clearCatalogPartsCache() {
+  partsCache.clear()
+  countCache.clear()
+}
+
+export async function getRepuestosCount(categoria?: string, subsistema?: string): Promise<number> {
+  const countKey = `${categoria || ''}|${subsistema || ''}`
+  const cached = countCache.get(countKey)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data
+  }
+  try {
+    let countQuery = supabase
+      .from('repuestos_tecnicos')
+      .select('*', { count: 'exact', head: true })
+    if (categoria) {
+      countQuery = countQuery.eq('categoria', categoria)
+    }
+    if (subsistema && subsistema !== 'Todos') {
+      countQuery = countQuery.eq('subsistema', subsistema)
+    }
+    const { count, error } = await countQuery
+    const res = (!error && count != null) ? count : 0
+    countCache.set(countKey, { data: res, timestamp: Date.now() })
+    return res
+  } catch {
+    return 0
+  }
+}
+
+// =============================================================================
 // DATOS MOCK REALISTAS DEL TALLER JR BLANCO (DOKURO, RIK, NDC, AJUSA, PIONEER)
 // =============================================================================
 
@@ -1370,7 +1434,7 @@ export const catalogService = {
     try {
       let query = supabase
         .from('repuestos_tecnicos')
-        .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+        .select(REPUESTO_STRICT_COLUMNS as any)
         .eq('motor_id', motorId)
 
       if (subsistema && subsistema !== 'Todos') {
@@ -1379,7 +1443,7 @@ export const catalogService = {
 
       const { data, error } = await query.order('subsistema', { ascending: true })
 
-      if (error || !data || data.length === 0) {
+      if (error || !data || (data as any[]).length === 0) {
         let filtered = mockRepuestos.filter(r => r.motor_id === motorId)
         if (subsistema && subsistema !== 'Todos') {
           filtered = filtered.filter(r => r.subsistema === subsistema)
@@ -1387,7 +1451,7 @@ export const catalogService = {
         return filtered.length > 0 ? filtered : mockRepuestos.filter(r => !subsistema || subsistema === 'Todos' || r.subsistema === subsistema)
       }
 
-      return data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+      return (data as any[]).map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
     } catch {
       let filtered = mockRepuestos.filter(r => r.motor_id === motorId)
       if (subsistema && subsistema !== 'Todos') {
@@ -1399,8 +1463,26 @@ export const catalogService = {
 
   /**
    * Obtiene todos los repuestos pertenecientes a una categoría/grupo técnico desde Supabase
+   * Utiliza selección estricta de columnas, paginación por cursor en lugar de offset, y caché en memoria
    */
-  async getRepuestosByGrupo(categoria: string, subsistema?: string, fabricanteId?: string, modeloId?: string): Promise<RepuestoTecnico[]> {
+  async getRepuestosByGrupo(
+    categoria: string, 
+    subsistema?: string, 
+    fabricanteId?: string, 
+    modeloId?: string,
+    options?: CatalogQueryOptions
+  ): Promise<PaginatedRepuestosList> {
+    const limit = options?.limit !== undefined ? options.limit : 150
+    const cursor = options?.cursor
+    const cacheKey = `${categoria || ''}|${subsistema || ''}|${fabricanteId || ''}|${modeloId || ''}|${cursor || ''}|${limit}`
+
+    if (!options?.bypassCache && partsCache.has(cacheKey)) {
+      const entry = partsCache.get(cacheKey)!
+      if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
+        return entry.data
+      }
+    }
+
     try {
       // Motores compatibles con el modelo; los repuestos universales (sin motor) siempre se conservan
       const motorIdsModelo = modeloId ? new Set(await this.getMotorIdsByModelo(modeloId)) : null
@@ -1410,9 +1492,15 @@ export const catalogService = {
         if (motorIdsModelo && !motorIdsModelo.has(r.motor_id)) return false
         return true
       })
+
+      // Conteo eficiente mediante Head request en Supabase (solo en primera página)
+      const countPromise = cursor
+        ? Promise.resolve(countCache.get(`${categoria || ''}|${subsistema || ''}`)?.data ?? 0)
+        : getRepuestosCount(categoria, subsistema)
+
       let query = supabase
         .from('repuestos_tecnicos')
-        .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+        .select(REPUESTO_STRICT_COLUMNS as any)
 
       if (categoria) {
         query = query.eq('categoria', categoria)
@@ -1422,22 +1510,59 @@ export const catalogService = {
         query = query.eq('subsistema', subsistema)
       }
 
-      const { data, error } = await query.order('codigo_oem', { ascending: true })
-
-      if (!error && data && data.length > 0) {
-        return filtrar(data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item)))
+      if (cursor) {
+        query = query.gt('codigo_oem', cursor)
       }
 
-      // Si no hubo resultados por coincidencia exacta, probar búsqueda flexible por nombre o categoría
-      if (categoria && (!data || data.length === 0)) {
-        const { data: altData } = await supabase
+      if (limit > 0) {
+        query = query.limit(limit)
+      }
+
+      const [{ data, error }, totalCount] = await Promise.all([
+        query.order('codigo_oem', { ascending: true }),
+        countPromise
+      ])
+
+      const rows = data as any[] | null
+      if (!error && rows && rows.length > 0) {
+        const hasMore = limit > 0 && rows.length === limit
+        const nextCursor = hasMore ? (rows[rows.length - 1]?.codigo_oem as string) : null
+        const mapped = rows.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+        const filtered = filtrar(mapped) as PaginatedRepuestosList
+        filtered.totalCount = totalCount || filtered.length
+        filtered.hasMore = hasMore
+        filtered.nextCursor = nextCursor
+
+        partsCache.set(cacheKey, { data: filtered, timestamp: Date.now() })
+        return filtered
+      }
+
+      // Si no hubo resultados por coincidencia exacta y es primera página, probar búsqueda flexible por nombre o categoría
+      if (categoria && !cursor && (!rows || rows.length === 0)) {
+        let altQuery = supabase
           .from('repuestos_tecnicos')
-          .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+          .select(REPUESTO_STRICT_COLUMNS as any)
           .or(`categoria.ilike.%${categoria}%,nombre.ilike.%${categoria}%`)
           .order('codigo_oem', { ascending: true })
 
-        if (altData && altData.length > 0) {
-          return filtrar(altData.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item)))
+        if (limit > 0) {
+          altQuery = altQuery.limit(limit)
+        }
+
+        const { data: altData } = await altQuery
+        const altRows = altData as any[] | null
+
+        if (altRows && altRows.length > 0) {
+          const hasMore = limit > 0 && altRows.length === limit
+          const nextCursor = hasMore ? (altRows[altRows.length - 1]?.codigo_oem as string) : null
+          const mapped = altRows.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+          const filtered = filtrar(mapped) as PaginatedRepuestosList
+          filtered.totalCount = filtered.length
+          filtered.hasMore = hasMore
+          filtered.nextCursor = nextCursor
+
+          partsCache.set(cacheKey, { data: filtered, timestamp: Date.now() })
+          return filtered
         }
       }
     } catch (err) {
@@ -1465,14 +1590,19 @@ export const catalogService = {
       })
     }
 
-    return list.map(r => {
+    const result = list.map(r => {
       const mot = mockMotores.find(m => m.id === r.motor_id)
       const fab = mot ? mockFabricantes.find(f => f.id === mot.fabricante_id) : undefined
       return {
         ...r,
         motor: r.motor || (mot ? { ...mot, fabricante: fab } : undefined)
       }
-    })
+    }) as PaginatedRepuestosList
+
+    result.totalCount = result.length
+    result.hasMore = false
+    result.nextCursor = null
+    return result
   },
 
   /**
@@ -1739,7 +1869,7 @@ export const catalogService = {
       // 2. Buscar en repuestos_tecnicos
       let query = supabase
         .from('repuestos_tecnicos')
-        .select('*, equivalencias:equivalencias_repuestos(*), motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+        .select(REPUESTO_STRICT_COLUMNS as any)
 
       if (repuestoIds.length > 0) {
         query = query.or(`codigo_oem.ilike.%${clean}%,nombre.ilike.%${clean}%,id.in.(${repuestoIds.join(',')})`)
@@ -1749,8 +1879,8 @@ export const catalogService = {
 
       const { data, error } = await query.limit(60)
 
-      if (!error && data && data.length > 0) {
-        return data.map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
+      if (!error && data && (data as any[]).length > 0) {
+        return (data as any[]).map((item: Record<string, unknown>) => mapDbRepuestoToFrontend(item))
       }
     } catch {
       // Fallback
@@ -2052,6 +2182,7 @@ export const catalogService = {
           ...insertedPart,
           equivalencias: createdEquivs
         })
+        clearCatalogPartsCache()
         saveLocalCustomRepuesto(mapped)
         mockRepuestos.unshift(mapped)
         return mapped
@@ -2107,6 +2238,7 @@ export const catalogService = {
       motor: fallbackMotor
     }
 
+    clearCatalogPartsCache()
     saveLocalCustomRepuesto(fallbackPart)
     mockRepuestos.unshift(fallbackPart)
     return fallbackPart
@@ -2218,6 +2350,7 @@ export const catalogService = {
           ...updatedPart,
           equivalencias: finalEquivs
         })
+        clearCatalogPartsCache()
         saveLocalCustomRepuesto(mapped)
         const mockIdx = mockRepuestos.findIndex(r => r.id === partId)
         if (mockIdx >= 0) {
@@ -2249,6 +2382,7 @@ export const catalogService = {
         : existing?.equivalencias || []
     }
 
+    clearCatalogPartsCache()
     saveLocalCustomRepuesto(updatedLocalPart)
     const mIdx = mockRepuestos.findIndex(r => r.id === partId)
     if (mIdx >= 0) {
@@ -2261,6 +2395,7 @@ export const catalogService = {
    * Elimina un repuesto técnico de Supabase y del almacenamiento local
    */
   async deleteRepuesto(partId: string): Promise<boolean> {
+    clearCatalogPartsCache()
     try {
       // 1. Eliminar equivalencias asociadas en Supabase
       await supabase
