@@ -454,10 +454,37 @@ const activeGroup = computed<GrupoRepuesto | null>(() => {
 
 const isRingsGroup = computed<boolean>(() => {
   if (!activeGroup.value) return false
+  if (activeGroup.value.tipo_vista === 'tabla') return true
   const code = (activeGroup.value.codigo || '').toLowerCase()
   const cat = (activeGroup.value.categoria || '').toLowerCase()
   return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
 })
+
+const CORE_RING_PARAM_KEYS = new Set([
+  'diametro_cilindro_mm',
+  'anillo1_h1',
+  'anillo1_a1',
+  'anillo2_h1',
+  'anillo2_a1',
+  'anillo3_h1',
+  'anillo3_a1',
+  'aceite_h1',
+  'aceite_a1',
+  'diseno_conico',
+  'cilindros'
+])
+
+const extraRingGroupParams = computed(() => {
+  if (!activeGroup.value || !isRingsGroup.value) return []
+  return activeGroup.value.parametros.filter(p => !CORE_RING_PARAM_KEYS.has(p.clave))
+})
+
+const getActiveGroupParamLabel = (clave: string, fallback: string): string => {
+  const found = activeGroup.value?.parametros.find(p => p.clave === clave)
+  if (!found) return fallback
+  const base = found.etiqueta_corta || found.etiqueta || fallback
+  return found.unidad ? `${base} (${found.unidad})` : base
+}
 
 // Al cambiar de grupo, inicializar los campos de parámetros técnicos y subsistema
 watch(activeGroup, (grp) => {
@@ -515,6 +542,21 @@ const validatePartForm = (): boolean => {
         errors[`ring_h1_${idx}`] = `El grosor h1 de ${getRingRowTitle(row, idx)} es obligatorio`
       }
     })
+
+    for (const param of extraRingGroupParams.value) {
+      if (param.requerido) {
+        const val = paramValues.value[param.clave]
+        if (param.tipo_dato === 'numero') {
+          if (val === null || val === undefined || val === '' || isNaN(Number(val)) || Number(val) <= 0) {
+            errors[param.clave] = `La medida ${param.etiqueta} (${param.unidad || 'mm'}) es obligatoria`
+          }
+        } else if (param.tipo_dato === 'texto' || param.tipo_dato === 'seleccion') {
+          if (!val || String(val).trim() === '') {
+            errors[param.clave] = `El parámetro ${param.etiqueta} es obligatorio`
+          }
+        }
+      }
+    }
   } else if (activeGroup.value && activeGroup.value.parametros) {
     // Validar parámetros requeridos del grupo seleccionado
     for (const param of activeGroup.value.parametros) {
@@ -1015,7 +1057,183 @@ const groupCategoria = ref<string>('')
 const groupSubsistema = ref<string>('') // Opcional
 const groupDescripcion = ref<string>('')
 const groupIcono = ref<string>('Layers')
+const groupTipoVista = ref<'normal' | 'tabla'>('normal')
 const soloFiltrosEnTabla = ref<boolean>(false)
+
+const getDefaultTableParams = (): DynamicParamRow[] => [
+  {
+    id: `param-${Date.now()}-t1`,
+    etiqueta: 'Diámetro de Cilindro (d1)',
+    etiqueta_corta: 'Diámetro',
+    clave: 'diametro_cilindro_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Calibre del cilindro o diámetro nominal',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 96.00
+  },
+  {
+    id: `param-${Date.now()}-t2`,
+    etiqueta: '1° Anillo (Fuego) - Grosor (h1)',
+    etiqueta_corta: '1° Grosor',
+    clave: 'anillo1_h1',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Espesor o grosor del aro superior',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 2.00
+  },
+  {
+    id: `param-${Date.now()}-t3`,
+    etiqueta: '1° Anillo (Fuego) - Altura (a1)',
+    etiqueta_corta: '1° Altura',
+    clave: 'anillo1_a1',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Ancho radial del aro superior',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 3.80
+  },
+  {
+    id: `param-${Date.now()}-t4`,
+    etiqueta: '2° Anillo (Compresión) - Grosor (h1)',
+    etiqueta_corta: '2° Grosor',
+    clave: 'anillo2_h1',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Espesor o grosor del segundo aro',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 2.00
+  },
+  {
+    id: `param-${Date.now()}-t5`,
+    etiqueta: '2° Anillo (Compresión) - Altura (a1)',
+    etiqueta_corta: '2° Altura',
+    clave: 'anillo2_a1',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Ancho radial del segundo aro',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 4.10
+  },
+  {
+    id: `param-${Date.now()}-t6`,
+    etiqueta: 'Anillo de Aceite - Grosor (h1)',
+    etiqueta_corta: 'Aceite Grosor',
+    clave: 'aceite_h1',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Espesor del aro rascador de aceite',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 3.00
+  },
+  {
+    id: `param-${Date.now()}-t7`,
+    etiqueta: 'Anillo de Aceite - Altura (a1)',
+    etiqueta_corta: 'Aceite Altura',
+    clave: 'aceite_a1',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Ancho radial del aro rascador de aceite',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 3.40
+  },
+  {
+    id: `param-${Date.now()}-t8`,
+    etiqueta: 'Diseño Cónico / Keystone',
+    etiqueta_corta: 'Cónico',
+    clave: 'diseno_conico',
+    unidad: '',
+    tipo_dato: 'booleano',
+    requerido: false,
+    filtrable: true,
+    descripcion: 'Perfil trapezoidal o keystone',
+    decimales: 0,
+    mostrar_unidad: false,
+    valor_muestra: 0
+  }
+]
+
+const getDefaultNormalParams = (): DynamicParamRow[] => [
+  {
+    id: `param-${Date.now()}-1`,
+    etiqueta: 'Diámetro Interior',
+    etiqueta_corta: 'Ø Int.',
+    clave: 'diametro_interior_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Medida del diámetro interno de la pieza',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 45.00
+  },
+  {
+    id: `param-${Date.now()}-2`,
+    etiqueta: 'Diámetro Exterior',
+    etiqueta_corta: 'Ø Ext.',
+    clave: 'diametro_exterior_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: 'Medida del diámetro externo o de alojamiento',
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 52.00
+  },
+  {
+    id: `param-${Date.now()}-3`,
+    etiqueta: 'Longitud Total',
+    etiqueta_corta: 'Long.',
+    clave: 'longitud_total_mm',
+    unidad: 'mm',
+    tipo_dato: 'numero',
+    requerido: false,
+    filtrable: false,
+    descripcion: 'Largo total o altura en milímetros',
+    decimales: 1,
+    mostrar_unidad: true,
+    valor_muestra: 110.5
+  }
+]
+
+const setGroupTipoVista = (tipo: 'normal' | 'tabla') => {
+  if (groupTipoVista.value === tipo) return
+  groupTipoVista.value = tipo
+  if (!isEditMode.value) {
+    const keys = dynamicParams.value.map(p => p.clave)
+    const isDefaultNormal = keys.length === 3 && keys.includes('diametro_interior_mm') && keys.includes('diametro_exterior_mm')
+    const isDefaultTable = keys.includes('anillo1_h1') && keys.includes('aceite_h1')
+    if (tipo === 'tabla' && isDefaultNormal) {
+      dynamicParams.value = getDefaultTableParams()
+    } else if (tipo === 'normal' && isDefaultTable) {
+      dynamicParams.value = getDefaultNormalParams()
+    }
+  }
+}
 
 // --- Creatable Combobox para Subsistema (Opcional, Inline, Cero Modales) ---
 const availableSubsistemas = ref<string[]>([
@@ -1158,6 +1376,7 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
   }
   groupDescripcion.value = grp.descripcion || ''
   groupIcono.value = grp.icono || 'Layers'
+  groupTipoVista.value = grp.tipo_vista || (grp.codigo === 'anillos_motor' ? 'tabla' : 'normal')
 
   const nonReqParams = grp.parametros.filter(p => !p.requerido)
   if (nonReqParams.length > 0) {
@@ -1195,51 +1414,9 @@ const switchToCreateMode = () => {
   subsistemaSearch.value = ''
   groupDescripcion.value = ''
   groupIcono.value = 'Layers'
+  groupTipoVista.value = 'normal'
   soloFiltrosEnTabla.value = false
-  dynamicParams.value = [
-    {
-      id: `param-${Date.now()}-1`,
-      etiqueta: 'Diámetro Interior',
-      etiqueta_corta: 'Ø Int.',
-      clave: 'diametro_interior_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      filtrable: true,
-      descripcion: 'Medida del diámetro interno de la pieza',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 45.00
-    },
-    {
-      id: `param-${Date.now()}-2`,
-      etiqueta: 'Diámetro Exterior',
-      etiqueta_corta: 'Ø Ext.',
-      clave: 'diametro_exterior_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      filtrable: true,
-      descripcion: 'Medida del diámetro externo o de alojamiento',
-      decimales: 2,
-      mostrar_unidad: true,
-      valor_muestra: 52.00
-    },
-    {
-      id: `param-${Date.now()}-3`,
-      etiqueta: 'Longitud Total',
-      etiqueta_corta: 'Long.',
-      clave: 'longitud_total_mm',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: false,
-      filtrable: false,
-      descripcion: 'Largo total o altura en milímetros',
-      decimales: 1,
-      mostrar_unidad: true,
-      valor_muestra: 110.5
-    }
-  ]
+  dynamicParams.value = getDefaultNormalParams()
   groupErrors.value = {}
 }
 
@@ -1341,6 +1518,47 @@ const visibleTableColumns = computed(() => {
   return dynamicParams.value.filter(p => p.requerido)
 })
 
+const previewTableDiametroParam = computed(() => {
+  return dynamicParams.value.find(p => p.clave === 'diametro_cilindro_mm' || p.clave.includes('diametro')) || null
+})
+
+const previewShowDiametroCol = computed(() => {
+  return previewTableDiametroParam.value ? previewTableDiametroParam.value.requerido : true
+})
+
+const previewShowGrosorCol = computed(() => {
+  const hParams = dynamicParams.value.filter(p => p.clave.endsWith('_h1') || p.clave.includes('grosor') || p.clave.includes('espesor'))
+  return hParams.length > 0 ? hParams.some(p => p.requerido) : true
+})
+
+const previewShowAlturaCol = computed(() => {
+  const aParams = dynamicParams.value.filter(p => p.clave.endsWith('_a1') || p.clave.includes('altura') || p.clave.includes('radial'))
+  return aParams.length > 0 ? aParams.some(p => p.requerido) : true
+})
+
+const previewDiametroHeader = computed(() => {
+  const p = previewTableDiametroParam.value
+  if (!p) return 'Diámetro'
+  const base = p.etiqueta_corta || p.etiqueta || 'Diámetro'
+  return p.unidad && p.unidad !== 'mm' ? `${base} (${p.unidad})` : base
+})
+
+const previewGrosorHeader = computed(() => {
+  const p = dynamicParams.value.find(x => x.clave === 'anillo1_h1' || x.clave.endsWith('_h1'))
+  if (!p) return 'Grosor'
+  return p.unidad && p.unidad !== 'mm' ? `Grosor (${p.unidad})` : 'Grosor'
+})
+
+const previewAlturaHeader = computed(() => {
+  const p = dynamicParams.value.find(x => x.clave === 'anillo1_a1' || x.clave.endsWith('_a1'))
+  if (!p) return 'Altura'
+  return p.unidad && p.unidad !== 'mm' ? `Altura (${p.unidad})` : 'Altura'
+})
+
+const previewExtraTableParams = computed(() => {
+  return dynamicParams.value.filter(p => p.requerido && !CORE_RING_PARAM_KEYS.has(p.clave))
+})
+
 const cycleDecimals = (param: DynamicParamRow) => {
   if (param.decimales === undefined || param.decimales === 2) {
     param.decimales = 1
@@ -1437,6 +1655,7 @@ const handleSaveGroup = async () => {
         subsistema: groupSubsistema.value,
         descripcion: groupDescripcion.value.trim() || undefined,
         icono: groupIcono.value,
+        tipo_vista: groupTipoVista.value,
         parametros: paramsPayload
       })
 
@@ -1449,6 +1668,7 @@ const handleSaveGroup = async () => {
         subsistema: groupSubsistema.value,
         descripcion: groupDescripcion.value.trim() || undefined,
         icono: groupIcono.value,
+        tipo_vista: groupTipoVista.value,
         parametros: paramsPayload
       })
 
@@ -1929,9 +2149,9 @@ onUnmounted(() => {
                       <thead>
                         <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
                           <th class="px-3 py-2 text-left border-r border-slate-200">Ranura / Posición</th>
-                          <th class="px-2 py-2 border-r border-slate-200">Diámetro (d1)</th>
-                          <th class="px-2 py-2 border-r border-slate-200">Grosor (h1)</th>
-                          <th class="px-2 py-2 border-r border-slate-200">Radial (a1)</th>
+                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro (d1)') }}</th>
+                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('anillo1_h1', 'Grosor (h1)') }}</th>
+                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('anillo1_a1', 'Radial (a1)') }}</th>
                           <th class="px-2.5 py-2">Perfil / Expansor</th>
                         </tr>
                       </thead>
@@ -2051,6 +2271,63 @@ onUnmounted(() => {
                           type="number"
                           placeholder="4"
                           class="w-12 px-1.5 py-0.5 text-center text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Parámetros personalizados adicionales agregados a esta familia en tabla -->
+                  <div v-if="extraRingGroupParams.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-200">
+                    <div
+                      v-for="param in extraRingGroupParams"
+                      :key="param.id"
+                      class="bg-white p-2.5 rounded-xl border transition shadow-2xs"
+                      :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
+                    >
+                      <div class="flex items-center justify-between mb-1">
+                        <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
+                          <span>{{ param.etiqueta }}</span>
+                          <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
+                        </label>
+                        <span v-if="param.unidad" class="text-[9px] font-mono font-bold text-slate-500">{{ param.unidad }}</span>
+                      </div>
+                      <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
+                        <input
+                          v-model.number="paramValues[param.clave]"
+                          type="number"
+                          step="0.001"
+                          placeholder="0.00"
+                          class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                        />
+                        <span class="absolute right-2.5 text-[9px] font-black text-slate-400 pointer-events-none">
+                          {{ param.unidad || '' }}
+                        </span>
+                      </div>
+                      <div v-else-if="param.tipo_dato === 'seleccion'">
+                        <select
+                          v-model="paramValues[param.clave]"
+                          class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                        >
+                          <option value="">Selecciona opción</option>
+                          <option v-for="opt in param.opciones || []" :key="opt" :value="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                      <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
+                        <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                          <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
+                          <span>Sí</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                          <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
+                          <span>No</span>
+                        </label>
+                      </div>
+                      <div v-else>
+                        <input
+                          v-model="paramValues[param.clave]"
+                          type="text"
+                          placeholder="Valor"
+                          class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                         />
                       </div>
                     </div>
@@ -2326,6 +2603,44 @@ onUnmounted(() => {
                 </div>
 
                 <div class="space-y-3">
+                  <!-- Selector de Tipo de Familia: Normal vs En Tabla (como Anillos) -->
+                  <div>
+                    <label class="block text-xs font-bold text-slate-800 mb-1.5">
+                      Tipo de Familia / Formato en Catálogo <span class="text-rose-500">*</span>
+                    </label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        @click="setGroupTipoVista('normal')"
+                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2"
+                        :class="groupTipoVista === 'normal'
+                          ? 'bg-cyan-50/90 border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'"
+                      >
+                        <Columns class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'normal' ? 'text-[#038391]' : 'text-slate-400'" />
+                        <div>
+                          <div class="text-xs font-black">Normal</div>
+                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Etiquetas horizontales (Válvulas, Camisas, Sellos...)</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        @click="setGroupTipoVista('tabla')"
+                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2"
+                        :class="groupTipoVista === 'tabla'
+                          ? 'bg-cyan-50/90 border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'"
+                      >
+                        <Table class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'tabla' ? 'text-[#038391]' : 'text-slate-400'" />
+                        <div>
+                          <div class="text-xs font-black">En Tabla (Anillos)</div>
+                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Matriz multinivel por ranura / fila (1°, 2°, Aceite...)</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
                   <!-- Nombre de Grupo (Obligatorio) -->
                   <div>
                     <label class="block text-xs font-bold text-slate-800 mb-1">
@@ -2584,21 +2899,34 @@ onUnmounted(() => {
                         </select>
                       </div>
 
-                      <!-- Unidad de Medida -->
+                      <!-- Unidad de Medida (Permite seleccionar sugerencia o escribir cualquier unidad libremente) -->
                       <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Unidad</label>
-                        <select
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Unidad (Libre)</label>
+                        <input
                           v-model="param.unidad"
-                          @change="handleParamUnitChange(param)"
+                          @input="handleParamUnitChange(param)"
+                          type="text"
+                          list="unidades-sugeridas-list"
+                          placeholder="mm, °, bar, psi, Nm, piezas..."
                           class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        >
+                        />
+                        <datalist id="unidades-sugeridas-list">
                           <option value="mm">mm (Milímetros)</option>
                           <option value="°">° (Grados)</option>
                           <option value="pulgadas">pulgadas</option>
                           <option value="piezas">piezas</option>
                           <option value="Nm">Nm</option>
-                          <option value="">Sin unidad</option>
-                        </select>
+                          <option value="lb-ft">lb-ft</option>
+                          <option value="bar">bar</option>
+                          <option value="psi">psi</option>
+                          <option value="kg/cm²">kg/cm²</option>
+                          <option value="g">g (Gramos)</option>
+                          <option value="kg">kg (Kilogramos)</option>
+                          <option value="cc">cc</option>
+                          <option value="l">l (Litros)</option>
+                          <option value="%">% (Porcentaje)</option>
+                          <option value="micras">micras (µm)</option>
+                        </datalist>
                       </div>
 
                       <!-- Clave Técnica Inmutable (ReadOnly + Candado) -->
@@ -2819,9 +3147,57 @@ onUnmounted(() => {
                             <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
                           </td>
 
-                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Badges horizontales idénticos a Imagen 3) -->
+                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Tabla si groupTipoVista === 'tabla', o Badges si 'normal') -->
                           <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
-                            <div class="flex flex-wrap items-center gap-1.5">
+                            <template v-if="groupTipoVista === 'tabla'">
+                              <div class="inline-block border border-slate-700 rounded-lg overflow-hidden bg-slate-900 font-mono text-[11px]">
+                                <table class="border-collapse text-center">
+                                  <thead>
+                                    <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
+                                      <th class="px-2 py-1 border-r border-slate-700 text-left">Anillo</th>
+                                      <th v-if="previewShowDiametroCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewDiametroHeader }}</th>
+                                      <th v-if="previewShowGrosorCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewGrosorHeader }}</th>
+                                      <th v-if="previewShowAlturaCol" class="px-2 py-1 text-cyan-300">{{ previewAlturaHeader }}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
+                                    <tr>
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
+                                        <span>Anillo 1</span>
+                                        <span class="ml-1 text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold">CÓNICO</span>
+                                      </td>
+                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">96</td>
+                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
+                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.8</td>
+                                    </tr>
+                                    <tr>
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo 2</td>
+                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">96</td>
+                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
+                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">4.1</td>
+                                    </tr>
+                                    <tr>
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo de aceite</td>
+                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">96</td>
+                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">3</td>
+                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.4</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                              <!-- Parámetros extra agregados a la familia en tabla -->
+                              <div v-if="previewExtraTableParams.length > 0" class="flex flex-wrap items-center gap-1 mt-1.5">
+                                <div
+                                  v-for="param in previewExtraTableParams"
+                                  :key="`row1-extra-${param.id}`"
+                                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-850 border border-cyan-500/40 text-[10px] font-mono font-bold text-cyan-300"
+                                >
+                                  <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                                  <span>{{ formatSampleValue(param, 0) }}</span>
+                                </div>
+                              </div>
+                            </template>
+                            <div v-else class="flex flex-wrap items-center gap-1.5">
                               <div
                                 v-for="param in visibleTableColumns"
                                 :key="`row1-${param.id}`"
@@ -2889,7 +3265,51 @@ onUnmounted(() => {
 
                           <!-- 4. COTAS / MEDIDAS AGRUPADAS -->
                           <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
-                            <div class="flex flex-wrap items-center gap-1.5">
+                            <template v-if="groupTipoVista === 'tabla'">
+                              <div class="inline-block border border-slate-700 rounded-lg overflow-hidden bg-slate-900 font-mono text-[11px]">
+                                <table class="border-collapse text-center">
+                                  <thead>
+                                    <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
+                                      <th class="px-2 py-1 border-r border-slate-700 text-left">Anillo</th>
+                                      <th v-if="previewShowDiametroCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewDiametroHeader }}</th>
+                                      <th v-if="previewShowGrosorCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewGrosorHeader }}</th>
+                                      <th v-if="previewShowAlturaCol" class="px-2 py-1 text-cyan-300">{{ previewAlturaHeader }}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
+                                    <tr>
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo 1</td>
+                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-amber-300">96.5</td>
+                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
+                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.8</td>
+                                    </tr>
+                                    <tr>
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo 2</td>
+                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-amber-300">96.5</td>
+                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
+                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">4.1</td>
+                                    </tr>
+                                    <tr>
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo de aceite</td>
+                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-amber-300">96.5</td>
+                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">3</td>
+                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.4</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                              <div v-if="previewExtraTableParams.length > 0" class="flex flex-wrap items-center gap-1 mt-1.5">
+                                <div
+                                  v-for="param in previewExtraTableParams"
+                                  :key="`row2-extra-${param.id}`"
+                                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-850 border border-cyan-500/40 text-[10px] font-mono font-bold text-cyan-300"
+                                >
+                                  <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                                  <span>{{ formatSampleValue(param, 1) }}</span>
+                                </div>
+                              </div>
+                            </template>
+                            <div v-else class="flex flex-wrap items-center gap-1.5">
                               <div
                                 v-for="param in visibleTableColumns"
                                 :key="`row2-${param.id}`"

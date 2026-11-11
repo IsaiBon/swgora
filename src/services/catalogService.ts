@@ -78,6 +78,8 @@ export interface ParametroTecnicoDefinicion {
   valor_maximo?: number
 }
 
+export type GrupoTipoVista = 'normal' | 'tabla'
+
 export interface GrupoRepuesto {
   id: string
   codigo: string
@@ -86,6 +88,7 @@ export interface GrupoRepuesto {
   subsistema: string
   descripcion?: string
   icono?: string
+  tipo_vista?: GrupoTipoVista
   parametros: ParametroTecnicoDefinicion[]
   activo: boolean
   orden_visual?: number
@@ -100,6 +103,7 @@ export interface GrupoRepuestoInsert {
   subsistema?: string
   descripcion?: string
   icono?: string
+  tipo_vista?: GrupoTipoVista
   parametros: ParametroTecnicoDefinicion[]
   activo?: boolean
   orden_visual?: number
@@ -287,6 +291,7 @@ export const LOCAL_GROUPS_STORAGE_KEY = 'swgora_grupos_repuestos_v1'
 export const LOCAL_PARTS_STORAGE_KEY = 'swgora_custom_repuestos_v1'
 export const LOCAL_BRANDS_STORAGE_KEY = 'swgora_custom_fabricantes_v1'
 export const LOCAL_MOTORS_STORAGE_KEY = 'swgora_custom_motores_v1'
+export const LOCAL_MODELS_STORAGE_KEY = 'swgora_custom_modelos_v1'
 
 export const mockGruposRepuestos: GrupoRepuesto[] = [
   {
@@ -331,6 +336,7 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
     subsistema: 'Block',
     descripcion: 'Juegos de aros de pistón (Desglose explícito 1°, 2° y aceite)',
     icono: 'Layers',
+    tipo_vista: 'tabla',
     activo: true,
     orden_visual: 3,
     parametros: [
@@ -560,6 +566,32 @@ function saveLocalCustomMotor(motor: Motor): void {
     localStorage.setItem(LOCAL_MOTORS_STORAGE_KEY, JSON.stringify(list))
   } catch (e) {
     console.error('Error guardando motor en localStorage:', e)
+  }
+}
+
+function getLocalCustomModelos(): Modelo[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(LOCAL_MODELS_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalCustomModelo(modelo: Modelo): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalCustomModelos()
+    const idx = list.findIndex(m => m.id === modelo.id || (m.nombre.toLowerCase() === modelo.nombre.toLowerCase() && m.fabricante_id === modelo.fabricante_id))
+    if (idx >= 0) {
+      list[idx] = modelo
+    } else {
+      list.push(modelo)
+    }
+    localStorage.setItem(LOCAL_MODELS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error guardando modelo en localStorage:', e)
   }
 }
 
@@ -1185,6 +1217,7 @@ export const catalogService = {
    * Obtiene modelos de vehículos desde Supabase, opcionalmente filtrados por fabricante
    */
   async getModelos(fabricanteId?: string): Promise<Modelo[]> {
+    const localMods = getLocalCustomModelos()
     try {
       let query = supabase.from('modelos').select('*').eq('activo', true)
       if (fabricanteId) {
@@ -1195,10 +1228,16 @@ export const catalogService = {
 
       // Solo se usan datos de respaldo si hubo error, o si la BD está vacía y no se filtró por marca
       if (error || !data || (data.length === 0 && !fabricanteId)) {
-        return fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : mockModelos
+        const base = fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : [...mockModelos]
+        for (const loc of localMods) {
+          if ((!fabricanteId || loc.fabricante_id === fabricanteId) && !base.some(m => m.id === loc.id || (m.nombre.toLowerCase() === loc.nombre.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
+            base.push(loc)
+          }
+        }
+        return base
       }
 
-      return data.map((item: Record<string, unknown>) => ({
+      const dbMods: Modelo[] = data.map((item: Record<string, unknown>) => ({
         id: String(item.id),
         fabricante_id: String(item.fabricante_id),
         nombre: String(item.nombre),
@@ -1206,31 +1245,78 @@ export const catalogService = {
         anio_fin: item.anio_fin ? Number(item.anio_fin) : undefined,
         activo: Boolean(item.activo)
       }))
+
+      for (const loc of localMods) {
+        if ((!fabricanteId || loc.fabricante_id === fabricanteId) && !dbMods.some(m => m.id === loc.id || (m.nombre.toLowerCase() === loc.nombre.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
+          dbMods.push(loc)
+        }
+      }
+
+      return dbMods
     } catch {
-      return fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : mockModelos
+      const base = fabricanteId ? mockModelos.filter(m => m.fabricante_id === fabricanteId) : [...mockModelos]
+      for (const loc of localMods) {
+        if ((!fabricanteId || loc.fabricante_id === fabricanteId) && !base.some(m => m.id === loc.id || (m.nombre.toLowerCase() === loc.nombre.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
+          base.push(loc)
+        }
+      }
+      return base
     }
   },
 
   /**
    * Crea un modelo para un fabricante (o devuelve el existente si ya hay uno equivalente,
-   * sin distinguir mayúsculas ni tildes). Usa la función SQL public.crear_modelo.
+   * sin distinguir mayúsculas ni tildes). Usa la función SQL public.crear_modelo con respaldo local.
    */
-  async createModelo(fabricanteId: string, nombre: string): Promise<Modelo> {
+  async createModelo(fabricanteId: string, nombre: string, anioInicio?: number, anioFin?: number): Promise<Modelo> {
     const limpio = nombre.replace(/\s+/g, ' ').trim()
     if (!fabricanteId || !limpio) throw new Error('Indica la marca y el nombre del modelo')
 
-    const { data, error } = await supabase.rpc('crear_modelo', { p_fabricante_id: fabricanteId, p_nombre: limpio })
-    if (error) throw new Error(error.message)
-
-    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown>
-    return {
-      id: String(row.id),
-      fabricante_id: String(row.fabricante_id),
-      nombre: String(row.nombre),
-      anio_inicio: row.anio_inicio ? Number(row.anio_inicio) : undefined,
-      anio_fin: row.anio_fin ? Number(row.anio_fin) : undefined,
-      activo: row.activo === undefined ? true : Boolean(row.activo)
+    const fallbackMod: Modelo = {
+      id: `mod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      fabricante_id: fabricanteId,
+      nombre: limpio,
+      anio_inicio: anioInicio || undefined,
+      anio_fin: anioFin || undefined,
+      activo: true
     }
+
+    try {
+      const { data, error } = await supabase.rpc('crear_modelo', { p_fabricante_id: fabricanteId, p_nombre: limpio })
+      if (!error && data) {
+        const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown>
+        if (row && row.id) {
+          fallbackMod.id = String(row.id)
+          fallbackMod.fabricante_id = String(row.fabricante_id || fabricanteId)
+          fallbackMod.nombre = String(row.nombre || limpio)
+          if (row.anio_inicio) fallbackMod.anio_inicio = Number(row.anio_inicio)
+          if (row.anio_fin) fallbackMod.anio_fin = Number(row.anio_fin)
+        }
+      } else {
+        const { data: insData, error: insError } = await supabase
+          .from('modelos')
+          .insert({
+            fabricante_id: fabricanteId,
+            nombre: limpio,
+            anio_inicio: anioInicio || null,
+            anio_fin: anioFin || null,
+            activo: true
+          })
+          .select('*')
+          .single()
+        if (!insError && insData) {
+          fallbackMod.id = String(insData.id)
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Respaldo local al crear modelo:', err)
+    }
+
+    saveLocalCustomModelo(fallbackMod)
+    if (!mockModelos.some(m => m.id === fallbackMod.id || (m.nombre.toLowerCase() === fallbackMod.nombre.toLowerCase() && m.fabricante_id === fallbackMod.fabricante_id))) {
+      mockModelos.push(fallbackMod)
+    }
+    return fallbackMod
   },
 
   /**
@@ -1928,25 +2014,43 @@ export const catalogService = {
         .order('orden_visual', { ascending: true })
 
       if (!error && data && data.length > 0) {
-        const fromDb: GrupoRepuesto[] = data.map((row: Record<string, unknown>) => ({
-          id: String(row.id),
-          codigo: String(row.codigo),
-          nombre: String(row.nombre),
-          categoria: String(row.categoria),
-          subsistema: String(row.subsistema || 'Block'),
-          descripcion: row.descripcion ? String(row.descripcion) : undefined,
-          icono: row.icono ? String(row.icono) : 'Layers',
-          parametros: Array.isArray(row.parametros) ? (row.parametros as ParametroTecnicoDefinicion[]) : [],
-          activo: Boolean(row.activo),
-          orden_visual: Number(row.orden_visual || 0),
-          created_at: row.created_at ? String(row.created_at) : undefined,
-          updated_at: row.updated_at ? String(row.updated_at) : undefined
-        }))
+        const fromDb: GrupoRepuesto[] = data.map((row: Record<string, unknown>) => {
+          const params = Array.isArray(row.parametros) ? (row.parametros as ParametroTecnicoDefinicion[]) : []
+          const metaTipoVista = (params[0] as any)?._tipo_vista as GrupoTipoVista | undefined
+          const codigoStr = String(row.codigo)
+          const resolvedTipoVista: GrupoTipoVista =
+            (row.tipo_vista as GrupoTipoVista) ||
+            metaTipoVista ||
+            (codigoStr === 'anillos_motor' ? 'tabla' : 'normal')
 
-        // Fusionar con grupos locales creados que no estén en BD
+          return {
+            id: String(row.id),
+            codigo: codigoStr,
+            nombre: String(row.nombre),
+            categoria: String(row.categoria),
+            subsistema: String(row.subsistema || 'Block'),
+            descripcion: row.descripcion ? String(row.descripcion) : undefined,
+            icono: row.icono ? String(row.icono) : 'Layers',
+            tipo_vista: resolvedTipoVista,
+            parametros: params,
+            activo: Boolean(row.activo),
+            orden_visual: Number(row.orden_visual || 0),
+            created_at: row.created_at ? String(row.created_at) : undefined,
+            updated_at: row.updated_at ? String(row.updated_at) : undefined
+          }
+        })
+
+        // Fusionar con grupos locales creados o editados (priorizando la versión local actualizada)
         const merged = [...fromDb]
         for (const loc of localGrupos) {
-          if (!merged.some(m => m.codigo === loc.codigo || m.id === loc.id)) {
+          const existingIdx = merged.findIndex(m => m.codigo === loc.codigo || m.id === loc.id)
+          if (existingIdx >= 0) {
+            merged[existingIdx] = {
+              ...merged[existingIdx],
+              ...loc,
+              id: merged[existingIdx].id || loc.id
+            }
+          } else {
             merged.push(loc)
           }
         }
@@ -1956,10 +2060,16 @@ export const catalogService = {
       console.warn('[CatalogService] Error consultando grupos_repuestos en Supabase, usando respaldo:', e)
     }
 
-    // Fallback a mockGruposRepuestos + grupos locales
+    // Fallback a mockGruposRepuestos + grupos locales (priorizando la versión local actualizada)
     const merged = [...mockGruposRepuestos]
     for (const loc of localGrupos) {
-      if (!merged.some(m => m.codigo === loc.codigo || m.id === loc.id)) {
+      const existingIdx = merged.findIndex(m => m.codigo === loc.codigo || m.id === loc.id)
+      if (existingIdx >= 0) {
+        merged[existingIdx] = {
+          ...merged[existingIdx],
+          ...loc
+        }
+      } else {
         merged.push(loc)
       }
     }
@@ -1986,6 +2096,11 @@ export const catalogService = {
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '')
 
+    const tipoVista: GrupoTipoVista = grupoData.tipo_vista || (slug === 'anillos_motor' ? 'tabla' : 'normal')
+    const paramsWithMeta = (grupoData.parametros || []).map((p, idx) =>
+      idx === 0 ? ({ ...p, _tipo_vista: tipoVista } as ParametroTecnicoDefinicion) : p
+    )
+
     const newGroup: GrupoRepuesto = {
       id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       codigo: slug,
@@ -1994,7 +2109,8 @@ export const catalogService = {
       subsistema: grupoData.subsistema || 'Block',
       descripcion: grupoData.descripcion?.trim() || undefined,
       icono: grupoData.icono || 'Layers',
-      parametros: grupoData.parametros || [],
+      tipo_vista: tipoVista,
+      parametros: paramsWithMeta,
       activo: grupoData.activo !== false,
       orden_visual: grupoData.orden_visual || 10,
       created_at: new Date().toISOString(),
@@ -2032,7 +2148,7 @@ export const catalogService = {
   },
 
   /**
-   * Modifica un grupo o familia de piezas existente (nombre, categoría, subsistema, icono, parámetros técnicos)
+   * Modifica un grupo o familia de piezas existente (nombre, categoría, subsistema, icono, tipo_vista, parámetros técnicos)
    */
   async updateGrupo(idOrCode: string, grupoData: Partial<GrupoRepuestoInsert>): Promise<GrupoRepuesto> {
     const existingList = await this.getGrupos()
@@ -2041,6 +2157,16 @@ export const catalogService = {
       throw new Error(`Grupo con identificador ${idOrCode} no encontrado`)
     }
 
+    const resolvedTipoVista: GrupoTipoVista =
+      grupoData.tipo_vista !== undefined
+        ? grupoData.tipo_vista
+        : (existing.tipo_vista || (existing.codigo === 'anillos_motor' ? 'tabla' : 'normal'))
+
+    const rawParams = grupoData.parametros !== undefined ? grupoData.parametros : existing.parametros
+    const paramsWithMeta = rawParams.map((p, idx) =>
+      idx === 0 ? ({ ...p, _tipo_vista: resolvedTipoVista } as ParametroTecnicoDefinicion) : p
+    )
+
     const updated: GrupoRepuesto = {
       ...existing,
       nombre: grupoData.nombre !== undefined ? grupoData.nombre.trim() : existing.nombre,
@@ -2048,7 +2174,8 @@ export const catalogService = {
       subsistema: grupoData.subsistema !== undefined ? grupoData.subsistema : existing.subsistema,
       descripcion: grupoData.descripcion !== undefined ? grupoData.descripcion.trim() : existing.descripcion,
       icono: grupoData.icono !== undefined ? grupoData.icono : existing.icono,
-      parametros: grupoData.parametros !== undefined ? grupoData.parametros : existing.parametros,
+      tipo_vista: resolvedTipoVista,
+      parametros: paramsWithMeta,
       activo: grupoData.activo !== undefined ? grupoData.activo : existing.activo,
       orden_visual: grupoData.orden_visual !== undefined ? grupoData.orden_visual : existing.orden_visual,
       updated_at: new Date().toISOString()

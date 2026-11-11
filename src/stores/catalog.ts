@@ -144,8 +144,8 @@ export const useCatalogStore = defineStore('catalog', () => {
   /**
    * Crea (o recupera) un modelo para el fabricante y lo agrega a la lista sin recargar
    */
-  async function createModelo(fabricanteId: string, nombre: string): Promise<Modelo> {
-    const nuevo = await catalogService.createModelo(fabricanteId, nombre)
+  async function createModelo(fabricanteId: string, nombre: string, anioInicio?: number, anioFin?: number): Promise<Modelo> {
+    const nuevo = await catalogService.createModelo(fabricanteId, nombre, anioInicio, anioFin)
     if (!modelos.value.some(m => m.id === nuevo.id)) {
       modelos.value = [...modelos.value, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre))
     }

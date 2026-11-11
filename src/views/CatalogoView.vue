@@ -65,18 +65,57 @@ const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
 const selectedYear = ref<string>('')
+const yearInput = ref<string>('')
+const isYearOpen = ref<boolean>(false)
 const showAllMotors = ref<boolean>(false)
 
-// Lista de años compatibles (1975 - 2026)
-const availableYears = computed<number[]>(() => {
-  return Array.from({ length: 2026 - 1975 + 1 }, (_, i) => 2026 - i)
+const CUSTOM_YEARS_STORAGE_KEY = 'swgora_custom_years_v1'
+function loadCustomYears(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(CUSTOM_YEARS_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+const customYears = ref<string[]>(loadCustomYears())
+
+// Lista de años compatibles (personalizados + 1975 - 2026)
+const availableYears = computed<string[]>(() => {
+  const base = Array.from({ length: 2026 - 1975 + 1 }, (_, i) => String(2026 - i))
+  const combined = [...customYears.value, ...base]
+  return Array.from(new Set(combined))
 })
 
-function doesYearMatchText(text: string | number | undefined | null, targetYear: number): boolean {
+const filteredYears = computed<string[]>(() => {
+  const q = yearInput.value.trim().toLowerCase()
+  if (!q || q === selectedYear.value.toLowerCase()) {
+    return availableYears.value
+  }
+  return availableYears.value.filter(yr => yr.toLowerCase().includes(q))
+})
+
+function handleSelectYear(yr: string) {
+  selectedYear.value = yr
+  yearInput.value = yr
+  isYearOpen.value = false
+}
+
+function handleClearYear() {
+  selectedYear.value = ''
+  yearInput.value = ''
+  isYearOpen.value = false
+}
+
+function doesYearMatchText(text: string | number | undefined | null, targetYear: number | string): boolean {
   if (text === undefined || text === null || text === '') return false
   const raw = String(text).trim()
   if (!raw || raw === '—') return false
-  if (raw.includes(String(targetYear))) return true
+  const targetStr = String(targetYear).trim()
+  if (raw.includes(targetStr)) return true
+  const parsedYear = Number(targetStr.match(/\b(19\d{2}|20\d{2})\b/)?.[1] || targetStr)
+  if (isNaN(parsedYear)) return false
 
   // Buscar rangos de 4 dígitos como "1995-2006", "1998 - 2005", "1995/2004", "1995 al 2006"
   const rangeRegex = /\b(19\d{2}|20\d{2})\s*(?:[-–—/]|al|a|hasta)\s*(19\d{2}|20\d{2}|act(?:ual)?|presente)?\b/gi
@@ -85,7 +124,7 @@ function doesYearMatchText(text: string | number | undefined | null, targetYear:
     const start = Number(match[1])
     const endRaw = (match[2] || '').toLowerCase()
     const end = (!endRaw || endRaw.startsWith('act') || endRaw.startsWith('pres')) ? 2026 : Number(endRaw)
-    if (!isNaN(start) && !isNaN(end) && targetYear >= Math.min(start, end) && targetYear <= Math.max(start, end)) {
+    if (!isNaN(start) && !isNaN(end) && parsedYear >= Math.min(start, end) && parsedYear <= Math.max(start, end)) {
       return true
     }
   }
@@ -94,13 +133,13 @@ function doesYearMatchText(text: string | number | undefined | null, targetYear:
   const openStartRegex = /\b(19\d{2}|20\d{2})\s*\+/g
   while ((match = openStartRegex.exec(raw)) !== null) {
     const start = Number(match[1])
-    if (!isNaN(start) && targetYear >= start) return true
+    if (!isNaN(start) && parsedYear >= start) return true
   }
 
   return false
 }
 
-// Estado para modales rápidos de creación de Marca y Motor desde la barra superior
+// Estado para modales rápidos de creación de Marca, Motor, Modelo y Año desde la barra superior
 const isQuickCreateBrandOpen = ref<boolean>(false)
 const quickBrandName = ref<string>('')
 const quickBrandCountry = ref<string>('Japón')
@@ -116,6 +155,16 @@ const quickMotorCc = ref<number | undefined>(undefined)
 const quickMotorFuel = ref<string>('Diésel')
 const quickMotorYears = ref<string>('')
 const isSavingQuickMotor = ref<boolean>(false)
+
+const isQuickCreateModelOpen = ref<boolean>(false)
+const quickModelBrandId = ref<string>('')
+const quickModelName = ref<string>('')
+const quickModelYearStart = ref<number | undefined>(undefined)
+const quickModelYearEnd = ref<number | undefined>(undefined)
+const isSavingQuickModel = ref<boolean>(false)
+
+const isQuickCreateYearOpen = ref<boolean>(false)
+const quickYearValue = ref<string>('')
 
 const openQuickCreateBrandModal = (initialName?: string) => {
   quickBrandName.value = (initialName || brandInput.value || '').trim().toUpperCase()
@@ -176,6 +225,59 @@ const handleSaveQuickMotor = async () => {
   } finally {
     isSavingQuickMotor.value = false
   }
+}
+
+const openQuickCreateModelModal = (initialName?: string) => {
+  quickModelName.value = (initialName || modelInput.value || '').trim().toUpperCase()
+  quickModelBrandId.value = selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || '11111111-1111-1111-1111-111111111101'
+  quickModelYearStart.value = selectedYear.value && !isNaN(Number(selectedYear.value)) ? Number(selectedYear.value) : undefined
+  quickModelYearEnd.value = undefined
+  isModelOpen.value = false
+  isQuickCreateModelOpen.value = true
+}
+
+const handleSaveQuickModel = async () => {
+  const cleanName = quickModelName.value.trim().toUpperCase()
+  const brandId = quickModelBrandId.value || selectedBrand.value?.id || catalogStore.fabricantes[0]?.id
+  if (!cleanName || !brandId) return
+  isSavingQuickModel.value = true
+  try {
+    const created = await catalogStore.createModelo(
+      brandId,
+      cleanName,
+      quickModelYearStart.value ? Number(quickModelYearStart.value) : undefined,
+      quickModelYearEnd.value ? Number(quickModelYearEnd.value) : undefined
+    )
+    isQuickCreateModelOpen.value = false
+    await handleSelectModel(created)
+    showToast(`✓ Modelo "${created.nombre}" registrado y seleccionado`)
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : 'No se pudo registrar el modelo')
+  } finally {
+    isSavingQuickModel.value = false
+  }
+}
+
+const openQuickCreateYearModal = (initialYear?: string) => {
+  quickYearValue.value = (initialYear || yearInput.value || '').trim()
+  isYearOpen.value = false
+  isQuickCreateYearOpen.value = true
+}
+
+const handleSaveQuickYear = (directValue?: string) => {
+  const val = (directValue !== undefined ? directValue : quickYearValue.value).trim()
+  if (!val) return
+  if (!customYears.value.includes(val) && !availableYears.value.includes(val)) {
+    customYears.value = [val, ...customYears.value]
+    try {
+      localStorage.setItem(CUSTOM_YEARS_STORAGE_KEY, JSON.stringify(customYears.value))
+    } catch {
+      // Silencioso
+    }
+  }
+  isQuickCreateYearOpen.value = false
+  handleSelectYear(val)
+  showToast(`✓ Año "${val}" agregado y seleccionado`)
 }
 
 // Control de visibilidad de filtros en vista móvil para liberar espacio vertical
@@ -604,6 +706,104 @@ const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
   return catalogStore.grupos.find(g => g.codigo === selectedComponent.value?.id || g.id === selectedComponent.value?.id) || null
 })
 
+// Determina si la familia activa está configurada como Tabla (como Anillos) o Normal
+const isCurrentGroupTable = computed<boolean>(() => {
+  if (!selectedComponent.value) return false
+  if (currentGroupDefinition.value?.tipo_vista) {
+    return currentGroupDefinition.value.tipo_vista === 'tabla'
+  }
+  return selectedComponent.value.id === 'anillos_motor'
+})
+
+const isPartTableFormat = (part: RepuestoTecnico): boolean => {
+  if (isCurrentGroupTable.value) return true
+  if (part.categoria === 'Anillos') return true
+  const catLower = (part.categoria || '').toLowerCase()
+  const grp = catalogStore.grupos.find(g => g.categoria.toLowerCase() === catLower || g.codigo.toLowerCase() === catLower)
+  if (grp?.tipo_vista === 'tabla') return true
+  return Array.isArray((part.dimensiones as any)?.anillos) && (part.dimensiones as any).anillos.length > 0
+}
+
+const CORE_TABLE_RING_KEYS = new Set([
+  'diametro_cilindro_mm',
+  'anillo1_h1',
+  'anillo1_a1',
+  'anillo2_h1',
+  'anillo2_a1',
+  'anillo3_h1',
+  'anillo3_a1',
+  'aceite_h1',
+  'aceite_a1',
+  'diseno_conico',
+  'cilindros'
+])
+
+const getTableGroupParam = (clave: string) => {
+  return currentGroupDefinition.value?.parametros.find(p => p.clave === clave) || null
+}
+
+const getTableParamLabel = (clave: string, fallback: string): string => {
+  const p = getTableGroupParam(clave)
+  if (!p) return fallback
+  return p.etiqueta_corta || p.etiqueta || fallback
+}
+
+const getTableParamUnit = (clave: string, fallback: string = 'mm'): string => {
+  const p = getTableGroupParam(clave)
+  return p ? p.unidad : fallback
+}
+
+const isTableParamInTable = (clave: string): boolean => {
+  const p = getTableGroupParam(clave)
+  return p ? Boolean(p.requerido) : true
+}
+
+const isTableParamInFilter = (clave: string): boolean => {
+  const p = getTableGroupParam(clave)
+  return p ? (p.filtrable !== false) : true
+}
+
+const showTableColDiametro = computed<boolean>(() => isTableParamInTable('diametro_cilindro_mm'))
+const showTableColGrosor = computed<boolean>(() =>
+  isTableParamInTable('anillo1_h1') || isTableParamInTable('anillo2_h1') || isTableParamInTable('aceite_h1')
+)
+const showTableColAltura = computed<boolean>(() =>
+  isTableParamInTable('anillo1_a1') || isTableParamInTable('anillo2_a1') || isTableParamInTable('aceite_a1')
+)
+
+const tableColDiametroHeader = computed<string>(() => {
+  const p = getTableGroupParam('diametro_cilindro_mm')
+  if (!p) return 'Diámetro'
+  const base = p.etiqueta_corta || p.etiqueta || 'Diámetro'
+  return p.unidad && p.unidad !== 'mm' ? `${base} (${p.unidad})` : base
+})
+
+const tableColGrosorHeader = computed<string>(() => {
+  const p = getTableGroupParam('anillo1_h1') || getTableGroupParam('anillo2_h1') || getTableGroupParam('aceite_h1')
+  if (!p) return 'Grosor'
+  return p.unidad && p.unidad !== 'mm' ? `Grosor (${p.unidad})` : 'Grosor'
+})
+
+const tableColAlturaHeader = computed<string>(() => {
+  const p = getTableGroupParam('anillo1_a1') || getTableGroupParam('anillo2_a1') || getTableGroupParam('aceite_a1')
+  if (!p) return 'Altura'
+  return p.unidad && p.unidad !== 'mm' ? `Altura (${p.unidad})` : 'Altura'
+})
+
+const extraTableFilterParams = computed(() => {
+  if (!currentGroupDefinition.value?.parametros) return []
+  return currentGroupDefinition.value.parametros.filter(
+    p => !CORE_TABLE_RING_KEYS.has(p.clave) && p.filtrable !== false
+  )
+})
+
+const extraTableVisibleParams = computed(() => {
+  if (!currentGroupDefinition.value?.parametros) return []
+  return currentGroupDefinition.value.parametros.filter(
+    p => !CORE_TABLE_RING_KEYS.has(p.clave) && p.requerido
+  )
+})
+
 // 1. Ajuste de válvula (Sellos)
 const filterSelloDiamInt = ref<number | undefined>(undefined)
 const filterSelloDiamExt = ref<number | undefined>(undefined)
@@ -652,7 +852,7 @@ const isFilterActive = (val: unknown): val is number => {
 // Contador de filtros de medida activos (Especializado Anillos + Dinámico para todos los demás)
 const activeMeasurementsCount = computed(() => {
   let count = 0
-  if (selectedComponent.value && selectedComponent.value.id === 'anillos_motor') {
+  if (selectedComponent.value && isCurrentGroupTable.value) {
     count += [
       filterAnilloDiametro.value, 
       filterAnilloGrosor1.value, 
@@ -878,30 +1078,6 @@ const filteredModels = computed(() => {
     (m.fabricante_id && normalizeText(getBrandName(m.fabricante_id)).includes(q))
   )
 })
-
-// Alta de modelo cuando lo escrito no existe para la marca seleccionada
-const isCreatingModel = ref<boolean>(false)
-const canCreateModel = computed(() => {
-  const q = normalizeText(modelInput.value)
-  if (!selectedBrand.value || q.length < 2 || isCreatingModel.value) return false
-  return !catalogStore.modelos.some(
-    m => m.fabricante_id === selectedBrand.value?.id && normalizeText(m.nombre) === q
-  )
-})
-
-const handleCreateModel = async () => {
-  if (!selectedBrand.value || !canCreateModel.value) return
-  isCreatingModel.value = true
-  try {
-    const nuevo = await catalogStore.createModelo(selectedBrand.value.id, modelInput.value)
-    showToast(`Modelo "${nuevo.nombre}" agregado a ${selectedBrand.value.nombre}`)
-    await handleSelectModel(nuevo)
-  } catch (err) {
-    showToast(err instanceof Error ? err.message : 'No se pudo crear el modelo')
-  } finally {
-    isCreatingModel.value = false
-  }
-}
 
 const handleSelectModel = async (mod: Modelo) => {
   selectedModel.value = mod
@@ -1542,8 +1718,8 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     }
 
     // 2. Filtros de medidas dimensionales específicas
-    // Caso Especializado: ANILLOS DE MOTOR (Mantiene estructura y cálculos exactos)
-    if (compId === 'anillos_motor') {
+    // Caso Especializado: FAMILIAS EN TABLA / ANILLOS DE MOTOR (Mantiene estructura y cálculos exactos)
+    if (isCurrentGroupTable.value) {
       // Diámetro (la primera siempre)
       if (isFilterActive(filterAnilloDiametro.value)) {
         const tolAnilloDiametro = getTol('anilloDiametro')
@@ -2067,6 +2243,7 @@ const handleDocumentClick = (e: MouseEvent) => {
   if (!target.closest('.combobox-brand')) isBrandOpen.value = false
   if (!target.closest('.combobox-model')) isModelOpen.value = false
   if (!target.closest('.combobox-motor')) isMotorOpen.value = false
+  if (!target.closest('.combobox-year')) isYearOpen.value = false
   if (!target.closest('.combobox-component')) isComponentOpen.value = false
 }
 
@@ -2435,9 +2612,20 @@ onUnmounted(() => {
 
         <!-- 3. MODELO -->
         <div class="relative combobox-model">
-          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            Modelo
-          </label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Modelo
+            </label>
+            <button
+              type="button"
+              @click="openQuickCreateModelModal(modelInput)"
+              class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition"
+              title="Registrar un nuevo modelo de vehículo"
+            >
+              <Plus class="w-3 h-3" />
+              <span>Nuevo</span>
+            </button>
+          </div>
 
           <div class="relative flex items-center">
             <input
@@ -2497,45 +2685,108 @@ onUnmounted(() => {
                 <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
-            <div
-              v-if="canCreateModel"
-              @click="handleCreateModel"
-              class="px-3 py-2 cursor-pointer text-xs font-bold text-[#038391] hover:bg-cyan-50/70 flex items-center gap-2 transition"
+            <div v-if="filteredModels.length === 0" class="p-2.5 text-center text-xs text-slate-400">
+              No hay modelos coincidentes
+            </div>
+            <!-- Acción rápida para registrar nuevo modelo -->
+            <button
+              type="button"
+              @mousedown.prevent="openQuickCreateModelModal(modelInput)"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
             >
-              <Plus class="w-3.5 h-3.5" />
-              <span>Agregar modelo «{{ modelInput.trim() }}» a {{ selectedBrand?.nombre }}</span>
-            </div>
-            <div v-else-if="filteredModels.length === 0" class="p-3 text-center text-xs text-slate-400">
-              No hay modelos para esta selección
-            </div>
+              <span class="flex items-center gap-1.5 truncate">
+                <Plus class="w-3.5 h-3.5 shrink-0" />
+                <span class="truncate">
+                  {{ modelInput.trim() ? `+ Registrar nuevo modelo "${modelInput.trim().toUpperCase()}"` : '+ Registrar nuevo modelo' }}
+                </span>
+              </span>
+              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Crear</span>
+            </button>
           </div>
         </div>
 
         <!-- 4. AÑO DE COMPATIBILIDAD -->
-        <div class="relative">
-          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            Año
-          </label>
-          <div class="relative flex items-center">
-            <select
-              v-model="selectedYear"
-              class="w-full pl-3 pr-7 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition appearance-none cursor-pointer"
-            >
-              <option value="">Todos los años</option>
-              <option v-for="yr in availableYears" :key="yr" :value="String(yr)">
-                {{ yr }}
-              </option>
-            </select>
+        <div class="relative combobox-year">
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Año
+            </label>
             <button
-              v-if="selectedYear"
               type="button"
-              @click="selectedYear = ''"
-              class="absolute right-6 p-1 text-slate-400 hover:text-slate-600"
+              @click="openQuickCreateYearModal(yearInput)"
+              class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition"
+              title="Agregar un nuevo año o rango de compatibilidad"
+            >
+              <Plus class="w-3 h-3" />
+              <span>Nuevo</span>
+            </button>
+          </div>
+
+          <div class="relative flex items-center">
+            <input
+              v-model="yearInput"
+              @focus="isYearOpen = true"
+              @click="isYearOpen = true"
+              @input="isYearOpen = true"
+              @keydown.enter.prevent="filteredYears[0] ? handleSelectYear(filteredYears[0]) : (yearInput.trim() ? handleSaveQuickYear(yearInput) : null)"
+              type="text"
+              placeholder="Todos los años..."
+              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
+            />
+            <button
+              v-if="selectedYear || yearInput"
+              type="button"
+              @click="handleClearYear"
+              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
               title="Limpiar año"
             >
               <X class="w-3.5 h-3.5" />
             </button>
-            <ChevronDown class="w-4 h-4 text-slate-400 absolute right-2.5 pointer-events-none" />
+            <ChevronDown
+              @click="isYearOpen = !isYearOpen"
+              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
+            />
+          </div>
+
+          <!-- Dropdown Años -->
+          <div
+            v-if="isYearOpen"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+          >
+            <div
+              @click="handleClearYear"
+              class="px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition hover:bg-cyan-50/70"
+              :class="!selectedYear ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-600'"
+            >
+              <span>Todos los años</span>
+              <Check v-if="!selectedYear" class="w-3.5 h-3.5 text-[#04C4D9]" />
+            </div>
+            <div
+              v-for="yr in filteredYears"
+              :key="yr"
+              @click="handleSelectYear(yr)"
+              class="px-3 py-2 cursor-pointer text-xs font-mono font-bold flex items-center justify-between transition"
+              :class="selectedYear === yr ? 'bg-cyan-50/60 text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70'"
+            >
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full" :class="selectedYear === yr ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                <span>{{ yr }}</span>
+              </div>
+              <Check v-if="selectedYear === yr" class="w-3.5 h-3.5 text-[#04C4D9]" />
+            </div>
+            <button
+              type="button"
+              @mousedown.prevent="yearInput.trim() && !availableYears.includes(yearInput.trim()) ? handleSaveQuickYear(yearInput) : openQuickCreateYearModal(yearInput)"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
+            >
+              <span class="flex items-center gap-1.5 truncate">
+                <Plus class="w-3.5 h-3.5 shrink-0" />
+                <span class="truncate">
+                  {{ yearInput.trim() && !availableYears.includes(yearInput.trim()) ? `+ Agregar año "${yearInput.trim()}"` : '+ Agregar nuevo año' }}
+                </span>
+              </span>
+              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Crear</span>
+            </button>
           </div>
         </div>
 
@@ -3067,8 +3318,8 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- FILTROS ESPECIALIZADOS PARA ANILLOS DE MOTOR (Mantiene estructura técnica RIK) -->
-        <div v-if="selectedComponent.id === 'anillos_motor'" class="space-y-2.5">
+        <!-- FILTROS ESPECIALIZADOS PARA FAMILIAS EN TABLA / ANILLOS DE MOTOR (Sincronizado con Gestor de Familias) -->
+        <div v-if="isCurrentGroupTable" class="space-y-2.5">
           <!-- Barra superior de selección de Anillo y Nota Técnica -->
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
             <!-- Tabs de navegación: Todos, 1, 2, 3, Anillo de aceite -->
@@ -3082,6 +3333,7 @@ onUnmounted(() => {
                 Todos
               </button>
               <button
+                v-if="isTableParamInFilter('anillo1_h1') || isTableParamInFilter('anillo1_a1')"
                 type="button"
                 @click="filterAnilloTab = '1'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
@@ -3091,6 +3343,7 @@ onUnmounted(() => {
                 <span v-if="filterAnilloGrosor1 !== undefined || filterAnilloRadial1 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               </button>
               <button
+                v-if="isTableParamInFilter('anillo2_h1') || isTableParamInFilter('anillo2_a1')"
                 type="button"
                 @click="filterAnilloTab = '2'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
@@ -3109,6 +3362,7 @@ onUnmounted(() => {
                 <span v-if="filterAnilloGrosor3 !== undefined || filterAnilloRadial3 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               </button>
               <button
+                v-if="isTableParamInFilter('aceite_h1') || isTableParamInFilter('aceite_a1')"
                 type="button"
                 @click="filterAnilloTab = 'aceite'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
@@ -3131,12 +3385,12 @@ onUnmounted(() => {
           <!-- Modo 'todos': muestra Diámetro y cada anillo con sus campos a la par -->
           <div v-if="filterAnilloTab === 'todos'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             <!-- Diámetro (la primera siempre) -->
-            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90 flex flex-col justify-between">
+            <div v-if="isTableParamInFilter('diametro_cilindro_mm')" class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90 flex flex-col justify-between">
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-700 truncate" title="Diámetro nominal del cilindro / pistón">
-                  Diámetro
+                  {{ getTableParamLabel('diametro_cilindro_mm', 'Diámetro') }}
                 </label>
-                <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" />
+                <ToleranceBadge v-model="filterTolerancias['anilloDiametro']" :fallback="filterToleranciaMm" :unit="getTableParamUnit('diametro_cilindro_mm', 'mm')" />
               </div>
               <input
                 v-model.number="filterAnilloDiametro"
@@ -3145,19 +3399,19 @@ onUnmounted(() => {
                 placeholder="ej. 88.0"
                 class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
-              <span class="text-[9px] text-slate-500 mt-1 block">Diámetro nominal (mm)</span>
+              <span class="text-[9px] text-slate-500 mt-1 block">Diámetro nominal ({{ getTableParamUnit('diametro_cilindro_mm', 'mm') || 'mm' }})</span>
             </div>
 
             <!-- 1: Grosor y Altura a la par -->
-            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
+            <div v-if="isTableParamInFilter('anillo1_h1') || isTableParamInFilter('anillo1_a1')" class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
                 Anillo 1
               </div>
               <div class="grid grid-cols-2 gap-1.5">
-                <div>
+                <div v-if="isTableParamInFilter('anillo1_h1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" :unit="getTableParamUnit('anillo1_h1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosor1"
@@ -3167,10 +3421,10 @@ onUnmounted(() => {
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
-                <div>
+                <div v-if="isTableParamInFilter('anillo1_a1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" :unit="getTableParamUnit('anillo1_a1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadial1"
@@ -3184,15 +3438,15 @@ onUnmounted(() => {
             </div>
 
             <!-- 2: Grosor y Altura a la par -->
-            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
+            <div v-if="isTableParamInFilter('anillo2_h1') || isTableParamInFilter('anillo2_a1')" class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
                 Anillo 2
               </div>
               <div class="grid grid-cols-2 gap-1.5">
-                <div>
+                <div v-if="isTableParamInFilter('anillo2_h1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" :unit="getTableParamUnit('anillo2_h1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosor2"
@@ -3202,10 +3456,10 @@ onUnmounted(() => {
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
-                <div>
+                <div v-if="isTableParamInFilter('anillo2_a1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.05" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.05" :unit="getTableParamUnit('anillo2_a1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadial2"
@@ -3255,15 +3509,15 @@ onUnmounted(() => {
             </div>
 
             <!-- Anillo de aceite: Grosor y Altura a la par (el último siempre) -->
-            <div class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
+            <div v-if="isTableParamInFilter('aceite_h1') || isTableParamInFilter('aceite_a1')" class="bg-slate-50/70 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
                 Anillo de aceite
               </div>
               <div class="grid grid-cols-2 gap-1.5">
-                <div>
+                <div v-if="isTableParamInFilter('aceite_h1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" :unit="getTableParamUnit('aceite_h1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosorAceite"
@@ -3273,10 +3527,10 @@ onUnmounted(() => {
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
-                <div>
+                <div v-if="isTableParamInFilter('aceite_a1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadialAceite']" :fallback="filterToleranciaMm" :step="0.05" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadialAceite']" :fallback="filterToleranciaMm" :step="0.05" :unit="getTableParamUnit('aceite_a1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadialAceite"
@@ -3482,6 +3736,53 @@ onUnmounted(() => {
               />
             </div>
           </div>
+
+          <!-- Parámetros adicionales configurados en la familia en tabla -->
+          <div
+            v-if="extraTableFilterParams.length > 0"
+            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 pt-2 border-t border-slate-200/80"
+          >
+            <div v-for="param in extraTableFilterParams" :key="`tbl-flt-${param.clave}`">
+              <template v-if="param.tipo_dato === 'numero'">
+                <div class="flex items-center justify-between mb-0.5">
+                  <label class="block text-[10px] font-bold text-slate-600 truncate">
+                    {{ param.etiqueta }}
+                    <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+                  </label>
+                  <ToleranceBadge v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                </div>
+                <input
+                  v-model.number="dynamicParamFilters[param.clave]"
+                  type="number"
+                  step="0.1"
+                  :placeholder="`ej. 50 ${param.unidad || ''}`"
+                  class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </template>
+              <template v-else-if="param.tipo_dato === 'seleccion' || (param.opciones && param.opciones.length > 0)">
+                <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">{{ param.etiqueta }}</label>
+                <select
+                  v-model="dynamicParamFilters[param.clave]"
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                >
+                  <option value="">Todas las opciones</option>
+                  <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">{{ opt }}</option>
+                </select>
+              </template>
+              <template v-else>
+                <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                  {{ param.etiqueta }}
+                  <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+                </label>
+                <input
+                  v-model="dynamicParamFilters[param.clave]"
+                  type="text"
+                  placeholder="Filtrar..."
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </template>
+            </div>
+          </div>
         </div>
 
         <!-- FILTROS TÉCNICOS DINÁMICOS BASADOS EN PARÁMETROS DE LA FAMILIA (SUPABASE / STORE) -->
@@ -3600,8 +3901,8 @@ onUnmounted(() => {
                 <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Código OEM</th>
                 <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
                 
-                <th v-if="selectedComponent?.id === 'anillos_motor' || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  Medidas: Diámetro / Grosor / Altura (mm)
+                <th v-if="isCurrentGroupTable || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null, ...extraTableVisibleParams.map(p => p.etiqueta_corta || p.etiqueta)].filter(Boolean).join(' / ') || 'Especificaciones' }}
                 </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || selectedComponent?.category || 'COTAS').toUpperCase() }}: {{ currentGroupDefinition.parametros.filter(p => p.requerido).map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || currentGroupDefinition.parametros.map(p => p.etiqueta_corta || p.etiqueta).slice(0, 4).join(' × ') }}
@@ -3822,16 +4123,16 @@ onUnmounted(() => {
                 <!-- 4. MEDIDAS Y COTAS -->
                 <td class="py-2 px-3 align-middle border-b border-slate-100">
                   
-                  <!-- Caso Especializado: Anillos de motor (Estructura RIK de 3 filas con resaltado exacto Verde / tolerancia Amarillo) -->
-                  <div v-if="selectedComponent?.id === 'anillos_motor' || part.categoria === 'Anillos'" class="py-1">
+                  <!-- Caso Especializado: Familias en Tabla / Anillos de motor (Sincronizado con Gestor de Familias) -->
+                  <div v-if="isPartTableFormat(part)" class="py-1">
                     <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text">
                       <table class="border-collapse text-center text-xs">
                         <thead>
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
                             <th class="px-2.5 py-1 border-r border-slate-200 text-left">Anillo</th>
-                            <th class="px-2.5 py-1 border-r border-slate-200">Diámetro</th>
-                            <th class="px-2.5 py-1 border-r border-slate-200">Grosor</th>
-                            <th class="px-2.5 py-1">Altura</th>
+                            <th v-if="showTableColDiametro" class="px-2.5 py-1 border-r border-slate-200">{{ tableColDiametroHeader }}</th>
+                            <th v-if="showTableColGrosor" class="px-2.5 py-1 border-r border-slate-200">{{ tableColGrosorHeader }}</th>
+                            <th v-if="showTableColAltura" class="px-2.5 py-1">{{ tableColAlturaHeader }}</th>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-[11px]">
@@ -3854,18 +4155,21 @@ onUnmounted(() => {
                               </span>
                             </td>
                             <td 
+                              v-if="showTableColDiametro"
                               class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
                               :class="getRingDiametroCellClass(ring.d1)"
                             >
                               {{ formatRingVal(ring.d1) }}
                             </td>
                             <td 
+                              v-if="showTableColGrosor"
                               class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
                               :class="getRingGrosorCellClass(ring, rIdx, getPartRingsList(part).length)"
                             >
                               {{ formatRingVal(ring.h1) }}
                             </td>
                             <td 
+                              v-if="showTableColAltura"
                               class="px-2.5 py-1 font-mono font-bold transition"
                               :class="getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length)"
                             >
@@ -3874,6 +4178,30 @@ onUnmounted(() => {
                           </tr>
                         </tbody>
                       </table>
+                    </div>
+
+                    <!-- Parámetros personalizados adicionales configurados "En Tabla" en esta familia -->
+                    <div v-if="extraTableVisibleParams.length > 0" class="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs font-mono">
+                      <template v-for="p in extraTableVisibleParams" :key="`tbl-ext-${p.clave}`">
+                        <span
+                          v-if="p.tipo_dato === 'numero' || (p.unidad && p.unidad !== '')"
+                          class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
+                          :class="getMeasurementMatchClass(getPartParamValue(part, p.clave), dynamicParamFilters[p.clave], getTol(p.clave))"
+                        >
+                          <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
+                          <strong class="text-slate-900">
+                            {{ getPartParamValue(part, p.clave) != null ? `${getPartParamValue(part, p.clave)} ${p.unidad || ''}`.trim() : '—' }}
+                          </strong>
+                        </span>
+                        <span
+                          v-else
+                          class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
+                          :class="dynamicParamFilters[p.clave] ? (String(getPartParamValue(part, p.clave) || '').toLowerCase().includes(String(dynamicParamFilters[p.clave]).toLowerCase()) ? 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs' : 'bg-slate-100 text-slate-500 opacity-60') : 'bg-slate-100 text-slate-800 border-slate-200'"
+                        >
+                          <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
+                          <strong class="text-slate-900">{{ getPartParamValue(part, p.clave) || '—' }}</strong>
+                        </span>
+                      </template>
                     </div>
 
                     <!-- Fila informativa adicional de taller -->
@@ -4809,6 +5137,176 @@ onUnmounted(() => {
               >
                 <Check class="w-3.5 h-3.5" />
                 <span>Guardar Motor</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL RÁPIDO 3C: REGISTRAR NUEVO MODELO DE VEHÍCULO                        -->
+    <!-- ========================================================================= -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="isQuickCreateModelOpen"
+        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        @click.self="isQuickCreateModelOpen = false"
+      >
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Sparkles class="w-4 h-4 text-[#04C4D9]" />
+              <h3 class="text-sm font-bold text-white">Registrar Nuevo Modelo en Catálogo</h3>
+            </div>
+            <button
+              type="button"
+              @click="isQuickCreateModelOpen = false"
+              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <form @submit.prevent="handleSaveQuickModel" class="p-4 space-y-3 text-xs">
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Marca / Fabricante *
+              </label>
+              <select
+                v-model="quickModelBrandId"
+                required
+                class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              >
+                <option v-for="fab in catalogStore.fabricantes" :key="fab.id" :value="fab.id">
+                  {{ fab.nombre.toUpperCase() }}
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Nombre del Modelo *
+              </label>
+              <input
+                v-model="quickModelName"
+                type="text"
+                required
+                placeholder="ej. HILUX, NP300, L200, H100, COROLLA..."
+                class="w-full px-3 py-2 text-xs font-bold uppercase bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Año Inicio (Opcional)</label>
+                <input
+                  v-model.number="quickModelYearStart"
+                  type="number"
+                  placeholder="ej. 1998"
+                  class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Año Fin (Opcional)</label>
+                <input
+                  v-model.number="quickModelYearEnd"
+                  type="number"
+                  placeholder="ej. 2026"
+                  class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                @click="isQuickCreateModelOpen = false"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="isSavingQuickModel || !quickModelName.trim()"
+                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+              >
+                <Check class="w-3.5 h-3.5" />
+                <span>Guardar Modelo</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL RÁPIDO 3D: REGISTRAR NUEVO AÑO / RANGO DE COMPATIBILIDAD             -->
+    <!-- ========================================================================= -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="isQuickCreateYearOpen"
+        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        @click.self="isQuickCreateYearOpen = false"
+      >
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden">
+          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Sparkles class="w-4 h-4 text-[#04C4D9]" />
+              <h3 class="text-sm font-bold text-white">Agregar Nuevo Año</h3>
+            </div>
+            <button
+              type="button"
+              @click="isQuickCreateYearOpen = false"
+              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+
+          <form @submit.prevent="handleSaveQuickYear()" class="p-4 space-y-3 text-xs">
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Año o Rango de Compatibilidad *
+              </label>
+              <input
+                v-model="quickYearValue"
+                type="text"
+                required
+                placeholder="ej. 1968, 2027, 1998-2005..."
+                class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+              />
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                @click="isQuickCreateYearOpen = false"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="!quickYearValue.trim()"
+                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+              >
+                <Check class="w-3.5 h-3.5" />
+                <span>Guardar y Seleccionar</span>
               </button>
             </div>
           </form>
