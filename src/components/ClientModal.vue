@@ -29,6 +29,7 @@ const statusList: ClientStatus[] = ['Activo', 'Inactivo']
 
 // Form fields
 const nombre = ref('')
+const taller = ref('')
 const telefono = ref('')
 const direccion = ref('')
 const tipo = ref<ClientType>('Cliente')
@@ -54,6 +55,7 @@ watch(
     errors.value = { nombre: '', telefono: '' }
     if (edit) {
       nombre.value = edit.nombre || ''
+      taller.value = edit.especificaciones_tecnicas?.taller || edit.especificaciones_tecnicas?.empresa || ''
       telefono.value = edit.telefono || ''
       direccion.value = edit.direccion || ''
       tipo.value = edit.tipo || 'Cliente'
@@ -61,6 +63,7 @@ watch(
       notas.value = edit.especificaciones_tecnicas?.notas || edit.especificaciones_tecnicas?.servicios || ''
     } else {
       nombre.value = ''
+      taller.value = ''
       telefono.value = ''
       direccion.value = ''
       tipo.value = 'Cliente'
@@ -105,11 +108,12 @@ const handleSubmit = async () => {
       codigo: props.clientToEdit ? props.clientToEdit.codigo : undefined,
       nombre: nombre.value.trim(),
       telefono: telefono.value.trim(),
-      direccion: direccion.value.trim() || 'Dirección de taller pendiente',
+      direccion: direccion.value.trim() || undefined,
       tipo: tipo.value,
       estado: props.clientToEdit ? estado.value : 'Activo',
       especificaciones_tecnicas: {
         ...(props.clientToEdit?.especificaciones_tecnicas || {}),
+        taller: taller.value.trim() || undefined,
         notas: notas.value.trim() || undefined,
       },
     })
@@ -121,7 +125,7 @@ const handleSubmit = async () => {
 const handleToggleStatus = () => {
   if (!props.clientToEdit) return
   const newStatus: ClientStatus = props.clientToEdit.estado === 'Activo' ? 'Inactivo' : 'Activo'
-  const actionText = newStatus === 'Inactivo' ? 'inactivar (borrado lógico)' : 'reactivar'
+  const actionText = newStatus === 'Inactivo' ? 'inactivar' : 'reactivar'
   if (confirm(`¿Estás seguro de que deseas ${actionText} a ${props.clientToEdit.nombre}?`)) {
     emit('toggleStatus', props.clientToEdit.id, newStatus)
   }
@@ -157,7 +161,7 @@ const handleToggleStatus = () => {
               </span>
             </div>
             <p class="text-xs text-slate-500 mt-0.5">
-              {{ clientToEdit ? 'Edición de información y estado' : 'Código generado automáticamente • Estado Activo por defecto' }}
+              {{ clientToEdit ? 'Edición de datos y estado operativo' : 'Código generado automáticamente • Estado Activo' }}
             </p>
           </div>
         </div>
@@ -209,14 +213,14 @@ const handleToggleStatus = () => {
             </span>
           </div>
           <span class="text-[11px] text-slate-500 font-medium">
-            {{ clientToEdit ? 'Identificador permanente en sistema' : 'Generado automáticamente según el tipo' }}
+            {{ clientToEdit ? 'Identificador en sistema' : 'Asignado automáticamente según el tipo' }}
           </span>
         </div>
 
         <!-- Nombre Completo o Razón Social -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
-            Nombre Completo o Razón Social *
+            Nombre Completo o Titular *
           </label>
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
@@ -226,7 +230,7 @@ const handleToggleStatus = () => {
               v-model="nombre"
               type="text"
               required
-              placeholder="Ej. Ing. Carlos Mendoza o Taller Mecánico Especializado"
+              placeholder="Ej. Roberto Sánchez o Carlos Mendoza"
               :class="[
                 'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                 errors.nombre
@@ -239,6 +243,24 @@ const handleToggleStatus = () => {
             <AlertCircle class="w-3.5 h-3.5" />
             <span>{{ errors.nombre }}</span>
           </p>
+        </div>
+
+        <!-- Taller o Empresa -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
+            Nombre del Taller o Empresa {{ tipo === 'Tallerista' ? '*' : '(Opcional)' }}
+          </label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+              <Wrench class="w-5 h-5" />
+            </div>
+            <input
+              v-model="taller"
+              type="text"
+              :placeholder="tipo === 'Tallerista' ? 'Ej. Taller Mecánico Especializado Ramos' : 'Ej. Transportes del Norte (si aplica)'"
+              class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/30"
+            />
+          </div>
         </div>
 
         <!-- Teléfono y Dirección -->
@@ -256,7 +278,7 @@ const handleToggleStatus = () => {
                 v-model="telefono"
                 type="tel"
                 required
-                placeholder="+52 81 1234 5678"
+                placeholder="Ej. 81 1234 5678"
                 :class="[
                   'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm font-mono text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                   errors.telefono
@@ -283,17 +305,17 @@ const handleToggleStatus = () => {
               <input
                 v-model="direccion"
                 type="text"
-                placeholder="Av. Industrial 1420, Nave 5"
+                placeholder="Ej. Av. Hidalgo 123, Col. Centro"
                 class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/30"
               />
             </div>
           </div>
         </div>
 
-        <!-- Estado (Borrado Lógico) - Solo visible al EDITAR un cliente existente -->
+        <!-- Estado del Cliente - Solo al editar -->
         <div v-if="clientToEdit">
           <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-            Estado del Cliente (Borrado Lógico)
+            Estado del Cliente
           </label>
           <div class="flex gap-3">
             <button
@@ -317,7 +339,7 @@ const handleToggleStatus = () => {
           </div>
         </div>
 
-        <!-- Notas o Especificaciones Técnicas de Rectificación -->
+        <!-- Notas Técnicas / Equipos Habituales -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
             Notas Técnicas / Equipos y Motores Habituales
@@ -325,14 +347,13 @@ const handleToggleStatus = () => {
           <textarea
             v-model="notas"
             rows="2"
-            placeholder="Ej. Motores diesel Cummins, tractocamiones, rectificación de culatas frecuente..."
+            placeholder="Ej. Motores diésel Cummins, rectificación de culatas, especificaciones de apriete..."
             class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/30"
           ></textarea>
         </div>
 
         <!-- Modal Actions (Botones Táctiles para Taller) -->
         <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <!-- Acción de Borrado Lógico (Inactivar/Reactivar) -->
           <div v-if="clientToEdit">
             <button
               type="button"
@@ -346,7 +367,7 @@ const handleToggleStatus = () => {
             >
               <Ban v-if="clientToEdit.estado === 'Activo'" class="w-4 h-4 text-amber-600" />
               <RotateCcw v-else class="w-4 h-4 text-emerald-600" />
-              <span>{{ clientToEdit.estado === 'Activo' ? 'Inactivar (Borrado Lógico)' : 'Reactivar Cliente' }}</span>
+              <span>{{ clientToEdit.estado === 'Activo' ? 'Inactivar Cliente' : 'Reactivar Cliente' }}</span>
             </button>
           </div>
           <div v-else></div>

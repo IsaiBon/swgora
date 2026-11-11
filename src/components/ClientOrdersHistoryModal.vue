@@ -170,7 +170,7 @@ const formatCurrency = (val: number) => {
       <!-- Action Sub-bar -->
       <div class="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between">
         <div class="text-xs font-semibold text-slate-600">
-          <span v-if="loading">Consultando historial en base de datos...</span>
+          <span v-if="loading">Cargando historial de órdenes...</span>
           <span v-else>
             Total órdenes asociadas: <strong class="text-slate-900">{{ orders.length }}</strong>
           </span>

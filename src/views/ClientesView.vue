@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { clientesService, type Cliente, type ClientStatus } from '@/services/clientesService'
+import { clientesService, type Cliente, type ClienteInsert, type ClientStatus } from '@/services/clientesService'
 import ClientCard from '@/components/ClientCard.vue'
 import ClientModal from '@/components/ClientModal.vue'
 import ClientOrdersHistoryModal from '@/components/ClientOrdersHistoryModal.vue'
@@ -17,7 +17,7 @@ import {
 const router = useRouter()
 const authStore = useAuthStore()
 
-// State: Por defecto filtrar clientes activos (Sprint 4)
+// State: Clientes activos por defecto
 const clients = ref<Cliente[]>([])
 const loading = ref(true)
 const searchQuery = ref('')
@@ -27,7 +27,7 @@ const isModalOpen = ref(false)
 const clientToEdit = ref<Cliente | null>(null)
 const toastMessage = ref('')
 
-// Historial de Órdenes del Cliente (Sprint 4)
+// Historial de Órdenes del Cliente
 const isOrdersModalOpen = ref(false)
 const selectedClientForOrders = ref<Cliente | null>(null)
 
@@ -58,12 +58,14 @@ onMounted(async () => {
 const filteredClients = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   return clients.value.filter((c) => {
+    const workshop = (c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa || '').toLowerCase()
     const matchesQuery =
       !query ||
       (c.codigo && c.codigo.toLowerCase().includes(query)) ||
       c.nombre.toLowerCase().includes(query) ||
       (c.telefono && c.telefono.includes(query)) ||
-      (c.direccion && c.direccion.toLowerCase().includes(query))
+      (c.direccion && c.direccion.toLowerCase().includes(query)) ||
+      workshop.includes(query)
 
     const matchesType = selectedType.value === 'Todos' || c.tipo === selectedType.value
     const matchesStatus = selectedStatus.value === 'Todos' || c.estado === selectedStatus.value
@@ -94,8 +96,8 @@ const handleSaveClient = async (clientData: Partial<Cliente>) => {
       await clientesService.updateCliente(clientData.id, clientData)
       showToast('Cliente actualizado correctamente')
     } else {
-      await clientesService.createCliente(clientData as any)
-      showToast('Cliente registrado exitosamente en PostgreSQL')
+      await clientesService.createCliente(clientData as ClienteInsert)
+      showToast('Cliente registrado exitosamente')
     }
     await loadClients()
     isModalOpen.value = false
@@ -104,12 +106,12 @@ const handleSaveClient = async (clientData: Partial<Cliente>) => {
   }
 }
 
-// Borrado lógico (Inactivar / Reactivar)
+// Inactivar / Reactivar cliente
 const handleToggleStatus = async (id: string, newStatus: ClientStatus) => {
   try {
     if (newStatus === 'Inactivo') {
       await clientesService.deactivateCliente(id)
-      showToast('Cliente inactivado (Borrado Lógico preservado)')
+      showToast('Cliente marcado como inactivo')
     } else {
       await clientesService.reactivateCliente(id)
       showToast('Cliente reactivado exitosamente')
@@ -121,17 +123,10 @@ const handleToggleStatus = async (id: string, newStatus: ClientStatus) => {
   }
 }
 
-// Helpers para demo y filtros
 const clearFilters = () => {
   searchQuery.value = ''
   selectedType.value = 'Todos'
   selectedStatus.value = 'Activo'
-}
-
-const handleRestoreDemo = async () => {
-  clientesService.resetDemo()
-  await loadClients()
-  showToast('Datos de demostración restaurados')
 }
 
 const showToast = (msg: string) => {
@@ -158,14 +153,14 @@ const showToast = (msg: string) => {
       <div>
         <div class="flex items-center gap-2 mb-1">
           <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#05C7F2]/15 text-[#04C4D9] border border-[#05C7F2]/30 uppercase tracking-wider">
-            Sprint 4 • Historial de Órdenes y Catálogo
+            Directorio Activo
           </span>
         </div>
         <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Directorio de Clientes y Talleristas
         </h1>
         <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl">
-          Historial de órdenes de rectificación vinculadas, llamadas y WhatsApp directos y filtro activo por defecto.
+          Administración de clientes y talleres mecánicos, historial de órdenes de rectificación y contacto directo.
         </p>
       </div>
 
@@ -173,12 +168,13 @@ const showToast = (msg: string) => {
       <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
         <button
           type="button"
-          @click="handleRestoreDemo"
-          class="min-h-[44px] px-3.5 py-2 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5"
-          title="Restaurar registros estándar de prueba"
+          @click="loadClients"
+          :disabled="loading"
+          class="min-h-[44px] px-3.5 py-2 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1.5 active:scale-95 disabled:opacity-60"
+          title="Actualizar lista de clientes"
         >
-          <RotateCcw class="w-4 h-4 text-[#04C4D9]" />
-          <span>Restaurar Demo</span>
+          <RotateCcw class="w-4 h-4 text-[#04C4D9]" :class="{ 'animate-spin': loading }" />
+          <span>Actualizar</span>
         </button>
 
         <!-- New Client Button (Touch Friendly) -->
@@ -193,7 +189,7 @@ const showToast = (msg: string) => {
       </div>
     </div>
 
-    <!-- Filters & Search Bar (Conectados a Supabase y PostgreSQL) -->
+    <!-- Filters & Search Bar -->
     <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
       <!-- Search Input -->
       <div class="flex flex-col sm:flex-row gap-3">
@@ -237,7 +233,7 @@ const showToast = (msg: string) => {
           </button>
         </div>
 
-        <!-- Filtro por Estado (Borrado Lógico) -->
+        <!-- Filtro por Estado -->
         <div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
           <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1 whitespace-nowrap">
             Estado:
@@ -289,12 +285,10 @@ const showToast = (msg: string) => {
     <!-- Empty State: When no clients exist at all -->
     <div v-else>
       <EmptyState
-        title="No hay clientes registrados en la base de datos"
-        description="Aún no se han registrado clientes o talleristas en la tabla 'clientes' de PostgreSQL. Comienza registrando el primero o restaura los datos de demostración."
+        title="No hay clientes registrados"
+        description="Aún no se han registrado clientes o talleres en el sistema. Comienza registrando el primero para vincular órdenes de rectificación."
         actionText="Registrar Primer Cliente"
-        secondaryActionText="Restaurar Clientes Demo"
         @action="openCreateModal"
-        @secondaryAction="handleRestoreDemo"
       />
     </div>
 
@@ -307,7 +301,7 @@ const showToast = (msg: string) => {
       @toggleStatus="handleToggleStatus"
     />
 
-    <!-- Modal for Client Order History (Sprint 4) -->
+    <!-- Modal for Client Order History -->
     <ClientOrdersHistoryModal
       :isOpen="isOrdersModalOpen"
       :client="selectedClientForOrders"
