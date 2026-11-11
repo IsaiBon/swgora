@@ -736,7 +736,24 @@ const CORE_TABLE_RING_KEYS = new Set([
   'anillo3_a1',
   'aceite_h1',
   'aceite_a1',
+  'espesor_anillo1_mm',
+  'espesor_anillo2_mm',
+  'espesor_anillo3_mm',
+  'espesor_aceite_mm',
+  'altura_anillo1_mm',
+  'altura_anillo2_mm',
+  'altura_anillo3_mm',
+  'altura_aceite_mm',
+  'altura_radial1_mm',
+  'altura_radial2_mm',
+  'altura_radial3_mm',
+  'altura_radial_aceite_mm',
+  'espesor_radial1_mm',
+  'espesor_radial2_mm',
+  'espesor_radial3_mm',
+  'espesor_radial_aceite_mm',
   'diseno_conico',
+  'keystone',
   'cilindros'
 ])
 
@@ -824,13 +841,6 @@ const extraTableFilterParams = computed(() => {
   if (!currentGroupDefinition.value?.parametros) return []
   return currentGroupDefinition.value.parametros.filter(
     p => !CORE_TABLE_RING_KEYS.has(p.clave) && p.filtrable !== false
-  )
-})
-
-const extraTableVisibleParams = computed(() => {
-  if (!currentGroupDefinition.value?.parametros) return []
-  return currentGroupDefinition.value.parametros.filter(
-    p => !CORE_TABLE_RING_KEYS.has(p.clave) && p.requerido
   )
 })
 
@@ -1622,28 +1632,6 @@ const formatRingVal = (val: number | null | undefined): string => {
   if (val == null || isNaN(val) || val === 0) return '—'
   const num = Number(val)
   return num % 1 === 0 ? num.toFixed(1) : String(num)
-}
-
-const getRingFormas = (part: RepuestoTecnico): string | null => {
-  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
-  if (rings && rings.length > 0) {
-    const list = rings.map(r => r.forma).filter(Boolean)
-    if (list.length > 0) return list.join(' / ')
-  }
-  const dims = part.dimensiones as any
-  const arr = [dims?.forma1, dims?.forma2, dims?.forma_oil].filter(Boolean)
-  return arr.length > 0 ? arr.join(' / ') : null
-}
-
-const getRingMateriales = (part: RepuestoTecnico): string | null => {
-  const rings = (part.dimensiones as any)?.anillos as any[] | undefined
-  if (rings && rings.length > 0) {
-    const list = rings.map(r => r.material).filter(Boolean)
-    if (list.length > 0) return list.join(' / ')
-  }
-  const dims = part.dimensiones as any
-  const arr = [dims?.material1, dims?.material2, dims?.material_oil].filter(Boolean)
-  return arr.length > 0 ? arr.join(' / ') : null
 }
 
 const getRingDetail = (part: RepuestoTecnico | null | undefined, ringIdx: number, prop: string): string => {
@@ -3933,7 +3921,7 @@ onUnmounted(() => {
                 <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
                 
                 <th v-if="isCurrentGroupTable || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
-                  {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null, ...extraTableVisibleParams.map(p => p.etiqueta_corta || p.etiqueta)].filter(Boolean).join(' / ') || 'Especificaciones' }}
+                  {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null].filter(Boolean).join(' / ') || 'Especificaciones' }}
                 </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || selectedComponent?.category || 'COTAS').toUpperCase() }}: {{ currentGroupDefinition.parametros.filter(p => p.requerido).map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || currentGroupDefinition.parametros.map(p => p.etiqueta_corta || p.etiqueta).slice(0, 4).join(' × ') }}
@@ -4163,15 +4151,7 @@ onUnmounted(() => {
                             <th class="px-2.5 py-1 border-r border-slate-200 text-left">{{ tableColFirstHeader }}</th>
                             <th v-if="showTableColDiametro" class="px-2.5 py-1 border-r border-slate-200">{{ tableColDiametroHeader }}</th>
                             <th v-if="showTableColGrosor" class="px-2.5 py-1 border-r border-slate-200">{{ tableColGrosorHeader }}</th>
-                            <th v-if="showTableColAltura" class="px-2.5 py-1" :class="extraTableVisibleParams.length > 0 ? 'border-r border-slate-200' : ''">{{ tableColAlturaHeader }}</th>
-                            <th
-                              v-for="(extCol, extIdx) in extraTableVisibleParams"
-                              :key="`cat-th-ext-${extCol.id}`"
-                              class="px-2.5 py-1"
-                              :class="extIdx < extraTableVisibleParams.length - 1 ? 'border-r border-slate-200' : ''"
-                            >
-                              {{ extCol.etiqueta_corta || extCol.etiqueta }}{{ extCol.unidad && extCol.unidad !== 'mm' ? ` (${extCol.unidad})` : '' }}
-                            </th>
+                            <th v-if="showTableColAltura" class="px-2.5 py-1">{{ tableColAlturaHeader }}</th>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-[11px]">
@@ -4210,69 +4190,13 @@ onUnmounted(() => {
                             <td 
                               v-if="showTableColAltura"
                               class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="[
-                                getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length),
-                                extraTableVisibleParams.length > 0 ? 'border-r border-slate-200' : ''
-                              ]"
+                              :class="getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length)"
                             >
                               {{ formatRingVal(ring.a1) }}
-                            </td>
-                            <td
-                              v-for="(extCol, extIdx) in extraTableVisibleParams"
-                              :key="`cat-td-ext-${rIdx}-${extCol.id}`"
-                              class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="extIdx < extraTableVisibleParams.length - 1 ? 'border-r border-slate-200' : ''"
-                            >
-                              {{ (ring as any)[extCol.clave] ?? getPartParamValue(part, extCol.clave) ?? '—' }}
                             </td>
                           </tr>
                         </tbody>
                       </table>
-                    </div>
-
-                    <!-- Parámetros personalizados adicionales configurados "En Tabla" en esta familia -->
-                    <div v-if="extraTableVisibleParams.length > 0" class="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs font-mono">
-                      <template v-for="p in extraTableVisibleParams" :key="`tbl-ext-${p.clave}`">
-                        <span
-                          v-if="p.tipo_dato === 'numero' || (p.unidad && p.unidad !== '')"
-                          class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
-                          :class="getMeasurementMatchClass(getPartParamValue(part, p.clave), dynamicParamFilters[p.clave], getTol(p.clave))"
-                        >
-                          <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
-                          <strong class="text-slate-900">
-                            {{ getPartParamValue(part, p.clave) != null ? `${getPartParamValue(part, p.clave)} ${p.unidad || ''}`.trim() : '—' }}
-                          </strong>
-                        </span>
-                        <span
-                          v-else
-                          class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
-                          :class="dynamicParamFilters[p.clave] ? (String(getPartParamValue(part, p.clave) || '').toLowerCase().includes(String(dynamicParamFilters[p.clave]).toLowerCase()) ? 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs' : 'bg-slate-100 text-slate-500 opacity-60') : 'bg-slate-100 text-slate-800 border-slate-200'"
-                        >
-                          <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
-                          <strong class="text-slate-900">{{ getPartParamValue(part, p.clave) || '—' }}</strong>
-                        </span>
-                      </template>
-                    </div>
-
-                    <!-- Fila informativa adicional de taller -->
-                    <div v-if="getRingFormas(part) || getRingMateriales(part) || ((part.dimensiones as any)?.cilindros && Number((part.dimensiones as any).cilindros) > 0)" class="flex flex-wrap items-center gap-1 mt-1 text-[10px] font-sans text-slate-600">
-                      <span v-if="(part.dimensiones as any)?.cilindros && Number((part.dimensiones as any).cilindros) > 0" class="px-1.5 py-0.2 rounded bg-cyan-50 text-[#038391] border border-cyan-200 font-bold font-mono">
-                        {{ (part.dimensiones as any).cilindros }} Cil.
-                      </span>
-                      <span
-                        v-if="isPartConical(part)"
-                        class="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] flex items-center gap-1"
-                        :title="getKeystoneLabel(part) || 'Diseño cónico Keystone (1ST=KEYSTONE)'"
-                      >
-                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
-                        <span>Cónico (Keystone)</span>
-                      </span>
-                      <span v-if="getRingFormas(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Forma técnica de aros">
-                        Forma: {{ getRingFormas(part) }}
-                      </span>
-                      <span v-if="getRingMateriales(part)" class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[9px]" title="Materiales de los aros">
-                        Mat: {{ getRingMateriales(part) }}
-                      </span>
                     </div>
                   </div>
 

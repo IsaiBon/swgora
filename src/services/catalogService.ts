@@ -475,7 +475,29 @@ function getLocalDynamicGrupos(): GrupoRepuesto[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    if (!raw) return []
+    const list: GrupoRepuesto[] = JSON.parse(raw)
+    // Limpiar residuos de anillos_motor en localStorage para que solo tenga las 3 columnas cabales
+    let modified = false
+    const cleaned = list.map(g => {
+      if (g.codigo === 'anillos_motor' || g.categoria === 'Anillos') {
+        modified = true
+        return {
+          ...g,
+          tipo_vista: 'tabla' as const,
+          parametros: [
+            { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de cilindro', etiqueta_corta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero' as const, requerido: true, filtrable: true, descripcion: 'Calibre o diámetro del cilindro' },
+            { id: 'p_anil_2', clave: 'grosor_mm', etiqueta: 'Grosor', etiqueta_corta: 'Grosor', unidad: 'mm', tipo_dato: 'numero' as const, requerido: true, filtrable: true, descripcion: 'Espesor axial de cada fila o ranura' },
+            { id: 'p_anil_3', clave: 'altura_mm', etiqueta: 'Altura', etiqueta_corta: 'Altura', unidad: 'mm', tipo_dato: 'numero' as const, requerido: true, filtrable: true, descripcion: 'Altura o ancho radial de cada fila o ranura' }
+          ]
+        }
+      }
+      return g
+    })
+    if (modified) {
+      localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(cleaned))
+    }
+    return cleaned
   } catch {
     return []
   }
@@ -2039,10 +2061,60 @@ export const catalogService = {
       const metaTablaConfig = (grp.parametros?.[0] as any)?._tabla_config as TablaConfiguracion | undefined
       const resolvedTablaConfig: TablaConfiguracion = grp.tabla_config || metaTablaConfig || defaultTablaConfig
 
+      // Si es la familia de Anillos de motor, garantizar estricta y cabalmente las 3 columnas estándar
+      if (grp.codigo === 'anillos_motor' || grp.categoria === 'Anillos') {
+        const diamParam = grp.parametros.find(p => p.clave === 'diametro_cilindro_mm')
+        const grosorParam = grp.parametros.find(p => p.clave === 'grosor_mm' || p.clave === 'anillo1_h1')
+        const alturaParam = grp.parametros.find(p => p.clave === 'altura_mm' || p.clave === 'anillo1_a1')
+
+        return {
+          ...grp,
+          tipo_vista: 'tabla',
+          tabla_config: resolvedTablaConfig,
+          parametros: [
+            {
+              id: diamParam?.id || 'p_anil_1',
+              clave: 'diametro_cilindro_mm',
+              etiqueta: 'Diámetro de cilindro',
+              etiqueta_corta: 'Diámetro',
+              unidad: 'mm',
+              tipo_dato: 'numero',
+              requerido: true,
+              filtrable: true,
+              descripcion: 'Calibre o diámetro del cilindro'
+            },
+            {
+              id: grosorParam?.id || 'p_anil_2',
+              clave: 'grosor_mm',
+              etiqueta: 'Grosor',
+              etiqueta_corta: 'Grosor',
+              unidad: 'mm',
+              tipo_dato: 'numero',
+              requerido: true,
+              filtrable: true,
+              descripcion: 'Espesor axial de cada fila o ranura'
+            },
+            {
+              id: alturaParam?.id || 'p_anil_3',
+              clave: 'altura_mm',
+              etiqueta: 'Altura',
+              etiqueta_corta: 'Altura',
+              unidad: 'mm',
+              tipo_dato: 'numero',
+              requerido: true,
+              filtrable: true,
+              descripcion: 'Altura o ancho radial de cada fila o ranura'
+            }
+          ]
+        }
+      }
+
       // Si aún tiene las claves individuales antiguas (anillo1_h1, anillo2_h1, aceite_h1), migrarlas al esquema general de columnas
       const legacyPerRingKeys = new Set([
         'anillo1_h1', 'anillo1_a1', 'anillo2_h1', 'anillo2_a1',
-        'anillo3_h1', 'anillo3_a1', 'aceite_h1', 'aceite_a1', 'diseno_conico'
+        'anillo3_h1', 'anillo3_a1', 'aceite_h1', 'aceite_a1', 'diseno_conico',
+        'espesor_anillo1_mm', 'espesor_anillo2_mm', 'espesor_anillo3_mm', 'espesor_aceite_mm',
+        'altura_anillo1_mm', 'altura_anillo2_mm', 'altura_anillo3_mm', 'altura_aceite_mm'
       ])
       const hasLegacyRingParams = grp.parametros.some(p => legacyPerRingKeys.has(p.clave))
       let normalizedParams = grp.parametros
