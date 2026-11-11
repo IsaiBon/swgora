@@ -183,14 +183,27 @@ export function buildNestedTableHeaders<T extends { id: string; etiqueta: string
 
 export type GrupoTipoVista = 'normal' | 'tabla'
 
+export interface RepuestoSubfilaItem {
+  id?: string
+  tipo: string
+  nombre: string
+  codigo: string
+  medidas: Record<string, any>
+  extra?: Record<string, any>
+}
+
 export interface TablaConfiguracion {
   titulo_primera_columna: string
-  modo_filas: 'incremental' | 'libre'
+  modo_filas: 'incremental' | 'libre' | 'cojinetes' | 'subfilas'
   usar_prefijo_titulo?: boolean
   etiqueta_ultima_fila?: string
   habilitar_identificador: boolean
   etiqueta_identificador: string
   opciones_identificador?: string[]
+  subfilas_activas?: boolean
+  tiene_cabecera_marca?: boolean
+  etiqueta_marca?: string
+  subfilas?: string[]
 }
 
 export interface GrupoRepuesto {

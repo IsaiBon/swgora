@@ -718,13 +718,56 @@ const isCurrentGroupTable = computed<boolean>(() => {
   return selectedComponent.value.id === 'anillos_motor'
 })
 
+// Determina si la familia activa es una matriz con sub-filas (ej. Cojinetes: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
+const isCurrentGroupSubfilas = computed<boolean>(() => {
+  if (!currentGroupDefinition.value) return false
+  const cfg = currentGroupDefinition.value.tabla_config
+  if (cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas' || (cfg?.subfilas && cfg.subfilas.length > 0)) {
+    return true
+  }
+  const code = (currentGroupDefinition.value.codigo || '').toLowerCase()
+  const cat = (currentGroupDefinition.value.categoria || '').toLowerCase()
+  const nom = (currentGroupDefinition.value.nombre || '').toLowerCase()
+  return code.includes('cojinete') || cat.includes('cojinete') || nom.includes('cojinete') || code.includes('casquet') || cat.includes('casquet')
+})
+
+const isCurrentGroupRingsTable = computed<boolean>(() => {
+  if (!isCurrentGroupTable.value) return false
+  if (isCurrentGroupSubfilas.value) return false
+  return true
+})
+
 const isPartTableFormat = (part: RepuestoTecnico): boolean => {
-  if (isCurrentGroupTable.value) return true
+  if (isCurrentGroupRingsTable.value) return true
   if (part.categoria === 'Anillos') return true
   const catLower = (part.categoria || '').toLowerCase()
   const grp = catalogStore.grupos.find(g => g.categoria.toLowerCase() === catLower || g.codigo.toLowerCase() === catLower)
-  if (grp?.tipo_vista === 'tabla') return true
+  if (grp?.tipo_vista === 'tabla' && grp.tabla_config?.modo_filas !== 'cojinetes') return true
   return Array.isArray((part.dimensiones as any)?.anillos) && (part.dimensiones as any).anillos.length > 0
+}
+
+const isPartSubfilasFormat = (part: RepuestoTecnico): boolean => {
+  if (isCurrentGroupSubfilas.value) return true
+  const dims = part.dimensiones as any
+  return Array.isArray(dims?.subfilas) && dims.subfilas.length > 0
+}
+
+export interface PartSubfilaDisplay {
+  id?: string
+  nombre: string
+  codigo: string
+  medidas: Record<string, any>
+}
+
+const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
+  const dims = part.dimensiones as any
+  if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
+    return dims.subfilas
+  }
+  return [
+    { nombre: 'Biela', codigo: part.codigo_oem || '', medidas: dims || {} },
+    { nombre: 'Bancada', codigo: '', medidas: dims || {} }
+  ]
 }
 
 // Columnas técnicas visibles (en tabla) para la familia actual
@@ -740,7 +783,7 @@ const groupSubcolumnsHeaders = computed(() => {
 
 // Determina si la familia actual activa el modo de sub-columnas
 const hasGroupSubcolumns = computed<boolean>(() => {
-  if (isCurrentGroupTable.value) return false // Anillos mantiene su matriz especializada
+  if (isCurrentGroupRingsTable.value) return false // Anillos mantiene su matriz especializada
   return groupSubcolumnsHeaders.value.hasSubcolumns
 })
 
@@ -751,6 +794,11 @@ const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion):
     return col.unidad === '°' ? `${val}°` : val.toFixed(2)
   }
   return String(val)
+}
+
+const getPartSubfilaValue = (sf: PartSubfilaDisplay, col: ParametroTecnicoDefinicion): string => {
+  const val = sf.medidas ? sf.medidas[col.clave] : undefined
+  return formatPartParamColValue(val, col)
 }
 
 const CORE_TABLE_RING_KEYS = new Set([
@@ -1064,6 +1112,33 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   showToast(`✓ ${part.codigo_oem} agregado a la Orden de Trabajo`)
   setTimeout(() => {
     if (addedPartId.value === part.id) addedPartId.value = null
+  }, 1800)
+}
+
+const addSubfilaToWorkOrder = (part: RepuestoTecnico, subfila: { nombre: string; codigo: string }) => {
+  const code = subfila.codigo?.trim() || part.codigo_oem
+  const name = `${part.nombre} (${subfila.nombre})`
+  const itemKey = `${part.id}-${subfila.nombre}`
+  addedPartId.value = itemKey
+  try {
+    const raw = localStorage.getItem('swgora_cart_parts') || '[]'
+    const cart = JSON.parse(raw)
+    cart.push({
+      id: itemKey,
+      code: code,
+      name: name,
+      price: part.precio,
+      category: part.categoria,
+      motor: part.motor?.codigo || selectedMotor.value?.codigo || 'Universal',
+      timestamp: Date.now()
+    })
+    localStorage.setItem('swgora_cart_parts', JSON.stringify(cart))
+  } catch {
+    // Silencioso
+  }
+  showToast(`✓ ${code} (${subfila.nombre}) agregado a la Orden`)
+  setTimeout(() => {
+    if (addedPartId.value === itemKey) addedPartId.value = null
   }, 1800)
 }
 
@@ -4050,9 +4125,15 @@ onUnmounted(() => {
             <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
             <thead v-if="hasGroupSubcolumns" class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th rowspan="2" class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Componente</th>
-                <th rowspan="2" class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Código OEM</th>
-                <th rowspan="2" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
+                <th rowspan="2" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95" :class="isCurrentGroupSubfilas ? 'w-28 text-center' : 'w-44 min-w-[150px]'">
+                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                </th>
+                <th rowspan="2" class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                  {{ isCurrentGroupSubfilas ? 'Código' : 'Código OEM' }}
+                </th>
+                <th v-if="!isCurrentGroupSubfilas" rowspan="2" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                  Catálogos Alternos
+                </th>
                 
                 <!-- Columnas Padre / Standalone de la Familia -->
                 <template v-for="item in groupSubcolumnsHeaders.tier1" :key="item.id">
@@ -4090,9 +4171,15 @@ onUnmounted(() => {
             <!-- Caso B: Cabecera Estándar (Existente) -->
             <thead v-else class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Componente</th>
-                <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Código OEM</th>
-                <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
+                <th class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95" :class="isCurrentGroupSubfilas ? 'w-28 text-center' : 'w-44 min-w-[150px]'">
+                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                </th>
+                <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  {{ isCurrentGroupSubfilas ? 'Código' : 'Código OEM' }}
+                </th>
+                <th v-if="!isCurrentGroupSubfilas" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  Catálogos Alternos
+                </th>
                 
                 <th v-if="isCurrentGroupTable || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null].filter(Boolean).join(' / ') || 'Especificaciones' }}
@@ -4123,11 +4210,108 @@ onUnmounted(() => {
             </tbody>
 
             <tbody v-else class="divide-y divide-slate-100">
-              <tr
-                v-for="part in paginatedParts"
-                :key="part.id"
-                class="hover:bg-slate-50 transition group"
-              >
+              <template v-for="part in paginatedParts" :key="part.id">
+                <!-- CASO A: Matriz Federal Mogul con Sub-filas (Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada) -->
+                <template v-if="isPartSubfilasFormat(part)">
+                  <!-- Fila 1: Marca centrada + Aplicación vehicular -->
+                  <tr class="bg-rose-50/70 border-t-2 border-rose-300 font-sans">
+                    <td class="py-1.5 px-3 border-b border-r border-rose-200 text-center font-black uppercase text-rose-900 bg-rose-100/80 tracking-wider text-xs">
+                      {{ (part.dimensiones as any)?.marca_banner || (selectedMotor?.fabricante_id ? getBrandName(selectedMotor.fabricante_id) : 'MARCA') }}
+                    </td>
+                    <td :colspan="activeTableGroupColumns.length + 1" class="py-1.5 px-3 border-b border-r border-rose-200 font-sans text-xs">
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                          <span class="font-extrabold text-slate-900">{{ (part.dimensiones as any)?.aplicacion_banner || part.nombre }}</span>
+                          <span v-if="part.motor?.codigo" class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">
+                            {{ part.motor.codigo }}
+                          </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <span v-if="(part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner" class="text-[10px] font-mono font-bold text-rose-800 bg-rose-200/60 px-2 py-0.5 rounded border border-rose-300">
+                            {{ (part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner }}
+                          </span>
+                          <span class="text-[10px] text-slate-500 font-bold">
+                            Juego Completo
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="py-1.5 px-3 text-right border-b border-rose-200">
+                      <button
+                        type="button"
+                        @click="addToWorkOrder(part)"
+                        class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs cursor-pointer"
+                        :class="addedPartId === part.id ? 'bg-emerald-600 text-white' : 'bg-[#004B97] text-white hover:bg-blue-900'"
+                        title="Agregar todo el juego a la Orden"
+                      >
+                        {{ addedPartId === part.id ? '✓ Agregado' : '+ Juego' }}
+                      </button>
+                    </td>
+                  </tr>
+
+                  <!-- Filas 2 y 3: Biela, Bancada y Sub-filas -->
+                  <tr
+                    v-for="(sf, sfIdx) in getPartSubfilas(part)"
+                    :key="`sf-${part.id}-${sfIdx}`"
+                    class="hover:bg-slate-50/80 transition font-mono text-xs border-b border-slate-100"
+                  >
+                    <!-- Col 1: Nombre de la Sub-fila (Biela, Bancada) -->
+                    <td class="py-2 px-3 border-r border-slate-200 font-bold text-slate-800 text-left bg-slate-50/50">
+                      <div class="flex items-center gap-1.5">
+                        <span
+                          class="w-2 h-2 rounded-full shrink-0"
+                          :class="sfIdx === 0 ? 'bg-[#004B97]' : (sfIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                        ></span>
+                        <span class="font-black">{{ sf.nombre }}</span>
+                      </div>
+                    </td>
+
+                    <!-- Col 2: Código específico de esta sub-fila (ej. 4-4160 RA, 7367 M) -->
+                    <td class="py-2 px-2.5 border-r border-slate-200 font-mono font-bold text-slate-900">
+                      <div class="flex items-center gap-1">
+                        <span>{{ sf.codigo || part.codigo_oem || '—' }}</span>
+                        <button
+                          v-if="sf.codigo || part.codigo_oem"
+                          type="button"
+                          @click.stop="copyToClipboard(sf.codigo || part.codigo_oem, sf.nombre)"
+                          class="p-0.5 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer"
+                        >
+                          <Copy class="w-3 h-3" />
+                        </button>
+                      </div>
+                    </td>
+
+                    <!-- Columnas de Maquinado (STD Mín/Máx, 1er Mín/Máx...) -->
+                    <td
+                      v-for="col in activeTableGroupColumns"
+                      :key="`td-sf-${part.id}-${sfIdx}-${col.id}`"
+                      class="py-2 px-2 text-center border-r border-slate-100 font-mono font-bold"
+                    >
+                      {{ getPartSubfilaValue(sf, col) }}
+                    </td>
+
+                    <!-- Botón específico + A Orden por sub-fila -->
+                    <td class="py-2 px-3 text-right">
+                      <button
+                        type="button"
+                        @click="addSubfilaToWorkOrder(part, sf)"
+                        class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs border cursor-pointer"
+                        :class="addedPartId === `${part.id}-${sf.nombre}`
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-cyan-50 border-cyan-300 text-[#038391] hover:bg-cyan-100'"
+                        :title="`Agregar solo ${sf.nombre} a la Orden`"
+                      >
+                        {{ addedPartId === `${part.id}-${sf.nombre}` ? '✓ OK' : `+ ${sf.nombre}` }}
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+
+                <!-- CASO B: Fila estándar de repuesto (Existente) -->
+                <tr
+                  v-else
+                  class="hover:bg-slate-50 transition group"
+                >
                 <!-- 1. Componente con Miniatura Técnica y Lightbox -->
                 <td class="py-2 px-3 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-2.5">
@@ -4477,6 +4661,7 @@ onUnmounted(() => {
                   </div>
                 </td>
               </tr>
+            </template>
 
               <!-- Empty State -->
               <tr v-if="displayedParts.length === 0">

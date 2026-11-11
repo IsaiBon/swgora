@@ -34,7 +34,9 @@ import {
   Table,
   Copy,
   Columns,
-  Split
+  Split,
+  Layers,
+  Sparkles
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -94,6 +96,22 @@ const showDeleteConfirm = ref<boolean>(false)
 const hasThirdRing = ref<boolean>(false)
 const ringRows = ref<RingFormRow[]>(createDefaultRingRows())
 const saveErrorMessage = ref<string>('')
+
+export interface SubfilaFormRow {
+  id: string
+  tipo: string
+  nombre: string
+  codigo: string
+  medidas: Record<string, any>
+}
+
+// Sub-filas por registro (ej. Cojinetes: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
+const subfilasRows = ref<SubfilaFormRow[]>([
+  { id: 'sf-biela', tipo: 'biela', nombre: 'Biela', codigo: '', medidas: {} },
+  { id: 'sf-bancada', tipo: 'bancada', nombre: 'Bancada', codigo: '', medidas: {} }
+])
+const subfilasMarcaBanner = ref<string>('')
+const subfilasAplicacionBanner = ref<string>('')
 
 const resolveGroupByTarget = (target?: string | null): GrupoRepuesto | null => {
   if (!target) return null
@@ -514,9 +532,22 @@ const equivalencias = ref<Array<{ marca_alterna: string; codigo_alterno: string;
   { marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }
 ])
 
+const isSubfilasGroup = computed<boolean>(() => {
+  if (!activeGroup.value) return false
+  const cfg = activeGroup.value.tabla_config
+  if (cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas' || (cfg?.subfilas && cfg.subfilas.length > 0)) {
+    return true
+  }
+  const code = (activeGroup.value.codigo || '').toLowerCase()
+  const cat = (activeGroup.value.categoria || '').toLowerCase()
+  const nom = (activeGroup.value.nombre || '').toLowerCase()
+  return code.includes('cojinete') || cat.includes('cojinete') || nom.includes('cojinete') || code.includes('casquet') || cat.includes('casquet')
+})
+
 const isRingsGroup = computed<boolean>(() => {
   if (!activeGroup.value) return false
-  if (activeGroup.value.tipo_vista === 'tabla') return true
+  if (isSubfilasGroup.value) return false
+  if (activeGroup.value.tipo_vista === 'tabla' && (activeGroup.value.tabla_config?.modo_filas === 'incremental' || activeGroup.value.tabla_config?.titulo_primera_columna === 'Anillo')) return true
   const code = (activeGroup.value.codigo || '').toLowerCase()
   const cat = (activeGroup.value.categoria || '').toLowerCase()
   return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
@@ -576,6 +607,26 @@ watch(activeGroup, (grp) => {
       paramValues.value = {}
       hasThirdRing.value = false
       ringRows.value = createDefaultRingRows(grp.tabla_config)
+      if (isSubfilasGroup.value) {
+        if (grp.tabla_config?.subfilas && grp.tabla_config.subfilas.length > 0) {
+          subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => ({
+            id: `sf-${idx}-${Date.now()}`,
+            tipo: name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+            nombre: name,
+            codigo: '',
+            medidas: {}
+          }))
+        } else {
+          subfilasRows.value = [
+            { id: 'sf-biela', tipo: 'biela', nombre: 'Biela', codigo: '', medidas: {} },
+            { id: 'sf-bancada', tipo: 'bancada', nombre: 'Bancada', codigo: '', medidas: {} }
+          ]
+        }
+        if (selectedMotor.value) {
+          subfilasMarcaBanner.value = getBrandName(selectedMotor.value.fabricante_id)
+          subfilasAplicacionBanner.value = `${selectedMotor.value.codigo}${selectedMotor.value.nombre_comercial ? ` - ${selectedMotor.value.nombre_comercial}` : ''}`
+        }
+      }
     }
     // Mantener valores previos o inicializar vacíos
     const current = { ...paramValues.value }
@@ -589,6 +640,17 @@ watch(activeGroup, (grp) => {
     saveErrorMessage.value = ''
   }
 }, { immediate: true })
+
+watch(selectedMotor, (mot) => {
+  if (mot && isSubfilasGroup.value) {
+    if (!subfilasMarcaBanner.value) {
+      subfilasMarcaBanner.value = getBrandName(mot.fabricante_id)
+    }
+    if (!subfilasAplicacionBanner.value) {
+      subfilasAplicacionBanner.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : ''}`
+    }
+  }
+})
 
 const addEquivalenceRow = () => {
   equivalencias.value.push({ marca_alterna: 'Rik', codigo_alterno: '', notas: '' })
@@ -913,6 +975,20 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   loadedParams.keystone = (part.dimensiones as any)?.keystone || (part.especificaciones_tecnicas as any)?.keystone || ''
   loadedParams.cilindros = (part.dimensiones as any)?.cilindros || null
 
+  // Cargar sub-filas multilínea si existen (ej. Cojinetes: Biela y Bancada)
+  const partSubfilas = (part.dimensiones as any)?.subfilas
+  if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
+    subfilasRows.value = partSubfilas.map((sf: any, idx: number) => ({
+      id: sf.id || `sf-${idx}-${Date.now()}`,
+      tipo: sf.tipo || (idx === 0 ? 'biela' : 'bancada'),
+      nombre: sf.nombre || (idx === 0 ? 'Biela' : 'Bancada'),
+      codigo: sf.codigo || '',
+      medidas: sf.medidas ? { ...sf.medidas } : {}
+    }))
+    subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
+    subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
+  }
+
   paramValues.value = loadedParams
 
   // Equivalencias
@@ -957,6 +1033,19 @@ const handleSavePart = async () => {
           dimensionesPayload[p.clave] = p.tipo_dato === 'numero' ? Number(val) : val
         }
       }
+    }
+
+    // Sincronizar sub-filas para familias multilínea (Cojinetes: Marca, Biela, Bancada)
+    if (isSubfilasGroup.value) {
+      dimensionesPayload.subfilas = subfilasRows.value.map(sf => ({
+        id: sf.id,
+        tipo: sf.tipo,
+        nombre: sf.nombre,
+        codigo: sf.codigo?.trim() || '',
+        medidas: { ...sf.medidas }
+      }))
+      dimensionesPayload.marca_banner = subfilasMarcaBanner.value.trim() || (selectedMotor.value ? getBrandName(selectedMotor.value.fabricante_id) : '')
+      dimensionesPayload.aplicacion_banner = subfilasAplicacionBanner.value.trim() || (selectedMotor.value?.denominacion_venta || selectedMotor.value?.nombre_comercial || '')
     }
 
     // Sincronizar cotas radiales y array `anillos` para familias en tabla / anillos
@@ -1194,15 +1283,115 @@ const groupTipoVista = ref<'normal' | 'tabla'>('normal')
 const soloFiltrosEnTabla = ref<boolean>(false)
 
 const getDefaultTablaConfig = (): TablaConfiguracion => ({
-  titulo_primera_columna: 'Anillo',
-  modo_filas: 'incremental',
+  titulo_primera_columna: 'Cojinete',
+  modo_filas: 'cojinetes',
   usar_prefijo_titulo: true,
   etiqueta_ultima_fila: 'Anillo de aceite',
-  habilitar_identificador: true,
-  etiqueta_identificador: 'Cónico'
+  habilitar_identificador: false,
+  etiqueta_identificador: 'Cónico',
+  subfilas_activas: true,
+  tiene_cabecera_marca: true,
+  etiqueta_marca: 'Marca',
+  subfilas: ['Biela', 'Bancada']
 })
 
 const groupTablaConfig = ref<TablaConfiguracion>(getDefaultTablaConfig())
+
+const selectModoFilas = (modo: 'cojinetes' | 'incremental' | 'libre') => {
+  groupTablaConfig.value.modo_filas = modo
+  if (modo === 'cojinetes') {
+    groupTablaConfig.value.subfilas_activas = true
+    groupTablaConfig.value.tiene_cabecera_marca = true
+    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna && groupTablaConfig.value.titulo_primera_columna !== 'Anillo'
+      ? groupTablaConfig.value.titulo_primera_columna
+      : 'Cojinete'
+    if (!groupTablaConfig.value.subfilas || groupTablaConfig.value.subfilas.length === 0) {
+      groupTablaConfig.value.subfilas = ['Biela', 'Bancada']
+    }
+  } else if (modo === 'incremental') {
+    groupTablaConfig.value.subfilas_activas = false
+    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna && groupTablaConfig.value.titulo_primera_columna !== 'Cojinete'
+      ? groupTablaConfig.value.titulo_primera_columna
+      : 'Anillo'
+  } else {
+    groupTablaConfig.value.subfilas_activas = false
+  }
+}
+
+const addConfigSubfila = () => {
+  if (!groupTablaConfig.value.subfilas) {
+    groupTablaConfig.value.subfilas = ['Biela', 'Bancada']
+  }
+  const count = groupTablaConfig.value.subfilas.length + 1
+  groupTablaConfig.value.subfilas.push(`Sub-fila ${count}`)
+}
+
+const removeConfigSubfila = (idx: number) => {
+  if (!groupTablaConfig.value.subfilas || groupTablaConfig.value.subfilas.length <= 1) return
+  groupTablaConfig.value.subfilas.splice(idx, 1)
+}
+
+const activarMatrizSubfilasCojinetes = () => {
+  groupTipoVista.value = 'tabla'
+  selectModoFilas('cojinetes')
+}
+
+const addFormSubfila = () => {
+  const count = subfilasRows.value.length + 1
+  subfilasRows.value.push({
+    id: `sf-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    tipo: `subfila_${count}`,
+    nombre: `Sub-fila ${count}`,
+    codigo: '',
+    medidas: {}
+  })
+}
+
+const removeFormSubfila = (idx: number) => {
+  if (subfilasRows.value.length <= 1) return
+  subfilasRows.value.splice(idx, 1)
+}
+
+const cargarColumnasFederalMogul = () => {
+  activarMatrizSubfilasCojinetes()
+  const etapas = [
+    { etapa: 'STD', sufijo: 'std' },
+    { etapa: '1er', sufijo: '1er' },
+    { etapa: '2da', sufijo: '2da' },
+    { etapa: '3er', sufijo: '3er' },
+    { etapa: '4ta', sufijo: '4ta' }
+  ]
+  const newParams: DynamicParamRow[] = []
+  etapas.forEach((item) => {
+    newParams.push({
+      id: `param-${item.sufijo}-min-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      clave: `diametro_${item.sufijo}_min_mm`,
+      etiqueta: `Diámetro Mínimo`,
+      etiqueta_corta: `Mínimo mm`,
+      columna_padre: item.etapa,
+      tipo_dato: 'numero',
+      unidad: 'mm',
+      requerido: true,
+      descripcion: `Diámetro mínimo de rectificación ${item.etapa}`,
+      opcionesStr: '',
+      valor_muestra: '48.970'
+    })
+    newParams.push({
+      id: `param-${item.sufijo}-max-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      clave: `diametro_${item.sufijo}_max_mm`,
+      etiqueta: `Diámetro Máximo`,
+      etiqueta_corta: `Máximo mm`,
+      columna_padre: item.etapa,
+      tipo_dato: 'numero',
+      unidad: 'mm',
+      requerido: true,
+      descripcion: `Diámetro máximo de rectificación ${item.etapa}`,
+      opcionesStr: '',
+      valor_muestra: '48.990'
+    })
+  })
+  dynamicParams.value = newParams
+}
 
 const setGroupTipoVista = (tipo: 'normal' | 'tabla') => {
   if (groupTipoVista.value === tipo) return
@@ -1594,6 +1783,43 @@ const formatSubcolumnSample = (param: DynamicParamRow, rowIdx: number = 0): stri
   return formatSampleValue(param, rowIdx)
 }
 
+// Control de sub-filas para el Live Preview (Imagen 1: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
+const isSubfilasActiveInPreview = computed<boolean>(() => {
+  return groupTipoVista.value === 'tabla' && Boolean(
+    groupTablaConfig.value.modo_filas === 'cojinetes' ||
+    groupTablaConfig.value.subfilas_activas === true ||
+    (groupTablaConfig.value.subfilas && groupTablaConfig.value.subfilas.length > 0)
+  )
+})
+
+const previewSubfilas = computed<string[]>(() => {
+  if (groupTablaConfig.value.subfilas && groupTablaConfig.value.subfilas.length > 0) {
+    return groupTablaConfig.value.subfilas
+  }
+  return ['Biela', 'Bancada']
+})
+
+const getPreviewSubfilaValue = (param: DynamicParamRow, subfila: string, recordIdx: number = 0): string => {
+  const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
+  const key = (param.clave || '').toLowerCase()
+  const isMin = lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')
+  const isBiela = (subfila || '').toLowerCase().includes('biela')
+  
+  if (recordIdx === 0) {
+    if (isBiela) {
+      return isMin ? '48.970' : '48.990'
+    } else {
+      return isMin ? '53.970' : '53.990'
+    }
+  } else {
+    if (isBiela) {
+      return isMin ? '48.971' : '48.987'
+    } else {
+      return isMin ? '57.974' : '57.995'
+    }
+  }
+}
+
 // Agrupación de parámetros para el formulario de captura de repuesto
 const groupedActiveParams = computed(() => {
   if (!activeGroup.value?.parametros) return []
@@ -1608,6 +1834,13 @@ const groupedActiveParams = computed(() => {
     }
   }
   return blocks
+})
+
+const subfilasActiveHeaders = computed(() => {
+  if (!activeGroup.value?.parametros) {
+    return { tier1: [], tier2: [], hasSubcolumns: false }
+  }
+  return buildNestedTableHeaders(activeGroup.value.parametros)
 })
 
 const validateGroupForm = (): boolean => {
@@ -2340,6 +2573,203 @@ onUnmounted(() => {
 
                 </div>
 
+                <!-- A2. MATRIZ MULTI-FILA CON MARCA Y SUB-FILAS (EJ. COJINETES: MARCA, BIELA, BANCADA) -->
+                <div v-else-if="isSubfilasGroup" class="space-y-3.5">
+                  <!-- Fila 1: Cabecera con Marca Centrada y Aplicación del Motor (Banner Rosa / Corporativo) -->
+                  <div class="p-3 bg-rose-50/70 border border-rose-200/90 rounded-2xl space-y-2">
+                    <div class="flex items-center justify-between border-b border-rose-200/70 pb-1.5">
+                      <div class="flex items-center gap-2">
+                        <span class="px-1.5 py-0.5 rounded bg-rose-200 text-rose-800 text-[10px] font-black uppercase font-mono">Fila 1</span>
+                        <span class="text-xs font-black uppercase text-rose-950 tracking-wider">
+                          Marca Centrada y Aplicación (Cabecera de Registro)
+                        </span>
+                      </div>
+                      <span class="text-[10px] text-rose-700 font-medium">Estilo Federal Mogul</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
+                      <!-- Marca Centrada -->
+                      <div>
+                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-rose-900 mb-1 text-center">
+                          Marca (Centrada) *
+                        </label>
+                        <input
+                          v-model="subfilasMarcaBanner"
+                          type="text"
+                          placeholder="Ej. FORD, GM, TOYOTA, NISSAN..."
+                          class="w-full px-3 py-1.5 text-center text-xs font-black tracking-wider uppercase bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-950 shadow-2xs"
+                        />
+                      </div>
+
+                      <!-- Denominación de Venta / Aplicación de Motor -->
+                      <div>
+                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-rose-900 mb-1">
+                          Aplicación / Modelos / Serie *
+                        </label>
+                        <input
+                          v-model="subfilasAplicacionBanner"
+                          type="text"
+                          placeholder="Ej. Fiesta, Escort, Courier, Focus D1.8 - 1.8 TD"
+                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-400 text-slate-800 shadow-2xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Filas 2 y 3: Biela, Bancada y Sub-filas de Maquinado -->
+                  <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+                    <div class="p-2.5 bg-slate-100/90 border-b border-slate-200 flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                        <span class="text-xs font-black uppercase tracking-wider text-slate-800">
+                          Sub-filas de Maquinado (Fila 2: Biela, Fila 3: Bancada...)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        @click="addFormSubfila"
+                        class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus class="w-3 h-3 text-[#04C4D9]" />
+                        <span>+ Agregar Sub-fila</span>
+                      </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-center border-collapse text-xs font-mono">
+                        <!-- Cabecera de 2 niveles si hay sub-columnas -->
+                        <thead v-if="subfilasActiveHeaders.hasSubcolumns">
+                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                            <th rowspan="2" class="px-3 py-2 text-left border-r border-slate-200 w-28 whitespace-nowrap">
+                              {{ activeTablaConfig.titulo_primera_columna || 'Cojinete' }}
+                            </th>
+                            <th rowspan="2" class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
+                              Código
+                            </th>
+                            <template v-for="item in subfilasActiveHeaders.tier1" :key="item.id">
+                              <th
+                                v-if="item.isGroup"
+                                :colspan="item.colspan"
+                                class="py-1 px-2 border-r border-b border-slate-200 bg-cyan-100/60 text-[#004B97] text-center font-black uppercase text-[10px]"
+                              >
+                                {{ item.label }}
+                              </th>
+                              <th
+                                v-else
+                                rowspan="2"
+                                class="py-2 px-2 border-r border-slate-200 text-[#004B97] font-bold uppercase text-[10px] text-center whitespace-nowrap"
+                              >
+                                {{ item.label }}
+                              </th>
+                            </template>
+                            <th rowspan="2" class="px-2 py-2 w-12 text-center">Acción</th>
+                          </tr>
+                          <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase border-b border-slate-200">
+                            <th
+                              v-for="sub in subfilasActiveHeaders.tier2"
+                              :key="sub.id"
+                              class="py-1 px-1.5 text-center border-r border-slate-200 whitespace-nowrap font-mono"
+                            >
+                              <span>{{ sub.label }}</span>
+                              <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <!-- Cabecera plana estándar si no hay sub-columnas -->
+                        <thead v-else>
+                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
+                            <th class="px-3 py-2 text-left border-r border-slate-200 w-28 whitespace-nowrap">
+                              {{ activeTablaConfig.titulo_primera_columna || 'Cojinete' }}
+                            </th>
+                            <th class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
+                              Código
+                            </th>
+                            <th
+                              v-for="param in (activeGroup?.parametros || [])"
+                              :key="`th-flat-${param.id}`"
+                              class="px-2 py-2 border-r border-slate-200 whitespace-nowrap"
+                            >
+                              {{ param.etiqueta_corta || param.etiqueta }}{{ param.unidad ? ` (${param.unidad})` : '' }}
+                            </th>
+                            <th class="px-2 py-2 w-12 text-center">Acción</th>
+                          </tr>
+                        </thead>
+
+                        <tbody class="divide-y divide-slate-100 text-[11px]">
+                          <tr
+                            v-for="(sf, sfIdx) in subfilasRows"
+                            :key="sf.id"
+                            class="hover:bg-slate-50/70 transition"
+                          >
+                            <!-- Col 1: Nombre de la Sub-fila (Biela, Bancada, etc.) -->
+                            <td class="px-2.5 py-1.5 border-r border-slate-200 text-left bg-slate-50/50">
+                              <div class="flex items-center gap-1.5">
+                                <span
+                                  class="w-2 h-2 rounded-full shrink-0"
+                                  :class="sfIdx === 0 ? 'bg-[#004B97]' : (sfIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                                ></span>
+                                <input
+                                  v-model="sf.nombre"
+                                  type="text"
+                                  :placeholder="sfIdx === 0 ? 'Biela' : (sfIdx === 1 ? 'Bancada' : 'Sub-fila')"
+                                  class="w-full px-1.5 py-0.5 text-xs font-black text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-[#04C4D9] rounded focus:outline-none transition"
+                                />
+                              </div>
+                            </td>
+
+                            <!-- Col 2: Código de la Sub-fila (ej. 4-4160 RA /CP, 7367 M) -->
+                            <td class="px-2 py-1.5 border-r border-slate-200">
+                              <input
+                                v-model="sf.codigo"
+                                type="text"
+                                :placeholder="sfIdx === 0 ? 'Ej. 4-4160 RA' : 'Ej. 7367 M'"
+                                class="w-28 px-1.5 py-1 text-center font-mono font-black text-xs uppercase bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              />
+                            </td>
+
+                            <!-- Columnas de Parámetros Dinámicos (ej. Diámetros Mín/Máx por etapa STD, 1er, 2da...) -->
+                            <td
+                              v-for="param in (activeGroup?.parametros || [])"
+                              :key="`td-sf-${sf.id}-${param.id}`"
+                              class="px-1.5 py-1.5 border-r border-slate-200"
+                            >
+                              <input
+                                v-if="param.tipo_dato === 'numero'"
+                                v-model.number="sf.medidas[param.clave]"
+                                type="number"
+                                step="0.001"
+                                placeholder="0.000"
+                                class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              />
+                              <input
+                                v-else
+                                v-model="sf.medidas[param.clave]"
+                                type="text"
+                                placeholder="—"
+                                class="w-20 px-1 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              />
+                            </td>
+
+                            <!-- Quitar fila -->
+                            <td class="px-2 py-1.5 text-center">
+                              <button
+                                v-if="subfilasRows.length > 1"
+                                type="button"
+                                @click="removeFormSubfila(sfIdx)"
+                                class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                :title="`Eliminar ${sf.nombre || 'esta fila'}`"
+                              >
+                                <Trash2 class="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS (CON SOPORTE DE SUB-COLUMNAS) -->
                 <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="space-y-3">
                   <div 
@@ -2816,28 +3246,45 @@ onUnmounted(() => {
                   />
                 </div>
 
-                <!-- Modo de las Filas: Incremental (1, 2, 3, 4) vs Libre -->
+                <!-- Modo de las Filas: Cojinetes (Matriz Marca + Sub-filas) vs Incremental vs Libre -->
                 <div>
                   <label class="block text-xs font-bold text-slate-800 mb-1.5">
                     Comportamiento de las Filas
                   </label>
-                  <div class="grid grid-cols-2 gap-2">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
-                      @click="groupTablaConfig.modo_filas = 'incremental'"
-                      class="p-2 rounded-xl border text-left transition"
-                      :class="groupTablaConfig.modo_filas === 'incremental'
+                      @click="selectModoFilas('cojinetes')"
+                      class="p-2 rounded-xl border text-left transition cursor-pointer"
+                      :class="groupTablaConfig.modo_filas === 'cojinetes'
                         ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
                         : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
                     >
-                      <div class="text-xs font-black">Incremental (1, 2, 3, 4...)</div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Numera automáticamente cada fila al agregar</div>
+                      <div class="text-xs font-black flex items-center gap-1 text-[#004B97]">
+                        <Layers class="w-3.5 h-3.5 text-[#04C4D9]" />
+                        <span>Matriz Cojinetes</span>
+                      </div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">
+                        Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada
+                      </div>
                     </button>
 
                     <button
                       type="button"
-                      @click="groupTablaConfig.modo_filas = 'libre'"
-                      class="p-2 rounded-xl border text-left transition"
+                      @click="selectModoFilas('incremental')"
+                      class="p-2 rounded-xl border text-left transition cursor-pointer"
+                      :class="groupTablaConfig.modo_filas === 'incremental'
+                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
+                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
+                    >
+                      <div class="text-xs font-black">Incremental (1, 2, 3...)</div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Numera automáticamente cada fila al agregar (Anillos)</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      @click="selectModoFilas('libre')"
+                      class="p-2 rounded-xl border text-left transition cursor-pointer"
                       :class="groupTablaConfig.modo_filas === 'libre'
                         ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
                         : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
@@ -2845,6 +3292,63 @@ onUnmounted(() => {
                       <div class="text-xs font-black">Libre (Texto abierto)</div>
                       <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Permite escribir cualquier nombre por fila</div>
                     </button>
+                  </div>
+
+                  <!-- Panel de configuración de Sub-filas para Cojinetes -->
+                  <div v-if="groupTablaConfig.modo_filas === 'cojinetes'" class="mt-2.5 space-y-2.5 bg-white/90 p-3 rounded-xl border border-cyan-200">
+                    <div class="flex items-center justify-between">
+                      <div class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                        <span>Estructura de 3 Filas por Registro (Federal Mogul)</span>
+                      </div>
+                      <button
+                        type="button"
+                        @click="addConfigSubfila"
+                        class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200 transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus class="w-3 h-3 text-[#04C4D9]" />
+                        <span>+ Agregar Sub-fila</span>
+                      </button>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs">
+                      <!-- Fila 1: Marca Centrada -->
+                      <div class="p-2 rounded-lg bg-rose-50/70 border border-rose-200 text-rose-950 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                          <span class="px-1.5 py-0.5 rounded bg-rose-200/80 text-rose-800 text-[10px] font-black uppercase font-mono">Fila 1</span>
+                          <span class="font-bold">Marca del Motor (Centrada) + Aplicación vehicular</span>
+                        </div>
+                        <span class="text-[10px] font-semibold text-rose-700 bg-white/80 px-2 py-0.5 rounded">Fija en cabecera de registro</span>
+                      </div>
+
+                      <!-- Sub-filas dinámicas (Fila 2 Biela, Fila 3 Bancada, etc.) -->
+                      <div
+                        v-for="(_sfName, sfIdx) in (groupTablaConfig.subfilas || ['Biela', 'Bancada'])"
+                        :key="sfIdx"
+                        class="p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                      >
+                        <div class="flex items-center gap-2 flex-1">
+                          <span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-black uppercase font-mono">
+                            Fila {{ sfIdx + 2 }}
+                          </span>
+                          <input
+                            v-model="(groupTablaConfig.subfilas || ['Biela', 'Bancada'])[sfIdx]"
+                            type="text"
+                            class="px-2 py-0.5 text-xs font-bold bg-white border border-slate-300 rounded focus:outline-none focus:border-[#04C4D9] flex-1 max-w-[200px]"
+                          />
+                          <span class="text-[10px] text-slate-500">Tendrá Código + todas las columnas de maquinado</span>
+                        </div>
+                        <button
+                          v-if="(groupTablaConfig.subfilas || []).length > 1"
+                          type="button"
+                          @click="removeConfigSubfila(sfIdx)"
+                          class="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                          title="Eliminar esta sub-fila"
+                        >
+                          <Trash2 class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <!-- Opciones extra para modo incremental -->
@@ -2914,6 +3418,16 @@ onUnmounted(() => {
                     <span>{{ groupTipoVista === 'tabla' ? 'Columnas / Parámetros de la Tabla' : 'Gestor de Parámetros' }}</span>
                   </h3>
                   <div class="flex items-center gap-1.5">
+                    <button
+                      v-if="groupTipoVista === 'tabla'"
+                      type="button"
+                      @click="cargarColumnasFederalMogul"
+                      class="px-2.5 py-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-[#004B97] rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
+                      title="Carga la plantilla de columnas de rectificación de cigüeñales (STD, 1er, 2da, 3er, 4ta)"
+                    >
+                      <Sparkles class="w-3.5 h-3.5 text-[#04C4D9]" />
+                      <span>+ Plantilla Cojinetes</span>
+                    </button>
                     <button
                       type="button"
                       @click="addParamRow"
@@ -3306,9 +3820,15 @@ onUnmounted(() => {
                       <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
                       <thead v-if="hasSubcolumnsInPreview">
                         <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
-                          <th rowspan="2" class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Componente</th>
-                          <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">Código OEM</th>
-                          <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">Catálogos Alternos</th>
+                          <th rowspan="2" class="py-2 px-3 border-r border-slate-800 whitespace-nowrap" :class="isSubfilasActiveInPreview ? 'w-28' : 'w-44'">
+                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                          </th>
+                          <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">
+                            {{ isSubfilasActiveInPreview ? 'Código' : 'Código OEM' }}
+                          </th>
+                          <th v-if="!isSubfilasActiveInPreview" rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">
+                            Catálogos Alternos
+                          </th>
                           <template v-for="item in nestedPreviewHeaders.tier1" :key="item.id">
                             <th 
                               v-if="item.isGroup"
@@ -3343,14 +3863,29 @@ onUnmounted(() => {
                       <!-- Caso B: Cabecera Estándar de 1 Nivel -->
                       <thead v-else>
                         <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
-                          <!-- 1. COMPONENTE -->
-                          <th class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Componente</th>
+                          <!-- 1. COMPONENTE / COJINETE -->
+                          <th class="py-2 px-3 border-r border-slate-800 whitespace-nowrap" :class="isSubfilasActiveInPreview ? 'w-28' : 'w-44'">
+                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                          </th>
                           <!-- 2. CÓDIGO OEM -->
-                          <th class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">Código OEM</th>
+                          <th class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">
+                            {{ isSubfilasActiveInPreview ? 'Código' : 'Código OEM' }}
+                          </th>
                           <!-- 3. CATÁLOGOS ALTERNOS -->
-                          <th class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">Catálogos Alternos</th>
+                          <th v-if="!isSubfilasActiveInPreview" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">
+                            Catálogos Alternos
+                          </th>
                           <!-- 4. COTAS / MEDIDAS AGRUPADAS (HEADER DINÁMICO) -->
-                          <th class="py-2 px-3 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px]">
+                          <template v-if="isSubfilasActiveInPreview">
+                            <th
+                              v-for="colParam in visibleTableColumns"
+                              :key="`prev-th-flat-${colParam.id}`"
+                              class="py-2 px-2.5 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px] text-center whitespace-nowrap"
+                            >
+                              {{ colParam.etiqueta_corta || colParam.etiqueta }}{{ colParam.unidad ? ` (${colParam.unidad})` : '' }}
+                            </th>
+                          </template>
+                          <th v-else class="py-2 px-3 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px]">
                             <div class="flex items-center justify-between gap-2">
                               <span class="truncate">
                                 {{ (groupNombre ? groupNombre.toUpperCase() : 'COTAS') }}: 
@@ -3363,8 +3898,142 @@ onUnmounted(() => {
                         </tr>
                       </thead>
 
-                      <!-- Filas de muestra interactivas (5 Columnas Estandarizadas) -->
-                      <tbody class="divide-y divide-slate-800/70 font-mono text-[11px]">
+                      <!-- Caso A: Matriz Federal Mogul de 3 Filas (Fila 1 Marca Centrada, Fila 2 Biela, Fila 3 Bancada) -->
+                      <tbody v-if="isSubfilasActiveInPreview" class="divide-y divide-slate-800/70 font-mono text-[11px]">
+                        <!-- REGISTRO 1: FORD (Fiesta, Escort D1.8) -->
+                        <!-- Fila 1: Cinta de Marca Centrada + Aplicación -->
+                        <tr class="bg-rose-950/40 border-t-2 border-rose-800/60 text-rose-200">
+                          <td class="py-1.5 px-3 border-r border-slate-800/80 text-center font-black uppercase text-rose-300 bg-rose-950/70 tracking-wider">
+                            <span>{{ subfilasMarcaBanner || (groupNombre?.toUpperCase() || 'FORD') }}</span>
+                          </td>
+                          <td :colspan="visibleTableColumns.length + 1" class="py-1.5 px-3 border-r border-slate-800/80 font-sans text-xs">
+                            <div class="flex items-center justify-between gap-2">
+                              <div class="flex items-center gap-2">
+                                <span class="font-bold text-white">{{ subfilasAplicacionBanner || 'Fiesta, Escort, Courier, Focus D1.8 - 1.8 TD' }}</span>
+                              </div>
+                              <span class="text-[10px] font-mono font-bold text-rose-300 bg-rose-900/40 px-2 py-0.5 rounded border border-rose-800/50">
+                                STD-0,25-0,50
+                              </span>
+                            </div>
+                          </td>
+                          <td class="py-1.5 px-3 text-right">
+                            <span class="text-[9px] font-bold text-slate-400 uppercase">Juego</span>
+                          </td>
+                        </tr>
+
+                        <!-- Fila 2: Biela -->
+                        <tr class="hover:bg-slate-900/60 transition">
+                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
+                            {{ previewSubfilas[0] || 'Biela' }}
+                          </td>
+                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
+                            4-4160 RA /CP
+                          </td>
+                          <td
+                            v-for="colParam in visibleTableColumns"
+                            :key="`prev-sf0-${colParam.id}`"
+                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
+                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                          >
+                            {{ getPreviewSubfilaValue(colParam, 'Biela', 0) }}
+                          </td>
+                          <td class="py-2 px-3 text-right">
+                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
+                              + Orden
+                            </button>
+                          </td>
+                        </tr>
+
+                        <!-- Fila 3: Bancada -->
+                        <tr class="hover:bg-slate-900/60 transition">
+                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
+                            {{ previewSubfilas[1] || 'Bancada' }}
+                          </td>
+                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
+                            7367 M
+                          </td>
+                          <td
+                            v-for="colParam in visibleTableColumns"
+                            :key="`prev-sf1-${colParam.id}`"
+                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
+                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                          >
+                            {{ getPreviewSubfilaValue(colParam, 'Bancada', 0) }}
+                          </td>
+                          <td class="py-2 px-3 text-right">
+                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
+                              + Orden
+                            </button>
+                          </td>
+                        </tr>
+
+                        <!-- REGISTRO 2: G.M (Astra, Vectra) -->
+                        <tr class="bg-rose-950/40 border-t-2 border-rose-800/60 text-rose-200">
+                          <td class="py-1.5 px-3 border-r border-slate-800/80 text-center font-black uppercase text-rose-300 bg-rose-950/70 tracking-wider">
+                            G.M
+                          </td>
+                          <td :colspan="visibleTableColumns.length + 1" class="py-1.5 px-3 border-r border-slate-800/80 font-sans text-xs">
+                            <div class="flex items-center justify-between gap-2">
+                              <span class="font-bold text-white">Astra, Vectra 1.7 D, TD (X17)</span>
+                              <span class="text-[10px] font-mono font-bold text-rose-300 bg-rose-900/40 px-2 py-0.5 rounded border border-rose-800/50">
+                                STD-0,25
+                              </span>
+                            </div>
+                          </td>
+                          <td class="py-1.5 px-3 text-right">
+                            <span class="text-[9px] font-bold text-slate-400 uppercase">Juego</span>
+                          </td>
+                        </tr>
+
+                        <!-- Fila 2: Biela G.M -->
+                        <tr class="hover:bg-slate-900/60 transition">
+                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
+                            {{ previewSubfilas[0] || 'Biela' }}
+                          </td>
+                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
+                            71-3821/4
+                          </td>
+                          <td
+                            v-for="colParam in visibleTableColumns"
+                            :key="`prev2-sf0-${colParam.id}`"
+                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
+                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                          >
+                            {{ getPreviewSubfilaValue(colParam, 'Biela', 1) }}
+                          </td>
+                          <td class="py-2 px-3 text-right">
+                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
+                              + Orden
+                            </button>
+                          </td>
+                        </tr>
+
+                        <!-- Fila 3: Bancada G.M -->
+                        <tr class="hover:bg-slate-900/60 transition">
+                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
+                            {{ previewSubfilas[1] || 'Bancada' }}
+                          </td>
+                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
+                            H-059/5
+                          </td>
+                          <td
+                            v-for="colParam in visibleTableColumns"
+                            :key="`prev2-sf1-${colParam.id}`"
+                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
+                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                          >
+                            {{ getPreviewSubfilaValue(colParam, 'Bancada', 1) }}
+                          </td>
+                          <td class="py-2 px-3 text-right">
+                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
+                              + Orden
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+
+                      <!-- Caso B: Filas de muestra interactivas estándar (5 Columnas Estandarizadas) -->
+                      <tbody v-else class="divide-y divide-slate-800/70 font-mono text-[11px]">
                         <!-- Fila de Prueba 1 -->
                         <tr class="hover:bg-slate-900/60 transition group">
                           <!-- 1. COMPONENTE -->
