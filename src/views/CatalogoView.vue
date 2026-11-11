@@ -2128,6 +2128,91 @@ const getPartEquivalencias = (part: RepuestoTecnico | null | undefined): Equival
 const isTechnicalModalOpen = ref<boolean>(false)
 const modalPart = ref<RepuestoTecnico | null>(null)
 
+const EXCLUDED_MODAL_DIM_KEYS = new Set([
+  'anillos',
+  'diametro_interior_mm',
+  'diametro_exterior_mm',
+  'altura_mm',
+  'diametro_cabeza_mm',
+  'diametro_vastago_mm',
+  'longitud_total_mm',
+  'stem_end',
+  'cunero',
+  'cuñero',
+  'ranuras',
+  'diametro_cilindro_mm',
+  'espesor_anillo1_mm',
+  'espesor_anillo2_mm',
+  'espesor_anillo3_mm',
+  'espesor_aceite_mm',
+  'medida_rosca',
+  'paso_rosca_mm',
+  'marca_catalogo',
+  'catalogo_origen',
+  'catalogo',
+  'fuente',
+  'codigo_dokuro',
+  'codigo_mrk',
+  'codigo_rik',
+  'codigo_npr',
+  'codigo_ajusa',
+  'codigo_taiho',
+  'codigo_ndc',
+  'codigo_catalogo',
+  'vehiculo',
+  'ano',
+  'anos',
+  'cilindros',
+  'motores_texto',
+  'cilindrada',
+  'formato_visualizacion',
+  'codigos_oem_adicionales',
+  'referencias_oem',
+  'diseno_conico',
+  'keystone',
+  'hongo',
+  'hongo_mm',
+  'vastago',
+  'vastago_mm',
+  'largo',
+  'largo_mm',
+  'length_mm',
+  'diam_int',
+  'interior_mm',
+  'diametro_interior',
+  'diam_ext',
+  'exterior_mm',
+  'diametro_exterior',
+  'diametro_exterior_1_mm'
+])
+
+const getModalExtraDimensions = (part: RepuestoTecnico | null | undefined): Array<{ key: string; label: string; value: string }> => {
+  if (!part || !part.dimensiones || typeof part.dimensiones !== 'object') return []
+  const dims = part.dimensiones as Record<string, any>
+  const grpCode = resolveGroupIdFromPart(part)
+  const grp = catalogStore.grupos.find(g => g.codigo === grpCode || g.id === grpCode)
+  const params = grp?.parametros || []
+
+  const rows: Array<{ key: string; label: string; value: string }> = []
+  for (const [rawKey, rawVal] of Object.entries(dims)) {
+    if (EXCLUDED_MODAL_DIM_KEYS.has(rawKey)) continue
+    if (rawVal === undefined || rawVal === null || rawVal === '' || typeof rawVal === 'object') continue
+
+    const paramDef = params.find(p => p.clave === rawKey)
+    const label = paramDef?.etiqueta || rawKey.replace(/_mm$/i, '').replace(/_/g, ' ')
+    const unit = paramDef?.unidad || (rawKey.endsWith('_mm') ? 'mm' : (rawKey.includes('angulo') || rawKey.includes('grados') ? '°' : ''))
+    const valStr = String(rawVal).trim()
+    const formattedVal = unit && !valStr.toLowerCase().endsWith(unit.toLowerCase()) ? `${valStr} ${unit}` : valStr
+
+    rows.push({
+      key: rawKey,
+      label,
+      value: formattedVal
+    })
+  }
+  return rows
+}
+
 const isLightboxOpen = ref<boolean>(false)
 const lightboxPart = ref<RepuestoTecnico | null>(null)
 
@@ -3392,11 +3477,9 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <!-- Información técnica informativa (no búsqueda) -->
+            <!-- Información técnica del motor seleccionado -->
             <div v-if="selectedMotor?.cilindros" class="flex items-center gap-1.5 text-[10px] text-cyan-800 bg-cyan-50/80 px-2.5 py-1 rounded-md border border-cyan-200/70 font-medium">
               <span class="font-bold text-[#038391]">{{ selectedMotor.cilindros }} Cilindros</span>
-              <span class="text-slate-400">|</span>
-              <span class="text-slate-600">Dato informativo en tabla (no filtra)</span>
             </div>
           </div>
 
@@ -4335,17 +4418,17 @@ onUnmounted(() => {
               registros
             </span>
 
-            <!-- Botones de Streaming desde BD cuando hay más lotes -->
+            <!-- Controles de carga de más registros -->
             <div v-if="catalogStore.hasMoreRepuestos" class="flex items-center gap-1.5 pl-2 border-l border-slate-200">
               <span class="text-[10px] text-slate-500 font-mono">
-                ({{ catalogStore.repuestos.length }} de ~{{ catalogStore.totalRepuestosCount }} en BD)
+                ({{ catalogStore.repuestos.length }} de {{ catalogStore.totalRepuestosCount }})
               </span>
               <button
                 type="button"
                 @click="catalogStore.loadMoreRepuestos()"
                 :disabled="catalogStore.isLoadingMore"
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-50 text-[#004b97] hover:bg-sky-100 border border-sky-200 text-[11px] font-bold transition disabled:opacity-50"
-                title="Cargar siguiente lote de 150 repuestos mediante cursor de base de datos"
+                title="Cargar más repuestos"
               >
                 <Loader2 v-if="catalogStore.isLoadingMore" class="w-3 h-3 animate-spin" />
                 <Plus v-else class="w-3 h-3" />
@@ -4830,21 +4913,18 @@ onUnmounted(() => {
                     <td class="py-1.5 px-3 text-slate-500 font-sans">Rosca y Paso:</td>
                     <td class="py-1.5 px-3 text-slate-900 font-bold text-right">{{ modalPart.medida_rosca }} × {{ modalPart.paso_rosca_mm || 1.25 }} mm</td>
                   </tr>
-                  <template v-if="modalPart.dimensiones && typeof modalPart.dimensiones === 'object'">
-                    <tr 
-                      v-for="(val, key) in modalPart.dimensiones" 
-                      :key="`dyn-dim-${key}`"
-                      v-show="key !== 'anillos' && typeof val !== 'object'"
-                      class="border-t border-slate-100 hover:bg-slate-50"
-                    >
-                      <td class="py-1.5 px-3 text-slate-500 font-sans capitalize">
-                        {{ String(key).replace(/_/g, ' ') }}:
-                      </td>
-                      <td class="py-1.5 px-3 text-slate-900 font-bold text-right font-mono">
-                        {{ val }}
-                      </td>
-                    </tr>
-                  </template>
+                  <tr 
+                    v-for="extraDim in getModalExtraDimensions(modalPart)" 
+                    :key="`dyn-dim-${extraDim.key}`"
+                    class="border-t border-slate-100 hover:bg-slate-50"
+                  >
+                    <td class="py-1.5 px-3 text-slate-500 font-sans capitalize">
+                      {{ extraDim.label }}:
+                    </td>
+                    <td class="py-1.5 px-3 text-slate-900 font-bold text-right font-mono">
+                      {{ extraDim.value }}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

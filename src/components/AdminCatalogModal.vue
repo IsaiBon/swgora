@@ -3093,7 +3093,7 @@ onUnmounted(() => {
                       <!-- Clave Técnica Inmutable (ReadOnly + Candado) -->
                       <div class="sm:col-span-2">
                         <div class="flex items-center justify-between mb-1">
-                          <label class="block text-[11px] font-bold text-slate-700">Clave Técnica (BD)</label>
+                          <label class="block text-[11px] font-bold text-slate-700">Clave del Parámetro</label>
                           <span class="inline-flex items-center gap-1 text-[9px] font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.2 rounded border border-slate-200">
                             <Lock class="w-2.5 h-2.5 text-slate-600" />
                             Inmutable
@@ -3105,7 +3105,7 @@ onUnmounted(() => {
                             readonly
                             tabindex="-1"
                             class="w-full pl-7 pr-3 py-1.5 text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-all focus:outline-none shadow-inner"
-                            title="Clave técnica autogenerada e inmutable para garantizar integridad en BD"
+                            title="Identificador interno autogenerado del parámetro"
                           />
                           <Lock class="w-3.5 h-3.5 text-slate-600 absolute left-2 pointer-events-none" />
                         </div>

@@ -199,15 +199,15 @@ const applyManualUrl = () => {
             class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
           >
             <CheckCircle2 class="w-3 h-3 text-emerald-600" />
-            En la nube (Supabase Storage)
+            Almacenado en la nube
           </span>
           <span 
             v-else-if="modelValue.startsWith('blob:') || modelValue.startsWith('data:')" 
             class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
-            title="La imagen está en memoria local temporal porque el bucket 'repuestos' aún no existe en tu proyecto de Supabase."
+            title="Vista previa cargada localmente"
           >
             <AlertCircle class="w-3 h-3 text-amber-600" />
-            Temporal Local (Pendiente activar bucket en Supabase)
+            Vista previa local
           </span>
           <span 
             v-else 
@@ -231,7 +231,7 @@ const applyManualUrl = () => {
 
         <div v-if="uploadWarning" class="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg font-medium flex items-start gap-1.5">
           <AlertCircle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-          <span>{{ uploadWarning }}. Para guardarla permanentemente en la nube, ejecuta el SQL de la migración en Supabase.</span>
+          <span>{{ uploadWarning }}</span>
         </div>
 
         <!-- Botonera de acciones -->
