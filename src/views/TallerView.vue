@@ -11,12 +11,19 @@ import {
   AlertCircle,
   RotateCcw,
   Sparkles,
-  FileText
+  FileText,
+  Upload,
+  Image as ImageIcon,
+  Trash2
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const tallerStore = useTallerStore()
+
+// Archivo de logo pendiente de guardar
+const pendingLogoFile = ref<File | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 // Validación de permisos: Solo Administrador
 onMounted(async () => {
@@ -58,6 +65,43 @@ const resetForm = () => {
   form.celular2 = current.celular2 || ''
   form.eslogan = current.eslogan || ''
   form.logo_url = current.logo_url || '/logo-taller.png'
+  pendingLogoFile.value = null
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+// Manejador de selección de nuevo logo
+const handleLogoSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  // Validar tamaño máximo (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('El archivo es demasiado grande. El límite máximo es 5MB.', 'error')
+    target.value = ''
+    return
+  }
+
+  // Previsualizar inmediatamente en vivo
+  pendingLogoFile.value = file
+  const reader = new FileReader()
+  reader.onload = () => {
+    form.logo_url = reader.result as string
+    showToast('Nuevo logotipo previsualizado. Haz clic en "Guardar Cambios" para aplicarlo.', 'success')
+  }
+  reader.readAsDataURL(file)
+}
+
+// Restablecer al logo oficial predeterminado
+const resetToDefaultLogo = () => {
+  form.logo_url = '/logo-taller.png'
+  pendingLogoFile.value = null
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+  showToast('Se restableció el logotipo al predeterminado del taller.', 'success')
 }
 
 const handleSubmit = async () => {
@@ -76,16 +120,29 @@ const handleSubmit = async () => {
 
   isSaving.value = true
   try {
+    let finalLogoUrl = form.logo_url
+
+    // Si hay un archivo nuevo seleccionado, subirlo a Supabase Storage
+    if (pendingLogoFile.value) {
+      try {
+        finalLogoUrl = await tallerStore.uploadLogo(pendingLogoFile.value)
+      } catch (uploadErr) {
+        console.warn('Fallo subiendo archivo a Storage, usando Data URL local:', uploadErr)
+      }
+    }
+
     await tallerStore.updateTaller({
       nombre: form.nombre.trim(),
       direccion: form.direccion.trim(),
       celular1: form.celular1.trim(),
       celular2: form.celular2.trim(),
       eslogan: form.eslogan.trim(),
-      logo_url: form.logo_url
+      logo_url: finalLogoUrl
     })
 
-    showToast('Información del taller guardada y actualizada en Supabase exitosamente.', 'success')
+    form.logo_url = finalLogoUrl
+    pendingLogoFile.value = null
+    showToast('Información y logotipo del taller actualizados en Supabase exitosamente.', 'success')
   } catch (err: any) {
     console.error('Error al guardar datos del taller:', err)
     showToast('Ocurrió un error al guardar los cambios en Supabase.', 'error')
@@ -111,7 +168,7 @@ const handleSubmit = async () => {
           Módulo de Taller
         </h1>
         <p class="text-xs text-slate-500 mt-1 max-w-2xl">
-          Administra los datos institucionales de la empresa rectificadora. Esta información se consulta y refleja automáticamente en los encabezados, membretes y totales de las órdenes de trabajo, cotizaciones y archivos PDF generados.
+          Administra el logotipo y datos institucionales de la empresa rectificadora. Esta información se consulta y refleja automáticamente en los encabezados, membretes y totales de las órdenes de trabajo, cotizaciones y archivos PDF generados.
         </p>
       </div>
 
@@ -143,15 +200,72 @@ const handleSubmit = async () => {
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
       <!-- Columna Izquierda: Formulario de Edición (7 cols) -->
-      <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-5">
+      <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
         <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center text-[#04c4d9]">
               <Building2 class="w-4 h-4" />
             </div>
             <div>
-              <h2 class="text-sm font-bold text-slate-900">Datos Generales del Taller</h2>
+              <h2 class="text-sm font-bold text-slate-900">Datos Generales y Logotipo</h2>
               <p class="text-[11px] text-slate-400">Información sincronizada en la base de datos de Supabase</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECCIÓN DE LOGOTIPO -->
+        <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4.5 space-y-3">
+          <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <ImageIcon class="w-4 h-4 text-[#04c4d9]" />
+            Logotipo del Taller
+          </label>
+
+          <div class="flex flex-col sm:flex-row items-center gap-4">
+            <!-- Contenedor del Logo Actual -->
+            <div class="w-24 h-24 shrink-0 rounded-2xl bg-white border-2 border-slate-200 p-2 shadow-xs flex items-center justify-center overflow-hidden">
+              <img
+                :src="form.logo_url || '/logo-taller.png'"
+                alt="Vista previa de logo"
+                class="max-w-full max-h-full object-contain"
+                @error="(e: any) => e.target.src = '/logo-taller.png'"
+              />
+            </div>
+
+            <!-- Botones de Acción de Logo -->
+            <div class="flex-1 space-y-2 text-center sm:text-left">
+              <div class="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  class="hidden"
+                  @change="handleLogoSelect"
+                />
+                
+                <button
+                  type="button"
+                  @click="fileInputRef?.click()"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 active:scale-95 rounded-xl shadow-xs transition"
+                >
+                  <Upload class="w-3.5 h-3.5 text-cyan-400" />
+                  Cambiar Logotipo
+                </button>
+
+                <button
+                  v-if="form.logo_url !== '/logo-taller.png'"
+                  type="button"
+                  @click="resetToDefaultLogo"
+                  class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition"
+                  title="Volver al logo inicial"
+                >
+                  <Trash2 class="w-3.5 h-3.5 text-rose-500" />
+                  Restablecer
+                </button>
+              </div>
+
+              <p class="text-[10.5px] text-slate-500 leading-relaxed">
+                Admite archivos <strong>PNG, JPG, SVG o WebP</strong> (máx. 5 MB). Se recomienda una imagen cuadrada con fondo transparente para máxima fidelidad en el PDF impreso.
+              </p>
             </div>
           </div>
         </div>
@@ -277,13 +391,13 @@ const handleSubmit = async () => {
           <!-- Encabezado idéntico al PDF -->
           <div class="border-b-2 border-slate-900 pb-3">
             <div class="flex items-start gap-3">
-              <!-- Logo -->
-              <div class="w-12 h-12 shrink-0 flex items-center justify-center border border-slate-200 rounded p-1">
+              <!-- Logo dinámico con vista previa -->
+              <div class="w-14 h-14 shrink-0 flex items-center justify-center border border-slate-200 rounded p-1 bg-white">
                 <img
-                  src="/logo-taller.png"
+                  :src="form.logo_url || '/logo-taller.png'"
                   alt="Logo Rectificadora"
                   class="max-w-full max-h-full object-contain"
-                  @error="(e: any) => e.target.style.display = 'none'"
+                  @error="(e: any) => e.target.src = '/logo-taller.png'"
                 />
               </div>
 
@@ -316,7 +430,7 @@ const handleSubmit = async () => {
           <div class="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-[11px] text-cyan-900 flex items-start gap-2">
             <CheckCircle2 class="w-4 h-4 text-cyan-600 shrink-0 mt-0.5" />
             <p>
-              Cualquier cambio guardado aquí se aplicará de inmediato a todas las órdenes y cotizaciones nuevas y existentes al imprimirlas o descargarlas en PDF.
+              El logotipo y datos modificados aquí se reflejan de inmediato en todas las órdenes de trabajo, cotizaciones y documentos PDF descargados o impresos.
             </p>
           </div>
         </div>

@@ -112,5 +112,45 @@ export const tallerService = {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload))
     }
     return payload as TallerInfo
+  },
+
+  /**
+   * Sube un nuevo logotipo para el taller en Supabase Storage (bucket 'taller')
+   * y retorna la URL pública. Cuenta con respaldo automático a Data URL base64.
+   */
+  async uploadLogo(file: File): Promise<string> {
+    try {
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png'
+      const cleanFileName = `logo_taller_${Date.now()}.${fileExt}`
+
+      const { data, error } = await supabase.storage
+        .from('taller')
+        .upload(cleanFileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (!error && data) {
+        const { data: publicUrlData } = supabase.storage
+          .from('taller')
+          .getPublicUrl(cleanFileName)
+
+        if (publicUrlData?.publicUrl) {
+          return publicUrlData.publicUrl
+        }
+      } else if (error) {
+        console.warn('[tallerService] Advertencia subiendo logo a Storage, usando Data URL:', error)
+      }
+    } catch (err) {
+      console.warn('[tallerService] Excepción en uploadLogo:', err)
+    }
+
+    // Fallback: Convertir archivo a Data URL base64 ultra-estable
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
   }
 }

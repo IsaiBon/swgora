@@ -42,12 +42,17 @@ export const useTallerStore = defineStore('taller', () => {
     }
   }
 
+  const uploadLogo = async (file: File) => {
+    return await tallerService.uploadLogo(file)
+  }
+
   return {
     tallerInfo,
     isLoaded,
     isLoading,
     error,
     loadTallerInfo,
-    updateTaller
+    updateTaller,
+    uploadLogo
   }
 })

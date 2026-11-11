@@ -205,7 +205,7 @@ const orderGrandTotal = computed(() => {
               :src="tallerStore.tallerInfo.logo_url || '/logo-taller.png'"
               alt="Logo Rectificadora"
               class="max-w-full max-h-full object-contain"
-              @error="(e: any) => e.target.style.display = 'none'"
+              @error="(e: any) => { if (e.target.src !== '/logo-taller.png') e.target.src = '/logo-taller.png'; else e.target.style.display = 'none'; }"
             />
           </div>
 
