@@ -23,6 +23,7 @@ import {
 } from '@/services/usuariosService'
 
 import { perfilesService, type Perfil } from '@/services/perfilesService'
+import { parseSubAdminRole } from '@/services/rutasService'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 
 const modalAbierto = ref(false)
@@ -181,6 +182,8 @@ function claseRol(rol: string): string {
   switch (normalizeRole(rol)) {
     case 'Administrador':
       return 'bg-[#0D0D0D] text-[#05F2F2] ring-[#0D0D0D] font-semibold'
+    case 'Sub-Administrador':
+      return 'bg-[#05F2F2]/25 text-[#0D0D0D] ring-[#04C4D9] font-semibold'
     case 'Operador':
       return 'bg-[#05C7F2]/15 text-[#0D0D0D] ring-[#04C4D9]/50 font-semibold'
     default:
@@ -199,14 +202,27 @@ const botonCancelar = ref<HTMLButtonElement | null>(null)
 let botonOrigen: HTMLElement | null = null
 
 function nombreRol(rol: string): string {
+  const subAdmin = parseSubAdminRole(rol)
+  if (subAdmin.isSubAdmin) {
+    if (subAdmin.rutaCodigo && subAdmin.rutaNombre) {
+      return `Sub-Admin (${subAdmin.rutaCodigo} · ${subAdmin.rutaNombre})`
+    }
+    if (subAdmin.rutaNombre) {
+      return `Sub-Admin (${subAdmin.rutaNombre})`
+    }
+    return 'Sub-Administrador de Ruta'
+  }
   const normalizado = normalizeRole(rol)
   return normalizado === 'Operador' ? 'Tallerista' : normalizado
 }
 
 function puedeEliminar(perfil: Perfil): boolean {
-  return normalizeRole(auth.user?.role) === 'Administrador' &&
+  const norm = normalizeRole(perfil.rol)
+  return (
+    normalizeRole(auth.user?.role) === 'Administrador' &&
     perfil.id !== auth.user?.id &&
-    ['operador', 'consultor'].includes(perfil.rol.trim().toLowerCase())
+    norm !== 'Administrador'
+  )
 }
 
 function puedeDesactivar(perfil: Perfil): boolean {

@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { ordersService, type Order } from '@/services/ordersService'
+import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
 import OperationsManagerModal from '@/components/OperationsManagerModal.vue'
@@ -20,7 +21,8 @@ import {
   Lock, 
   SlidersHorizontal,
   Copy,
-  AlertCircle
+  AlertCircle,
+  MapPin
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -66,11 +68,24 @@ watch(
   { immediate: true }
 )
 
-// Lista de órdenes
+// Lista de órdenes y rutas
 const orders = ref<Order[]>([])
+const rutas = ref<RutaSucursal[]>([])
 const searchQuery = ref('')
 const selectedStatus = ref<string>('Todos')
 const selectedType = ref<string>('Todos')
+const selectedRutaFilter = ref<string>('ALL') // 'ALL' | 'UNASSIGNED' | <ruta.id>
+
+// Sincronizar filtro de ruta con el query param ?ruta=<id>
+watch(
+  () => route.query.ruta,
+  (rutaParam) => {
+    if (typeof rutaParam === 'string' && rutaParam.trim()) {
+      selectedRutaFilter.value = rutaParam.trim()
+    }
+  },
+  { immediate: true }
+)
 
 // Modal de impresión rápida desde la lista
 const printModalOpen = ref(false)
@@ -80,7 +95,12 @@ const orderToPrint = ref<Order | null>(null)
 const showOperationsModal = ref(false)
 
 const loadOrders = async () => {
-  orders.value = await ordersService.getOrders()
+  const [ordersData, rutasData] = await Promise.all([
+    ordersService.getOrders(),
+    rutasService.getRutas(),
+  ])
+  orders.value = ordersData
+  rutas.value = rutasData
 }
 
 onMounted(async () => {
@@ -91,15 +111,100 @@ onMounted(async () => {
   await loadOrders()
 })
 
+function orderMatchesRuta(
+  order: Order,
+  targetRutaId?: string | null,
+  targetRutaCodigo?: string | null,
+  targetRutaNombre?: string | null
+): boolean {
+  if (targetRutaId && order.rutaId === targetRutaId) return true
+  if (
+    targetRutaCodigo &&
+    order.rutaCodigo &&
+    order.rutaCodigo.toLowerCase() === targetRutaCodigo.toLowerCase()
+  ) {
+    return true
+  }
+  if (
+    targetRutaNombre &&
+    order.rutaNombre &&
+    order.rutaNombre.toLowerCase() === targetRutaNombre.toLowerCase()
+  ) {
+    return true
+  }
+  return false
+}
+
+// Órdenes visibles según el rol y la ruta seleccionada:
+// - Si es Sub-Administrador: SOLO puede ver las órdenes de su ruta asignada
+// - Si es Administrador General: ve todas o las filtradas por la ruta elegida
+const scopedOrders = computed(() => {
+  if (authStore.isSubAdmin) {
+    return orders.value.filter((order) =>
+      orderMatchesRuta(
+        order,
+        authStore.activeRutaId,
+        authStore.activeRutaCodigo,
+        authStore.activeRutaNombre
+      )
+    )
+  }
+
+  if (selectedRutaFilter.value === 'ALL') {
+    return orders.value
+  }
+  if (selectedRutaFilter.value === 'UNASSIGNED') {
+    return orders.value.filter((o) => !o.rutaId && !o.rutaNombre)
+  }
+
+  const targetRuta = rutas.value.find((r) => r.id === selectedRutaFilter.value)
+  return orders.value.filter((o) =>
+    orderMatchesRuta(
+      o,
+      selectedRutaFilter.value,
+      targetRuta?.codigo,
+      targetRuta?.nombre
+    )
+  )
+})
+
+function countOrdersForRuta(ruta: RutaSucursal): number {
+  return orders.value.filter((o) =>
+    orderMatchesRuta(o, ruta.id, ruta.codigo, ruta.nombre)
+  ).length
+}
+
+const unassignedOrdersCount = computed(
+  () => orders.value.filter((o) => !o.rutaId && !o.rutaNombre).length
+)
+
+const handleAssignOrderRuta = async (order: Order, newRutaId: string) => {
+  const foundRuta = rutas.value.find((r) => r.id === newRutaId)
+  await ordersService.updateOrder(order.id, {
+    rutaId: foundRuta ? foundRuta.id : undefined,
+    rutaCodigo: foundRuta ? foundRuta.codigo : undefined,
+    rutaNombre: foundRuta ? foundRuta.nombre : undefined,
+  })
+  await loadOrders()
+  showToast(
+    foundRuta
+      ? `Orden ${order.orderNumber} asignada a ${foundRuta.codigo} · ${foundRuta.nombre}.`
+      : `Orden ${order.orderNumber} marcada como General (sin ruta específica).`,
+    'info'
+  )
+}
+
 const filteredOrders = computed(() => {
-  return orders.value.filter(order => {
+  return scopedOrders.value.filter(order => {
     const matchesSearch = 
       order.orderNumber.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       order.customer.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       (order.workshop && order.workshop.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (order.vehicleBrand && order.vehicleBrand.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (order.vehicleModel && order.vehicleModel.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
-      (order.engine && order.engine.toLowerCase().includes(searchQuery.value.toLowerCase()))
+      (order.engine && order.engine.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
+      (order.rutaNombre && order.rutaNombre.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
+      (order.rutaCodigo && order.rutaCodigo.toLowerCase().includes(searchQuery.value.toLowerCase()))
 
     const matchesStatus = 
       selectedStatus.value === 'Todos' || order.status === selectedStatus.value
@@ -201,11 +306,11 @@ const getStatusBadge = (status: Order['status']) => {
   }
 }
 
-// Estadísticas rápidas
-const totalOrdersCount = computed(() => orders.value.length)
-const activeOrdersCount = computed(() => orders.value.filter(o => o.status === 'En Proceso' || o.status === 'Diagnóstico' || o.status === 'Recibido').length)
-const completedOrdersCount = computed(() => orders.value.filter(o => o.status === 'Terminado' || o.status === 'Entregado' || o.status === 'Completada').length)
-const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (curr.total || 0), 0))
+// Estadísticas rápidas (calculadas sobre el alcance visible o ruta filtrada)
+const totalOrdersCount = computed(() => scopedOrders.value.length)
+const activeOrdersCount = computed(() => scopedOrders.value.filter(o => o.status === 'En Proceso' || o.status === 'Diagnóstico' || o.status === 'Recibido').length)
+const completedOrdersCount = computed(() => scopedOrders.value.filter(o => o.status === 'Terminado' || o.status === 'Entregado' || o.status === 'Completada').length)
+const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc + (curr.total || 0), 0))
 </script>
 
 <template>
@@ -215,6 +320,7 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
     <div v-if="currentView === 'form'">
       <WorkOrderForm
         :initial-order-id="selectedOrderId"
+        :default-ruta-id="selectedRutaFilter"
         @close="handleCloseForm"
         @saved="handleOrderSaved"
       />
@@ -222,6 +328,115 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
 
     <!-- Vista 2: Listado de Órdenes y Cotizaciones -->
     <div v-else class="space-y-6">
+      <!-- Banner Exclusivo para Sub-Administrador de Ruta -->
+      <div
+        v-if="authStore.isSubAdmin"
+        class="rounded-2xl bg-[#0D0D0D] text-white border border-[#05C7F2]/50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+      >
+        <div class="space-y-1">
+          <div class="inline-flex items-center gap-2 rounded-full bg-[#05C7F2]/20 border border-[#05F2F2]/40 px-3 py-0.5 text-[11px] font-bold text-[#05F2F2]">
+            <MapPin class="w-3.5 h-3.5 text-[#05F2F2]" />
+            <span>Panel Exclusivo de Sub-Administrador de Ruta</span>
+          </div>
+          <h2 class="text-lg sm:text-xl font-black text-white">
+            {{ authStore.activeRutaCodigo ? `${authStore.activeRutaCodigo} · ` : '' }}{{ authStore.activeRutaNombre || 'Ruta Asignada' }}
+          </h2>
+          <p class="text-xs text-[#F2F2F2]/75">
+            Estás viendo y administrando únicamente las órdenes de trabajo y cotizaciones pertenecientes a tu ruta asignada.
+          </p>
+        </div>
+        <div class="shrink-0">
+          <button
+            type="button"
+            @click="openNewOrder"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-[#05C7F2] px-4 py-2.5 text-xs font-bold text-[#0D0D0D] hover:bg-[#05F2F2] transition cursor-pointer"
+          >
+            <Plus class="w-4 h-4 stroke-[2.5]" />
+            <span>Crear Orden en {{ authStore.activeRutaCodigo || 'mi Ruta' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de Filtrado por Ruta / Sucursal para Administrador General -->
+      <div
+        v-else-if="authStore.isGlobalAdmin"
+        class="rounded-2xl bg-white border border-slate-200/80 p-4 shadow-xs space-y-3"
+      >
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#0D0D0D] text-[#05F2F2]">
+              <MapPin class="w-4 h-4" />
+            </span>
+            <div>
+              <h2 class="text-xs font-black uppercase tracking-wider text-[#0D0D0D]">
+                Filtrar Órdenes por Ruta / Sucursal
+              </h2>
+              <p class="text-[11px] text-slate-500">
+                Visualiza todas las órdenes del sistema o filtra por cada ruta y su Sub-Administrador.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            @click="router.push('/rutas')"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-[#0D0D0D] px-3.5 py-2 text-xs font-bold text-[#05F2F2] hover:bg-[#05C7F2] hover:text-[#0D0D0D] transition cursor-pointer self-start sm:self-auto"
+          >
+            <MapPin class="w-3.5 h-3.5" />
+            <span>Administrar Rutas y Sub-Admins ({{ rutas.length }})</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            type="button"
+            @click="selectedRutaFilter = 'ALL'"
+            :class="[
+              'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border',
+              selectedRutaFilter === 'ALL'
+                ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D] shadow-xs'
+                : 'bg-[#F2F2F2] text-[#0D0D0D]/80 border-transparent hover:border-[#04C4D9]'
+            ]"
+          >
+            <span>Todas las rutas</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/15">{{ orders.length }}</span>
+          </button>
+
+          <button
+            v-for="r in rutas"
+            :key="r.id"
+            type="button"
+            @click="selectedRutaFilter = r.id"
+            :class="[
+              'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border',
+              selectedRutaFilter === r.id
+                ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#05C7F2] shadow-xs'
+                : 'bg-white text-[#0D0D0D] border-slate-200 hover:border-[#04C4D9] hover:bg-[#05C7F2]/10'
+            ]"
+          >
+            <span class="font-mono text-[11px] font-black text-[#04C4D9]">{{ r.codigo }}</span>
+            <span>{{ r.nombre }}</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-[#0D0D0D] font-extrabold">
+              {{ countOrdersForRuta(r) }}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            @click="selectedRutaFilter = 'UNASSIGNED'"
+            :class="[
+              'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border',
+              selectedRutaFilter === 'UNASSIGNED'
+                ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D] shadow-xs'
+                : 'bg-[#F2F2F2] text-[#0D0D0D]/70 border-transparent hover:border-[#04C4D9]'
+            ]"
+          >
+            <span>General / Sin ruta</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-black/10">{{ unassignedOrdersCount }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Encabezado -->
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -289,9 +504,11 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
           </div>
         </div>
 
-        <div v-if="authStore.user?.role === 'Administrador'" class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+        <div v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Facturación Total</span>
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              {{ authStore.isSubAdmin ? 'Facturación de Ruta' : 'Facturación Total' }}
+            </span>
             <div class="text-2xl font-black text-slate-900 mt-0.5">${{ totalBilled.toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}</div>
           </div>
           <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 font-bold">
@@ -359,12 +576,13 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
             <thead class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
                 <th class="px-5 py-3">N° Orden</th>
+                <th class="px-5 py-3">Ruta / Sucursal</th>
                 <th class="px-5 py-3">Cliente / Taller</th>
                 <th class="px-5 py-3">Vehículo / Motor</th>
                 <th class="px-5 py-3">Fecha</th>
                 <th class="px-5 py-3 text-center">Tipo</th>
                 <th class="px-5 py-3">Estado</th>
-                <th v-if="authStore.user?.role === 'Administrador'" class="px-5 py-3 text-right">Total ($)</th>
+                <th v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="px-5 py-3 text-right">Total ($)</th>
                 <th v-else class="px-5 py-3 text-center">Operación / Ítems</th>
                 <th class="px-5 py-3 text-center">Acciones</th>
               </tr>
@@ -378,6 +596,46 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
               >
                 <td class="px-5 py-3.5 font-bold text-[#04c4d9]">
                   {{ order.orderNumber }}
+                </td>
+                <td class="px-5 py-3.5" @click.stop>
+                  <!-- Si es Administrador General y hay rutas creadas: selector rápido de ruta -->
+                  <div v-if="authStore.isGlobalAdmin && rutas.length > 0">
+                    <select
+                      :value="order.rutaId || ''"
+                      @change="handleAssignOrderRuta(order, ($event.target as HTMLSelectElement).value)"
+                      class="rounded-full px-2.5 py-1 text-[11px] font-bold border transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#05C7F2]"
+                      :class="
+                        order.rutaId || order.rutaNombre
+                          ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D]'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:border-[#04C4D9]'
+                      "
+                      title="Cambiar ruta asignada a esta orden"
+                    >
+                      <option value="" class="bg-white text-slate-800">General (Sin ruta)</option>
+                      <option
+                        v-for="r in rutas"
+                        :key="r.id"
+                        :value="r.id"
+                        class="bg-white text-slate-900"
+                      >
+                        {{ r.codigo }} · {{ r.nombre }}
+                      </option>
+                    </select>
+                  </div>
+                  <!-- Badge informativo de la ruta -->
+                  <span
+                    v-else-if="order.rutaNombre || order.rutaCodigo"
+                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#0D0D0D] text-[#05F2F2]"
+                  >
+                    <MapPin class="w-3 h-3 text-[#05C7F2]" />
+                    <span>{{ order.rutaCodigo ? `${order.rutaCodigo} · ` : '' }}{{ order.rutaNombre }}</span>
+                  </span>
+                  <span
+                    v-else
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200"
+                  >
+                    General
+                  </span>
                 </td>
                 <td class="px-5 py-3.5">
                   <div class="font-bold text-slate-900">{{ order.customer || '— Sin Asignar —' }}</div>
@@ -413,7 +671,7 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                     {{ order.status }}
                   </span>
                 </td>
-                <td v-if="authStore.user?.role === 'Administrador'" class="px-5 py-3.5 text-right font-black text-slate-900">
+                <td v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="px-5 py-3.5 text-right font-black text-slate-900">
                   ${{ order.total.toFixed(2) }}
                 </td>
                 <td v-else class="px-5 py-3.5 text-center">
@@ -465,7 +723,7 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
               </tr>
 
               <tr v-if="filteredOrders.length === 0">
-                <td colspan="8" class="px-6 py-12 text-center text-slate-400 text-xs">
+                <td colspan="9" class="px-6 py-12 text-center text-slate-400 text-xs">
                   No se encontraron órdenes ni cotizaciones con los criterios seleccionados.
                 </td>
               </tr>

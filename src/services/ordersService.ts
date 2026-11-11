@@ -1,4 +1,9 @@
 import { supabase } from './supabase'
+import {
+  encodeTallerCodigoWithRoute,
+  decodeTallerCodigoWithRoute,
+  rutasService,
+} from './rutasService'
 
 export type RectificationBlock = 'Bielas' | 'Bancadas' | 'Cigüeñal' | 'Culata' | 'Block' | 'Repuestos'
 
@@ -79,6 +84,10 @@ export interface Order {
   iva?: number
   total: number
   itemsCount: number
+  // Atributos de Ruta / Sucursal
+  rutaId?: string
+  rutaCodigo?: string
+  rutaNombre?: string
   // Atributos de compatibilidad
   component?: RectificationBlock
   engine?: string
@@ -351,6 +360,28 @@ const initialMockOrders: Order[] = [
 ]
 
 function mapDbToOrder(row: any): Order {
+  const decodedTaller = decodeTallerCodigoWithRoute(row.taller_codigo)
+  const fallbackRoute = rutasService.getOrderRoute(
+    row.id ? String(row.id) : undefined,
+    row.numero_orden
+  )
+  const resolvedRoute = decodedTaller.route ||
+    (row.ruta_id && row.ruta_nombre
+      ? {
+          rutaId: String(row.ruta_id),
+          rutaCodigo: row.ruta_codigo ? String(row.ruta_codigo) : undefined,
+          rutaNombre: String(row.ruta_nombre),
+        }
+      : fallbackRoute)
+
+  if (resolvedRoute && row.id) {
+    rutasService.setOrderRoute(
+      String(row.id),
+      row.numero_orden,
+      resolvedRoute
+    )
+  }
+
   return {
     id: String(row.id),
     orderNumber: row.numero_orden || '#00000',
@@ -360,7 +391,7 @@ function mapDbToOrder(row: any): Order {
     customerPhone: row.cliente_telefono || undefined,
     customerAddress: row.cliente_direccion || undefined,
     workshop: row.taller || undefined,
-    workshopCode: row.taller_codigo || undefined,
+    workshopCode: decodedTaller.cleanCode || undefined,
     date: row.fecha ? String(row.fecha).split('T')[0] : new Date().toISOString().split('T')[0],
     deliveryDate: row.fecha_entrega ? String(row.fecha_entrega).split('T')[0] : undefined,
     status: (row.estado || 'Pendiente') as OrderStatus,
@@ -371,6 +402,9 @@ function mapDbToOrder(row: any): Order {
     engineNumber: row.numero_motor || undefined,
     engineType: row.tipo_motor || undefined,
     observations: row.observaciones || undefined,
+    rutaId: resolvedRoute?.rutaId,
+    rutaCodigo: resolvedRoute?.rutaCodigo,
+    rutaNombre: resolvedRoute?.rutaNombre,
     component: (row.componente as RectificationBlock) || undefined,
     engine: row.motor || undefined,
     operations: Array.isArray(row.operaciones) ? row.operaciones : [],
@@ -393,6 +427,24 @@ function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
   const cleanDate = order.date ? String(order.date).split('T')[0] : new Date().toISOString().split('T')[0]
   const cleanDeliveryDate = order.deliveryDate ? String(order.deliveryDate).split('T')[0] : null
 
+  const routeMeta =
+    order.rutaId && order.rutaNombre
+      ? {
+          rutaId: order.rutaId,
+          rutaCodigo: order.rutaCodigo,
+          rutaNombre: order.rutaNombre,
+        }
+      : null
+
+  if (order.id) {
+    rutasService.setOrderRoute(order.id, order.orderNumber, routeMeta)
+  }
+
+  const encodedTallerCodigo = encodeTallerCodigoWithRoute(
+    order.workshopCode,
+    routeMeta
+  )
+
   return {
     id: order.id,
     numero_orden: order.orderNumber,
@@ -402,7 +454,7 @@ function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
     cliente_telefono: order.customerPhone || null,
     cliente_direccion: order.customerAddress || null,
     taller: order.workshop || null,
-    taller_codigo: order.workshopCode || null,
+    taller_codigo: encodedTallerCodigo,
     fecha: cleanDate,
     fecha_entrega: cleanDeliveryDate,
     estado: order.status || 'Pendiente',
@@ -723,6 +775,9 @@ export const ordersService = {
       vehicleYear: existing.vehicleYear || '',
       engineNumber: existing.engineNumber || '',
       engineType: existing.engineType || '',
+      rutaId: existing.rutaId,
+      rutaCodigo: existing.rutaCodigo,
+      rutaNombre: existing.rutaNombre,
       component: existing.component,
       engine: existing.engine,
       observations: existing.observations || '',

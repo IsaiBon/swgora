@@ -5,7 +5,7 @@ export interface NuevoUsuario {
   nombre: string
   email: string
   password: string
-  rol: 'admin' | 'consultor' | 'operador'
+  rol: 'admin' | 'consultor' | 'operador' | string
 }
 
 const CREDENTIALS_STORAGE_KEY = 'swgora_admin_credentials_vault'

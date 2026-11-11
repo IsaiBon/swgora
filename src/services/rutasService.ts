@@ -1,0 +1,600 @@
+import { supabase } from './supabase'
+import {
+  crearUsuario,
+  cambiarRolUsuario,
+  registrarCredencialUsuario,
+} from './usuariosService'
+import { perfilesService, type Perfil } from './perfilesService'
+
+export interface RutaSucursal {
+  id: string
+  codigo: string
+  nombre: string
+  zona: string
+  descripcion?: string
+  estado: 'Activa' | 'Inactiva'
+  subAdminId?: string
+  subAdminNombre?: string
+  subAdminEmail?: string
+  createdAt: string
+}
+
+export interface OrderRouteMetadata {
+  rutaId: string
+  rutaCodigo?: string
+  rutaNombre: string
+}
+
+const RUTAS_STORAGE_KEY = 'swgora_rutas_sucursales_v1'
+const ORDER_ROUTES_MAP_KEY = 'swgora_order_routes_map_v1'
+const ROLE_SUBADMIN_PREFIX = 'subadmin|'
+const TALLER_CODIGO_ROUTE_SEPARATOR = '__RUTA__'
+
+/**
+ * Codifica el rol de un Sub-Administrador incluyendo los metadatos de su ruta
+ * para que viaje de forma nativa en `public.perfiles.rol` en Supabase.
+ * Formato: subadmin|<rutaId>|<rutaCodigo>|<rutaNombre>|<rutaZona>
+ */
+export function encodeSubAdminRole(ruta: {
+  id: string
+  codigo: string
+  nombre: string
+  zona?: string
+}): string {
+  const cleanId = (ruta.id || '').replace(/\|/g, '-')
+  const cleanCode = (ruta.codigo || 'RUT-01').replace(/\|/g, '-')
+  const cleanName = (ruta.nombre || 'Ruta').replace(/\|/g, ' ')
+  const cleanZona = (ruta.zona || '').replace(/\|/g, ' ')
+  return `${ROLE_SUBADMIN_PREFIX}${cleanId}|${cleanCode}|${cleanName}|${cleanZona}`
+}
+
+/**
+ * Extrae la información de la ruta desde el string de rol si es un Sub-Administrador
+ */
+export function parseSubAdminRole(rawRole?: string | null): {
+  isSubAdmin: boolean
+  rutaId?: string
+  rutaCodigo?: string
+  rutaNombre?: string
+  rutaZona?: string
+} {
+  if (!rawRole) return { isSubAdmin: false }
+  const trimmed = rawRole.trim()
+  if (trimmed.toLowerCase().startsWith(ROLE_SUBADMIN_PREFIX)) {
+    const parts = trimmed.split('|')
+    return {
+      isSubAdmin: true,
+      rutaId: parts[1] || undefined,
+      rutaCodigo: parts[2] || undefined,
+      rutaNombre: parts[3] || undefined,
+      rutaZona: parts[4] || undefined,
+    }
+  }
+  const lower = trimmed.toLowerCase()
+  if (
+    lower.startsWith('subadmin') ||
+    lower.includes('sub-admin') ||
+    lower.includes('sub_admin') ||
+    lower.includes('admin_ruta') ||
+    lower.includes('admin de ruta')
+  ) {
+    return {
+      isSubAdmin: true,
+    }
+  }
+  return { isSubAdmin: false }
+}
+
+/**
+ * Codifica `taller_codigo` para almacenar tanto el código del cliente/taller
+ * como la ruta asignada a la orden de trabajo en `public.ordenes_trabajo`
+ * sin requerir columnas adicionales ni romper esquemas existentes.
+ */
+export function encodeTallerCodigoWithRoute(
+  baseCode?: string | null,
+  route?: OrderRouteMetadata | null
+): string | null {
+  const cleanBase = (baseCode || '').split(TALLER_CODIGO_ROUTE_SEPARATOR)[0]?.trim() || ''
+  if (!route || !route.rutaId || !route.rutaNombre) {
+    return cleanBase || null
+  }
+  const payload = `${route.rutaId}::${route.rutaCodigo || ''}::${route.rutaNombre}`
+  return `${cleanBase}${TALLER_CODIGO_ROUTE_SEPARATOR}${payload}`
+}
+
+/**
+ * Decodifica `taller_codigo` proveniente de `public.ordenes_trabajo`
+ * separando el código original del cliente/taller y los metadatos de la ruta.
+ */
+export function decodeTallerCodigoWithRoute(rawTallerCodigo?: string | null): {
+  cleanCode?: string
+  route?: OrderRouteMetadata
+} {
+  if (!rawTallerCodigo) return {}
+  if (!rawTallerCodigo.includes(TALLER_CODIGO_ROUTE_SEPARATOR)) {
+    return { cleanCode: rawTallerCodigo }
+  }
+  const [basePart, routePart] = rawTallerCodigo.split(TALLER_CODIGO_ROUTE_SEPARATOR)
+  const cleanCode = basePart?.trim() || undefined
+  if (!routePart) {
+    return { cleanCode }
+  }
+  const [rutaId, rutaCodigo, rutaNombre] = routePart.split('::')
+  if (rutaId && rutaNombre) {
+    return {
+      cleanCode,
+      route: {
+        rutaId: rutaId.trim(),
+        rutaCodigo: rutaCodigo?.trim() || undefined,
+        rutaNombre: rutaNombre.trim(),
+      },
+    }
+  }
+  return { cleanCode }
+}
+
+function loadStoredRutas(): RutaSucursal[] {
+  try {
+    const raw = localStorage.getItem(RUTAS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function saveStoredRutas(rutas: RutaSucursal[]): void {
+  try {
+    localStorage.setItem(RUTAS_STORAGE_KEY, JSON.stringify(rutas))
+  } catch (e) {
+    console.warn('[RutasService] No se pudo guardar en localStorage:', e)
+  }
+}
+
+function loadOrderRoutesMap(): Record<string, OrderRouteMetadata> {
+  try {
+    const raw = localStorage.getItem(ORDER_ROUTES_MAP_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveOrderRoutesMap(map: Record<string, OrderRouteMetadata>): void {
+  try {
+    localStorage.setItem(ORDER_ROUTES_MAP_KEY, JSON.stringify(map))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export const rutasService = {
+  /**
+   * Obtiene todas las rutas locales de forma síncrona
+   */
+  getRutasSync(): RutaSucursal[] {
+    return loadStoredRutas()
+  },
+
+  /**
+   * Sincroniza las rutas con Supabase (`public.perfiles` y `public.rutas` si existe)
+   * reconstruyendo automáticamente cualquier ruta creada desde otro dispositivo.
+   */
+  async getRutas(): Promise<RutaSucursal[]> {
+    const localRutas = loadStoredRutas()
+    const byId = new Map<string, RutaSucursal>()
+
+    for (const r of localRutas) {
+      byId.set(r.id, { ...r })
+    }
+
+    // 1. Intentar leer tabla `rutas` de Supabase si existe
+    try {
+      const { data: dbRutas, error } = await supabase
+        .from('rutas')
+        .select('*')
+        .order('created_at', { ascending: true })
+
+      if (!error && Array.isArray(dbRutas)) {
+        for (const row of dbRutas) {
+          byId.set(row.id, {
+            id: row.id,
+            codigo: row.codigo || 'RUT-01',
+            nombre: row.nombre,
+            zona: row.zona || '',
+            descripcion: row.descripcion || '',
+            estado: row.estado === 'Inactiva' ? 'Inactiva' : 'Activa',
+            subAdminId: row.sub_admin_id || undefined,
+            subAdminNombre: row.sub_admin_nombre || undefined,
+            subAdminEmail: row.sub_admin_email || undefined,
+            createdAt: row.created_at || new Date().toISOString(),
+          })
+        }
+      }
+    } catch {
+      // Tabla `rutas` opcional; continuamos con sincronización vía `perfiles`
+    }
+
+    // 2. Sincronizar desde `public.perfiles` para detectar Sub-Administradores y sus rutas
+    try {
+      const perfiles = await perfilesService.getPerfiles()
+      for (const perfil of perfiles) {
+        const parsed = parseSubAdminRole(perfil.rol)
+        if (parsed.isSubAdmin && parsed.rutaId && parsed.rutaNombre) {
+          const existing = byId.get(parsed.rutaId)
+          if (existing) {
+            existing.subAdminId = perfil.id
+            existing.subAdminNombre = perfil.nombre
+            existing.subAdminEmail = perfil.email
+            if (!existing.zona && parsed.rutaZona) {
+              existing.zona = parsed.rutaZona
+            }
+            if (!existing.codigo && parsed.rutaCodigo) {
+              existing.codigo = parsed.rutaCodigo
+            }
+          } else {
+            byId.set(parsed.rutaId, {
+              id: parsed.rutaId,
+              codigo: parsed.rutaCodigo || `RUT-0${byId.size + 1}`,
+              nombre: parsed.rutaNombre,
+              zona: parsed.rutaZona || 'Ruta Comercial',
+              estado: perfil.estado === 'Inactivo' ? 'Inactiva' : 'Activa',
+              subAdminId: perfil.id,
+              subAdminNombre: perfil.nombre,
+              subAdminEmail: perfil.email,
+              createdAt: perfil.created_at || new Date().toISOString(),
+            })
+          }
+        }
+      }
+    } catch {
+      // Si el usuario actual no tiene permiso de listar todos los perfiles, usar caché local
+    }
+
+    const merged = Array.from(byId.values()).sort((a, b) =>
+      a.codigo.localeCompare(b.codigo, undefined, { numeric: true })
+    )
+    saveStoredRutas(merged)
+    return merged
+  },
+
+  /**
+   * Genera el siguiente código correlativo de ruta (ej. RUT-01, RUT-02)
+   */
+  getNextRutaCode(): string {
+    const rutas = loadStoredRutas()
+    let maxNum = 0
+    for (const r of rutas) {
+      const match = (r.codigo || '').match(/(\d+)/)
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10)
+        if (!Number.isNaN(num) && num > maxNum) {
+          maxNum = num
+        }
+      }
+    }
+    return `RUT-${String(maxNum + 1).padStart(2, '0')}`
+  },
+
+  /**
+   * Obtiene la ruta asignada a un usuario (por su rol codificado, su ID o su email)
+   */
+  getRutaForUser(user: {
+    id?: string | null
+    email?: string | null
+    rawRole?: string | null
+  }): RutaSucursal | null {
+    const parsed = parseSubAdminRole(user.rawRole)
+    const rutas = loadStoredRutas()
+
+    if (parsed.rutaId) {
+      const foundById = rutas.find((r) => r.id === parsed.rutaId)
+      if (foundById) return foundById
+      if (parsed.rutaNombre) {
+        return {
+          id: parsed.rutaId,
+          codigo: parsed.rutaCodigo || 'RUT-01',
+          nombre: parsed.rutaNombre,
+          zona: parsed.rutaZona || '',
+          estado: 'Activa',
+          subAdminId: user.id || undefined,
+          subAdminEmail: user.email || undefined,
+          createdAt: new Date().toISOString(),
+        }
+      }
+    }
+
+    if (user.id) {
+      const bySubAdminId = rutas.find((r) => r.subAdminId === user.id)
+      if (bySubAdminId) return bySubAdminId
+    }
+
+    if (user.email) {
+      const lowerEmail = user.email.trim().toLowerCase()
+      const byEmail = rutas.find(
+        (r) => r.subAdminEmail?.trim().toLowerCase() === lowerEmail
+      )
+      if (byEmail) return byEmail
+    }
+
+    return null
+  },
+
+  /**
+   * Crea una nueva Ruta / Sucursal y automáticamente crea o asigna la cuenta
+   * de su Sub-Administrador en Supabase Auth + `public.perfiles`.
+   */
+  async createRutaWithSubAdmin(params: {
+    codigo?: string
+    nombre: string
+    zona?: string
+    descripcion?: string
+    modoSubAdmin: 'nuevo' | 'existente' | 'sin_asignar'
+    subAdminNombre?: string
+    subAdminEmail?: string
+    subAdminPassword?: string
+    existingUserId?: string
+  }): Promise<{
+    ruta: RutaSucursal
+    credenciales?: { nombre: string; email: string; password: string }
+  }> {
+    const rutas = loadStoredRutas()
+    const cleanNombre = params.nombre.trim()
+    if (!cleanNombre) {
+      throw new Error('El nombre de la ruta o sucursal es obligatorio.')
+    }
+
+    const cleanCodigo = (params.codigo?.trim() || this.getNextRutaCode()).toUpperCase()
+    const cleanZona = (params.zona || '').trim()
+    const rutaId = `ruta-${Date.now().toString(36)}`
+
+    const nuevaRuta: RutaSucursal = {
+      id: rutaId,
+      codigo: cleanCodigo,
+      nombre: cleanNombre,
+      zona: cleanZona,
+      descripcion: params.descripcion?.trim() || '',
+      estado: 'Activa',
+      createdAt: new Date().toISOString(),
+    }
+
+    const encodedRole = encodeSubAdminRole(nuevaRuta)
+    let credencialesCreadas:
+      | { nombre: string; email: string; password: string }
+      | undefined
+
+    if (params.modoSubAdmin === 'nuevo') {
+      const adminNombre = (
+        params.subAdminNombre || `Admin ${cleanNombre}`
+      ).trim()
+      const adminEmail = (params.subAdminEmail || '').trim().toLowerCase()
+      const adminPassword = params.subAdminPassword || ''
+
+      if (!adminEmail) {
+        throw new Error(
+          'Ingresa el correo electrónico para el Sub-Administrador de la ruta.'
+        )
+      }
+      if (adminPassword.length < 8) {
+        throw new Error(
+          'La contraseña del Sub-Administrador debe tener al menos 8 caracteres.'
+        )
+      }
+
+      // Crear el usuario en Supabase Auth + tabla perfiles con el rol de Sub-Admin de esta ruta
+      await crearUsuario({
+        nombre: adminNombre,
+        email: adminEmail,
+        password: adminPassword,
+        rol: encodedRole as any,
+      })
+
+      // Buscar el perfil recién creado para vincular su UUID
+      let createdPerfil: Perfil | undefined
+      try {
+        const perfiles = await perfilesService.getPerfiles()
+        createdPerfil = perfiles.find(
+          (p) => p.email?.trim().toLowerCase() === adminEmail
+        )
+        if (createdPerfil && createdPerfil.rol !== encodedRole) {
+          await cambiarRolUsuario(createdPerfil.id, encodedRole as any)
+        }
+      } catch {
+        // Ignorar si la lectura falla
+      }
+
+      nuevaRuta.subAdminId = createdPerfil?.id
+      nuevaRuta.subAdminNombre = adminNombre
+      nuevaRuta.subAdminEmail = adminEmail
+
+      registrarCredencialUsuario({
+        id: createdPerfil?.id,
+        email: adminEmail,
+        password: adminPassword,
+      })
+
+      credencialesCreadas = {
+        nombre: adminNombre,
+        email: adminEmail,
+        password: adminPassword,
+      }
+    } else if (params.modoSubAdmin === 'existente' && params.existingUserId) {
+      const perfiles = await perfilesService.getPerfiles()
+      const targetPerfil = perfiles.find((p) => p.id === params.existingUserId)
+      if (!targetPerfil) {
+        throw new Error('No se encontró el usuario seleccionado.')
+      }
+
+      await cambiarRolUsuario(targetPerfil.id, encodedRole as any)
+      nuevaRuta.subAdminId = targetPerfil.id
+      nuevaRuta.subAdminNombre = targetPerfil.nombre
+      nuevaRuta.subAdminEmail = targetPerfil.email
+    }
+
+    // Intentar guardar en tabla `rutas` de Supabase si existe
+    try {
+      await supabase.from('rutas').upsert({
+        id: nuevaRuta.id,
+        codigo: nuevaRuta.codigo,
+        nombre: nuevaRuta.nombre,
+        zona: nuevaRuta.zona,
+        descripcion: nuevaRuta.descripcion,
+        estado: nuevaRuta.estado,
+        sub_admin_id: nuevaRuta.subAdminId || null,
+        sub_admin_nombre: nuevaRuta.subAdminNombre || null,
+        sub_admin_email: nuevaRuta.subAdminEmail || null,
+        created_at: nuevaRuta.createdAt,
+      })
+    } catch {
+      // Respaldo transparente en localStorage + perfiles
+    }
+
+    rutas.push(nuevaRuta)
+    saveStoredRutas(rutas)
+
+    return {
+      ruta: nuevaRuta,
+      credenciales: credencialesCreadas,
+    }
+  },
+
+  /**
+   * Actualiza los datos de una ruta existente y sincroniza el rol de su Sub-Administrador
+   */
+  async updateRuta(
+    id: string,
+    updates: Partial<
+      Pick<RutaSucursal, 'codigo' | 'nombre' | 'zona' | 'descripcion' | 'estado'>
+    > & {
+      assignUserId?: string | null
+    }
+  ): Promise<RutaSucursal> {
+    const rutas = loadStoredRutas()
+    const index = rutas.findIndex((r) => r.id === id)
+    if (index === -1) {
+      throw new Error('No se encontró la ruta especificada.')
+    }
+
+    const current = rutas[index]!
+    const updated: RutaSucursal = {
+      ...current,
+      codigo: updates.codigo !== undefined ? updates.codigo.trim().toUpperCase() : current.codigo,
+      nombre: updates.nombre !== undefined ? updates.nombre.trim() : current.nombre,
+      zona: updates.zona !== undefined ? updates.zona.trim() : current.zona,
+      descripcion:
+        updates.descripcion !== undefined
+          ? updates.descripcion.trim()
+          : current.descripcion,
+      estado: updates.estado !== undefined ? updates.estado : current.estado,
+    }
+
+    const encodedRole = encodeSubAdminRole(updated)
+
+    if (updates.assignUserId !== undefined) {
+      if (updates.assignUserId === null || updates.assignUserId === '') {
+        updated.subAdminId = undefined
+        updated.subAdminNombre = undefined
+        updated.subAdminEmail = undefined
+      } else {
+        const perfiles = await perfilesService.getPerfiles()
+        const target = perfiles.find((p) => p.id === updates.assignUserId)
+        if (target) {
+          await cambiarRolUsuario(target.id, encodedRole as any)
+          updated.subAdminId = target.id
+          updated.subAdminNombre = target.nombre
+          updated.subAdminEmail = target.email
+        }
+      }
+    } else if (updated.subAdminId) {
+      // Actualizar el nombre/código de la ruta en el rol del Sub-Administrador actual
+      try {
+        await cambiarRolUsuario(updated.subAdminId, encodedRole as any)
+      } catch {
+        // Ignore if offline
+      }
+    }
+
+    rutas[index] = updated
+    saveStoredRutas(rutas)
+
+    try {
+      await supabase
+        .from('rutas')
+        .update({
+          codigo: updated.codigo,
+          nombre: updated.nombre,
+          zona: updated.zona,
+          descripcion: updated.descripcion,
+          estado: updated.estado,
+          sub_admin_id: updated.subAdminId || null,
+          sub_admin_nombre: updated.subAdminNombre || null,
+          sub_admin_email: updated.subAdminEmail || null,
+        })
+        .eq('id', id)
+    } catch {
+      // Ignore if table not created yet
+    }
+
+    return updated
+  },
+
+  /**
+   * Elimina una ruta y opcionalmente pasa a su Sub-Administrador a rol 'operador'
+   */
+  async deleteRuta(id: string): Promise<void> {
+    const rutas = loadStoredRutas()
+    const target = rutas.find((r) => r.id === id)
+
+    if (target?.subAdminId) {
+      try {
+        await cambiarRolUsuario(target.subAdminId, 'operador')
+      } catch {
+        // Ignore
+      }
+    }
+
+    const filtered = rutas.filter((r) => r.id !== id)
+    saveStoredRutas(filtered)
+
+    try {
+      await supabase.from('rutas').delete().eq('id', id)
+    } catch {
+      // Ignore
+    }
+  },
+
+  /**
+   * Registra la asociación entre una orden de trabajo y una ruta en caché local
+   */
+  setOrderRoute(
+    orderId: string,
+    orderNumber: string | undefined,
+    route?: OrderRouteMetadata | null
+  ): void {
+    const map = loadOrderRoutesMap()
+    if (!route || !route.rutaId) {
+      delete map[orderId]
+      if (orderNumber) delete map[orderNumber]
+    } else {
+      map[orderId] = route
+      if (orderNumber) map[orderNumber] = route
+    }
+    saveOrderRoutesMap(map)
+  },
+
+  /**
+   * Obtiene la ruta asociada a una orden desde el mapa local si no venía en la fila
+   */
+  getOrderRoute(
+    orderId?: string | null,
+    orderNumber?: string | null
+  ): OrderRouteMetadata | undefined {
+    const map = loadOrderRoutesMap()
+    if (orderId && map[orderId]) return map[orderId]
+    if (orderNumber && map[orderNumber]) return map[orderNumber]
+    return undefined
+  },
+}

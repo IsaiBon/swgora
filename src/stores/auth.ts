@@ -3,29 +3,49 @@ import { ref, computed } from 'vue'
 import { authService } from '@/services/authService'
 import { perfilesService } from '@/services/perfilesService'
 import { registrarCredencialUsuario } from '@/services/usuariosService'
+import { parseSubAdminRole, rutasService } from '@/services/rutasService'
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js'
 
-export type UserRole = 'Administrador' | 'Operador' | 'Consultor' | string
+export type UserRole =
+  | 'Administrador'
+  | 'Sub-Administrador'
+  | 'Operador'
+  | 'Consultor'
+  | string
 
 export interface User {
   id: string
   name: string
   email: string
   role: UserRole
+  rawRole?: string
+  rutaId?: string
+  rutaCodigo?: string
+  rutaNombre?: string
   avatar?: string
 }
 
 const STORAGE_KEY = 'swgora_active_user'
 
 /**
- * Normaliza cualquier string de rol a los 3 roles oficiales del sistema
+ * Normaliza cualquier string de rol a los roles oficiales del sistema
  */
-export function normalizeRole(role?: string | null): 'Administrador' | 'Operador' | 'Consultor' {
+export function normalizeRole(
+  role?: string | null
+): 'Administrador' | 'Sub-Administrador' | 'Operador' | 'Consultor' {
   if (!role) return 'Consultor'
+  const subAdminInfo = parseSubAdminRole(role)
+  if (subAdminInfo.isSubAdmin) return 'Sub-Administrador'
   const lower = role.toLowerCase().trim()
   if (lower.includes('admin')) return 'Administrador'
   if (lower.includes('consult')) return 'Consultor'
-  if (lower.includes('oper') || lower.includes('taller') || lower.includes('tecnic')) return 'Operador'
+  if (
+    lower.includes('oper') ||
+    lower.includes('taller') ||
+    lower.includes('tecnic')
+  ) {
+    return 'Operador'
+  }
   return 'Consultor'
 }
 
@@ -37,6 +57,7 @@ export function getDefaultRouteForRole(role: string): string {
   switch (norm) {
     case 'Administrador':
       return '/dashboard'
+    case 'Sub-Administrador':
     case 'Operador':
       return '/ordenes'
     case 'Consultor':
@@ -48,15 +69,28 @@ export function getDefaultRouteForRole(role: string): string {
 
 /**
  * Determina si una ruta es accesible por un rol determinado
- * - Administrador: Acceso completo a todo el sistema
+ * - Administrador: Acceso completo a todo el sistema (incluyendo /rutas y /usuarios)
+ * - Sub-Administrador: Administra todas las órdenes de trabajo, clientes y catálogo pero SOLO de su ruta asignada
  * - Operador: Solo puede ver Órdenes y Catálogo (además de login)
  * - Consultor: Solo puede ver Catálogo (además de login). NUNCA Órdenes ni Clientes ni Dashboard.
  */
 export function isRouteAllowedForRole(path: string, role: string): boolean {
   const norm = normalizeRole(role)
   if (norm === 'Administrador') return true
+  if (norm === 'Sub-Administrador') {
+    return (
+      path.startsWith('/ordenes') ||
+      path.startsWith('/clientes') ||
+      path.startsWith('/catalogo') ||
+      path.startsWith('/login')
+    )
+  }
   if (norm === 'Operador') {
-    return path.startsWith('/ordenes') || path.startsWith('/catalogo') || path.startsWith('/login')
+    return (
+      path.startsWith('/ordenes') ||
+      path.startsWith('/catalogo') ||
+      path.startsWith('/login')
+    )
   }
   if (norm === 'Consultor') {
     return path.startsWith('/catalogo') || path.startsWith('/login')
@@ -88,6 +122,18 @@ export const useAuthStore = defineStore('auth', () => {
   const isPasswordRecovery = ref(false)
 
   const isAuthenticated = computed(() => user.value !== null)
+
+  const isGlobalAdmin = computed(
+    () => normalizeRole(user.value?.role) === 'Administrador'
+  )
+
+  const isSubAdmin = computed(
+    () => normalizeRole(user.value?.role) === 'Sub-Administrador'
+  )
+
+  const activeRutaId = computed(() => user.value?.rutaId || null)
+  const activeRutaCodigo = computed(() => user.value?.rutaCodigo || null)
+  const activeRutaNombre = computed(() => user.value?.rutaNombre || null)
 
   const defaultRoute = computed(() => {
     return getDefaultRouteForRole(user.value?.role || 'Consultor')
@@ -138,12 +184,25 @@ export const useAuthStore = defineStore('auth', () => {
       )
     }
 
+    const rawRole = perfil.rol || sbUser.user_metadata?.role || 'consultor'
+    const normalized = normalizeRole(rawRole)
+    const assignedRuta = rutasService.getRutaForUser({
+      id: perfil.id,
+      email: perfil.email,
+      rawRole,
+    })
+
     const u: User = {
       id: perfil.id,
       name: perfil.nombre,
       email: perfil.email,
-      role: normalizeRole(perfil.rol || sbUser.user_metadata?.role),
-      avatar: perfil.avatar_url ||
+      role: normalized,
+      rawRole,
+      rutaId: assignedRuta?.id,
+      rutaCodigo: assignedRuta?.codigo,
+      rutaNombre: assignedRuta?.nombre,
+      avatar:
+        perfil.avatar_url ||
         'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
     }
 
@@ -415,6 +474,11 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     session,
     isAuthenticated,
+    isGlobalAdmin,
+    isSubAdmin,
+    activeRutaId,
+    activeRutaCodigo,
+    activeRutaNombre,
     isInitialized,
     loading,
     isPasswordRecovery,

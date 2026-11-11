@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ordersService, type Order, type OrderStatus } from '@/services/ordersService'
 import { clientesService, type Cliente } from '@/services/clientesService'
+import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { 
   Users, 
   Package, 
@@ -27,7 +28,8 @@ import {
   X,
   BarChart3,
   Search,
-  CalendarDays
+  CalendarDays,
+  MapPin
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -36,6 +38,7 @@ const authStore = useAuthStore()
 // Estado principal de datos
 const orders = ref<Order[]>([])
 const clients = ref<Cliente[]>([])
+const rutas = ref<RutaSucursal[]>([])
 const loading = ref(true)
 const refreshing = ref(false)
 const toastMessage = ref<{ text: string; type: 'success' | 'info' | 'error' } | null>(null)
@@ -47,8 +50,9 @@ const selectedPeriod = ref<TimePeriod>('mes')
 const customStartDate = ref('')
 const customEndDate = ref('')
 
-// Filtro Reactivo de Cliente / Taller
+// Filtro Reactivo de Cliente / Taller y Ruta / Sucursal
 const selectedClientFilter = ref<string>('ALL')
+const selectedRutaFilter = ref<string>('ALL')
 
 // Filtros de la Tabla de Órdenes Recientes
 const tableSearchQuery = ref('')
@@ -73,12 +77,14 @@ const loadDashboardData = async (isManualRefresh = false) => {
   }
 
   try {
-    const [fetchedOrders, fetchedClients] = await Promise.all([
+    const [fetchedOrders, fetchedClients, fetchedRutas] = await Promise.all([
       ordersService.getOrders(),
-      clientesService.getClientes()
+      clientesService.getClientes(),
+      rutasService.getRutas(),
     ])
     orders.value = fetchedOrders
     clients.value = fetchedClients
+    rutas.value = fetchedRutas
     if (isManualRefresh) {
       showToast('Datos sincronizados correctamente con Supabase', 'success')
     }
@@ -164,6 +170,20 @@ const filteredOrders = computed(() => {
         (order.customer && order.customer.toLowerCase().includes(target)) ||
         (order.workshop && order.workshop.toLowerCase().includes(target))
       if (!matchesClient) return false
+    }
+
+    // 3. Filtro por Ruta / Sucursal
+    if (selectedRutaFilter.value !== 'ALL') {
+      if (selectedRutaFilter.value === 'UNASSIGNED') {
+        if (order.rutaId || order.rutaNombre) return false
+      } else {
+        const targetRuta = rutas.value.find(r => r.id === selectedRutaFilter.value)
+        const matchesRuta =
+          order.rutaId === selectedRutaFilter.value ||
+          (targetRuta && order.rutaCodigo?.toLowerCase() === targetRuta.codigo.toLowerCase()) ||
+          (targetRuta && order.rutaNombre?.toLowerCase() === targetRuta.nombre.toLowerCase())
+        if (!matchesRuta) return false
+      }
     }
 
     return true
@@ -643,6 +663,14 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
           </router-link>
 
           <router-link
+            to="/rutas"
+            class="inline-flex items-center justify-center px-3.5 py-2.5 text-xs sm:text-sm font-bold text-[#0D0D0D] bg-[#05C7F2]/20 hover:bg-[#05C7F2]/30 active:scale-95 rounded-xl border border-[#04C4D9]/50 shadow-2xs transition-all"
+          >
+            <MapPin class="w-4 h-4 mr-1.5 text-[#04C4D9]" />
+            Rutas ({{ rutas.length }})
+          </router-link>
+
+          <router-link
             to="/clientes"
             class="inline-flex items-center justify-center px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 active:scale-95 rounded-xl border border-slate-300 shadow-2xs transition-all"
           >
@@ -752,38 +780,63 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
           </div>
         </div>
 
-        <!-- Filtro por Cliente o Taller (Medir volumen por cuenta) -->
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-            <Building2 class="w-3.5 h-3.5 text-blue-600" />
-            Tallerista / Cliente:
-          </span>
+        <!-- Filtro por Ruta / Sucursal y Cliente / Taller -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <MapPin class="w-3.5 h-3.5 text-[#04C4D9]" />
+              Ruta:
+            </span>
+            <div class="relative min-w-[200px]">
+              <select
+                v-model="selectedRutaFilter"
+                class="w-full pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-colors"
+              >
+                <option value="ALL">Todas las rutas ({{ orders.length }})</option>
+                <option
+                  v-for="r in rutas"
+                  :key="r.id"
+                  :value="r.id"
+                >
+                  {{ r.codigo }} · {{ r.nombre }}
+                </option>
+                <option value="UNASSIGNED">General (Sin ruta asignada)</option>
+              </select>
+            </div>
+          </div>
 
-          <div class="relative min-w-[240px] sm:min-w-[280px]">
-            <select
-              v-model="selectedClientFilter"
-              class="w-full pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-colors"
-            >
-              <option value="ALL">Todos los clientes y talleres</option>
-              <optgroup label="Talleres Mecánicos">
-                <option 
-                  v-for="c in clients.filter(cl => cl.tipo === 'Tallerista')" 
-                  :key="c.id" 
-                  :value="c.id"
-                >
-                  {{ c.nombre }} {{ c.especificaciones_tecnicas?.taller ? `(${c.especificaciones_tecnicas.taller})` : '' }}
-                </option>
-              </optgroup>
-              <optgroup label="Clientes Particulares">
-                <option 
-                  v-for="c in clients.filter(cl => cl.tipo === 'Cliente')" 
-                  :key="c.id" 
-                  :value="c.id"
-                >
-                  {{ c.nombre }}
-                </option>
-              </optgroup>
-            </select>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <Building2 class="w-3.5 h-3.5 text-blue-600" />
+              Tallerista / Cliente:
+            </span>
+
+            <div class="relative min-w-[220px] sm:min-w-[250px]">
+              <select
+                v-model="selectedClientFilter"
+                class="w-full pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-colors"
+              >
+                <option value="ALL">Todos los clientes y talleres</option>
+                <optgroup label="Talleres Mecánicos">
+                  <option 
+                    v-for="c in clients.filter(cl => cl.tipo === 'Tallerista')" 
+                    :key="c.id" 
+                    :value="c.id"
+                  >
+                    {{ c.nombre }} {{ c.especificaciones_tecnicas?.taller ? `(${c.especificaciones_tecnicas.taller})` : '' }}
+                  </option>
+                </optgroup>
+                <optgroup label="Clientes Particulares">
+                  <option 
+                    v-for="c in clients.filter(cl => cl.tipo === 'Cliente')" 
+                    :key="c.id" 
+                    :value="c.id"
+                  >
+                    {{ c.nombre }}
+                  </option>
+                </optgroup>
+              </select>
+            </div>
           </div>
         </div>
       </div>
