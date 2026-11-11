@@ -37,6 +37,8 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
         clonedEl.style.width = '760px'
         clonedEl.style.maxWidth = '760px'
         clonedEl.style.boxSizing = 'border-box'
+        clonedEl.style.fontFamily = 'Arial, Helvetica, sans-serif'
+        clonedEl.style.backgroundColor = '#ffffff'
       }
     }
   })

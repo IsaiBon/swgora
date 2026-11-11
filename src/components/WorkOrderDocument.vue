@@ -173,10 +173,11 @@ const orderGrandTotal = computed(() => {
   <div
     v-if="order"
     id="printable-work-order"
+    style="font-family: Arial, Helvetica, sans-serif;"
     :class="[
       'text-slate-900 relative bg-white mx-auto',
       variant === 'pdf'
-        ? 'p-6 sm:p-7 rounded-none border-none shadow-none w-full max-w-[780px]'
+        ? 'p-6 rounded-none border-none shadow-none w-full max-w-[780px]'
         : 'p-5 sm:p-6 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
       isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
     ]"
@@ -202,7 +203,7 @@ const orderGrandTotal = computed(() => {
           </div>
 
           <div>
-            <h1 class="text-sm sm:text-base font-black tracking-tight text-slate-900 uppercase font-sans leading-tight">
+            <h1 class="text-sm sm:text-base font-black tracking-tight text-slate-900 uppercase leading-tight">
               TALLER INDUSTRIAL Y RECTIFICADO DE MOTORES
             </h1>
             <p class="text-[11px] font-medium text-slate-700 mt-0.5 leading-snug">
@@ -226,18 +227,26 @@ const orderGrandTotal = computed(() => {
             <span class="text-base font-black font-mono text-rose-700 tracking-tight">{{ order.orderNumber }}</span>
           </div>
 
-          <!-- Mini Cuadrícula Fecha: DIA | MES | AÑO -->
-          <div class="grid grid-cols-3 border border-slate-400 text-[10px] my-1 rounded overflow-hidden">
-            <div class="border-r border-slate-400 bg-slate-100 font-bold py-0.5">DÍA</div>
-            <div class="border-r border-slate-400 bg-slate-100 font-bold py-0.5">MES</div>
-            <div class="bg-slate-100 font-bold py-0.5">AÑO</div>
-            <div class="border-r border-slate-400 font-mono font-bold py-0.5 text-slate-900">{{ dateParts.day }}</div>
-            <div class="border-r border-slate-400 font-mono font-bold py-0.5 text-slate-900">{{ dateParts.month }}</div>
-            <div class="font-mono font-bold py-0.5 text-slate-900">{{ dateParts.year }}</div>
-          </div>
+          <!-- Cuadrícula Fecha: DIA | MES | AÑO con tabla nativa para máxima estabilidad -->
+          <table class="w-full border border-slate-400 text-[10px] my-1 border-collapse text-center">
+            <thead>
+              <tr class="bg-slate-100 font-bold text-slate-800 border-b border-slate-400">
+                <th class="py-0.5 border-r border-slate-400 w-1/3 font-bold text-[9.5px]">DÍA</th>
+                <th class="py-0.5 border-r border-slate-400 w-1/3 font-bold text-[9.5px]">MES</th>
+                <th class="py-0.5 w-1/3 font-bold text-[9.5px]">AÑO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="font-bold text-slate-900">
+                <td class="py-0.5 border-r border-slate-400">{{ dateParts.day }}</td>
+                <td class="py-0.5 border-r border-slate-400">{{ dateParts.month }}</td>
+                <td class="py-0.5">{{ dateParts.year }}</td>
+              </tr>
+            </tbody>
+          </table>
 
           <!-- Indicadores de Estado: Proceso / Pendiente -->
-          <div class="flex items-center justify-around text-[10px] font-bold text-slate-800 pt-1">
+          <div class="flex items-center justify-around text-[10px] font-bold text-slate-800 pt-0.5">
             <span class="flex items-center gap-1.5">
               <span class="w-3.5 h-3.5 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
                 {{ isEnProceso ? '✓' : '' }}
@@ -256,48 +265,58 @@ const orderGrandTotal = computed(() => {
       </div>
     </div>
 
-    <!-- 2. BLOQUE DE INFORMACIÓN: CLIENTE Y VEHÍCULO (LÍNEAS SOLIDAS Y ESPACIADAS SIN SOBREMONTAJE) -->
-    <div class="border-2 border-slate-900 rounded p-3 mb-3 text-[11px] bg-slate-50/50 print:bg-transparent">
-      <div class="grid grid-cols-12 gap-x-4 gap-y-2.5">
-        <!-- Fila 1: Nombre y Taller -->
-        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
-          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Nombre:</span>
-          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.customer }}</span>
-        </div>
-        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
-          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Taller:</span>
-          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.workshop || 'Particular' }}</span>
-        </div>
+    <!-- 2. BLOQUE DE INFORMACIÓN: CLIENTE Y VEHÍCULO (TABLA NATIVA PURA SIN FLEXBOX) -->
+    <div class="border-2 border-slate-900 rounded p-3 mb-3 bg-slate-50/50 print:bg-transparent">
+      <table class="w-full text-[11px] border-collapse" style="table-layout: fixed;">
+        <tbody>
+          <!-- Fila 1: Nombre y Taller -->
+          <tr>
+            <td class="w-1/2 pr-3 py-2 align-middle border-b border-slate-300">
+              <span class="font-bold text-slate-800 uppercase text-[10px] mr-1.5">Nombre:</span>
+              <span class="font-semibold text-slate-900 text-[11.5px]">{{ order.customer || '— Sin Asignar —' }}</span>
+            </td>
+            <td class="w-1/2 pl-3 py-2 align-middle border-b border-slate-300">
+              <span class="font-bold text-slate-800 uppercase text-[10px] mr-1.5">Taller:</span>
+              <span class="font-semibold text-slate-900 text-[11.5px]">{{ order.workshop || 'Particular' }}</span>
+            </td>
+          </tr>
 
-        <!-- Fila 2: Dirección y Teléfono -->
-        <div class="col-span-8 flex items-center gap-2 border-b border-slate-300 pb-1">
-          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Dirección:</span>
-          <span class="text-slate-800 text-[11px] leading-normal flex-1 truncate">{{ order.customerAddress || 'San Miguel, El Salvador' }}</span>
-        </div>
-        <div class="col-span-4 flex items-center gap-2 border-b border-slate-300 pb-1">
-          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Tel:</span>
-          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.customerPhone || 'N/A' }}</span>
-        </div>
+          <!-- Fila 2: Dirección y Teléfono -->
+          <tr>
+            <td class="w-2/3 pr-3 py-2 align-middle border-b border-slate-300">
+              <span class="font-bold text-slate-800 uppercase text-[10px] mr-1.5">Dirección:</span>
+              <span class="text-slate-800 text-[11px]">{{ order.customerAddress || 'San Miguel, El Salvador' }}</span>
+            </td>
+            <td class="w-1/3 pl-3 py-2 align-middle border-b border-slate-300">
+              <span class="font-bold text-slate-800 uppercase text-[10px] mr-1.5">Tel:</span>
+              <span class="font-semibold text-slate-900 text-[11.5px]">{{ order.customerPhone || 'N/A' }}</span>
+            </td>
+          </tr>
 
-        <!-- Fila 3: Marca y Motor -->
-        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
-          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Marca:</span>
-          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.vehicleBrand || 'N/A' }}</span>
-        </div>
-        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
-          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Motor:</span>
-          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.vehicleModel || order.engine || order.engineType || 'N/A' }}</span>
-        </div>
+          <!-- Fila 3: Marca y Motor -->
+          <tr>
+            <td class="w-1/2 pr-3 py-2 align-middle border-b border-slate-300">
+              <span class="font-bold text-slate-800 uppercase text-[10px] mr-1.5">Marca:</span>
+              <span class="font-semibold text-slate-900 text-[11.5px]">{{ order.vehicleBrand || 'N/A' }}</span>
+            </td>
+            <td class="w-1/2 pl-3 py-2 align-middle border-b border-slate-300">
+              <span class="font-bold text-slate-800 uppercase text-[10px] mr-1.5">Motor:</span>
+              <span class="font-semibold text-slate-900 text-[11.5px]">{{ order.vehicleModel || order.engine || order.engineType || 'N/A' }}</span>
+            </td>
+          </tr>
 
-        <!-- Fila 4: Observaciones -->
-        <div v-if="order.observations" class="col-span-12 flex items-center gap-2 pt-1 border-t border-slate-200">
-          <span class="font-bold text-slate-600 text-[10px] shrink-0 uppercase">Obs:</span>
-          <span class="text-[11px] italic text-slate-700 leading-normal truncate flex-1">{{ order.observations }}</span>
-        </div>
-      </div>
+          <!-- Fila 4: Observaciones (Opcional) -->
+          <tr v-if="order.observations">
+            <td colspan="2" class="pt-2.5 pb-1 align-middle">
+              <span class="font-bold text-slate-600 text-[10px] uppercase mr-1.5">Obs:</span>
+              <span class="text-[11px] italic text-slate-700">{{ order.observations }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <!-- 3. TABLA DE OPERACIONES Y REPUESTOS FACTURADOS (CON ALTURA Y PADDING ROBUSTO) -->
+    <!-- 3. TABLA DE OPERACIONES Y REPUESTOS FACTURADOS -->
     <div class="flex-1 min-h-0">
       <div v-if="groupedSections.length > 0" class="border-2 border-slate-900 rounded overflow-hidden">
         <table class="w-full text-[11px] border-collapse">
