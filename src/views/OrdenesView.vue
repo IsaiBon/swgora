@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { ordersService, type Order } from '@/services/ordersService'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
+import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
 import OperationsManagerModal from '@/components/OperationsManagerModal.vue'
+import { exportOrderToPdf } from '@/utils/pdfExport'
 import { 
   Search, 
   Filter, 
   Plus, 
   Eye, 
   Printer, 
+  Download,
   Trash2, 
   Wrench, 
   CheckCircle2, 
@@ -114,6 +117,40 @@ const filteredOrders = computed(() => {
 const openPrintOrder = (order: Order) => {
   orderToPrint.value = order
   printModalOpen.value = true
+}
+
+// Descarga directa de orden/cotización en formato PDF
+const downloadingOrderId = ref<string | null>(null)
+const orderForDownload = ref<Order | null>(null)
+const downloadContainerRef = ref<HTMLElement | null>(null)
+
+const handleDownloadOrder = async (order: Order) => {
+  if (downloadingOrderId.value) return
+  downloadingOrderId.value = order.id
+  orderForDownload.value = order
+
+  try {
+    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    if (downloadContainerRef.value) {
+      const docElement = downloadContainerRef.value.querySelector('#printable-work-order') as HTMLElement || downloadContainerRef.value
+      await exportOrderToPdf(docElement, order)
+      showToast(
+        `${order.type === 'cotizacion' ? 'Cotización' : 'Orden'} ${order.orderNumber} descargada exitosamente en PDF.`,
+        'success'
+      )
+    }
+  } catch (error) {
+    console.error('Error al descargar orden en PDF:', error)
+    showToast(
+      `No se pudo generar el PDF de la orden ${order.orderNumber}. Puedes abrir la vista previa e imprimirla en PDF.`,
+      'error'
+    )
+  } finally {
+    orderForDownload.value = null
+    downloadingOrderId.value = null
+  }
 }
 
 const isDuplicating = ref<string | null>(null)
@@ -454,6 +491,15 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                     </button>
                     <button
                       type="button"
+                      @click="handleDownloadOrder(order)"
+                      :disabled="downloadingOrderId === order.id"
+                      class="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50"
+                      :title="`Descargar ${order.type === 'cotizacion' ? 'cotización' : 'orden'} (PDF)`"
+                    >
+                      <Download class="w-4 h-4" :class="{ 'animate-bounce text-emerald-600': downloadingOrderId === order.id }" />
+                    </button>
+                    <button
+                      type="button"
                       @click="handleDeleteOrder(order.id)"
                       class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                       title="Eliminar orden"
@@ -487,6 +533,18 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
       v-if="showOperationsModal"
       @close="showOperationsModal = false"
     />
+
+    <!-- Contenedor fuera de pantalla para descarga directa en PDF desde la tabla -->
+    <div
+      v-if="orderForDownload"
+      class="fixed top-0 left-0 w-[800px] pointer-events-none"
+      style="z-index: -9999;"
+      aria-hidden="true"
+    >
+      <div ref="downloadContainerRef" class="p-4 bg-white">
+        <WorkOrderDocument :order="orderForDownload" />
+      </div>
+    </div>
 
     <!-- Toast Flotante de Notificaciones -->
     <transition
