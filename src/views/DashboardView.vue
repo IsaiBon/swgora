@@ -18,9 +18,7 @@ import {
   Sparkles,
   Cog,
   Calendar,
-  RefreshCw,
   DollarSign,
-  FileText,
   Car,
   Eye,
   Building2,
@@ -603,63 +601,24 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
       <!-- Glow ambiental suave -->
       <div class="absolute -right-16 -top-16 w-72 h-72 bg-[#05C7F2]/10 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 relative z-10">
-        <div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#05C7F2]/15 text-[#038896] border border-[#05C7F2]/30">
-              <Sparkles class="w-3.5 h-3.5 text-[#04C4D9]" />
-              JR Blanco Rectificadora
-            </span>
-            <span class="text-[11px] sm:text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 sm:py-1 rounded-full flex items-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Supabase PostgreSQL 17 Conectado
-            </span>
-          </div>
-
-          <h1 class="text-xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2 sm:mt-2.5">
-            Dashboard Operativo de Administración
-          </h1>
-          <p class="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl">
-            Métricas reales de rectificación, flujo de órdenes activas, volumen por cuenta y balance de mano de obra vs. repuestos.
-          </p>
+      <div class="relative z-10">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#05C7F2]/15 text-[#038896] border border-[#05C7F2]/30">
+            <Sparkles class="w-3.5 h-3.5 text-[#04C4D9]" />
+            JR Blanco Rectificadora
+          </span>
+          <span class="text-[11px] sm:text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 sm:py-1 rounded-full flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Supabase PostgreSQL 17 Conectado
+          </span>
         </div>
 
-        <!-- Barra de Botones de Acción Rápida -->
-        <div class="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-          <router-link
-            to="/ordenes?nueva=true&tipo=orden"
-            class="inline-flex items-center justify-center px-4 py-2.5 text-xs sm:text-sm font-bold text-white bg-[#0D0D0D] hover:bg-neutral-800 active:scale-95 rounded-xl shadow-sm transition-all border border-neutral-700"
-          >
-            <Plus class="w-4 h-4 mr-1.5 text-[#05F2F2]" />
-            Nueva Orden
-          </router-link>
-
-          <router-link
-            to="/ordenes?nueva=true&tipo=cotizacion"
-            class="inline-flex items-center justify-center px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl transition-all border border-slate-200"
-          >
-            <FileText class="w-4 h-4 mr-1.5 text-amber-600" />
-            Cotización
-          </router-link>
-
-          <router-link
-            to="/clientes"
-            class="inline-flex items-center justify-center px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 active:scale-95 rounded-xl border border-slate-300 shadow-2xs transition-all"
-          >
-            <Users class="w-4 h-4 mr-1.5 text-blue-600" />
-            Clientes
-          </router-link>
-
-          <button
-            type="button"
-            @click="loadDashboardData(true)"
-            :disabled="refreshing"
-            class="inline-flex items-center justify-center p-2.5 text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 active:scale-95 rounded-xl border border-slate-200 transition-all disabled:opacity-50"
-            title="Sincronizar datos con Supabase"
-          >
-            <RefreshCw class="w-4 h-4" :class="{ 'animate-spin text-[#038896]': refreshing }" />
-          </button>
-        </div>
+        <h1 class="text-xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2 sm:mt-2.5">
+          Dashboard Operativo de Administración
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl">
+          Métricas reales de rectificación, flujo de órdenes activas, volumen por cuenta y balance de mano de obra vs. repuestos.
+        </p>
       </div>
     </header>
 
