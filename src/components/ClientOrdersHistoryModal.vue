@@ -37,6 +37,8 @@ const loadOrders = async () => {
     const targetId = props.client.id?.toLowerCase().trim()
     const targetCode = props.client.codigo?.toLowerCase().trim()
     const targetName = props.client.nombre?.toLowerCase().trim()
+    const targetTaller = props.client.especificaciones_tecnicas?.taller?.toLowerCase().trim()
+    const targetEmpresa = props.client.especificaciones_tecnicas?.empresa?.toLowerCase().trim()
 
     orders.value = allOrders.filter(o => {
       const matchId = Boolean(targetId && o.customerId?.toLowerCase().trim() === targetId)
@@ -45,7 +47,14 @@ const loadOrders = async () => {
         (o.workshopCode && o.workshopCode.toLowerCase().trim() === targetCode)
       ))
       const matchName = Boolean(targetName && o.customer?.toLowerCase().includes(targetName))
-      return matchId || matchCode || matchName
+      const matchTaller = Boolean(targetTaller && (
+        (o.workshop && o.workshop.toLowerCase().includes(targetTaller)) ||
+        (o.customer && o.customer.toLowerCase().includes(targetTaller))
+      ))
+      const matchEmpresa = Boolean(targetEmpresa && (
+        (o.customer && o.customer.toLowerCase().includes(targetEmpresa))
+      ))
+      return matchId || matchCode || matchName || matchTaller || matchEmpresa
     })
   } catch (err) {
     console.error('Error fetching client orders:', err)
@@ -168,12 +177,15 @@ const formatCurrency = (val: number) => {
       </div>
 
       <!-- Action Sub-bar -->
-      <div class="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between">
-        <div class="text-xs font-semibold text-slate-600">
+      <div class="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <div class="text-xs font-semibold text-slate-600 flex items-center gap-3 flex-wrap">
           <span v-if="loading">Cargando historial de órdenes...</span>
-          <span v-else>
-            Total órdenes asociadas: <strong class="text-slate-900">{{ orders.length }}</strong>
-          </span>
+          <template v-else>
+            <span>Total órdenes: <strong class="text-slate-900">{{ orders.length }}</strong></span>
+            <span class="inline-flex items-center gap-1 text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              Facturación Acumulada: {{ formatCurrency(orders.reduce((sum, o) => sum + (o.status !== 'Cancelada' ? (o.total || 0) : 0), 0)) }}
+            </span>
+          </template>
         </div>
 
         <!-- + Nueva Orden Button -->

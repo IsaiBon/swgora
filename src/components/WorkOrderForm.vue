@@ -927,14 +927,13 @@ const handleQuickCreateClient = async () => {
 // Validación del formulario con alertas vistosas
 const validateForm = (): boolean => {
   formErrors.value = {
-    clientName: !clientName.value.trim(),
+    clientName: false,
     vehicleBrand: !vehicleBrand.value.trim(),
     vehicleEngine: !vehicleEngine.value.trim(),
     noItems: (activeBilledOperations.value.length === 0 && parts.value.length === 0 && materials.value.length === 0)
   }
 
-  const hasErrors = formErrors.value.clientName || 
-                    formErrors.value.vehicleBrand || 
+  const hasErrors = formErrors.value.vehicleBrand || 
                     formErrors.value.vehicleEngine || 
                     formErrors.value.noItems
 
@@ -942,7 +941,7 @@ const validateForm = (): boolean => {
     if (formErrors.value.noItems) {
       validationErrorMessage.value = 'Completa los campos obligatorios resaltados en rojo y registra al menos una operación de mano de obra o repuesto con cantidad y precio.'
     } else {
-      validationErrorMessage.value = 'Por favor completa todos los campos requeridos marcados en rojo (Cliente, Marca y Motor).'
+      validationErrorMessage.value = 'Por favor completa todos los campos requeridos marcados en rojo (Marca y Motor).'
     }
 
     // Scroll suave hacia el primer campo con error
@@ -1002,7 +1001,7 @@ const handleSaveOrder = async () => {
       date: orderDate.value,
       status: orderStatus.value,
       type: docType.value,
-      customer: clientName.value.trim(),
+      customer: clientName.value.trim() || clientWorkshop.value.trim() || '',
       customerId: selectedCustomerId.value,
       customerCode: selectedCustomerCode.value,
       workshopCode: isTallerista ? (selectedCustomerCode.value || undefined) : undefined,
@@ -1403,27 +1402,15 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <!-- Campos del cliente -->
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
             <div class="space-y-1">
-              <label class="text-[11px] font-semibold flex items-center justify-between" :class="formErrors.clientName ? 'text-rose-600 font-bold' : 'text-slate-500'">
-                <span>Nombre Completo *</span>
-                <span v-if="formErrors.clientName" class="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
-                  <AlertCircle class="w-3 h-3" /> Requerido
-                </span>
+              <label class="text-[11px] font-semibold text-slate-500">
+                <span>Nombre Completo (Opcional)</span>
               </label>
               <input
                 v-model="clientName"
-                @input="formErrors.clientName = false"
                 type="text"
                 placeholder="Ej. Juan Pérez"
-                :class="[
-                  'w-full px-3 py-1.5 rounded-md text-xs font-medium transition',
-                  formErrors.clientName 
-                    ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600' 
-                    : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
-                ]"
+                class="w-full px-3 py-1.5 rounded-md text-xs font-medium transition bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
               />
-              <p v-if="formErrors.clientName" class="text-[10px] text-rose-600 font-semibold mt-0.5">
-                El nombre del cliente o taller es obligatorio.
-              </p>
             </div>
             <div class="space-y-1">
               <label class="text-[11px] font-semibold text-slate-500">Taller / Empresa</label>
