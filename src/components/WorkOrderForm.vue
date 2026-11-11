@@ -635,6 +635,12 @@ onMounted(async () => {
     }
   }
 
+  if (route.query.tipo === 'cotizacion' || route.query.type === 'cotizacion') {
+    docType.value = 'cotizacion'
+  } else if (route.query.tipo === 'orden' || route.query.type === 'orden') {
+    docType.value = 'orden'
+  }
+
   orderNumber.value = await ordersService.getNextOrderNumber()
 })
 

@@ -53,9 +53,11 @@ watch(
 
 // Abrir formulario automáticamente si se solicita por parámetros de ruta
 watch(
-  () => [route.query.nueva, route.query.clienteId, route.query.cliente],
-  ([nueva, clienteId, cliente]) => {
-    if (nueva || clienteId || cliente) {
+  () => [route.query.nueva, route.query.clienteId, route.query.cliente, route.query.id],
+  ([nueva, clienteId, cliente, id]) => {
+    if (id) {
+      openEditOrder(id as string)
+    } else if (nueva || clienteId || cliente) {
       openNewOrder()
     }
   },

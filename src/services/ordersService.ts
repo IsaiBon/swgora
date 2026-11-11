@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 export type RectificationBlock = 'Bielas' | 'Bancadas' | 'Cigüeñal' | 'Culata' | 'Block' | 'Repuestos'
 
 export type OrderStatus = 'Recibido' | 'Diagnóstico' | 'En Proceso' | 'Terminado' | 'Entregado' | 'Completada' | 'Pendiente' | 'Cancelada'
@@ -402,18 +404,122 @@ function saveStoredOperationsCatalog(catalog: FormOperationItem[]): void {
   }
 }
 
+function mapSupabaseRowToOrder(row: any): Order {
+  return {
+    id: row.id,
+    orderNumber: row.numero_orden || '#00000',
+    customer: row.cliente || '',
+    customerId: row.cliente_id || undefined,
+    customerCode: row.cliente_codigo || undefined,
+    customerPhone: row.cliente_telefono || undefined,
+    customerAddress: row.cliente_direccion || undefined,
+    workshop: row.taller || undefined,
+    workshopCode: row.taller_codigo || undefined,
+    date: row.fecha || new Date().toISOString().split('T')[0],
+    deliveryDate: row.fecha_entrega || undefined,
+    status: (row.estado as OrderStatus) || 'En Proceso',
+    type: (row.tipo as DocumentType) || 'orden',
+    vehicleBrand: row.marca_vehiculo || undefined,
+    vehicleModel: row.modelo_vehiculo || undefined,
+    vehicleYear: row.anio_vehiculo || undefined,
+    engineNumber: row.numero_motor || undefined,
+    engineType: row.tipo_motor || undefined,
+    observations: row.observaciones || undefined,
+    component: (row.componente as RectificationBlock) || 'Culata',
+    engine: row.motor || undefined,
+    operations: Array.isArray(row.operaciones) ? row.operaciones : [],
+    parts: Array.isArray(row.repuestos) ? row.repuestos : [],
+    materials: Array.isArray(row.materiales) ? row.materiales : [],
+    laborTotal: parseFloat(row.total_mano_obra) || 0,
+    partsTotal: parseFloat(row.total_repuestos) || 0,
+    materialsTotal: parseFloat(row.total_materiales) || 0,
+    hasIva: !!row.tiene_iva,
+    subtotal: parseFloat(row.subtotal) || 0,
+    iva: parseFloat(row.iva) || 0,
+    total: parseFloat(row.total) || 0,
+    itemsCount: row.cantidad_items || 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function mapOrderToSupabaseRow(order: Partial<Order>): any {
+  const row: any = {}
+  if (order.id !== undefined) row.id = order.id
+  if (order.orderNumber !== undefined) row.numero_orden = order.orderNumber
+  if (order.customer !== undefined) row.cliente = order.customer
+  if (order.customerId !== undefined) row.cliente_id = order.customerId
+  if (order.customerCode !== undefined) row.cliente_codigo = order.customerCode
+  if (order.customerPhone !== undefined) row.cliente_telefono = order.customerPhone
+  if (order.customerAddress !== undefined) row.cliente_direccion = order.customerAddress
+  if (order.workshop !== undefined) row.taller = order.workshop
+  if (order.workshopCode !== undefined) row.taller_codigo = order.workshopCode
+  if (order.date !== undefined) row.fecha = order.date
+  if (order.deliveryDate !== undefined) row.fecha_entrega = order.deliveryDate
+  if (order.status !== undefined) row.estado = order.status
+  if (order.type !== undefined) row.tipo = order.type
+  if (order.vehicleBrand !== undefined) row.marca_vehiculo = order.vehicleBrand
+  if (order.vehicleModel !== undefined) row.modelo_vehiculo = order.vehicleModel
+  if (order.vehicleYear !== undefined) row.anio_vehiculo = order.vehicleYear
+  if (order.engineNumber !== undefined) row.numero_motor = order.engineNumber
+  if (order.engineType !== undefined) row.tipo_motor = order.engineType
+  if (order.observations !== undefined) row.observaciones = order.observations
+  if (order.component !== undefined) row.componente = order.component
+  if (order.engine !== undefined) row.motor = order.engine
+  if (order.operations !== undefined) row.operaciones = order.operations
+  if (order.parts !== undefined) row.repuestos = order.parts
+  if (order.materials !== undefined) row.materiales = order.materials
+  if (order.laborTotal !== undefined) row.total_mano_obra = order.laborTotal
+  if (order.partsTotal !== undefined) row.total_repuestos = order.partsTotal
+  if (order.materialsTotal !== undefined) row.total_materiales = order.materialsTotal
+  if (order.hasIva !== undefined) row.tiene_iva = order.hasIva
+  if (order.subtotal !== undefined) row.subtotal = order.subtotal
+  if (order.iva !== undefined) row.iva = order.iva
+  if (order.total !== undefined) row.total = order.total
+  if (order.itemsCount !== undefined) row.cantidad_items = order.itemsCount
+  if (order.updatedAt !== undefined) row.updated_at = order.updatedAt
+  return row
+}
+
 export const ordersService = {
   async getOrders(): Promise<Order[]> {
-    return Promise.resolve(getStoredOrders())
+    try {
+      const { data, error } = await supabase
+        .from('ordenes_trabajo')
+        .select('*')
+        .order('fecha', { ascending: false })
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped = data.map(mapSupabaseRowToOrder)
+        saveStoredOrders(mapped)
+        return mapped
+      }
+    } catch (err) {
+      console.warn('[OrdersService] Error leyendo órdenes de Supabase, usando caché local:', err)
+    }
+    return getStoredOrders()
   },
 
   async getOrderById(id: string): Promise<Order | undefined> {
+    try {
+      const { data, error } = await supabase
+        .from('ordenes_trabajo')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+
+      if (!error && data) {
+        return mapSupabaseRowToOrder(data)
+      }
+    } catch (e) {
+      console.warn('[OrdersService] Error buscando orden en Supabase:', e)
+    }
     const orders = getStoredOrders()
-    return Promise.resolve(orders.find(o => o.id === id))
+    return orders.find(o => o.id === id)
   },
 
   async getNextOrderNumber(): Promise<string> {
-    const orders = getStoredOrders()
+    const orders = await this.getOrders()
     const numbers = orders
       .map(o => {
         const match = o.orderNumber.replace(/[^0-9]/g, '')
@@ -427,17 +533,28 @@ export const ordersService = {
   },
 
   async createOrder(orderData: Omit<Order, 'id'> & { id?: string }): Promise<Order> {
-    const orders = getStoredOrders()
+    const nextNumber = orderData.orderNumber || await this.getNextOrderNumber()
     const newOrder: Order = {
       ...orderData,
       id: orderData.id || `ord-${Date.now()}`,
-      orderNumber: orderData.orderNumber || await this.getNextOrderNumber(),
+      orderNumber: nextNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
+
+    try {
+      const row = mapOrderToSupabaseRow(newOrder)
+      row.created_at = newOrder.createdAt
+      row.updated_at = newOrder.updatedAt
+      await supabase.from('ordenes_trabajo').insert([row])
+    } catch (e) {
+      console.warn('[OrdersService] Error guardando orden en Supabase, guardando local:', e)
+    }
+
+    const orders = getStoredOrders()
     orders.unshift(newOrder)
     saveStoredOrders(orders)
-    return Promise.resolve(newOrder)
+    return newOrder
   },
 
   async updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
@@ -445,13 +562,27 @@ export const ordersService = {
     const index = orders.findIndex(o => o.id === id)
     if (index === -1) return null
 
-    orders[index] = {
+    const updated: Order = {
       ...orders[index],
       ...updates,
       updatedAt: new Date().toISOString(),
     }
+    orders[index] = updated
     saveStoredOrders(orders)
-    return Promise.resolve(orders[index])
+
+    try {
+      const rowUpdates = mapOrderToSupabaseRow(updates)
+      rowUpdates.updated_at = updated.updatedAt
+      await supabase.from('ordenes_trabajo').update(rowUpdates).eq('id', id)
+    } catch (e) {
+      console.warn('[OrdersService] Error actualizando orden en Supabase:', e)
+    }
+
+    return updated
+  },
+
+  async updateOrderStatus(id: string, newStatus: OrderStatus): Promise<Order | null> {
+    return this.updateOrder(id, { status: newStatus })
   },
 
   async getOrdersByClientId(clientIdOrCode: string): Promise<Order[]> {
@@ -482,9 +613,14 @@ export const ordersService = {
     orders = orders.filter(o => o.id !== id)
     if (orders.length !== initialLen) {
       saveStoredOrders(orders)
-      return Promise.resolve(true)
+      try {
+        await supabase.from('ordenes_trabajo').delete().eq('id', id)
+      } catch (e) {
+        console.warn('[OrdersService] Error eliminando orden de Supabase:', e)
+      }
+      return true
     }
-    return Promise.resolve(false)
+    return false
   },
 
   getOperationsCatalog(): FormOperationItem[] {
