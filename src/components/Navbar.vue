@@ -204,24 +204,8 @@ const handleNewOrder = () => {
         </router-link>
       </nav>
 
-      <!-- 3. Right: Botones de Acción + Perfil con Dropdown -->
+      <!-- 3. Right: Botón Destacado '+ Nueva Orden' + Perfil con Dropdown -->
       <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
-        <!-- Botón Módulo de Taller (Exclusivo Administrador) -->
-        <router-link
-          v-if="authStore.user?.role === 'Administrador'"
-          to="/taller"
-          :class="[
-            'hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition cursor-pointer shrink-0 select-none',
-            isActive('/taller')
-              ? 'bg-[#05C7F2]/20 text-[#05F2F2] border-[#05C7F2]/60 shadow-xs ring-1 ring-[#05C7F2]/30'
-              : 'bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700/80 hover:border-neutral-600'
-          ]"
-          title="Configuración institucional del Taller para órdenes y PDF"
-        >
-          <Building2 class="w-3.5 h-3.5 text-[#05C7F2]" />
-          <span>Taller</span>
-        </router-link>
-
         <!-- Botón Blanco Destacado Estilo 'Download' de Supaste -->
         <button
           v-if="authStore.canAccess('/ordenes')"
