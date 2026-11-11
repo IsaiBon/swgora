@@ -631,7 +631,7 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
             class="inline-flex items-center justify-center px-4 py-2.5 text-xs sm:text-sm font-bold text-white bg-[#0D0D0D] hover:bg-neutral-800 active:scale-95 rounded-xl shadow-sm transition-all border border-neutral-700"
           >
             <Plus class="w-4 h-4 mr-1.5 text-[#05F2F2]" />
-            + Nueva Orden
+            Nueva Orden
           </router-link>
 
           <router-link
@@ -639,7 +639,7 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
             class="inline-flex items-center justify-center px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl transition-all border border-slate-200"
           >
             <FileText class="w-4 h-4 mr-1.5 text-amber-600" />
-            + Cotización
+            Cotización
           </router-link>
 
           <router-link
