@@ -172,9 +172,8 @@ watch(() => props.isOpen, (open) => {
       isEditPartMode.value = false
       editingPartId.value = null
 
-      const targetGroup = props.editGroupId || props.preselectedGroupId || selectedGroupCode.value
-      if (props.editGroupId || targetGroup) {
-        const grp = resolveGroupByTarget(props.editGroupId || targetGroup)
+      if (props.editGroupId) {
+        const grp = resolveGroupByTarget(props.editGroupId)
         if (grp) {
           selectedGroupCode.value = grp.codigo
           selectedEditGroupId.value = grp.codigo || grp.id
@@ -183,6 +182,7 @@ watch(() => props.isOpen, (open) => {
           switchToCreateMode()
         }
       } else {
+        // Creación explícita de nueva familia (100% limpia y vacía)
         switchToCreateMode()
       }
     } else {
