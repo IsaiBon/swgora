@@ -537,12 +537,12 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
     <!-- Contenedor fuera de pantalla para descarga directa en PDF desde la tabla -->
     <div
       v-if="orderForDownload"
-      class="fixed top-0 left-0 w-[800px] pointer-events-none"
+      class="fixed top-0 left-0 w-[780px] bg-white pointer-events-none"
       style="z-index: -9999;"
       aria-hidden="true"
     >
-      <div ref="downloadContainerRef" class="p-4 bg-white">
-        <WorkOrderDocument :order="orderForDownload" />
+      <div ref="downloadContainerRef" class="bg-white">
+        <WorkOrderDocument :order="orderForDownload" variant="pdf" />
       </div>
     </div>
 

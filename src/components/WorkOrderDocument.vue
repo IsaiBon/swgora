@@ -2,9 +2,15 @@
 import { computed } from 'vue'
 import type { Order } from '@/services/ordersService'
 
-const props = defineProps<{
-  order: Order | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    order: Order | null
+    variant?: 'preview' | 'pdf'
+  }>(),
+  {
+    variant: 'preview'
+  }
+)
 
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 
@@ -168,7 +174,10 @@ const orderGrandTotal = computed(() => {
     v-if="order"
     id="printable-work-order"
     :class="[
-      'p-5 sm:p-6 text-slate-800 relative bg-white mx-auto shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
+      'text-slate-900 relative bg-white mx-auto',
+      variant === 'pdf'
+        ? 'p-6 sm:p-7 rounded-none border-none shadow-none w-full max-w-[780px]'
+        : 'p-5 sm:p-6 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
       isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
     ]"
   >
@@ -178,11 +187,11 @@ const orderGrandTotal = computed(() => {
     </div>
 
     <!-- 1. ENCABEZADO IDÉNTICO A ORDEN DE TRABAJO.XLSX -->
-    <div class="border-b-2 border-slate-900 pb-2.5 mb-2.5">
+    <div class="border-b-2 border-slate-900 pb-3 mb-3">
       <div class="flex items-start justify-between gap-3">
         
         <!-- Logo + Información de la Empresa Rectificadora -->
-        <div class="flex items-center gap-3 flex-1">
+        <div class="flex items-center gap-3.5 flex-1">
           <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
             <img
               src="/logo-taller.png"
@@ -196,10 +205,10 @@ const orderGrandTotal = computed(() => {
             <h1 class="text-sm sm:text-base font-black tracking-tight text-slate-900 uppercase font-sans leading-tight">
               TALLER INDUSTRIAL Y RECTIFICADO DE MOTORES
             </h1>
-            <p class="text-[10.5px] font-medium text-slate-700 mt-0.5 leading-snug">
+            <p class="text-[11px] font-medium text-slate-700 mt-0.5 leading-snug">
               Col. Milagro de la Paz, Av. San Luis y Calle Oriente #12 San Miguel, El Salvador
             </p>
-            <div class="flex items-center gap-4 text-[10.5px] font-bold text-slate-800 mt-0.5">
+            <div class="flex items-center gap-4 text-[11px] font-bold text-slate-800 mt-1">
               <span>Cel: 7831-2641</span>
               <span>Cel: 7142-0401</span>
             </div>
@@ -207,18 +216,18 @@ const orderGrandTotal = computed(() => {
         </div>
 
         <!-- Recuadro de Control: Orden de Trabajo / Cotización + Fecha + Estado -->
-        <div class="w-52 shrink-0 border-2 border-slate-900 rounded-md p-1.5 bg-white text-center">
-          <div class="text-[11px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
+        <div class="w-52 shrink-0 border-2 border-slate-900 rounded-md p-2 bg-white text-center">
+          <div class="text-[11px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-1">
             {{ isCotizacion ? 'COTIZACIÓN' : 'ORDEN DE TRABAJO' }}
           </div>
           
-          <div class="py-0.5 flex items-center justify-center gap-1">
+          <div class="py-1 flex items-center justify-center gap-1.5">
             <span class="text-[11px] font-bold text-slate-600">N°:</span>
             <span class="text-base font-black font-mono text-rose-700 tracking-tight">{{ order.orderNumber }}</span>
           </div>
 
           <!-- Mini Cuadrícula Fecha: DIA | MES | AÑO -->
-          <div class="grid grid-cols-3 border border-slate-400 text-[9.5px] my-0.5 rounded overflow-hidden">
+          <div class="grid grid-cols-3 border border-slate-400 text-[10px] my-1 rounded overflow-hidden">
             <div class="border-r border-slate-400 bg-slate-100 font-bold py-0.5">DÍA</div>
             <div class="border-r border-slate-400 bg-slate-100 font-bold py-0.5">MES</div>
             <div class="bg-slate-100 font-bold py-0.5">AÑO</div>
@@ -228,15 +237,15 @@ const orderGrandTotal = computed(() => {
           </div>
 
           <!-- Indicadores de Estado: Proceso / Pendiente -->
-          <div class="flex items-center justify-around text-[9.5px] font-bold text-slate-800 pt-0.5">
-            <span class="flex items-center gap-1">
-              <span class="w-3 h-3 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
+          <div class="flex items-center justify-around text-[10px] font-bold text-slate-800 pt-1">
+            <span class="flex items-center gap-1.5">
+              <span class="w-3.5 h-3.5 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
                 {{ isEnProceso ? '✓' : '' }}
               </span>
               Proceso
             </span>
-            <span class="flex items-center gap-1">
-              <span class="w-3 h-3 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
+            <span class="flex items-center gap-1.5">
+              <span class="w-3.5 h-3.5 border border-slate-700 inline-flex items-center justify-center text-[9px] font-black rounded-xs">
                 {{ isPendiente ? '✓' : '' }}
               </span>
               Pendiente
@@ -247,83 +256,84 @@ const orderGrandTotal = computed(() => {
       </div>
     </div>
 
-    <!-- 2. BLOQUE DE INFORMACIÓN: CLIENTE Y VEHÍCULO (ESTILO CUADRÍCULA EXCEL) -->
-    <div class="border border-slate-900 rounded p-2 mb-2.5 text-[11px] leading-tight bg-slate-50/50 print:bg-transparent">
-      <div class="grid grid-cols-12 gap-x-3 gap-y-1">
-        <!-- Fila 1 -->
-        <div class="col-span-6 flex items-baseline gap-1">
-          <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Nombre:</span>
-          <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.customer }}</span>
+    <!-- 2. BLOQUE DE INFORMACIÓN: CLIENTE Y VEHÍCULO (LÍNEAS SOLIDAS Y ESPACIADAS SIN SOBREMONTAJE) -->
+    <div class="border-2 border-slate-900 rounded p-3 mb-3 text-[11px] bg-slate-50/50 print:bg-transparent">
+      <div class="grid grid-cols-12 gap-x-4 gap-y-2.5">
+        <!-- Fila 1: Nombre y Taller -->
+        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
+          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Nombre:</span>
+          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.customer }}</span>
         </div>
-        <div class="col-span-6 flex items-baseline gap-1">
-          <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Taller:</span>
-          <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.workshop || 'Particular' }}</span>
-        </div>
-
-        <!-- Fila 2 -->
-        <div class="col-span-8 flex items-baseline gap-1">
-          <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Dirección:</span>
-          <span class="text-slate-800 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.customerAddress || 'San Miguel, El Salvador' }}</span>
-        </div>
-        <div class="col-span-4 flex items-baseline gap-1">
-          <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Tel:</span>
-          <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.customerPhone || 'N/A' }}</span>
+        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
+          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Taller:</span>
+          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.workshop || 'Particular' }}</span>
         </div>
 
-        <!-- Fila 3 -->
-        <div class="col-span-6 flex items-baseline gap-1">
-          <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Marca:</span>
-          <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.vehicleBrand || 'N/A' }}</span>
+        <!-- Fila 2: Dirección y Teléfono -->
+        <div class="col-span-8 flex items-center gap-2 border-b border-slate-300 pb-1">
+          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Dirección:</span>
+          <span class="text-slate-800 text-[11px] leading-normal flex-1 truncate">{{ order.customerAddress || 'San Miguel, El Salvador' }}</span>
         </div>
-        <div class="col-span-6 flex items-baseline gap-1">
-          <span class="font-bold text-slate-800 uppercase text-[10px] shrink-0">Motor:</span>
-          <span class="font-semibold text-slate-900 border-b border-dotted border-slate-400 flex-1 truncate">{{ order.vehicleModel || order.engine || order.engineType || 'N/A' }}</span>
+        <div class="col-span-4 flex items-center gap-2 border-b border-slate-300 pb-1">
+          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Tel:</span>
+          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.customerPhone || 'N/A' }}</span>
         </div>
 
-        <div v-if="order.observations" class="col-span-12 flex items-baseline gap-1 pt-0.5">
-          <span class="font-bold text-slate-600 text-[9.5px] shrink-0 uppercase">Obs:</span>
-          <span class="text-[10px] italic text-slate-700 truncate flex-1">{{ order.observations }}</span>
+        <!-- Fila 3: Marca y Motor -->
+        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
+          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Marca:</span>
+          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.vehicleBrand || 'N/A' }}</span>
+        </div>
+        <div class="col-span-6 flex items-center gap-2 border-b border-slate-300 pb-1">
+          <span class="font-bold text-slate-800 uppercase text-[10.5px] shrink-0">Motor:</span>
+          <span class="font-semibold text-slate-900 text-[11.5px] leading-normal flex-1 truncate">{{ order.vehicleModel || order.engine || order.engineType || 'N/A' }}</span>
+        </div>
+
+        <!-- Fila 4: Observaciones -->
+        <div v-if="order.observations" class="col-span-12 flex items-center gap-2 pt-1 border-t border-slate-200">
+          <span class="font-bold text-slate-600 text-[10px] shrink-0 uppercase">Obs:</span>
+          <span class="text-[11px] italic text-slate-700 leading-normal truncate flex-1">{{ order.observations }}</span>
         </div>
       </div>
     </div>
 
-    <!-- 3. TABLA DE OPERACIONES Y REPUESTOS FACTURADOS (FORMATO IDÉNTICO A EXCEL) -->
+    <!-- 3. TABLA DE OPERACIONES Y REPUESTOS FACTURADOS (CON ALTURA Y PADDING ROBUSTO) -->
     <div class="flex-1 min-h-0">
       <div v-if="groupedSections.length > 0" class="border-2 border-slate-900 rounded overflow-hidden">
-        <table class="w-full text-[10.5px]">
-          <thead class="bg-slate-100 border-b-2 border-slate-900 font-bold uppercase text-slate-900 text-[9.5px]">
+        <table class="w-full text-[11px] border-collapse">
+          <thead class="bg-slate-100 border-b-2 border-slate-900 font-bold uppercase text-slate-900 text-[10px]">
             <tr>
-              <th class="py-1 px-2 text-center w-12 border-r border-slate-400">CANT.</th>
-              <th class="py-1 px-2 text-left border-r border-slate-400">OPERACIÓN DEL TRABAJO</th>
-              <th class="py-1 px-2 text-right w-20 border-r border-slate-400">PRECIO U.</th>
-              <th class="py-1 px-2 text-right w-20">VALOR ($)</th>
+              <th class="py-2 px-2.5 text-center w-14 border-r border-slate-400">CANT.</th>
+              <th class="py-2 px-3 text-left border-r border-slate-400">OPERACIÓN DEL TRABAJO</th>
+              <th class="py-2 px-3 text-right w-24 border-r border-slate-400">PRECIO U.</th>
+              <th class="py-2 px-3 text-right w-24">VALOR ($)</th>
             </tr>
           </thead>
           <tbody>
             <template v-for="section in groupedSections" :key="section.title">
-              <!-- Encabezado de Sección idéntico al Excel: BIELAS, BANCADA, CIGÜEÑAL, CULATA, BLOCKS, REPUESTOS, MATERIALES -->
-              <tr class="bg-slate-900 text-white font-black text-[10px] uppercase tracking-wider no-break">
-                <td colspan="4" class="py-0.5 px-2.5">
-                  <div class="flex justify-between items-center">
+              <!-- Encabezado de Sección idéntico al Excel: BIELAS, BANCADA, CIGÜEÑAL, CULATA, BLOCKS, REPUESTOS -->
+              <tr class="bg-slate-900 text-white font-black text-[10.5px] uppercase tracking-wider">
+                <td colspan="4" class="py-2 px-3">
+                  <div class="flex justify-between items-center leading-normal">
                     <span class="tracking-widest">{{ section.title }}</span>
-                    <span class="text-[9px] font-normal text-slate-300">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                    <span class="text-[10px] font-medium text-slate-300">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
                   </div>
                 </td>
               </tr>
 
-              <!-- Filas de la sección -->
+              <!-- Filas de la sección con padding seguro y alineación vertical media -->
               <tr
                 v-for="item in section.items"
                 :key="item.id"
-                class="leading-tight bg-white border-b border-slate-200"
+                class="bg-white border-b border-slate-200"
               >
-                <td class="py-0.5 px-2 text-center font-bold border-r border-slate-200">{{ item.quantity }}</td>
-                <td class="py-0.5 px-2 text-slate-900 border-r border-slate-200">
+                <td class="py-2 px-2.5 text-center font-bold text-slate-900 border-r border-slate-200 align-middle leading-normal">{{ item.quantity }}</td>
+                <td class="py-2 px-3 text-slate-900 border-r border-slate-200 align-middle leading-normal">
                   <span class="font-medium">{{ item.description }}</span>
-                  <span v-if="item.detail" class="ml-1 text-[9.5px] font-bold text-slate-700">[{{ item.detail }}]</span>
+                  <span v-if="item.detail" class="ml-2 text-[10px] font-bold text-slate-600">[{{ item.detail }}]</span>
                 </td>
-                <td class="py-0.5 px-2 text-right text-slate-700 border-r border-slate-200">${{ item.unitPrice.toFixed(2) }}</td>
-                <td class="py-0.5 px-2 text-right font-black text-slate-900">${{ item.subtotal.toFixed(2) }}</td>
+                <td class="py-2 px-3 text-right text-slate-700 border-r border-slate-200 align-middle leading-normal">${{ item.unitPrice.toFixed(2) }}</td>
+                <td class="py-2 px-3 text-right font-black text-slate-900 align-middle leading-normal">${{ item.subtotal.toFixed(2) }}</td>
               </tr>
             </template>
           </tbody>
@@ -336,13 +346,13 @@ const orderGrandTotal = computed(() => {
     </div>
 
     <!-- 4. SECCIÓN DE MATERIALES (Solo nombre del material, sin precio $) -->
-    <div v-if="orderMaterials.length > 0" class="mt-2 border border-slate-900 rounded overflow-hidden no-break bg-white">
-      <div class="bg-slate-900 text-white font-black text-[9.5px] uppercase tracking-wider px-2 py-0.5">
+    <div v-if="orderMaterials.length > 0" class="mt-3 border-2 border-slate-900 rounded overflow-hidden no-break bg-white">
+      <div class="bg-slate-900 text-white font-black text-[10px] uppercase tracking-wider px-3 py-1">
         MATERIALES:
       </div>
-      <div class="p-1.5 bg-white">
-        <div class="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
-          <span v-for="mat in orderMaterials" :key="mat.id" class="inline-flex items-center gap-1 text-slate-800 font-semibold">
+      <div class="p-2 bg-white">
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-[10.5px]">
+          <span v-for="mat in orderMaterials" :key="mat.id" class="inline-flex items-center gap-1.5 text-slate-800 font-semibold">
             <span class="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"></span>
             {{ mat.name }}
           </span>
@@ -351,35 +361,35 @@ const orderGrandTotal = computed(() => {
     </div>
 
     <!-- 5. PIE DE PÁGINA: FIRMA + ESLOGAN + RECUADRO DE TOTALES -->
-    <div class="mt-2.5 pt-2 border-t-2 border-slate-900 flex justify-between items-end gap-3 no-break">
+    <div class="mt-4 pt-3 border-t-2 border-slate-900 flex justify-between items-end gap-4 no-break">
       <!-- Izquierda: Eslogan y Términos -->
-      <div class="flex-1 space-y-1.5">
-        <div class="text-[11px] font-black italic text-slate-800 tracking-wide font-serif">
+      <div class="flex-1 space-y-2">
+        <div class="text-[11.5px] font-black italic text-slate-800 tracking-wide font-serif">
           "APOYARTE ES NUESTRO COMPROMISO"
         </div>
         
-        <div class="pt-5 border-b border-slate-400 w-44 text-center">
-          <span class="text-[9.5px] font-bold text-slate-700 uppercase">Firma de Conformidad</span>
+        <div class="pt-6 border-b border-slate-500 w-48 text-center">
+          <span class="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Firma de Conformidad</span>
         </div>
       </div>
 
       <!-- Derecha: Recuadro de Totales idéntico al Excel -->
-      <div v-if="hasIva" class="w-60 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
-        <div class="flex justify-between items-center px-3 py-1 border-b border-slate-200">
+      <div v-if="hasIva" class="w-64 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
+        <div class="flex justify-between items-center px-3 py-1.5 border-b border-slate-200">
           <span class="font-bold text-slate-800 uppercase tracking-wider text-[10px]">TOTAL $:</span>
           <span class="font-bold text-slate-900 font-mono">${{ orderSubtotal.toFixed(2) }}</span>
         </div>
-        <div class="flex justify-between items-center px-3 py-1 border-b border-slate-200">
+        <div class="flex justify-between items-center px-3 py-1.5 border-b border-slate-200">
           <span class="font-bold text-slate-800 uppercase tracking-wider text-[10px]">IVA $:</span>
           <span class="font-bold text-slate-900 font-mono">${{ orderIva.toFixed(2) }}</span>
         </div>
-        <div class="flex justify-between items-center px-3 py-1.5 bg-slate-900 text-white font-black text-xs">
+        <div class="flex justify-between items-center px-3 py-2 bg-slate-900 text-white font-black text-xs">
           <span class="uppercase tracking-wider text-[10.5px]">TOTAL DEL TRABAJO $:</span>
           <span class="text-sm font-mono font-bold text-cyan-300 print:text-white">${{ orderGrandTotal.toFixed(2) }}</span>
         </div>
       </div>
-      <div v-else class="w-52 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
-        <div class="flex justify-between items-center px-3 py-1.5 bg-slate-900 text-white font-black text-xs">
+      <div v-else class="w-56 border-2 border-slate-900 rounded overflow-hidden bg-white text-[11px]">
+        <div class="flex justify-between items-center px-3 py-2 bg-slate-900 text-white font-black text-xs">
           <span class="uppercase tracking-wider">TOTAL $:</span>
           <span class="text-base text-cyan-300 print:text-white font-mono font-bold">${{ orderGrandTotal.toFixed(2) }}</span>
         </div>

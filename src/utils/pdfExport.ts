@@ -3,44 +3,57 @@ import html2canvas from 'html2canvas'
 import type { Order } from '@/services/ordersService'
 
 /**
- * Exporta un elemento HTML correspondiente a una orden o cotización a formato PDF tamaño Carta (Letter).
- * @param element Elemento DOM contenedor del documento
- * @param order Datos de la orden para nomenclatura del archivo
+ * Exporta el documento de la orden o cotización a PDF tamaño Carta (Letter),
+ * garantizando cero sobremontaje de texto, líneas limpias y fidelidad tipográfica.
  */
 export async function exportOrderToPdf(element: HTMLElement, order: Order): Promise<void> {
-  // Esperar a que las fuentes web estén completamente cargadas
+  // 1. Esperar a que las fuentes web del navegador estén listas
   if (typeof document !== 'undefined' && document.fonts) {
     try {
       await document.fonts.ready
     } catch {
-      // Ignorar si no está soportado
+      // Ignorar fallback
     }
   }
 
-  // Pequeña pausa para permitir que el render reactivo e imágenes se estabilicen
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  // 2. Breve espera para estabilizar el layout y renderizado de imágenes
+  await new Promise((resolve) => setTimeout(resolve, 120))
 
-  // Captura en Canvas de alta resolución (scale: 2 ~ 192-300 DPI)
+  // 3. Captura mediante html2canvas con clonación limpia (sin bordes de modal ni sombras)
   const canvas = await html2canvas(element, {
-    scale: 2,
+    scale: 2, // Nitidez ~200-300 DPI
     useCORS: true,
     logging: false,
-    backgroundColor: '#ffffff'
+    backgroundColor: '#ffffff',
+    windowWidth: 800,
+    onclone: (clonedDoc) => {
+      const clonedEl = clonedDoc.getElementById('printable-work-order')
+      if (clonedEl) {
+        clonedEl.style.boxShadow = 'none'
+        clonedEl.style.border = 'none'
+        clonedEl.style.borderRadius = '0'
+        clonedEl.style.margin = '0'
+        clonedEl.style.padding = '20px 24px'
+        clonedEl.style.width = '760px'
+        clonedEl.style.maxWidth = '760px'
+        clonedEl.style.boxSizing = 'border-box'
+      }
+    }
   })
 
   const imgData = canvas.toDataURL('image/png')
 
-  // Documento PDF tamaño Carta (Letter: 215.9 x 279.4 mm)
+  // 4. Configurar PDF tamaño Carta (Letter: 215.9 x 279.4 mm)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'letter'
   })
 
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
+  const pageWidth = pdf.internal.pageSize.getWidth()   // 215.9 mm
+  const pageHeight = pdf.internal.pageSize.getHeight() // 279.4 mm
 
-  // Márgenes de 8 mm en los cuatro bordes
+  // Margen de 8 mm
   const margin = 8
   const printWidth = pageWidth - margin * 2
   const imgWidth = canvas.width
@@ -48,10 +61,10 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
   const printHeight = (imgHeight * printWidth) / imgWidth
 
   if (printHeight <= pageHeight - margin * 2) {
-    // Cabe en una única página (diseño clean print estándar de 1 página)
+    // Cabe en una única página (formato clean print oficial)
     pdf.addImage(imgData, 'PNG', margin, margin, printWidth, printHeight)
   } else {
-    // Si la lista de operaciones es muy extensa y desborda 1 página, paginar respetando márgenes
+    // Si la orden tiene un volumen muy alto de operaciones, paginar con márgenes continuos
     let heightLeft = printHeight
     let position = margin
 
@@ -66,7 +79,7 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
     }
   }
 
-  // Construir nombre de archivo descriptivo y limpio
+  // 5. Nombre descriptivo de archivo
   const prefix = order.type === 'cotizacion' ? 'COTIZACION' : 'ORDEN'
   const sanitizedNum = (order.orderNumber || '0000').replace(/[^a-zA-Z0-9_-]/g, '_')
   const clientPart = order.customer
@@ -74,6 +87,5 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
     : ''
   const filename = `${prefix}_${sanitizedNum}${clientPart}_JR_Blanco.pdf`
 
-  // Descarga automática en el navegador del usuario
   pdf.save(filename)
 }
