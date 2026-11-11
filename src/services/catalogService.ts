@@ -2813,3 +2813,76 @@ export const catalogService = {
     }
   }
 }
+
+/**
+ * Ordena una lista de motores según la relevancia de búsqueda:
+ * 1. Coincidencia exacta del código (ej. "2L" === "2L")
+ * 2. Coincidencia exacta alfanumérica (ej. "2-L" vs "2L")
+ * 3. Código que inicia con el término seguido de delimitador (ej. "2L-T", "2L TE", "2L/II", "2L_T")
+ * 4. Código que inicia directamente con el término (ej. "2LT", "2LTE")
+ * 5. Denominación de venta o nombre comercial idéntico
+ * 6. Denominación de venta o nombre comercial que inicia con el término
+ * 7. Código que contiene el término como palabra o delimitado (ej. "TOYOTA 2L", "MOTOR-2L")
+ * 8. Código que contiene el término en cualquier parte (ej. "12L", "42L")
+ * 9. Cualquier otra coincidencia
+ * A igualdad de relevancia, el código más corto va primero, seguido de orden alfabético natural.
+ */
+export function sortMotorsByRelevance(motors: Motor[], query: string): Motor[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return motors
+
+  const qClean = q.replace(/[^a-z0-9]/g, '')
+
+  const scoreMotor = (m: Motor): number => {
+    const code = (m.codigo || '').trim().toLowerCase()
+    const codeClean = code.replace(/[^a-z0-9]/g, '')
+    const commName = (m.nombre_comercial || '').trim().toLowerCase()
+    const denName = (m.denominacion_venta || '').trim().toLowerCase()
+
+    // 0: Coincidencia EXACTA absoluta de código (ej: "2L" === "2L")
+    if (code === q) return 0
+
+    // 1: Coincidencia EXACTA alfanumérica de código (ej: "2-l" vs "2l")
+    if (codeClean === qClean) return 1
+
+    // 2: Código inicia con la consulta seguido de delimitador (ej: "2L-T", "2L TE", "2L/II", "2L_T")
+    if (code.startsWith(q + '-') || code.startsWith(q + ' ') || code.startsWith(q + '_') || code.startsWith(q + '/')) {
+      return 2
+    }
+
+    // 3: Código inicia directamente con la consulta (ej: "2LT", "2LTE")
+    if (code.startsWith(q)) return 3
+
+    // 4: Denominación de venta o nombre comercial es exactamente igual a la consulta
+    if (denName === q || commName === q) return 4
+
+    // 5: Denominación o nombre comercial inicia con la consulta
+    if (denName.startsWith(q) || commName.startsWith(q)) return 5
+
+    // 6: Código contiene la consulta delimitada (ej: "TOYOTA 2L", "D-2L")
+    if (code.includes(' ' + q) || code.includes('-' + q) || code.includes('_' + q) || code.includes('/' + q)) return 6
+
+    // 7: Código contiene la consulta en cualquier parte
+    if (code.includes(q)) return 7
+
+    // 8: Denominación o nombre comercial contiene la consulta
+    if (denName.includes(q) || commName.includes(q)) return 8
+
+    // 9: Otras coincidencias
+    return 9
+  }
+
+  return [...motors].sort((a, b) => {
+    const scoreA = scoreMotor(a)
+    const scoreB = scoreMotor(b)
+    if (scoreA !== scoreB) {
+      return scoreA - scoreB
+    }
+    // A igualdad de relevancia, el código más corto va primero (ej: "2L-T" antes que "2L-TE")
+    const lenDiff = (a.codigo || '').length - (b.codigo || '').length
+    if (lenDiff !== 0) return lenDiff
+
+    // Si tienen igual longitud, orden alfanumérico natural
+    return (a.codigo || '').localeCompare(b.codigo || '', undefined, { numeric: true })
+  })
+}

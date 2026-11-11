@@ -43,6 +43,14 @@ const cleanPhoneForWa = computed(() => {
   return props.client.telefono ? props.client.telefono.replace(/\D/g, '') : ''
 })
 
+const workshopName = computed(() => {
+  return props.client.especificaciones_tecnicas?.taller || props.client.especificaciones_tecnicas?.empresa || ''
+})
+
+const technicalNotes = computed(() => {
+  return props.client.especificaciones_tecnicas?.notas || props.client.especificaciones_tecnicas?.servicios || props.client.especificaciones_tecnicas?.flotilla || ''
+})
+
 const handleToggleStatus = () => {
   const nextStatus: ClientStatus = isActivo.value ? 'Inactivo' : 'Activo'
   emit('toggleStatus', props.client.id, nextStatus)
@@ -76,6 +84,10 @@ const handleToggleStatus = () => {
             <h4 class="text-base font-bold text-slate-900 leading-tight group-hover:text-[#04C4D9] transition-colors">
               {{ client.nombre }}
             </h4>
+            <div v-if="workshopName" class="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
+              <Wrench class="w-3 h-3 text-amber-500 flex-shrink-0" />
+              <span>{{ workshopName }}</span>
+            </div>
             <div class="flex items-center gap-1.5 mt-1">
               <!-- Tipo Badge -->
               <span
@@ -114,12 +126,12 @@ const handleToggleStatus = () => {
       </div>
 
       <!-- Notas o Especificaciones Técnicas del Taller -->
-      <div v-if="client.especificaciones_tecnicas?.notas || client.especificaciones_tecnicas?.servicios || client.especificaciones_tecnicas?.flotilla" class="mt-3 p-2.5 rounded-2xl bg-[#F2F2F2] border border-slate-200/60 text-xs">
+      <div v-if="technicalNotes" class="mt-3 p-2.5 rounded-2xl bg-[#F2F2F2] border border-slate-200/60 text-xs">
         <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-          Especialidad / Notas de Rectificación:
+          Especialidad / Notas Técnicas:
         </div>
         <p class="font-medium text-slate-800 line-clamp-2">
-          {{ client.especificaciones_tecnicas?.notas || client.especificaciones_tecnicas?.servicios || client.especificaciones_tecnicas?.flotilla }}
+          {{ technicalNotes }}
         </p>
       </div>
 
@@ -195,7 +207,7 @@ const handleToggleStatus = () => {
             ? 'text-amber-700 bg-amber-50/80 hover:bg-amber-100 border-amber-200'
             : 'text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 border-emerald-200'
         ]"
-        :title="isActivo ? 'Inactivar cliente (borrado lógico)' : 'Reactivar cliente'"
+        :title="isActivo ? 'Inactivar cliente' : 'Reactivar cliente'"
       >
         <Ban v-if="isActivo" class="w-3 h-3 text-amber-600" />
         <RotateCcw v-else class="w-3 h-3 text-emerald-600" />

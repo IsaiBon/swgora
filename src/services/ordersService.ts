@@ -350,15 +350,95 @@ const initialMockOrders: Order[] = [
   }
 ]
 
+function mapDbToOrder(row: any): Order {
+  return {
+    id: String(row.id),
+    orderNumber: row.numero_orden || '#00000',
+    customer: row.cliente || 'Cliente General',
+    customerId: row.cliente_id || undefined,
+    customerCode: row.cliente_codigo || undefined,
+    customerPhone: row.cliente_telefono || undefined,
+    customerAddress: row.cliente_direccion || undefined,
+    workshop: row.taller || undefined,
+    workshopCode: row.taller_codigo || undefined,
+    date: row.fecha ? String(row.fecha).split('T')[0] : new Date().toISOString().split('T')[0],
+    deliveryDate: row.fecha_entrega ? String(row.fecha_entrega).split('T')[0] : undefined,
+    status: (row.estado || 'Pendiente') as OrderStatus,
+    type: (row.tipo || 'orden') as DocumentType,
+    vehicleBrand: row.marca_vehiculo || undefined,
+    vehicleModel: row.modelo_vehiculo || undefined,
+    vehicleYear: row.anio_vehiculo ? String(row.anio_vehiculo) : undefined,
+    engineNumber: row.numero_motor || undefined,
+    engineType: row.tipo_motor || undefined,
+    observations: row.observaciones || undefined,
+    component: (row.componente as RectificationBlock) || undefined,
+    engine: row.motor || undefined,
+    operations: Array.isArray(row.operaciones) ? row.operaciones : [],
+    parts: Array.isArray(row.repuestos) ? row.repuestos : [],
+    materials: Array.isArray(row.materiales) ? row.materiales : [],
+    laborTotal: Number(row.total_mano_obra || 0),
+    partsTotal: Number(row.total_repuestos || 0),
+    materialsTotal: Number(row.total_materiales || 0),
+    hasIva: Boolean(row.tiene_iva),
+    subtotal: Number(row.subtotal || 0),
+    iva: Number(row.iva || 0),
+    total: Number(row.total || 0),
+    itemsCount: Number(row.cantidad_items || 0),
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || new Date().toISOString()
+  }
+}
+
+function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
+  const cleanDate = order.date ? String(order.date).split('T')[0] : new Date().toISOString().split('T')[0]
+  const cleanDeliveryDate = order.deliveryDate ? String(order.deliveryDate).split('T')[0] : null
+
+  return {
+    id: order.id,
+    numero_orden: order.orderNumber,
+    cliente: order.customer || 'Cliente General',
+    cliente_id: order.customerId || null,
+    cliente_codigo: order.customerCode || null,
+    cliente_telefono: order.customerPhone || null,
+    cliente_direccion: order.customerAddress || null,
+    taller: order.workshop || null,
+    taller_codigo: order.workshopCode || null,
+    fecha: cleanDate,
+    fecha_entrega: cleanDeliveryDate,
+    estado: order.status || 'Pendiente',
+    tipo: order.type || 'orden',
+    marca_vehiculo: order.vehicleBrand || null,
+    modelo_vehiculo: order.vehicleModel || null,
+    anio_vehiculo: order.vehicleYear || null,
+    numero_motor: order.engineNumber || null,
+    tipo_motor: order.engineType || null,
+    observaciones: order.observations || null,
+    componente: order.component || null,
+    motor: order.engine || null,
+    operaciones: Array.isArray(order.operations) ? order.operations : [],
+    repuestos: Array.isArray(order.parts) ? order.parts : [],
+    materiales: Array.isArray(order.materials) ? order.materials : [],
+    total_mano_obra: Number(order.laborTotal || 0),
+    total_repuestos: Number(order.partsTotal || 0),
+    total_materiales: Number(order.materialsTotal || 0),
+    tiene_iva: Boolean(order.hasIva),
+    subtotal: Number(order.subtotal || 0),
+    iva: Number(order.iva || 0),
+    total: Number(order.total || 0),
+    cantidad_items: Number(order.itemsCount || 0),
+    updated_at: new Date().toISOString()
+  }
+}
+
 function getStoredOrders(): Order[] {
   if (typeof window === 'undefined') return [...initialMockOrders]
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
     if (!raw) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialMockOrders))
       return [...initialMockOrders]
     }
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [...initialMockOrders]
   } catch (e) {
     console.warn('[OrdersService] Error leyendo localStorage, usando memoria:', e)
     return [...initialMockOrders]
@@ -404,102 +484,55 @@ function saveStoredOperationsCatalog(catalog: FormOperationItem[]): void {
   }
 }
 
-function mapSupabaseRowToOrder(row: any): Order {
-  return {
-    id: row.id,
-    orderNumber: row.numero_orden || '#00000',
-    customer: row.cliente || '',
-    customerId: row.cliente_id || undefined,
-    customerCode: row.cliente_codigo || undefined,
-    customerPhone: row.cliente_telefono || undefined,
-    customerAddress: row.cliente_direccion || undefined,
-    workshop: row.taller || undefined,
-    workshopCode: row.taller_codigo || undefined,
-    date: row.fecha || new Date().toISOString().split('T')[0],
-    deliveryDate: row.fecha_entrega || undefined,
-    status: (row.estado as OrderStatus) || 'En Proceso',
-    type: (row.tipo as DocumentType) || 'orden',
-    vehicleBrand: row.marca_vehiculo || undefined,
-    vehicleModel: row.modelo_vehiculo || undefined,
-    vehicleYear: row.anio_vehiculo || undefined,
-    engineNumber: row.numero_motor || undefined,
-    engineType: row.tipo_motor || undefined,
-    observations: row.observaciones || undefined,
-    component: (row.componente as RectificationBlock) || 'Culata',
-    engine: row.motor || undefined,
-    operations: Array.isArray(row.operaciones) ? row.operaciones : [],
-    parts: Array.isArray(row.repuestos) ? row.repuestos : [],
-    materials: Array.isArray(row.materiales) ? row.materiales : [],
-    laborTotal: parseFloat(row.total_mano_obra) || 0,
-    partsTotal: parseFloat(row.total_repuestos) || 0,
-    materialsTotal: parseFloat(row.total_materiales) || 0,
-    hasIva: !!row.tiene_iva,
-    subtotal: parseFloat(row.subtotal) || 0,
-    iva: parseFloat(row.iva) || 0,
-    total: parseFloat(row.total) || 0,
-    itemsCount: row.cantidad_items || 0,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
-}
-
-function mapOrderToSupabaseRow(order: Partial<Order>): any {
-  const row: any = {}
-  if (order.id !== undefined) row.id = order.id
-  if (order.orderNumber !== undefined) row.numero_orden = order.orderNumber
-  if (order.customer !== undefined) row.cliente = order.customer
-  if (order.customerId !== undefined) row.cliente_id = order.customerId
-  if (order.customerCode !== undefined) row.cliente_codigo = order.customerCode
-  if (order.customerPhone !== undefined) row.cliente_telefono = order.customerPhone
-  if (order.customerAddress !== undefined) row.cliente_direccion = order.customerAddress
-  if (order.workshop !== undefined) row.taller = order.workshop
-  if (order.workshopCode !== undefined) row.taller_codigo = order.workshopCode
-  if (order.date !== undefined) row.fecha = order.date
-  if (order.deliveryDate !== undefined) row.fecha_entrega = order.deliveryDate
-  if (order.status !== undefined) row.estado = order.status
-  if (order.type !== undefined) row.tipo = order.type
-  if (order.vehicleBrand !== undefined) row.marca_vehiculo = order.vehicleBrand
-  if (order.vehicleModel !== undefined) row.modelo_vehiculo = order.vehicleModel
-  if (order.vehicleYear !== undefined) row.anio_vehiculo = order.vehicleYear
-  if (order.engineNumber !== undefined) row.numero_motor = order.engineNumber
-  if (order.engineType !== undefined) row.tipo_motor = order.engineType
-  if (order.observations !== undefined) row.observaciones = order.observations
-  if (order.component !== undefined) row.componente = order.component
-  if (order.engine !== undefined) row.motor = order.engine
-  if (order.operations !== undefined) row.operaciones = order.operations
-  if (order.parts !== undefined) row.repuestos = order.parts
-  if (order.materials !== undefined) row.materiales = order.materials
-  if (order.laborTotal !== undefined) row.total_mano_obra = order.laborTotal
-  if (order.partsTotal !== undefined) row.total_repuestos = order.partsTotal
-  if (order.materialsTotal !== undefined) row.total_materiales = order.materialsTotal
-  if (order.hasIva !== undefined) row.tiene_iva = order.hasIva
-  if (order.subtotal !== undefined) row.subtotal = order.subtotal
-  if (order.iva !== undefined) row.iva = order.iva
-  if (order.total !== undefined) row.total = order.total
-  if (order.itemsCount !== undefined) row.cantidad_items = order.itemsCount
-  if (order.updatedAt !== undefined) row.updated_at = order.updatedAt
-  return row
-}
-
 export const ordersService = {
+  /**
+   * Obtiene todas las órdenes directamente desde Supabase en la nube con sincronización y fallback a caché local
+   */
   async getOrders(): Promise<Order[]> {
     try {
       const { data, error } = await supabase
         .from('ordenes_trabajo')
         .select('*')
-        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false })
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        const mapped = data.map(mapSupabaseRowToOrder)
-        saveStoredOrders(mapped)
-        return mapped
+      if (error) {
+        console.warn('[OrdersService] Advertencia de consulta en Supabase, recurriendo a caché local:', error)
+        return getStoredOrders()
+      }
+
+      if (data && data.length > 0) {
+        const remoteOrders = data.map(mapDbToOrder)
+
+        // Resguardar cualquier orden local previa que no haya sincronizado aún a Supabase
+        const localOrders = getStoredOrders()
+        const remoteIds = new Set(remoteOrders.map(o => o.id))
+        const pendingSync = localOrders.filter(lo => !remoteIds.has(lo.id) && lo.id.startsWith('ord-'))
+
+        if (pendingSync.length > 0) {
+          (async () => {
+            for (const pending of pendingSync) {
+              try {
+                await supabase.from('ordenes_trabajo').upsert(mapOrderToDb(pending))
+              } catch (syncErr) {
+                console.warn('[OrdersService] Error sincronizando orden pendiente hacia Supabase:', syncErr)
+              }
+            }
+          })()
+        }
+
+        saveStoredOrders(remoteOrders)
+        return remoteOrders
       }
     } catch (err) {
-      console.warn('[OrdersService] Error leyendo órdenes de Supabase, usando caché local:', err)
+      console.warn('[OrdersService] Error de red con Supabase, usando caché local:', err)
     }
+
     return getStoredOrders()
   },
 
+  /**
+   * Obtiene una orden por su identificador único consultando Supabase o caché
+   */
   async getOrderById(id: string): Promise<Order | undefined> {
     try {
       const { data, error } = await supabase
@@ -509,82 +542,162 @@ export const ordersService = {
         .maybeSingle()
 
       if (!error && data) {
-        return mapSupabaseRowToOrder(data)
+        const order = mapDbToOrder(data)
+        const currentOrders = getStoredOrders()
+        const idx = currentOrders.findIndex(o => o.id === order.id)
+        if (idx >= 0) currentOrders[idx] = order
+        else currentOrders.unshift(order)
+        saveStoredOrders(currentOrders)
+        return order
       }
-    } catch (e) {
-      console.warn('[OrdersService] Error buscando orden en Supabase:', e)
+    } catch (err) {
+      console.warn('[OrdersService] Error consultando orden por ID en Supabase:', err)
     }
+
     const orders = getStoredOrders()
     return orders.find(o => o.id === id)
   },
 
+  /**
+   * Calcula el siguiente número correlativo de orden considerando la numeración existente en Supabase y local
+   */
   async getNextOrderNumber(): Promise<string> {
-    const orders = await this.getOrders()
-    const numbers = orders
-      .map(o => {
-        const match = o.orderNumber.replace(/[^0-9]/g, '')
-        return match ? parseInt(match, 10) : 0
-      })
-      .filter(n => !isNaN(n))
-    
-    const max = numbers.length > 0 ? Math.max(...numbers) : 0
-    const next = max + 1
+    let highest = 0
+
+    try {
+      const { data } = await supabase
+        .from('ordenes_trabajo')
+        .select('numero_orden')
+
+      if (data && data.length > 0) {
+        for (const row of data) {
+          const match = String(row.numero_orden || '').replace(/[^0-9]/g, '')
+          const num = match ? parseInt(match, 10) : 0
+          if (num > highest) highest = num
+        }
+      }
+    } catch (e) {
+      console.warn('[OrdersService] No se pudo consultar correlativo en Supabase:', e)
+    }
+
+    const localOrders = getStoredOrders()
+    for (const o of localOrders) {
+      const match = String(o.orderNumber || '').replace(/[^0-9]/g, '')
+      const num = match ? parseInt(match, 10) : 0
+      if (num > highest) highest = num
+    }
+
+    const next = highest + 1
     return `#${next.toString().padStart(5, '0')}`
   },
 
+  /**
+   * Registra una nueva orden en Supabase y actualiza la caché local
+   */
   async createOrder(orderData: Omit<Order, 'id'> & { id?: string }): Promise<Order> {
-    const nextNumber = orderData.orderNumber || await this.getNextOrderNumber()
+    const nextNum = orderData.orderNumber || await this.getNextOrderNumber()
     const newOrder: Order = {
       ...orderData,
-      id: orderData.id || `ord-${Date.now()}`,
-      orderNumber: nextNumber,
+      id: orderData.id || `ord-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      orderNumber: nextNum,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
 
+    // 1. Guardar de inmediato en caché local para respuesta reactiva instantánea
+    const currentOrders = getStoredOrders()
+    const existsIdx = currentOrders.findIndex(o => o.id === newOrder.id)
+    if (existsIdx >= 0) {
+      currentOrders[existsIdx] = newOrder
+    } else {
+      currentOrders.unshift(newOrder)
+    }
+    saveStoredOrders(currentOrders)
+
+    // 2. Persistir en la base de datos de Supabase
     try {
-      const row = mapOrderToSupabaseRow(newOrder)
-      row.created_at = newOrder.createdAt
-      row.updated_at = newOrder.updatedAt
-      await supabase.from('ordenes_trabajo').insert([row])
-    } catch (e) {
-      console.warn('[OrdersService] Error guardando orden en Supabase, guardando local:', e)
+      const dbPayload = mapOrderToDb(newOrder)
+      const { data, error } = await supabase
+        .from('ordenes_trabajo')
+        .insert(dbPayload)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('[OrdersService] Error guardando orden en Supabase:', error)
+      } else if (data) {
+        const serverOrder = mapDbToOrder(data)
+        const updatedList = getStoredOrders().map(o => o.id === serverOrder.id ? serverOrder : o)
+        saveStoredOrders(updatedList)
+        return serverOrder
+      }
+    } catch (err) {
+      console.error('[OrdersService] Excepción de conexión al guardar orden en Supabase:', err)
     }
 
-    const orders = getStoredOrders()
-    orders.unshift(newOrder)
-    saveStoredOrders(orders)
     return newOrder
   },
 
+  /**
+   * Actualiza una orden en Supabase y en la caché local
+   */
   async updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
-    const orders = getStoredOrders()
-    const index = orders.findIndex(o => o.id === id)
-    if (index === -1) return null
+    const currentOrders = getStoredOrders()
+    const index = currentOrders.findIndex(o => o.id === id)
+    let updatedOrder: Order
 
-    const updated: Order = {
-      ...orders[index],
-      ...updates,
-      updatedAt: new Date().toISOString(),
+    if (index !== -1) {
+      updatedOrder = {
+        ...currentOrders[index],
+        ...updates,
+        updatedAt: new Date().toISOString()
+      }
+      currentOrders[index] = updatedOrder
+      saveStoredOrders(currentOrders)
+    } else {
+      const fetched = await this.getOrderById(id)
+      if (!fetched) return null
+      updatedOrder = {
+        ...fetched,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      }
+      currentOrders.unshift(updatedOrder)
+      saveStoredOrders(currentOrders)
     }
-    orders[index] = updated
-    saveStoredOrders(orders)
 
+    // Persistir cambios en Supabase
     try {
-      const rowUpdates = mapOrderToSupabaseRow(updates)
-      rowUpdates.updated_at = updated.updatedAt
-      await supabase.from('ordenes_trabajo').update(rowUpdates).eq('id', id)
-    } catch (e) {
-      console.warn('[OrdersService] Error actualizando orden en Supabase:', e)
+      const dbPayload = mapOrderToDb(updatedOrder)
+      const { data, error } = await supabase
+        .from('ordenes_trabajo')
+        .update(dbPayload)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('[OrdersService] Error actualizando orden en Supabase:', error)
+      } else if (data) {
+        const serverOrder = mapDbToOrder(data)
+        const list = getStoredOrders().map(o => o.id === serverOrder.id ? serverOrder : o)
+        saveStoredOrders(list)
+        return serverOrder
+      }
+    } catch (err) {
+      console.error('[OrdersService] Excepción de red al actualizar orden en Supabase:', err)
     }
 
-    return updated
+    return updatedOrder
   },
 
   async updateOrderStatus(id: string, newStatus: OrderStatus): Promise<Order | null> {
     return this.updateOrder(id, { status: newStatus })
   },
 
+  /**
+   * Duplica una orden existente con un nuevo correlativo y cliente en blanco
+   */
   async duplicateOrder(orderId: string): Promise<Order | null> {
     const existing = await this.getOrderById(orderId)
     if (!existing) return null
@@ -629,6 +742,9 @@ export const ordersService = {
     return await this.createOrder(duplicatedPayload)
   },
 
+  /**
+   * Obtiene órdenes asociadas a un cliente o taller
+   */
   async getOrdersByClientId(clientIdOrCode: string): Promise<Order[]> {
     const orders = await this.getOrders()
     const target = clientIdOrCode.toLowerCase().trim()
@@ -639,6 +755,9 @@ export const ordersService = {
     )
   },
 
+  /**
+   * Obtiene órdenes por criterio de búsqueda de cliente o taller
+   */
   async getOrdersByCustomer(targetCriteria: string): Promise<Order[]> {
     const orders = await this.getOrders()
     const target = targetCriteria.toLowerCase().trim()
@@ -651,20 +770,29 @@ export const ordersService = {
     )
   },
 
+  /**
+   * Elimina una orden en Supabase y en la caché local
+   */
   async deleteOrder(id: string): Promise<boolean> {
-    let orders = getStoredOrders()
-    const initialLen = orders.length
-    orders = orders.filter(o => o.id !== id)
-    if (orders.length !== initialLen) {
-      saveStoredOrders(orders)
-      try {
-        await supabase.from('ordenes_trabajo').delete().eq('id', id)
-      } catch (e) {
-        console.warn('[OrdersService] Error eliminando orden de Supabase:', e)
+    let currentOrders = getStoredOrders()
+    currentOrders = currentOrders.filter(o => o.id !== id)
+    saveStoredOrders(currentOrders)
+
+    try {
+      const { error } = await supabase
+        .from('ordenes_trabajo')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        console.error('[OrdersService] Error eliminando orden de Supabase:', error)
+        return false
       }
       return true
+    } catch (err) {
+      console.error('[OrdersService] Excepción eliminando orden de Supabase:', err)
+      return true
     }
-    return false
   },
 
   getOperationsCatalog(): FormOperationItem[] {

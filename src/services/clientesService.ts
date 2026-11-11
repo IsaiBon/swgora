@@ -31,7 +31,8 @@ export interface ClienteFilters {
   estado?: string
 }
 
-const LOCAL_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v5'
+const LOCAL_STORAGE_KEY = 'swgora_clientes_cache_v1'
+const LEGACY_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v5'
 
 export const initialClientesDemo: Cliente[] = [
   {
@@ -132,7 +133,7 @@ export function generateClientCode(tipo: ClientType, currentList: Cliente[]): st
 
 function getLocalCache(): Cliente[] {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
     if (raw) {
       const list = JSON.parse(raw) as Cliente[]
       let updated = false
@@ -204,7 +205,10 @@ export const clientesService = {
           direccion: item.direccion || '',
           tipo: (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType,
           estado: (item.estado === 'Inactivo' ? 'Inactivo' : 'Activo') as ClientStatus,
-          especificaciones_tecnicas: item.especificaciones_tecnicas || {},
+          especificaciones_tecnicas: {
+            ...(item.especificaciones_tecnicas || {}),
+            ...(item.taller && !item.especificaciones_tecnicas?.taller ? { taller: item.taller } : {})
+          },
           created_at: item.created_at || new Date().toISOString(),
           updated_at: item.updated_at || new Date().toISOString(),
         }))
@@ -314,6 +318,7 @@ export const clientesService = {
           nombre: newRecord.nombre,
           telefono: newRecord.telefono,
           direccion: newRecord.direccion,
+          taller: newRecord.especificaciones_tecnicas?.taller || null,
           tipo: newRecord.tipo,
           estado: newRecord.estado,
           especificaciones_tecnicas: newRecord.especificaciones_tecnicas
@@ -339,9 +344,12 @@ export const clientesService = {
    * Actualiza los datos de un cliente existente
    */
   async updateCliente(id: string, updates: ClienteUpdate): Promise<Cliente> {
-    const updatedPayload = {
+    const updatedPayload: any = {
       ...updates,
       updated_at: new Date().toISOString()
+    }
+    if (updates.especificaciones_tecnicas?.taller !== undefined) {
+      updatedPayload.taller = updates.especificaciones_tecnicas.taller
     }
 
     try {
