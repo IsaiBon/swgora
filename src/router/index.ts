@@ -8,6 +8,16 @@ import { useAuthStore, isRouteAllowedForRole, getDefaultRouteForRole } from '@/s
 
 const routes = [
   {
+    path: '/rutas',
+    name: 'Rutas',
+    component: () => import('@/views/RutasView.vue'),
+    meta: {
+      layout: 'main',
+      title: 'Rutas y Sub-Administradores - JR Blanco',
+      allowedRoles: ['Administrador'],
+    },
+  },
+  {
     path: '/usuarios',
     name: 'Usuarios',
     component: () => import('@/views/UsuariosView.vue'),
@@ -54,7 +64,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Clientes y Flotillas - JR Blanco',
-      allowedRoles: ['Administrador']
+      allowedRoles: ['Administrador', 'Sub-Administrador']
     },
   },
   {
@@ -64,7 +74,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Órdenes - JR Blanco',
-      allowedRoles: ['Administrador', 'Operador']
+      allowedRoles: ['Administrador', 'Sub-Administrador', 'Operador']
     },
   },
   {
@@ -74,7 +84,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Catálogo - JR Blanco',
-      allowedRoles: ['Administrador', 'Operador', 'Consultor']
+      allowedRoles: ['Administrador', 'Sub-Administrador', 'Operador', 'Consultor']
     },
   },
   {

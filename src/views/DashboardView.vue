@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ordersService, type Order, type OrderStatus } from '@/services/ordersService'
 import { clientesService, type Cliente } from '@/services/clientesService'
+import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { 
   Users, 
   Package, 
@@ -25,7 +26,8 @@ import {
   X, 
   BarChart3, 
   Search, 
-  CalendarDays 
+  CalendarDays,
+  MapPin
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -34,6 +36,7 @@ const authStore = useAuthStore()
 // Estado principal de datos
 const orders = ref<Order[]>([])
 const clients = ref<Cliente[]>([])
+const rutas = ref<RutaSucursal[]>([])
 const loading = ref(true)
 const toastMessage = ref<{ text: string; type: 'success' | 'info' | 'error' } | null>(null)
 let toastTimeout: any = null
@@ -44,10 +47,11 @@ const selectedPeriod = ref<TimePeriod>('mes')
 const customStartDate = ref('')
 const customEndDate = ref('')
 
-// Buscador Reactivo de Cliente / Taller consultado directamente en Supabase
+// Buscador Reactivo de Cliente / Taller consultado directamente en Supabase y Filtro de Ruta
 const supabaseClients = ref<Cliente[]>([])
 const selectedClient = ref<Cliente | null>(null)
 const selectedClientFilter = ref<string>('ALL')
+const selectedRutaFilter = ref<string>('ALL')
 const clientSearchInput = ref('')
 const isClientDropdownOpen = ref(false)
 const isSearchingClients = ref(false)
@@ -72,13 +76,15 @@ const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success')
 const loadDashboardData = async () => {
   loading.value = true
   try {
-    const [fetchedOrders, fetchedClients] = await Promise.all([
+    const [fetchedOrders, fetchedClients, fetchedRutas] = await Promise.all([
       ordersService.getOrders(),
-      clientesService.getClientesFromSupabase()
+      clientesService.getClientesFromSupabase(),
+      rutasService.getRutas(),
     ])
     orders.value = fetchedOrders
     supabaseClients.value = fetchedClients
     clients.value = fetchedClients
+    rutas.value = fetchedRutas
   } catch (err) {
     console.error('[DashboardView] Error cargando datos de Supabase:', err)
     showToast('Error de conexión con Supabase al cargar clientes.', 'error')
@@ -207,6 +213,20 @@ const filteredOrders = computed(() => {
         (targetName && order.workshop && order.workshop.toLowerCase().includes(targetName))
 
       if (!matchesClient) return false
+    }
+
+    // 3. Filtro por Ruta / Sucursal
+    if (selectedRutaFilter.value !== 'ALL') {
+      if (selectedRutaFilter.value === 'UNASSIGNED') {
+        if (order.rutaId || order.rutaNombre) return false
+      } else {
+        const targetRuta = rutas.value.find(r => r.id === selectedRutaFilter.value)
+        const matchesRuta =
+          order.rutaId === selectedRutaFilter.value ||
+          (targetRuta && order.rutaCodigo?.toLowerCase() === targetRuta.codigo.toLowerCase()) ||
+          (targetRuta && order.rutaNombre?.toLowerCase() === targetRuta.nombre.toLowerCase())
+        if (!matchesRuta) return false
+      }
     }
 
     return true
@@ -759,127 +779,151 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
           </div>
         </div>
 
-        <!-- Filtro por Cliente o Taller (Buscador Reactivo en Supabase) -->
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-            <Building2 class="w-3.5 h-3.5 text-blue-600" />
-            Tallerista / Cliente:
-          </span>
-
-          <div ref="clientSearchContainerRef" class="relative min-w-[260px] sm:min-w-[340px]">
-            <!-- Vista cuando hay un cliente seleccionado -->
-            <div 
-              v-if="selectedClient" 
-              class="flex items-center justify-between gap-2 px-3 py-1.5 bg-blue-50/90 border border-blue-300 rounded-xl text-xs shadow-xs"
-            >
-              <div class="flex items-center gap-2 min-w-0">
-                <span 
-                  class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider flex-shrink-0"
-                  :class="selectedClient.tipo === 'Tallerista' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
-                >
-                  {{ selectedClient.codigo || (selectedClient.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
-                </span>
-                <div class="truncate">
-                  <span class="font-bold text-slate-900 block truncate">{{ selectedClient.nombre }}</span>
-                  <span v-if="selectedClient.especificaciones_tecnicas?.taller" class="text-[10px] text-blue-700 font-medium block truncate">
-                    Taller: {{ selectedClient.especificaciones_tecnicas.taller }}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                @click="clearClientFilter"
-                class="p-1 hover:bg-blue-200/70 text-blue-700 hover:text-blue-900 rounded-lg transition flex-shrink-0"
-                title="Quitar filtro de cliente"
+        <!-- Filtro por Ruta / Sucursal y Cliente / Taller (Buscador Reactivo en Supabase) -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <MapPin class="w-3.5 h-3.5 text-[#04C4D9]" />
+              Ruta:
+            </span>
+            <div class="relative min-w-[200px]">
+              <select
+                v-model="selectedRutaFilter"
+                class="w-full pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-colors"
               >
-                <X class="w-3.5 h-3.5" />
-              </button>
+                <option value="ALL">Todas las rutas ({{ orders.length }})</option>
+                <option
+                  v-for="r in rutas"
+                  :key="r.id"
+                  :value="r.id"
+                >
+                  {{ r.codigo }} · {{ r.nombre }}
+                </option>
+                <option value="UNASSIGNED">General (Sin ruta asignada)</option>
+              </select>
             </div>
+          </div>
 
-            <!-- Input Buscador cuando NO hay cliente seleccionado -->
-            <div v-else class="relative">
-              <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                v-model="clientSearchInput"
-                @focus="isClientDropdownOpen = true"
-                @input="handleClientSearchInput"
-                placeholder="Buscar cliente o taller en Supabase..."
-                class="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-all"
-              />
-              <span v-if="isSearchingClients" class="absolute right-3 top-1/2 -translate-y-1/2">
-                <div class="w-3.5 h-3.5 border-2 border-[#038896] border-t-transparent rounded-full animate-spin"></div>
-              </span>
-            </div>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <Building2 class="w-3.5 h-3.5 text-blue-600" />
+              Tallerista / Cliente:
+            </span>
 
-            <!-- Desplegable de Resultados de Búsqueda de Supabase -->
-            <div
-              v-if="isClientDropdownOpen && !selectedClient"
-              class="absolute z-40 top-full mt-1.5 left-0 w-full sm:w-[380px] bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden"
-            >
-              <!-- Cabecera del desplegable -->
-              <div class="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
-                <span class="flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Clientes en Supabase
-                </span>
-                <span v-if="supabaseClients.length > 0">
-                  {{ supabaseClients.length }} disponibles
+            <div ref="clientSearchContainerRef" class="relative min-w-[260px] sm:min-w-[340px]">
+              <!-- Vista cuando hay un cliente seleccionado -->
+              <div 
+                v-if="selectedClient" 
+                class="flex items-center justify-between gap-2 px-3 py-1.5 bg-blue-50/90 border border-blue-300 rounded-xl text-xs shadow-xs"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <span 
+                    class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider flex-shrink-0"
+                    :class="selectedClient.tipo === 'Tallerista' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
+                  >
+                    {{ selectedClient.codigo || (selectedClient.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
+                  </span>
+                  <div class="truncate">
+                    <span class="font-bold text-slate-900 block truncate">{{ selectedClient.nombre }}</span>
+                    <span v-if="selectedClient.especificaciones_tecnicas?.taller" class="text-[10px] text-blue-700 font-medium block truncate">
+                      Taller: {{ selectedClient.especificaciones_tecnicas.taller }}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  @click="clearClientFilter"
+                  class="p-1 hover:bg-blue-200/70 text-blue-700 hover:text-blue-900 rounded-lg transition flex-shrink-0"
+                  title="Quitar filtro de cliente"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <!-- Input Buscador cuando NO hay cliente seleccionado -->
+              <div v-else class="relative">
+                <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  v-model="clientSearchInput"
+                  @focus="isClientDropdownOpen = true"
+                  @input="handleClientSearchInput"
+                  placeholder="Buscar cliente o taller en Supabase..."
+                  class="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-all"
+                />
+                <span v-if="isSearchingClients" class="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div class="w-3.5 h-3.5 border-2 border-[#038896] border-t-transparent rounded-full animate-spin"></div>
                 </span>
               </div>
 
-              <!-- Lista con scroll -->
-              <div class="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
-                <!-- Opción para ver todos -->
-                <button
-                  type="button"
-                  @click="selectClient(null)"
-                  class="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between text-slate-700 font-semibold transition"
-                >
-                  <span class="flex items-center gap-2">
-                    <Users class="w-4 h-4 text-slate-400" />
-                    Todos los clientes y talleres
+              <!-- Desplegable de Resultados de Búsqueda de Supabase -->
+              <div
+                v-if="isClientDropdownOpen && !selectedClient"
+                class="absolute z-40 top-full mt-1.5 left-0 w-full sm:w-[380px] bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden"
+              >
+                <!-- Cabecera del desplegable -->
+                <div class="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
+                  <span class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Clientes en Supabase
                   </span>
-                  <span class="text-[10px] text-slate-400">Sin filtro</span>
-                </button>
+                  <span v-if="supabaseClients.length > 0">
+                    {{ supabaseClients.length }} disponibles
+                  </span>
+                </div>
 
-                <!-- Clientes encontrados en Supabase -->
-                <button
-                  v-for="c in supabaseClients"
-                  :key="c.id"
-                  type="button"
-                  @click="selectClient(c)"
-                  class="w-full text-left px-3.5 py-2.5 hover:bg-cyan-50/60 transition group flex items-start gap-2.5"
-                >
-                  <span 
-                    class="px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 flex-shrink-0"
-                    :class="c.tipo === 'Tallerista' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
+                <!-- Lista con scroll -->
+                <div class="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                  <!-- Opción para ver todos -->
+                  <button
+                    type="button"
+                    @click="selectClient(null)"
+                    class="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between text-slate-700 font-semibold transition"
                   >
-                    {{ c.codigo }}
-                  </span>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-bold text-slate-900 group-hover:text-cyan-800 truncate">
-                      {{ c.nombre }}
-                    </div>
-                    <div v-if="c.especificaciones_tecnicas?.taller" class="text-[11px] text-blue-700 font-medium truncate">
-                      Taller: {{ c.especificaciones_tecnicas.taller }}
-                    </div>
-                    <div v-else-if="c.telefono" class="text-[10px] text-slate-400 truncate">
-                      Tel: {{ c.telefono }}
-                    </div>
-                  </div>
-                  <span class="text-[10px] font-medium text-slate-400 flex-shrink-0">
-                    {{ c.tipo }}
-                  </span>
-                </button>
+                    <span class="flex items-center gap-2">
+                      <Users class="w-4 h-4 text-slate-400" />
+                      Todos los clientes y talleres
+                    </span>
+                    <span class="text-[10px] text-slate-400">Sin filtro</span>
+                  </button>
 
-                <!-- Estado sin resultados -->
-                <div v-if="!isSearchingClients && supabaseClients.length === 0" class="px-4 py-6 text-center text-slate-500 text-xs">
-                  No se encontraron clientes en Supabase que coincidan con "{{ clientSearchInput }}".
+                  <!-- Clientes encontrados en Supabase -->
+                  <button
+                    v-for="c in supabaseClients"
+                    :key="c.id"
+                    type="button"
+                    @click="selectClient(c)"
+                    class="w-full text-left px-3.5 py-2.5 hover:bg-cyan-50/60 transition group flex items-start gap-2.5"
+                  >
+                    <span 
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 flex-shrink-0"
+                      :class="c.tipo === 'Tallerista' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
+                    >
+                      {{ c.codigo }}
+                    </span>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-bold text-slate-900 group-hover:text-cyan-800 truncate">
+                        {{ c.nombre }}
+                      </div>
+                      <div v-if="c.especificaciones_tecnicas?.taller" class="text-[11px] text-blue-700 font-medium truncate">
+                        Taller: {{ c.especificaciones_tecnicas.taller }}
+                      </div>
+                      <div v-else-if="c.telefono" class="text-[10px] text-slate-400 truncate">
+                        Tel: {{ c.telefono }}
+                      </div>
+                    </div>
+                    <span class="text-[10px] font-medium text-slate-400 flex-shrink-0">
+                      {{ c.tipo }}
+                    </span>
+                  </button>
+
+                  <!-- Estado sin resultados -->
+                  <div v-if="!isSearchingClients && supabaseClients.length === 0" class="px-4 py-6 text-center text-slate-500 text-xs">
+                    No se encontraron clientes en Supabase que coincidan con "{{ clientSearchInput }}".
+                  </div>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>

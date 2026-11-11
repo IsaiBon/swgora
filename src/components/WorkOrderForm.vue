@@ -13,7 +13,9 @@ import {
 } from '@/services/ordersService'
 import { clientesService, type Cliente, type ClientType } from '@/services/clientesService'
 import { catalogService, type CatalogProduct, sortMotorsByRelevance } from '@/services/catalogService'
+import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useCatalogStore } from '@/stores/catalog'
+import { useAuthStore } from '@/stores/auth'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
 import { 
   Search, 
@@ -32,11 +34,13 @@ import {
   ChevronDown,
   Filter,
   RotateCcw,
+  MapPin,
   X
 } from 'lucide-vue-next'
 
 const props = defineProps<{
   initialOrderId?: string | null
+  defaultRutaId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +49,11 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
+const authStore = useAuthStore()
+
+// Estado de Ruta / Sucursal de la orden
+const availableRutas = ref<RutaSucursal[]>([])
+const selectedRutaId = ref<string>('')
 
 // Estado principal del formulario
 const isEditing = computed(() => !!props.initialOrderId)
@@ -604,7 +613,17 @@ onMounted(async () => {
   }
   const freshCatalog = await ordersService.getOperationsCatalogAsync()
   catalogProducts.value = await catalogService.getProducts()
+  availableRutas.value = await rutasService.getRutas()
   await loadAllClients()
+
+  // Pre-asignar ruta según rol Sub-Administrador o ruta seleccionada por el Administrador
+  if (authStore.isSubAdmin && authStore.activeRutaId) {
+    selectedRutaId.value = authStore.activeRutaId
+  } else if (props.defaultRutaId && props.defaultRutaId !== 'ALL' && props.defaultRutaId !== 'UNASSIGNED') {
+    selectedRutaId.value = props.defaultRutaId
+  } else if (typeof route.query.ruta === 'string' && route.query.ruta && route.query.ruta !== 'ALL' && route.query.ruta !== 'UNASSIGNED') {
+    selectedRutaId.value = route.query.ruta
+  }
 
   if (props.initialOrderId) {
     const existing = await ordersService.getOrderById(props.initialOrderId)
@@ -654,6 +673,11 @@ const loadExistingOrder = (order: Order) => {
   orderDate.value = order.date
   orderStatus.value = order.status === 'En Proceso' ? 'En Proceso' : 'Pendiente'
   docType.value = order.type || 'orden'
+  if (authStore.isSubAdmin && authStore.activeRutaId) {
+    selectedRutaId.value = authStore.activeRutaId
+  } else if (order.rutaId) {
+    selectedRutaId.value = order.rutaId
+  }
   selectedCustomerId.value = order.customerId
   selectedCustomerCode.value = order.customerCode || order.workshopCode
   if (!selectedCustomerCode.value && order.customerId) {
@@ -955,6 +979,23 @@ const handleSaveOrder = async () => {
       }
     }
 
+    let resolvedRutaId: string | undefined
+    let resolvedRutaCodigo: string | undefined
+    let resolvedRutaNombre: string | undefined
+
+    if (authStore.isSubAdmin && authStore.activeRutaId && authStore.activeRutaNombre) {
+      resolvedRutaId = authStore.activeRutaId
+      resolvedRutaCodigo = authStore.activeRutaCodigo || undefined
+      resolvedRutaNombre = authStore.activeRutaNombre
+    } else if (selectedRutaId.value) {
+      const foundRuta = availableRutas.value.find(r => r.id === selectedRutaId.value)
+      if (foundRuta) {
+        resolvedRutaId = foundRuta.id
+        resolvedRutaCodigo = foundRuta.codigo
+        resolvedRutaNombre = foundRuta.nombre
+      }
+    }
+
     const orderPayload: Omit<Order, 'id'> = {
       orderNumber: orderNumber.value,
       date: orderDate.value,
@@ -973,6 +1014,9 @@ const handleSaveOrder = async () => {
       engineNumber: engineNumber.value.trim(),
       engineType: cleanEngine,
       observations: observations.value.trim(),
+      rutaId: resolvedRutaId,
+      rutaCodigo: resolvedRutaCodigo,
+      rutaNombre: resolvedRutaNombre,
       operations: savedOperations,
       parts: parts.value.filter(p => p.quantity > 0 && p.unitPrice >= 0),
       materials: materials.value.filter(m => m.quantity > 0 && m.unitPrice >= 0),
@@ -1167,6 +1211,46 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     orderStatus === 'Pendiente' ? 'text-amber-800' : 'text-[#038896]'
                   ]"
                 />
+              </div>
+            </div>
+          </div>
+
+          <div class="hidden sm:block w-px h-12 bg-slate-200"></div>
+
+          <div class="flex-1 min-w-[180px]">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+              <MapPin class="w-3 h-3 text-[#04C4D9]" />
+              <span>Ruta / Sucursal</span>
+            </span>
+            <div class="mt-1">
+              <!-- Si es Sub-Administrador de Ruta: ruta fija asignada -->
+              <div
+                v-if="authStore.isSubAdmin"
+                class="inline-flex items-center gap-1.5 w-full rounded-full bg-[#0D0D0D] text-[#05F2F2] border border-[#05C7F2]/50 px-3 py-1.5 text-xs font-bold"
+                title="Esta orden pertenece automáticamente a tu ruta asignada"
+              >
+                <MapPin class="w-3.5 h-3.5 text-[#05C7F2] shrink-0" />
+                <span class="truncate">
+                  {{ authStore.activeRutaCodigo ? `${authStore.activeRutaCodigo} · ` : '' }}{{ authStore.activeRutaNombre || 'Ruta Asignada' }}
+                </span>
+              </div>
+
+              <!-- Si es Administrador General u Operador: selector de rutas -->
+              <div v-else class="relative inline-block w-full">
+                <select
+                  v-model="selectedRutaId"
+                  class="w-full font-bold text-xs rounded-full px-3 py-1.5 appearance-none pr-8 cursor-pointer bg-[#05C7F2]/10 border border-[#04C4D9]/50 text-[#0D0D0D] focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition"
+                >
+                  <option value="">General / Sin ruta específica</option>
+                  <option
+                    v-for="r in availableRutas"
+                    :key="r.id"
+                    :value="r.id"
+                  >
+                    {{ r.codigo }} · {{ r.nombre }}
+                  </option>
+                </select>
+                <ChevronDown class="w-3.5 h-3.5 absolute right-2.5 top-2.5 pointer-events-none text-[#0D0D0D]" />
               </div>
             </div>
           </div>

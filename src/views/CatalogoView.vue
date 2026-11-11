@@ -8,6 +8,8 @@ import {
   type Fabricante,
   type GrupoRepuesto,
   type Equivalencia,
+  type ParametroTecnicoDefinicion,
+  buildNestedTableHeaders,
   normalizeText,
   sortMotorsByRelevance
 } from '@/services/catalogService'
@@ -44,6 +46,7 @@ import {
   Edit3,
   Ruler,
   Maximize2,
+  Hash,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -467,6 +470,15 @@ function getPartParamValue(part: RepuestoTecnico, key: string): any {
   if (dims[key] !== undefined && dims[key] !== null) return dims[key]
   if (specs[key] !== undefined && specs[key] !== null) return specs[key]
 
+  // Si la parte tiene sub-filas (ej. Cojinetes), buscar en las sub-filas (Biela, Bancada)
+  if (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) {
+    for (const sf of dims.subfilas) {
+      if (sf.medidas && sf.medidas[key] !== undefined && sf.medidas[key] !== null && sf.medidas[key] !== '') {
+        return sf.medidas[key]
+      }
+    }
+  }
+
   const k = key.toLowerCase()
 
   // Diámetro cabeza / hongo (válvulas)
@@ -701,6 +713,7 @@ const customTolerancesCount = computed(() => {
 
 // Filtros para parámetros dinámicos de nuevos grupos
 const dynamicParamFilters = ref<Record<string, any>>({})
+const filterCodigoPart = ref<string>('')
 
 const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
   if (!selectedComponent.value) return null
@@ -716,13 +729,125 @@ const isCurrentGroupTable = computed<boolean>(() => {
   return selectedComponent.value.id === 'anillos_motor'
 })
 
+// Determina si la familia activa es una matriz con sub-filas (ej. Cojinetes: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
+const isCurrentGroupSubfilas = computed<boolean>(() => {
+  if (!currentGroupDefinition.value) return false
+  const cfg = currentGroupDefinition.value.tabla_config
+  if (cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas' || (cfg?.subfilas && cfg.subfilas.length > 0)) {
+    return true
+  }
+  const code = (currentGroupDefinition.value.codigo || '').toLowerCase()
+  const cat = (currentGroupDefinition.value.categoria || '').toLowerCase()
+  const nom = (currentGroupDefinition.value.nombre || '').toLowerCase()
+  return code.includes('cojinete') || cat.includes('cojinete') || nom.includes('cojinete') || code.includes('casquet') || cat.includes('casquet')
+})
+
+const isCurrentGroupRingsTable = computed<boolean>(() => {
+  if (!isCurrentGroupTable.value) return false
+  if (isCurrentGroupSubfilas.value) return false
+  return true
+})
+
 const isPartTableFormat = (part: RepuestoTecnico): boolean => {
-  if (isCurrentGroupTable.value) return true
+  if (isCurrentGroupRingsTable.value) return true
   if (part.categoria === 'Anillos') return true
   const catLower = (part.categoria || '').toLowerCase()
   const grp = catalogStore.grupos.find(g => g.categoria.toLowerCase() === catLower || g.codigo.toLowerCase() === catLower)
-  if (grp?.tipo_vista === 'tabla') return true
+  if (grp?.tipo_vista === 'tabla' && grp.tabla_config?.modo_filas !== 'cojinetes') return true
   return Array.isArray((part.dimensiones as any)?.anillos) && (part.dimensiones as any).anillos.length > 0
+}
+
+const isPartSubfilasFormat = (part: RepuestoTecnico): boolean => {
+  if (isCurrentGroupSubfilas.value) return true
+  const dims = part.dimensiones as any
+  return Array.isArray(dims?.subfilas) && dims.subfilas.length > 0
+}
+
+export interface PartSubfilaDisplay {
+  id?: string
+  nombre: string
+  codigo: string
+  medidas: Record<string, any>
+}
+
+const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
+  const dims = part.dimensiones as any
+  if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
+    return dims.subfilas
+  }
+  return [
+    { nombre: 'Biela', codigo: part.codigo_oem || '', medidas: dims || {} },
+    { nombre: 'Bancada', codigo: '', medidas: dims || {} }
+  ]
+}
+
+// Columnas técnicas visibles (en tabla) para la familia actual
+const activeTableGroupColumns = computed<ParametroTecnicoDefinicion[]>(() => {
+  if (!currentGroupDefinition.value?.parametros) return []
+  return currentGroupDefinition.value.parametros.filter(p => p.requerido)
+})
+
+// Estructura de cabeceras de tabla anidadas (2 niveles: padre / sub-columnas)
+const groupSubcolumnsHeaders = computed(() => {
+  return buildNestedTableHeaders(activeTableGroupColumns.value)
+})
+
+// Determina si la familia actual activa el modo de sub-columnas
+const hasGroupSubcolumns = computed<boolean>(() => {
+  if (isCurrentGroupRingsTable.value) return false // Anillos mantiene su matriz especializada
+  return groupSubcolumnsHeaders.value.hasSubcolumns
+})
+
+export interface CatalogFilterGroupBlock {
+  parent: string | null
+  params: ParametroTecnicoDefinicion[]
+}
+
+const groupedCatalogFilterParams = computed<CatalogFilterGroupBlock[]>(() => {
+  if (!currentGroupDefinition.value?.parametros) return []
+  const filterable = currentGroupDefinition.value.parametros.filter(p => p.filtrable !== false)
+  const blocks: CatalogFilterGroupBlock[] = []
+
+  for (const p of filterable) {
+    const parent = p.columna_padre?.trim() || null
+    const existing = blocks.find(b => b.parent === parent)
+    if (existing) {
+      existing.params.push(p)
+    } else {
+      blocks.push({ parent, params: [p] })
+    }
+  }
+  return blocks
+})
+
+const hasGroupedFilterBlocks = computed<boolean>(() => {
+  return groupedCatalogFilterParams.value.some(b => b.parent !== null)
+})
+
+const getShortParamFilterLabel = (param: ParametroTecnicoDefinicion): string => {
+  const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
+  const key = (param.clave || '').toLowerCase()
+  if (lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')) {
+    return 'Dmin (mm)'
+  }
+  if (lbl.includes('máx') || lbl.includes('max') || key.endsWith('_max') || key.endsWith('_max_mm')) {
+    return 'Dmax (mm)'
+  }
+  return param.etiqueta_corta || param.etiqueta
+}
+
+const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion): string => {
+  if (val == null || val === '') return '—'
+  if (col.tipo_dato === 'booleano') return val ? 'Sí' : 'No'
+  if (typeof val === 'number') {
+    return col.unidad === '°' ? `${val}°` : val.toFixed(2)
+  }
+  return String(val)
+}
+
+const getPartSubfilaValue = (sf: PartSubfilaDisplay, col: ParametroTecnicoDefinicion): string => {
+  const val = sf.medidas ? sf.medidas[col.clave] : undefined
+  return formatPartParamColValue(val, col)
 }
 
 const CORE_TABLE_RING_KEYS = new Set([
@@ -893,6 +1018,9 @@ const isFilterActive = (val: unknown): val is number => {
 // Contador de filtros de medida activos (Especializado Anillos + Dinámico para todos los demás)
 const activeMeasurementsCount = computed(() => {
   let count = 0
+  if (filterCodigoPart.value.trim() !== '') {
+    count++
+  }
   if (selectedComponent.value && isCurrentGroupTable.value) {
     count += [
       filterAnilloDiametro.value, 
@@ -912,6 +1040,7 @@ const activeMeasurementsCount = computed(() => {
 })
 
 const resetMeasurementsFilters = () => {
+  filterCodigoPart.value = ''
   filterSelloDiamInt.value = undefined
   filterSelloDiamExt.value = undefined
   filterSelloAltura.value = undefined
@@ -1036,6 +1165,33 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   showToast(`✓ ${part.codigo_oem} agregado a la Orden de Trabajo`)
   setTimeout(() => {
     if (addedPartId.value === part.id) addedPartId.value = null
+  }, 1800)
+}
+
+const addSubfilaToWorkOrder = (part: RepuestoTecnico, subfila: { nombre: string; codigo: string }) => {
+  const code = subfila.codigo?.trim() || part.codigo_oem
+  const name = `${part.nombre} (${subfila.nombre})`
+  const itemKey = `${part.id}-${subfila.nombre}`
+  addedPartId.value = itemKey
+  try {
+    const raw = localStorage.getItem('swgora_cart_parts') || '[]'
+    const cart = JSON.parse(raw)
+    cart.push({
+      id: itemKey,
+      code: code,
+      name: name,
+      price: part.precio,
+      category: part.categoria,
+      motor: part.motor?.codigo || selectedMotor.value?.codigo || 'Universal',
+      timestamp: Date.now()
+    })
+    localStorage.setItem('swgora_cart_parts', JSON.stringify(cart))
+  } catch {
+    // Silencioso
+  }
+  showToast(`✓ ${code} (${subfila.nombre}) agregado a la Orden`)
+  setTimeout(() => {
+    if (addedPartId.value === itemKey) addedPartId.value = null
   }, 1800)
 }
 
@@ -1844,12 +2000,39 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       }
     }
 
+    // 2.a.bis Filtro específico de Código de parte en la barra de medidas
+    if (filterCodigoPart.value.trim()) {
+      const q = filterCodigoPart.value.toLowerCase().trim()
+      list = list.filter(r => 
+        r.codigo_oem.toLowerCase().includes(q) ||
+        getPartOemCodes(r).some(c => c.toLowerCase().includes(q)) ||
+        (Array.isArray((r.dimensiones as any)?.subfilas) && (r.dimensiones as any).subfilas.some((sf: any) => sf.codigo?.toLowerCase().includes(q) || sf.nombre?.toLowerCase().includes(q))) ||
+        r.equivalencias?.some(eq => eq.codigo_alterno.toLowerCase().includes(q))
+      )
+    }
+
     // 2.b. Filtros de parámetros dinámicos para todas las familias (guiados por la definición técnica)
     if (Object.keys(dynamicParamFilters.value).length > 0) {
       for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
         if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
           const tolParam = getTol(key)
           list = list.filter(r => {
+            const dims = (r.dimensiones as any) || {}
+            // Si la pieza tiene sub-filas, comprobar si alguna sub-fila coincide con esta cota
+            if (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) {
+              const matchedInSubfila = dims.subfilas.some((sf: any) => {
+                const sfVal = sf.medidas ? sf.medidas[key] : undefined
+                if (sfVal === undefined || sfVal === null || sfVal === '') return false
+                if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
+                  return Math.abs(Number(sfVal) - Number(filterVal)) <= tolParam
+                }
+                const strSf = String(sfVal).toLowerCase().trim()
+                const strFlt = String(filterVal).toLowerCase().trim()
+                return strSf.includes(strFlt) || strFlt.includes(strSf)
+              })
+              if (matchedInSubfila) return true
+            }
+
             const partVal = getPartParamValue(r, key)
             if (partVal === undefined || partVal === null) return false
 
@@ -2220,7 +2403,8 @@ const getModalExtraDimensions = (part: RepuestoTecnico | null | undefined): Arra
     if (rawVal === undefined || rawVal === null || rawVal === '' || typeof rawVal === 'object') continue
 
     const paramDef = params.find(p => p.clave === rawKey)
-    const label = paramDef?.etiqueta || rawKey.replace(/_mm$/i, '').replace(/_/g, ' ')
+    const baseLabel = paramDef?.etiqueta || rawKey.replace(/_mm$/i, '').replace(/_/g, ' ')
+    const label = paramDef?.columna_padre ? `${paramDef.columna_padre} › ${baseLabel}` : baseLabel
     const unit = paramDef?.unidad || (rawKey.endsWith('_mm') ? 'mm' : (rawKey.includes('angulo') || rawKey.includes('grados') ? '°' : ''))
     const valStr = String(rawVal).trim()
     const formattedVal = unit && !valStr.toLowerCase().endsWith(unit.toLowerCase()) ? `${valStr} ${unit}` : valStr
@@ -2287,9 +2471,16 @@ const resolveGroupIdFromPart = (part?: RepuestoTecnico | null): string | null =>
   return selectedComponent.value?.id || null
 }
 
+const handleCreateNewGroup = () => {
+  adminModalTab.value = 'grupo'
+  adminModalEditGroupId.value = null
+  adminModalEditPart.value = null
+  isAdminModalOpen.value = true
+}
+
 const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroupId?: string | null) => {
   adminModalTab.value = tab
-  adminModalEditGroupId.value = editGroupId || (tab === 'grupo' ? (selectedComponent.value?.id || null) : null)
+  adminModalEditGroupId.value = editGroupId || null
   adminModalEditPart.value = null
   isAdminModalOpen.value = true
 }
@@ -2430,12 +2621,12 @@ onUnmounted(() => {
 
         <button
           type="button"
-          @click="openAdminCatalogModal('grupo')"
+          @click="handleCreateNewGroup"
           class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs active:scale-95"
-          title="Crear nueva familia paramétrica"
+          title="Crear nueva familia de componentes paramétricos"
         >
           <FolderPlus class="w-3.5 h-3.5 text-[#04C4D9]" />
-          <span>+ Familia</span>
+          <span>+ Nueva Familia</span>
         </button>
 
         <button
@@ -2917,9 +3108,20 @@ onUnmounted(() => {
 
         <!-- 5. COMPONENTE -->
         <div class="relative combobox-component">
-          <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-            Componente
-          </label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              Componente
+            </label>
+            <button
+              type="button"
+              @click="handleCreateNewGroup"
+              class="text-[11px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-1 transition"
+              title="Crear nueva familia paramétrica"
+            >
+              <Plus class="w-3 h-3 text-[#04C4D9]" />
+              <span>+ Nueva Familia</span>
+            </button>
+          </div>
 
           <div class="relative flex items-center">
             <input
@@ -2978,6 +3180,19 @@ onUnmounted(() => {
             <div v-if="filteredComponentGroups.length === 0" class="p-3 text-center text-xs text-slate-400">
               No hay componentes coincidentes
             </div>
+            <!-- Botón de acción para crear nueva familia técnica dentro del dropdown -->
+            <button
+              type="button"
+              @click="handleCreateNewGroup(); isComponentOpen = false"
+              class="w-full px-3 py-2 text-xs font-bold text-[#038391] bg-cyan-50/70 hover:bg-cyan-100 flex items-center justify-between border-t border-cyan-100 transition sticky bottom-0"
+              title="Crear nueva familia de componentes"
+            >
+              <span class="flex items-center gap-1.5 truncate">
+                <FolderPlus class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                <span>+ Crear nueva familia de componentes</span>
+              </span>
+              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Nuevo</span>
+            </button>
           </div>
         </div>
 
@@ -3368,6 +3583,16 @@ onUnmounted(() => {
           <div class="flex items-center gap-2">
             <button
               type="button"
+              @click="handleCreateNewGroup"
+              class="px-2.5 py-1 text-xs font-semibold text-[#038391] bg-cyan-50 hover:bg-cyan-100 rounded-lg flex items-center gap-1 transition"
+              title="Crear una nueva familia de componentes"
+            >
+              <Plus class="w-3 h-3 text-[#04C4D9]" />
+              <span>+ Nueva Familia</span>
+            </button>
+
+            <button
+              type="button"
               @click="handleEditGroup(selectedComponent.id)"
               class="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1 transition"
               title="Modificar parámetros del grupo"
@@ -3444,7 +3669,7 @@ onUnmounted(() => {
         </div>
 
         <!-- FILTROS ESPECIALIZADOS PARA FAMILIAS EN TABLA / ANILLOS DE MOTOR (Sincronizado con Gestor de Familias) -->
-        <div v-if="isCurrentGroupTable" class="space-y-2.5">
+        <div v-if="isCurrentGroupRingsTable" class="space-y-2.5">
           <!-- Barra superior de selección de Anillo y Nota Técnica -->
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
             <!-- Tabs de navegación: Todos, 1, 2, 3, Anillo de aceite -->
@@ -3911,58 +4136,183 @@ onUnmounted(() => {
         <!-- FILTROS TÉCNICOS DINÁMICOS BASADOS EN PARÁMETROS DE LA FAMILIA (SUPABASE / STORE) -->
         <div 
           v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
-          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
+          class="space-y-2.5"
         >
-          <div 
-            v-for="param in currentGroupDefinition.parametros.filter(p => p.filtrable !== false)" 
-            :key="param.clave"
-          >
-            <!-- Caso A: Número Decimal con Tolerancia Específica / Universal -->
-            <template v-if="param.tipo_dato === 'numero'">
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-600 truncate">
-                  {{ param.etiqueta }} 
-                  <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
-                </label>
-                <ToleranceBadge v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+          <!-- Caso A: Si la familia tiene sub-columnas / etapas agrupadas (ej. Cojinetes: Código, STD: Dmin y Dmax, 1er...) -->
+          <div v-if="hasGroupedFilterBlocks" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
+            <!-- Bloque 1: Filtro de Código / Identificador de Parte -->
+            <div class="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 transition space-y-1.5 shadow-2xs flex flex-col justify-between">
+              <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+                <div class="flex items-center gap-1.5">
+                  <Hash class="w-3.5 h-3.5 text-[#004B97]" />
+                  <span class="text-xs font-black uppercase tracking-wider text-[#004B97] font-mono">
+                    Código
+                  </span>
+                </div>
+                <span class="text-[9px] font-bold text-slate-400 uppercase">OEM / Parte</span>
               </div>
-              <input
-                v-model.number="dynamicParamFilters[param.clave]"
-                type="number"
-                step="0.1"
-                :placeholder="`ej. 50 ${param.unidad || ''}`"
-                class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-              />
-            </template>
+              <div class="relative flex-1 flex flex-col justify-center">
+                <input
+                  v-model="filterCodigoPart"
+                  type="text"
+                  placeholder="ej. 4-4160, 7367..."
+                  class="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
+                />
+                <button
+                  v-if="filterCodigoPart"
+                  type="button"
+                  @click="filterCodigoPart = ''"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  title="Limpiar código"
+                >
+                  <X class="w-3 h-3" />
+                </button>
+              </div>
+              <span class="text-[9px] text-slate-400 font-sans block truncate">Biela, Bancada o alterno</span>
+            </div>
 
-            <!-- Caso B: Menú Desplegable / Cascada de Selección (ej. Admisión / Escape, IN / EX) -->
-            <template v-else-if="param.tipo_dato === 'seleccion' || (param.opciones && param.opciones.length > 0)">
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
-                {{ param.etiqueta }}
-              </label>
-              <select
-                v-model="dynamicParamFilters[param.clave]"
-                class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-              >
-                <option value="">Todas las opciones</option>
-                <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">
-                  {{ opt }}
-                </option>
-              </select>
-            </template>
+            <!-- Bloques Agrupados por Etapa / Columna Padre (STD, 1er, 2da, 3er, 4ta...) -->
+            <div 
+              v-for="block in groupedCatalogFilterParams.filter(b => b.parent !== null)" 
+              :key="block.parent!"
+              class="bg-blue-50/40 p-2.5 rounded-xl border border-blue-200/90 hover:border-blue-300 transition space-y-1.5 shadow-2xs"
+            >
+              <!-- Cabecera del Grupo (ej. STD, 1er, 2da...) -->
+              <div class="flex items-center justify-between pb-1 border-b border-blue-200/80">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                  <span class="text-xs font-black uppercase tracking-wider text-[#004B97] font-mono">
+                    {{ block.parent }}
+                  </span>
+                </div>
+                <span class="text-[9px] font-bold text-[#038391] bg-blue-100/80 px-1.5 py-0.2 rounded font-mono">
+                  {{ block.params.map(p => getShortParamFilterLabel(p).replace(' (mm)', '')).join(' · ') }}
+                </span>
+              </div>
 
-            <!-- Caso C: Texto libre -->
-            <template v-else>
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
-                {{ param.etiqueta }}
-              </label>
-              <input
-                v-model="dynamicParamFilters[param.clave]"
-                type="text"
-                placeholder="Filtrar..."
-                class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-              />
-            </template>
+              <!-- Inputs de medidas (ej. Dmin y Dmax lado a lado) -->
+              <div :class="block.params.length === 2 ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1 gap-1.5'">
+                <div v-for="param in block.params" :key="param.clave">
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-extrabold uppercase text-slate-700 truncate" :title="param.etiqueta">
+                      {{ getShortParamFilterLabel(param) }}
+                    </label>
+                    <ToleranceBadge v-if="param.tipo_dato === 'numero'" v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                  </div>
+                  <input
+                    v-if="param.tipo_dato === 'numero'"
+                    v-model.number="dynamicParamFilters[param.clave]"
+                    type="number"
+                    step="0.001"
+                    placeholder="0.00"
+                    class="w-full px-2 py-1 text-xs font-mono font-bold text-center bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
+                  />
+                  <input
+                    v-else
+                    v-model="dynamicParamFilters[param.clave]"
+                    type="text"
+                    placeholder="—"
+                    class="w-full px-2 py-1 text-xs font-bold text-center bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Bloque para parámetros sueltos sin padre (si existen) -->
+            <div 
+              v-for="block in groupedCatalogFilterParams.filter(b => b.parent === null)" 
+              :key="'standalone-block'"
+              class="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/90 hover:border-slate-300 transition space-y-1.5 shadow-2xs"
+            >
+              <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+                <span class="text-xs font-black uppercase tracking-wider text-slate-700 font-mono">
+                  Otras Cotas
+                </span>
+              </div>
+              <div class="grid grid-cols-1 gap-1.5">
+                <div v-for="param in block.params" :key="param.clave">
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-700 truncate">
+                      {{ param.etiqueta_corta || param.etiqueta }}
+                    </label>
+                    <ToleranceBadge v-if="param.tipo_dato === 'numero'" v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                  </div>
+                  <input
+                    v-if="param.tipo_dato === 'numero'"
+                    v-model.number="dynamicParamFilters[param.clave]"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                  <input
+                    v-else
+                    v-model="dynamicParamFilters[param.clave]"
+                    type="text"
+                    placeholder="Filtrar..."
+                    class="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Caso B: Formato plano estándar cuando no hay sub-columnas / padres -->
+          <div 
+            v-else
+            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
+          >
+            <div 
+              v-for="param in currentGroupDefinition.parametros.filter(p => p.filtrable !== false)" 
+              :key="param.clave"
+            >
+              <!-- Caso A: Número Decimal con Tolerancia Específica / Universal -->
+              <template v-if="param.tipo_dato === 'numero'">
+                <div class="flex items-center justify-between mb-0.5">
+                  <label class="block text-[10px] font-bold text-slate-600 truncate">
+                    {{ param.etiqueta }} 
+                    <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+                  </label>
+                  <ToleranceBadge v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                </div>
+                <input
+                  v-model.number="dynamicParamFilters[param.clave]"
+                  type="number"
+                  step="0.1"
+                  :placeholder="`ej. 50 ${param.unidad || ''}`"
+                  class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </template>
+
+              <!-- Caso B: Menú Desplegable / Cascada de Selección (ej. Admisión / Escape, IN / EX) -->
+              <template v-else-if="param.tipo_dato === 'seleccion' || (param.opciones && param.opciones.length > 0)">
+                <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                  {{ param.etiqueta }}
+                </label>
+                <select
+                  v-model="dynamicParamFilters[param.clave]"
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                >
+                  <option value="">Todas las opciones</option>
+                  <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">
+                    {{ opt }}
+                  </option>
+                </select>
+              </template>
+
+              <!-- Caso C: Texto libre -->
+              <template v-else>
+                <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                  {{ param.etiqueta }}
+                </label>
+                <input
+                  v-model="dynamicParamFilters[param.clave]"
+                  type="text"
+                  placeholder="Filtrar..."
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </template>
+            </div>
           </div>
         </div>
 
@@ -4018,11 +4368,64 @@ onUnmounted(() => {
 
         <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-separate border-spacing-0">
-            <thead class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+            <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
+            <thead v-if="hasGroupSubcolumns" class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Componente</th>
-                <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Código OEM</th>
-                <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
+                <th rowspan="2" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95" :class="isCurrentGroupSubfilas ? 'w-28 text-center' : 'w-44 min-w-[150px]'">
+                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                </th>
+                <th rowspan="2" class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                  {{ isCurrentGroupSubfilas ? 'Código' : 'Código OEM' }}
+                </th>
+                <th v-if="!isCurrentGroupSubfilas" rowspan="2" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                  Catálogos Alternos
+                </th>
+                
+                <!-- Columnas Padre / Standalone de la Familia -->
+                <template v-for="item in groupSubcolumnsHeaders.tier1" :key="item.id">
+                  <th 
+                    v-if="item.isGroup"
+                    :colspan="item.colspan"
+                    class="py-1 px-2.5 text-center font-black text-[#004B97] bg-blue-50/90 border-b border-r border-slate-200 tracking-wider text-[11px]"
+                  >
+                    {{ item.label }}
+                  </th>
+                  <th 
+                    v-else
+                    rowspan="2"
+                    class="py-1.5 px-2.5 text-center align-middle font-bold text-slate-700 border-b border-r border-slate-200 bg-slate-100/95 whitespace-nowrap"
+                  >
+                    {{ item.label }}
+                  </th>
+                </template>
+
+                <th rowspan="2" class="py-1.5 px-3 w-24 text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
+              </tr>
+              <!-- Fila 2 de Cabecera: Sub-columnas -->
+              <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase tracking-tight">
+                <th 
+                  v-for="sub in groupSubcolumnsHeaders.tier2"
+                  :key="sub.id"
+                  class="py-1 px-2 text-center border-b border-r border-slate-200 whitespace-nowrap bg-slate-50 font-mono"
+                >
+                  <span>{{ sub.label }}</span>
+                  <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
+                </th>
+              </tr>
+            </thead>
+
+            <!-- Caso B: Cabecera Estándar (Existente) -->
+            <thead v-else class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+              <tr>
+                <th class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95" :class="isCurrentGroupSubfilas ? 'w-28 text-center' : 'w-44 min-w-[150px]'">
+                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                </th>
+                <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  {{ isCurrentGroupSubfilas ? 'Código' : 'Código OEM' }}
+                </th>
+                <th v-if="!isCurrentGroupSubfilas" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  Catálogos Alternos
+                </th>
                 
                 <th v-if="isCurrentGroupTable || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null].filter(Boolean).join(' / ') || 'Especificaciones' }}
@@ -4044,17 +4447,117 @@ onUnmounted(() => {
                 <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-20 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
-                <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
+                <template v-if="hasGroupSubcolumns">
+                  <td v-for="col in activeTableGroupColumns" :key="`skel-col-${col.id}`" class="py-2 px-2 border-b border-slate-100"><div class="h-3.5 w-12 mx-auto bg-slate-200 rounded"></div></td>
+                </template>
+                <td v-else class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-3 text-right border-b border-slate-100"><div class="h-3.5 w-14 bg-slate-200 rounded ml-auto"></div></td>
               </tr>
             </tbody>
 
             <tbody v-else class="divide-y divide-slate-100">
-              <tr
-                v-for="part in paginatedParts"
-                :key="part.id"
-                class="hover:bg-slate-50 transition group"
-              >
+              <template v-for="part in paginatedParts" :key="part.id">
+                <!-- CASO A: Matriz Federal Mogul con Sub-filas (Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada) -->
+                <template v-if="isPartSubfilasFormat(part)">
+                  <!-- Fila 1: Marca centrada + Aplicación vehicular -->
+                  <tr class="bg-rose-50/70 border-t-2 border-rose-300 font-sans">
+                    <td class="py-1.5 px-3 border-b border-r border-rose-200 text-center font-black uppercase text-rose-900 bg-rose-100/80 tracking-wider text-xs">
+                      {{ (part.dimensiones as any)?.marca_banner || (selectedMotor?.fabricante_id ? getBrandName(selectedMotor.fabricante_id) : 'MARCA') }}
+                    </td>
+                    <td :colspan="activeTableGroupColumns.length + 1" class="py-1.5 px-3 border-b border-r border-rose-200 font-sans text-xs">
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                          <span class="font-extrabold text-slate-900">{{ (part.dimensiones as any)?.aplicacion_banner || part.nombre }}</span>
+                          <span v-if="part.motor?.codigo" class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">
+                            {{ part.motor.codigo }}
+                          </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <span v-if="(part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner" class="text-[10px] font-mono font-bold text-rose-800 bg-rose-200/60 px-2 py-0.5 rounded border border-rose-300">
+                            {{ (part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner }}
+                          </span>
+                          <span class="text-[10px] text-slate-500 font-bold">
+                            Juego Completo
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="py-1.5 px-3 text-right border-b border-rose-200">
+                      <button
+                        type="button"
+                        @click="addToWorkOrder(part)"
+                        class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs cursor-pointer"
+                        :class="addedPartId === part.id ? 'bg-emerald-600 text-white' : 'bg-[#004B97] text-white hover:bg-blue-900'"
+                        title="Agregar todo el juego a la Orden"
+                      >
+                        {{ addedPartId === part.id ? '✓ Agregado' : '+ Juego' }}
+                      </button>
+                    </td>
+                  </tr>
+
+                  <!-- Filas 2 y 3: Biela, Bancada y Sub-filas -->
+                  <tr
+                    v-for="(sf, sfIdx) in getPartSubfilas(part)"
+                    :key="`sf-${part.id}-${sfIdx}`"
+                    class="hover:bg-slate-50/80 transition font-mono text-xs border-b border-slate-100"
+                  >
+                    <!-- Col 1: Nombre de la Sub-fila (Biela, Bancada) -->
+                    <td class="py-2 px-3 border-r border-slate-200 font-bold text-slate-800 text-left bg-slate-50/50">
+                      <div class="flex items-center gap-1.5">
+                        <span
+                          class="w-2 h-2 rounded-full shrink-0"
+                          :class="sfIdx === 0 ? 'bg-[#004B97]' : (sfIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                        ></span>
+                        <span class="font-black">{{ sf.nombre }}</span>
+                      </div>
+                    </td>
+
+                    <!-- Col 2: Código específico de esta sub-fila (ej. 4-4160 RA, 7367 M) -->
+                    <td class="py-2 px-2.5 border-r border-slate-200 font-mono font-bold text-slate-900">
+                      <div class="flex items-center gap-1">
+                        <span>{{ sf.codigo || part.codigo_oem || '—' }}</span>
+                        <button
+                          v-if="sf.codigo || part.codigo_oem"
+                          type="button"
+                          @click.stop="copyToClipboard(sf.codigo || part.codigo_oem, sf.nombre)"
+                          class="p-0.5 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer"
+                        >
+                          <Copy class="w-3 h-3" />
+                        </button>
+                      </div>
+                    </td>
+
+                    <!-- Columnas de Maquinado (STD Mín/Máx, 1er Mín/Máx...) -->
+                    <td
+                      v-for="col in activeTableGroupColumns"
+                      :key="`td-sf-${part.id}-${sfIdx}-${col.id}`"
+                      class="py-2 px-2 text-center border-r border-slate-100 font-mono font-bold"
+                    >
+                      {{ getPartSubfilaValue(sf, col) }}
+                    </td>
+
+                    <!-- Botón específico + A Orden por sub-fila -->
+                    <td class="py-2 px-3 text-right">
+                      <button
+                        type="button"
+                        @click="addSubfilaToWorkOrder(part, sf)"
+                        class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs border cursor-pointer"
+                        :class="addedPartId === `${part.id}-${sf.nombre}`
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-cyan-50 border-cyan-300 text-[#038391] hover:bg-cyan-100'"
+                        :title="`Agregar solo ${sf.nombre} a la Orden`"
+                      >
+                        {{ addedPartId === `${part.id}-${sf.nombre}` ? '✓ OK' : `+ ${sf.nombre}` }}
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+
+                <!-- CASO B: Fila estándar de repuesto (Existente) -->
+                <tr
+                  v-else
+                  class="hover:bg-slate-50 transition group"
+                >
                 <!-- 1. Componente con Miniatura Técnica y Lightbox -->
                 <td class="py-2 px-3 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-2.5">
@@ -4243,8 +4746,19 @@ onUnmounted(() => {
                   </div>
                 </td>
 
-                <!-- 4. MEDIDAS Y COTAS -->
-                <td class="py-2 px-3 align-middle border-b border-slate-100">
+                <!-- 4. MEDIDAS Y COTAS (Modo Sub-columnas Anidadas o formato estándar) -->
+                <template v-if="hasGroupSubcolumns">
+                  <td 
+                    v-for="col in activeTableGroupColumns" 
+                    :key="`td-subcol-${part.id}-${col.id}`"
+                    class="py-2 px-2 text-center align-middle border-b border-r border-slate-100 font-mono font-bold text-xs"
+                    :class="getMeasurementMatchClass(getPartParamValue(part, col.clave), dynamicParamFilters[col.clave], getTol(col.clave))"
+                  >
+                    {{ formatPartParamColValue(getPartParamValue(part, col.clave), col) }}
+                  </td>
+                </template>
+
+                <td v-else class="py-2 px-3 align-middle border-b border-slate-100">
                   
                   <!-- Caso Especializado: Familias en Tabla / Anillos de motor (Sincronizado con Gestor de Familias) -->
                   <div v-if="isPartTableFormat(part)" class="py-1">
@@ -4393,6 +4907,7 @@ onUnmounted(() => {
                   </div>
                 </td>
               </tr>
+            </template>
 
               <!-- Empty State -->
               <tr v-if="displayedParts.length === 0">
@@ -5401,7 +5916,7 @@ onUnmounted(() => {
     <AdminCatalogModal
       :is-open="isAdminModalOpen"
       :initial-tab="adminModalTab"
-      :preselected-group-id="selectedComponent?.id || adminModalEditGroupId || undefined"
+      :preselected-group-id="adminModalTab === 'repuesto' ? (selectedComponent?.id || undefined) : (adminModalEditGroupId || undefined)"
       :preselected-motor-id="selectedMotor?.id || null"
       :edit-group-id="adminModalEditGroupId"
       :edit-part="adminModalEditPart"

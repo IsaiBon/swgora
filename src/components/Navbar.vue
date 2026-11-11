@@ -9,6 +9,7 @@ import {
   Package,
   Users,
   ShieldCheck,
+  MapPin,
   Wrench,
   Building2,
   Eye,
@@ -40,6 +41,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Órdenes', path: '/ordenes', icon: ShoppingCart },
+  { name: 'Rutas', path: '/rutas', icon: MapPin },
   { name: 'Catálogo', path: '/catalogo', icon: Package },
   { name: 'Clientes', path: '/clientes', icon: Users },
   { name: 'Usuarios', path: '/usuarios', icon: ShieldCheck },
@@ -99,6 +101,7 @@ const handleLogout = async () => {
 const roleIcon = computed(() => {
   const r = normalizeRole(authStore.user?.role)
   if (r === 'Administrador') return ShieldCheck
+  if (r === 'Sub-Administrador') return MapPin
   if (r === 'Operador') return Wrench
   return Eye
 })
@@ -106,6 +109,7 @@ const roleIcon = computed(() => {
 const roleBadgeClass = computed(() => {
   const r = normalizeRole(authStore.user?.role)
   if (r === 'Administrador') return 'bg-[#05C7F2]/15 text-[#05F2F2] border-[#05C7F2]/40'
+  if (r === 'Sub-Administrador') return 'bg-[#05F2F2]/15 text-[#05F2F2] border-[#05F2F2]/40'
   if (r === 'Operador') return 'bg-[#04C4D9]/15 text-[#04C4D9] border-[#04C4D9]/40'
   return 'bg-[#F2F2F2]/10 text-[#F2F2F2] border-[#F2F2F2]/25'
 })
@@ -301,6 +305,17 @@ const handleNewOrder = () => {
                 >
                   <component :is="roleIcon" class="w-3.5 h-3.5 shrink-0" />
                   <span>{{ authStore.user?.role || 'Consultor' }}</span>
+                </span>
+              </div>
+
+              <!-- Ruta / Sucursal asignada para Sub-Administrador -->
+              <div
+                v-if="authStore.isSubAdmin && authStore.activeRutaNombre"
+                class="py-2.5 border-b border-neutral-800 text-xs flex items-center justify-between"
+              >
+                <span class="font-semibold text-neutral-300">Ruta asignada</span>
+                <span class="text-[#05F2F2] font-bold truncate max-w-[165px]">
+                  {{ authStore.activeRutaCodigo ? `${authStore.activeRutaCodigo} · ` : '' }}{{ authStore.activeRutaNombre }}
                 </span>
               </div>
 
