@@ -227,20 +227,20 @@ const orderGrandTotal = computed(() => {
             <span class="text-base font-black font-mono text-rose-700 tracking-tight">{{ order.orderNumber }}</span>
           </div>
 
-          <!-- Cuadrícula Fecha: DIA | MES | AÑO con tabla nativa para máxima estabilidad -->
-          <table class="w-full border border-slate-400 text-[10px] my-1 border-collapse text-center">
+          <!-- Cuadrícula Fecha: DIA | MES | AÑO centrada simétricamente -->
+          <table class="w-full border border-slate-400 text-[10px] my-1.5 border-collapse text-center" style="table-layout: fixed;">
             <thead>
-              <tr class="bg-slate-100 font-bold text-slate-800 border-b border-slate-400">
-                <th class="py-0.5 border-r border-slate-400 w-1/3 font-bold text-[9.5px]">DÍA</th>
-                <th class="py-0.5 border-r border-slate-400 w-1/3 font-bold text-[9.5px]">MES</th>
-                <th class="py-0.5 w-1/3 font-bold text-[9.5px]">AÑO</th>
+              <tr class="bg-slate-100 text-slate-800 border-b border-slate-400">
+                <th class="py-1 px-1 border-r border-slate-400 w-1/3 font-bold text-[9px] uppercase tracking-wider align-middle text-center" style="line-height: 1.2;">DÍA</th>
+                <th class="py-1 px-1 border-r border-slate-400 w-1/3 font-bold text-[9px] uppercase tracking-wider align-middle text-center" style="line-height: 1.2;">MES</th>
+                <th class="py-1 px-1 w-1/3 font-bold text-[9px] uppercase tracking-wider align-middle text-center" style="line-height: 1.2;">AÑO</th>
               </tr>
             </thead>
             <tbody>
               <tr class="font-bold text-slate-900">
-                <td class="py-0.5 border-r border-slate-400">{{ dateParts.day }}</td>
-                <td class="py-0.5 border-r border-slate-400">{{ dateParts.month }}</td>
-                <td class="py-0.5">{{ dateParts.year }}</td>
+                <td class="py-1.5 px-1 border-r border-slate-400 align-middle text-center text-[11px]" style="line-height: 1.2;">{{ dateParts.day }}</td>
+                <td class="py-1.5 px-1 border-r border-slate-400 align-middle text-center text-[11px]" style="line-height: 1.2;">{{ dateParts.month }}</td>
+                <td class="py-1.5 px-1 align-middle text-center text-[11px]" style="line-height: 1.2;">{{ dateParts.year }}</td>
               </tr>
             </tbody>
           </table>
