@@ -10,6 +10,7 @@ import {
   Users,
   ShieldCheck,
   Wrench,
+  Building2,
   Eye,
   Plus,
   LogOut,
@@ -42,6 +43,7 @@ const navItems: NavItem[] = [
   { name: 'Catálogo', path: '/catalogo', icon: Package },
   { name: 'Clientes', path: '/clientes', icon: Users },
   { name: 'Usuarios', path: '/usuarios', icon: ShieldCheck },
+  { name: 'Taller', path: '/taller', icon: Building2 },
 ]
 
 const visibleNavItems = computed(() => {
@@ -202,8 +204,24 @@ const handleNewOrder = () => {
         </router-link>
       </nav>
 
-      <!-- 3. Right: Botón Destacado '+ Nueva Orden' + Perfil con Dropdown -->
+      <!-- 3. Right: Botones de Acción + Perfil con Dropdown -->
       <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <!-- Botón Módulo de Taller (Exclusivo Administrador) -->
+        <router-link
+          v-if="authStore.user?.role === 'Administrador'"
+          to="/taller"
+          :class="[
+            'hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition cursor-pointer shrink-0 select-none',
+            isActive('/taller')
+              ? 'bg-[#05C7F2]/20 text-[#05F2F2] border-[#05C7F2]/60 shadow-xs ring-1 ring-[#05C7F2]/30'
+              : 'bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700/80 hover:border-neutral-600'
+          ]"
+          title="Configuración institucional del Taller para órdenes y PDF"
+        >
+          <Building2 class="w-3.5 h-3.5 text-[#05C7F2]" />
+          <span>Taller</span>
+        </router-link>
+
         <!-- Botón Blanco Destacado Estilo 'Download' de Supaste -->
         <button
           v-if="authStore.canAccess('/ordenes')"
@@ -302,8 +320,27 @@ const handleNewOrder = () => {
                 </span>
               </div>
 
-              <!-- Información de la Empresa / Taller -->
-              <div class="py-2.5 border-b border-neutral-800 text-xs flex items-center justify-between">
+              <!-- Información de la Empresa / Módulo de Taller (Acceso Rápido Administrador) -->
+              <div v-if="authStore.user?.role === 'Administrador'" class="py-2.5 border-b border-neutral-800">
+                <router-link
+                  to="/taller"
+                  @click="userMenuOpen = false"
+                  class="flex items-center justify-between p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/60 hover:border-[#05C7F2]/40 transition group"
+                  title="Configurar datos del taller y PDF"
+                >
+                  <div class="flex items-center gap-2">
+                    <Building2 class="w-4 h-4 text-[#05C7F2] group-hover:scale-110 transition-transform" />
+                    <div>
+                      <div class="text-xs font-bold text-white group-hover:text-[#05F2F2] transition-colors">
+                        Módulo de Taller
+                      </div>
+                      <div class="text-[10px] text-neutral-400">Datos institucionales y PDF</div>
+                    </div>
+                  </div>
+                  <ChevronRight class="w-4 h-4 text-neutral-500 group-hover:text-[#05F2F2] transition-colors" />
+                </router-link>
+              </div>
+              <div v-else class="py-2.5 border-b border-neutral-800 text-xs flex items-center justify-between">
                 <span class="font-semibold text-neutral-300">Taller</span>
                 <span class="text-white font-bold">JR Blanco Motores</span>
               </div>
