@@ -25,6 +25,7 @@ import {
   Edit3,
   Search,
   ChevronDown,
+  ChevronUp,
   Check,
   AlertCircle,
   Eye,
@@ -1203,110 +1204,9 @@ const getDefaultTablaConfig = (): TablaConfiguracion => ({
 
 const groupTablaConfig = ref<TablaConfiguracion>(getDefaultTablaConfig())
 
-const getDefaultTableParams = (): DynamicParamRow[] => [
-  {
-    id: `param-${Date.now()}-t1`,
-    etiqueta: 'Diámetro',
-    etiqueta_corta: 'Diámetro',
-    clave: 'diametro_cilindro_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Diámetro nominal en mm',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 96.00
-  },
-  {
-    id: `param-${Date.now()}-t2`,
-    etiqueta: 'Grosor',
-    etiqueta_corta: 'Grosor',
-    clave: 'grosor_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Espesor axial de cada fila en mm',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 2.00
-  },
-  {
-    id: `param-${Date.now()}-t3`,
-    etiqueta: 'Altura',
-    etiqueta_corta: 'Altura',
-    clave: 'altura_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Altura o ancho radial de cada fila en mm',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 3.80
-  }
-]
-
-const getDefaultNormalParams = (): DynamicParamRow[] => [
-  {
-    id: `param-${Date.now()}-1`,
-    etiqueta: 'Diámetro Interior',
-    etiqueta_corta: 'Ø Int.',
-    clave: 'diametro_interior_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Medida del diámetro interno de la pieza',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 45.00
-  },
-  {
-    id: `param-${Date.now()}-2`,
-    etiqueta: 'Diámetro Exterior',
-    etiqueta_corta: 'Ø Ext.',
-    clave: 'diametro_exterior_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Medida del diámetro externo o de alojamiento',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 52.00
-  },
-  {
-    id: `param-${Date.now()}-3`,
-    etiqueta: 'Longitud Total',
-    etiqueta_corta: 'Long.',
-    clave: 'longitud_total_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: false,
-    filtrable: false,
-    descripcion: 'Largo total o altura en milímetros',
-    decimales: 1,
-    mostrar_unidad: true,
-    valor_muestra: 110.5
-  }
-]
-
 const setGroupTipoVista = (tipo: 'normal' | 'tabla') => {
   if (groupTipoVista.value === tipo) return
   groupTipoVista.value = tipo
-  if (!isEditMode.value) {
-    const keys = dynamicParams.value.map(p => p.clave)
-    const isDefaultNormal = keys.length === 3 && keys.includes('diametro_interior_mm') && keys.includes('diametro_exterior_mm')
-    const isDefaultTable = keys.includes('grosor_mm') || keys.includes('anillo1_h1')
-    if (tipo === 'tabla' && isDefaultNormal) {
-      dynamicParams.value = getDefaultTableParams()
-      groupTablaConfig.value = getDefaultTablaConfig()
-    } else if (tipo === 'normal' && isDefaultTable) {
-      dynamicParams.value = getDefaultNormalParams()
-    }
-  }
 }
 
 // --- Creatable Combobox para Subsistema (Opcional, Inline, Cero Modales) ---
@@ -1391,48 +1291,8 @@ const handleParamUnitChange = (param: DynamicParamRow) => {
   }
 }
 
-// Lista dinámica de parámetros
-const dynamicParams = ref<DynamicParamRow[]>([
-  {
-    id: `param-${Date.now()}-1`,
-    etiqueta: 'Diámetro Interior',
-    etiqueta_corta: 'Ø Int.',
-    clave: 'diametro_interior_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    descripcion: 'Medida del diámetro interno de la pieza',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 45.00
-  },
-  {
-    id: `param-${Date.now()}-2`,
-    etiqueta: 'Diámetro Exterior',
-    etiqueta_corta: 'Ø Ext.',
-    clave: 'diametro_exterior_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    descripcion: 'Medida del diámetro externo o de alojamiento',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 52.00
-  },
-  {
-    id: `param-${Date.now()}-3`,
-    etiqueta: 'Longitud Total',
-    etiqueta_corta: 'Long.',
-    clave: 'longitud_total_mm',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: false,
-    descripcion: 'Largo total o altura en milímetros',
-    decimales: 1,
-    mostrar_unidad: true,
-    valor_muestra: 110.5
-  }
-])
+// Lista dinámica de parámetros (inicialmente vacía para familias nuevas)
+const dynamicParams = ref<DynamicParamRow[]>([])
 
 const groupErrors = ref<Record<string, string>>({})
 const isSubmittingGroup = ref(false)
@@ -1495,7 +1355,7 @@ const switchToCreateMode = () => {
   groupTipoVista.value = 'normal'
   groupTablaConfig.value = getDefaultTablaConfig()
   soloFiltrosEnTabla.value = false
-  dynamicParams.value = getDefaultNormalParams()
+  dynamicParams.value = []
   groupErrors.value = {}
 }
 
@@ -1535,13 +1395,12 @@ const onSelectEditGroup = () => {
 
 const addParamRow = () => {
   const count = dynamicParams.value.length + 1
-  const defaultLabel = `Medida ${count}`
   const defaultUnit = 'mm'
   dynamicParams.value.push({
     id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    etiqueta: defaultLabel,
-    etiqueta_corta: defaultLabel,
-    clave: generateTechnicalKey(defaultLabel, defaultUnit),
+    etiqueta: '',
+    etiqueta_corta: '',
+    clave: generateTechnicalKey(`campo_${count}`, defaultUnit),
     unidad: defaultUnit,
     tipo_dato: 'numero',
     requerido: true,
@@ -1554,37 +1413,39 @@ const addParamRow = () => {
   })
 }
 
-// Sugerencias rápidas de columnas superiores / padres
-const suggestedParentColumns = computed<string[]>(() => {
-  const defaults = ['STD', '1er', '2da', '3er', '4ta']
-  const inUse = dynamicParams.value
-    .map(p => p.columna_padre?.trim())
-    .filter((p): p is string => Boolean(p))
-  const merged = Array.from(new Set([...defaults, ...inUse]))
-  return merged.slice(0, 6)
-})
+// Reordenar parámetro hacia arriba
+const moveParamUp = (index: number) => {
+  if (index <= 0) return
+  const item = dynamicParams.value[index]
+  dynamicParams.value.splice(index, 1)
+  dynamicParams.value.splice(index - 1, 0, item)
+}
 
-// Agrega una sub-columna hermana bajo la misma columna padre
+// Reordenar parámetro hacia abajo
+const moveParamDown = (index: number) => {
+  if (index >= dynamicParams.value.length - 1) return
+  const item = dynamicParams.value[index]
+  dynamicParams.value.splice(index, 1)
+  dynamicParams.value.splice(index + 1, 0, item)
+}
+
+// Agrega una sub-columna hermana bajo la misma columna padre (inicio limpio sin datos pre-llenados)
 const addSiblingSubcolumn = (param: DynamicParamRow, idx: number) => {
-  const parent = param.columna_padre?.trim() || 'STD'
+  const parent = param.columna_padre?.trim() || `Columna ${idx + 1}`
   param.columna_padre = parent
   const count = dynamicParams.value.filter(p => p.columna_padre === parent).length + 1
-  
-  const isMin = (param.etiqueta || '').toLowerCase().includes('mín') || (param.etiqueta || '').toLowerCase().includes('min')
-  const newEtiqueta = isMin ? 'Diámetro Máximo' : `Sub-medida ${count}`
-  const newEtiquetaCorta = isMin ? 'Máx' : `Sub ${count}`
   const unit = param.unidad || 'mm'
 
   const newRow: DynamicParamRow = {
     id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    etiqueta: newEtiqueta,
-    etiqueta_corta: newEtiquetaCorta,
-    clave: generateTechnicalKey(`${parent}_${newEtiqueta}`, unit),
+    etiqueta: '',
+    etiqueta_corta: '',
+    clave: generateTechnicalKey(`${parent}_sub_${count}`, unit),
     unidad: unit,
     tipo_dato: param.tipo_dato || 'numero',
     requerido: true,
     filtrable: true,
-    descripcion: `Sub-columna de ${parent}`,
+    descripcion: '',
     decimales: param.decimales ?? 2,
     mostrar_unidad: true,
     valor_muestra: 50.00,
@@ -1592,53 +1453,6 @@ const addSiblingSubcolumn = (param: DynamicParamRow, idx: number) => {
   }
 
   dynamicParams.value.splice(idx + 1, 0, newRow)
-}
-
-// Genera un par de sub-columnas (ej. Mín / Máx para rectificación estilo Federal Mogul)
-const addPairedSubcolumns = (parentName?: string) => {
-  let targetParent = parentName
-  if (!targetParent) {
-    const usedParents = new Set(
-      dynamicParams.value.map(p => p.columna_padre?.trim()).filter(Boolean)
-    )
-    const stages = ['STD', '1er', '2da', '3er', '4ta', '5ta']
-    targetParent = stages.find(s => !usedParents.has(s)) || `Etapa ${usedParents.size + 1}`
-  }
-
-  const unit = 'mm'
-  const rowMin: DynamicParamRow = {
-    id: `param-${Date.now()}-min`,
-    etiqueta: 'Diámetro Mínimo',
-    etiqueta_corta: 'Mín',
-    clave: generateTechnicalKey(`${targetParent}_min`, unit),
-    unidad: unit,
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: `Diámetro mínimo para rectificación ${targetParent}`,
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 48.97,
-    columna_padre: targetParent
-  }
-
-  const rowMax: DynamicParamRow = {
-    id: `param-${Date.now()}-max`,
-    etiqueta: 'Diámetro Máximo',
-    etiqueta_corta: 'Máx',
-    clave: generateTechnicalKey(`${targetParent}_max`, unit),
-    unidad: unit,
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: `Diámetro máximo para rectificación ${targetParent}`,
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 48.99,
-    columna_padre: targetParent
-  }
-
-  dynamicParams.value.push(rowMin, rowMax)
 }
 
 const removeParamRow = (index: number) => {
@@ -1808,11 +1622,11 @@ const validateGroupForm = (): boolean => {
     errors.dynamicParams = 'Define al menos un parámetro técnico para la familia'
   } else {
     dynamicParams.value.forEach((p, idx) => {
-      if (!p.etiqueta.trim()) {
-        errors[`param_${idx}_etiqueta`] = `El parámetro #${idx + 1} requiere una etiqueta`
+      if (!p.etiqueta || !p.etiqueta.trim()) {
+        p.etiqueta = `Campo ${idx + 1}`
       }
-      if (!p.clave.trim()) {
-        errors[`param_${idx}_clave`] = `El parámetro #${idx + 1} requiere una clave técnica`
+      if (!p.clave || !p.clave.trim()) {
+        p.clave = generateTechnicalKey(p.etiqueta, p.unidad || 'mm')
       }
     })
   }
@@ -3102,20 +2916,11 @@ onUnmounted(() => {
                   <div class="flex items-center gap-1.5">
                     <button
                       type="button"
-                      @click="addPairedSubcolumns()"
-                      class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#004B97] border border-blue-200 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
-                      title="Añade un par de sub-columnas (Mín / Máx) agrupadas bajo una columna padre (ej: STD, 1er, 2da...)"
-                    >
-                      <Split class="w-3.5 h-3.5 text-[#004B97]" />
-                      <span>+ Sub-columnas (Mín/Máx)</span>
-                    </button>
-                    <button
-                      type="button"
                       @click="addParamRow"
                       class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
                     >
                       <Plus class="w-3.5 h-3.5" />
-                      <span>+ Medida</span>
+                      <span>+ Agregar Campo</span>
                     </button>
                   </div>
                 </div>
@@ -3143,6 +2948,30 @@ onUnmounted(() => {
 
                 <!-- Lista de Parámetros Dinámicos -->
                 <div class="space-y-3">
+                  <!-- Empty State cuando no hay parámetros definidos -->
+                  <div
+                    v-if="dynamicParams.length === 0"
+                    class="p-7 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-2.5"
+                  >
+                    <div class="w-9 h-9 rounded-xl bg-cyan-50 border border-cyan-200 text-[#038391] flex items-center justify-center mx-auto shadow-2xs">
+                      <SlidersHorizontal class="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p class="text-xs font-black text-slate-800">Familia técnica vacía</p>
+                      <p class="text-[11px] text-slate-500 mt-0.5 max-w-xs mx-auto">
+                        Comienza agregando los campos o columnas de medidas técnicas que componen esta familia.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      @click="addParamRow"
+                      class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold transition shadow-2xs cursor-pointer active:scale-95"
+                    >
+                      <Plus class="w-3.5 h-3.5" />
+                      <span>+ Agregar Primer Campo</span>
+                    </button>
+                  </div>
+
                   <div
                     v-for="(param, idx) in dynamicParams"
                     :key="param.id"
@@ -3151,11 +2980,34 @@ onUnmounted(() => {
                     <!-- Barra superior del parámetro -->
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex items-center gap-2">
+                        <!-- Botones de Reordenar Subir / Bajar -->
+                        <div class="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                          <button
+                            type="button"
+                            @click="moveParamUp(idx)"
+                            :disabled="idx === 0"
+                            class="p-1 hover:bg-slate-100 disabled:opacity-25 disabled:hover:bg-transparent text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
+                            title="Subir parámetro en el orden"
+                          >
+                            <ChevronUp class="w-3.5 h-3.5" />
+                          </button>
+                          <div class="w-px h-3.5 bg-slate-200"></div>
+                          <button
+                            type="button"
+                            @click="moveParamDown(idx)"
+                            :disabled="idx === dynamicParams.length - 1"
+                            class="p-1 hover:bg-slate-100 disabled:opacity-25 disabled:hover:bg-transparent text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
+                            title="Bajar parámetro en el orden"
+                          >
+                            <ChevronDown class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
                         <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center">
                           {{ idx + 1 }}
                         </span>
                         <span class="text-xs font-black text-slate-900 truncate">
-                          {{ param.etiqueta || `Medida #${idx + 1}` }}
+                          {{ param.etiqueta || `Campo ${idx + 1}` }}
                         </span>
                       </div>
 
@@ -3212,7 +3064,7 @@ onUnmounted(() => {
                           v-model="param.etiqueta"
                           @input="handleParamLabelChange(param)"
                           type="text"
-                          placeholder="Nombre de la medida"
+                          :placeholder="`Campo ${idx + 1}`"
                           class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
@@ -3222,7 +3074,7 @@ onUnmounted(() => {
                         <input
                           v-model="param.etiqueta_corta"
                           type="text"
-                          :placeholder="param.etiqueta || 'Abrev.'"
+                          :placeholder="param.etiqueta || `Columna ${idx + 1}`"
                           class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
@@ -3248,7 +3100,7 @@ onUnmounted(() => {
                           v-model="param.unidad"
                           @input="handleParamUnitChange(param)"
                           type="text"
-                          placeholder="Escribir unidad (ej. mm, °, bar, psi...)"
+                          placeholder="mm"
                           class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
@@ -3291,48 +3143,33 @@ onUnmounted(() => {
                         <input
                           v-model="param.descripcion"
                           type="text"
-                          placeholder="Descripción técnica..."
+                          :placeholder="`Descripción de ${param.etiqueta || ('Campo ' + (idx + 1))} (opcional)`"
                           class="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
 
                       <!-- Sub-columna / Columna Superior Agrupadora -->
                       <div class="sm:col-span-2 pt-2 border-t border-slate-200/80">
-                        <div class="flex flex-wrap items-center justify-between gap-1 mb-1.5">
+                        <div class="flex items-center justify-between gap-1 mb-1.5">
                           <label class="text-[11px] font-extrabold text-slate-800 flex items-center gap-1.5">
                             <Split class="w-3.5 h-3.5 text-[#004B97]" />
                             <span>Columna Superior / Padre</span>
-                            <span class="text-[10px] font-normal text-slate-500">(Para crear sub-columnas adentro)</span>
+                            <span class="text-[10px] font-normal text-slate-500">(Para agrupar como sub-columna)</span>
                           </label>
-                          <div class="flex items-center gap-1 flex-wrap">
-                            <span class="text-[9px] text-slate-400 font-bold uppercase">Sugerencias:</span>
-                            <button
-                              v-for="sug in suggestedParentColumns"
-                              :key="sug"
-                              type="button"
-                              @click="param.columna_padre = param.columna_padre === sug ? '' : sug"
-                              class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border transition cursor-pointer"
-                              :class="param.columna_padre === sug 
-                                ? 'bg-[#004B97] text-white border-[#004B97] shadow-2xs' 
-                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-100'"
-                            >
-                              {{ sug }}
-                            </button>
-                          </div>
                         </div>
                         <div class="flex items-center gap-2">
                           <div class="relative flex-1">
                             <input
                               v-model="param.columna_padre"
                               type="text"
-                              placeholder="ej. STD, 1er, 2da, 3er, 4ta, Rectificación..."
+                              :placeholder="`Columna ${idx + 1} (opcional)`"
                               class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                             />
                             <button
                               v-if="param.columna_padre"
                               type="button"
                               @click="param.columna_padre = ''"
-                              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                               title="Quitar columna padre"
                             >
                               <X class="w-3 h-3" />
@@ -3517,7 +3354,7 @@ onUnmounted(() => {
                             <div class="flex items-center justify-between gap-2">
                               <span class="truncate">
                                 {{ (groupNombre ? groupNombre.toUpperCase() : 'COTAS') }}: 
-                                {{ visibleTableColumns.map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || 'ESPECIFICACIONES TÉCNICAS' }}
+                                {{ visibleTableColumns.map((p, pIdx) => p.etiqueta_corta || p.etiqueta || `Campo ${pIdx + 1}`).join(' × ') || 'ESPECIFICACIONES TÉCNICAS' }}
                               </span>
                             </div>
                           </th>
@@ -3591,7 +3428,7 @@ onUnmounted(() => {
                                         class="px-2 py-1 text-cyan-300"
                                         :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
                                       >
-                                        {{ colParam.etiqueta_corta || colParam.etiqueta }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
+                                        {{ colParam.etiqueta_corta || colParam.etiqueta || `Columna ${colIdx + 1}` }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
                                       </th>
                                     </tr>
                                   </thead>
@@ -3624,13 +3461,13 @@ onUnmounted(() => {
                             </template>
                             <div v-else class="flex flex-wrap items-center gap-1.5">
                               <div
-                                v-for="param in visibleTableColumns"
+                                v-for="(param, paramIdx) in visibleTableColumns"
                                 :key="`row1-${param.id}`"
                                 @click="cycleDecimals(param)"
-                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta)"
+                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}`)"
                                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400 hover:border-slate-500 cursor-pointer transition select-none group/badge"
                               >
-                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}` }}:</span>
                                 <span class="tabular-nums">{{ formatSampleValue(param, 0) }}</span>
                               </div>
                               <span v-if="visibleTableColumns.length === 0" class="text-amber-400 text-[10px] italic font-sans">
@@ -3712,7 +3549,7 @@ onUnmounted(() => {
                                         class="px-2 py-1 text-cyan-300"
                                         :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
                                       >
-                                        {{ colParam.etiqueta_corta || colParam.etiqueta }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
+                                        {{ colParam.etiqueta_corta || colParam.etiqueta || `Columna ${colIdx + 1}` }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
                                       </th>
                                     </tr>
                                   </thead>
@@ -3739,13 +3576,13 @@ onUnmounted(() => {
                             </template>
                             <div v-else class="flex flex-wrap items-center gap-1.5">
                               <div
-                                v-for="param in visibleTableColumns"
+                                v-for="(param, paramIdx) in visibleTableColumns"
                                 :key="`row2-${param.id}`"
                                 @click="cycleDecimals(param)"
-                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta)"
+                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}`)"
                                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400 hover:border-slate-500 cursor-pointer transition select-none group/badge"
                               >
-                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}` }}:</span>
                                 <span class="tabular-nums">{{ formatSampleValue(param, 1) }}</span>
                               </div>
                               <span v-if="visibleTableColumns.length === 0" class="text-amber-400 text-[10px] italic font-sans">

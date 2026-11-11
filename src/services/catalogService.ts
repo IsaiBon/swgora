@@ -113,9 +113,9 @@ export function buildNestedTableHeaders<T extends { id: string; etiqueta: string
   if (!hasSubcolumns) {
     return {
       hasSubcolumns: false,
-      tier1: columns.map(c => ({
+      tier1: columns.map((c, idx) => ({
         id: c.id,
-        label: c.etiqueta_corta || c.etiqueta,
+        label: c.etiqueta_corta?.trim() || c.etiqueta?.trim() || `Columna ${idx + 1}`,
         isGroup: false,
         colspan: 1,
         rowspan: 1,
@@ -141,10 +141,10 @@ export function buildNestedTableHeaders<T extends { id: string; etiqueta: string
         rowspan: 1,
         subParams: [...currentGroupChildren]
       })
-      for (const child of currentGroupChildren) {
+      for (const [cIdx, child] of currentGroupChildren.entries()) {
         tier2.push({
           id: child.id,
-          label: child.etiqueta_corta || child.etiqueta,
+          label: child.etiqueta_corta?.trim() || child.etiqueta?.trim() || `Sub ${cIdx + 1}`,
           unidad: child.unidad,
           param: child
         })
@@ -168,7 +168,7 @@ export function buildNestedTableHeaders<T extends { id: string; etiqueta: string
       flushGroup()
       tier1.push({
         id: col.id,
-        label: col.etiqueta_corta || col.etiqueta,
+        label: col.etiqueta_corta?.trim() || col.etiqueta?.trim() || `Columna ${tier1.length + 1}`,
         isGroup: false,
         colspan: 1,
         rowspan: 2,
