@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { clientesService, type Cliente, type ClienteInsert, type ClientStatus } from '@/services/clientesService'
+import { ordersService, type Order } from '@/services/ordersService'
 import ClientCard from '@/components/ClientCard.vue'
 import ClientModal from '@/components/ClientModal.vue'
 import ClientOrdersHistoryModal from '@/components/ClientOrdersHistoryModal.vue'
@@ -12,6 +13,9 @@ import {
   Plus,
   RotateCcw,
   CheckCircle,
+  Users,
+  Wrench,
+  DollarSign
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -19,6 +23,7 @@ const authStore = useAuthStore()
 
 // State: Clientes activos por defecto
 const clients = ref<Cliente[]>([])
+const orders = ref<Order[]>([])
 const loading = ref(true)
 const searchQuery = ref('')
 const selectedType = ref<string>('Todos')
@@ -34,14 +39,69 @@ const selectedClientForOrders = ref<Cliente | null>(null)
 const typeCategories = ['Todos', 'Cliente', 'Tallerista']
 const statusCategories = ['Todos', 'Activo', 'Inactivo']
 
+// Vinculación de orden a cliente
+const isOrderOfClient = (order: Order, client: Cliente): boolean => {
+  const cId = (client.id || '').toLowerCase().trim()
+  const cCode = (client.codigo || '').toLowerCase().trim()
+  const cName = (client.nombre || '').toLowerCase().trim()
+  const cTaller = (client.especificaciones_tecnicas?.taller || '').toLowerCase().trim()
+  const cEmpresa = (client.especificaciones_tecnicas?.empresa || '').toLowerCase().trim()
+
+  const oCustId = (order.customerId || '').toLowerCase().trim()
+  const oCustCode = (order.customerCode || '').toLowerCase().trim()
+  const oWsCode = (order.workshopCode || '').toLowerCase().trim()
+  const oCustomer = (order.customer || '').toLowerCase().trim()
+  const oWorkshop = (order.workshop || '').toLowerCase().trim()
+
+  if (cId && oCustId && oCustId === cId) return true
+  if (cCode && (oCustCode === cCode || oWsCode === cCode)) return true
+
+  if (cName && (oCustomer === cName || oCustomer.includes(cName))) return true
+  if (cTaller && (oWorkshop === cTaller || oWorkshop.includes(cTaller) || oCustomer === cTaller || oCustomer.includes(cTaller))) return true
+  if (cEmpresa && (oCustomer === cEmpresa || oCustomer.includes(cEmpresa))) return true
+
+  return false
+}
+
+// Cálculo reactivo de facturación por cliente
+const clientBillingStats = computed<Record<string, { totalBilled: number; ordersCount: number }>>(() => {
+  const map: Record<string, { totalBilled: number; ordersCount: number }> = {}
+
+  clients.value.forEach(c => {
+    let total = 0
+    let count = 0
+
+    orders.value.forEach(o => {
+      if (o.status !== 'Cancelada' && isOrderOfClient(o, c)) {
+        total += o.total || 0
+        count++
+      }
+    })
+
+    map[c.id] = { totalBilled: total, ordersCount: count }
+  })
+
+  return map
+})
+
+// Facturación global de todos los clientes
+const totalBilledAllClients = computed(() => {
+  return Object.values(clientBillingStats.value).reduce((acc, curr) => acc + curr.totalBilled, 0)
+})
+
 const loadClients = async () => {
   loading.value = true
   try {
-    clients.value = await clientesService.getClientes({
-      search: searchQuery.value,
-      tipo: selectedType.value,
-      estado: selectedStatus.value,
-    })
+    const [fetchedClients, fetchedOrders] = await Promise.all([
+      clientesService.getClientes({
+        search: searchQuery.value,
+        tipo: selectedType.value,
+        estado: selectedStatus.value,
+      }),
+      ordersService.getOrders()
+    ])
+    clients.value = fetchedClients
+    orders.value = fetchedOrders
   } finally {
     loading.value = false
   }
@@ -189,6 +249,44 @@ const showToast = (msg: string) => {
       </div>
     </div>
 
+    <!-- Resumen de Métricas de Clientes y Facturación -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+        <div>
+          <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Directorio</span>
+          <span class="text-2xl font-black text-slate-900 mt-0.5 block">{{ clients.length }}</span>
+          <span class="text-xs text-slate-500 font-medium">{{ clients.filter(c => c.estado === 'Activo').length }} activos</span>
+        </div>
+        <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600">
+          <Users class="w-6 h-6" />
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+        <div>
+          <span class="text-[11px] font-bold text-amber-600 uppercase tracking-wider block">Talleres Mecánicos</span>
+          <span class="text-2xl font-black text-slate-900 mt-0.5 block">{{ clients.filter(c => c.tipo === 'Tallerista').length }}</span>
+          <span class="text-xs text-slate-500 font-medium">{{ clients.filter(c => c.tipo === 'Cliente').length }} particulares</span>
+        </div>
+        <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
+          <Wrench class="w-6 h-6" />
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+        <div>
+          <span class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Facturación Total Clientes</span>
+          <span class="text-2xl font-black text-emerald-950 mt-0.5 block">
+            ${{ totalBilledAllClients.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          </span>
+          <span class="text-xs text-emerald-700 font-semibold">Órdenes facturadas</span>
+        </div>
+        <div class="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+          <DollarSign class="w-6 h-6" />
+        </div>
+      </div>
+    </div>
+
     <!-- Filters & Search Bar -->
     <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
       <!-- Search Input -->
@@ -266,6 +364,8 @@ const showToast = (msg: string) => {
         v-for="client in filteredClients"
         :key="client.id"
         :client="client"
+        :total-billed="clientBillingStats[client.id]?.totalBilled || 0"
+        :orders-count="clientBillingStats[client.id]?.ordersCount || 0"
         @edit="openEditModal"
         @toggleStatus="handleToggleStatus"
         @viewOrders="openOrdersModal"

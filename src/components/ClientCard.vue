@@ -12,11 +12,17 @@ import {
   ExternalLink,
   Ban,
   RotateCcw,
+  DollarSign
 } from 'lucide-vue-next'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   client: Cliente
-}>()
+  totalBilled?: number
+  ordersCount?: number
+}>(), {
+  totalBilled: 0,
+  ordersCount: 0
+})
 
 const emit = defineEmits<{
   (e: 'edit', client: Cliente): void
@@ -139,6 +145,28 @@ const handleToggleStatus = () => {
       <div class="mt-3 flex items-start gap-2 text-xs text-slate-600">
         <MapPin class="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
         <span class="line-clamp-1">{{ client.direccion || 'Sin dirección registrada' }}</span>
+      </div>
+
+      <!-- Facturación Acumulada del Cliente -->
+      <div class="mt-3.5 p-3 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/70 border border-emerald-200/90 flex items-center justify-between shadow-2xs">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold shadow-xs flex-shrink-0">
+            <DollarSign class="w-5 h-5" />
+          </div>
+          <div class="min-w-0">
+            <span class="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
+              Facturación Acumulada
+            </span>
+            <span class="text-[11px] text-emerald-700 font-semibold block truncate">
+              {{ (ordersCount || 0) === 0 ? 'Sin órdenes aún' : `${ordersCount} ${ordersCount === 1 ? 'orden registrada' : 'órdenes registradas'}` }}
+            </span>
+          </div>
+        </div>
+        <div class="text-right flex-shrink-0 pl-2">
+          <span class="text-base sm:text-lg font-black text-emerald-950 block tracking-tight">
+            ${{ (totalBilled || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          </span>
+        </div>
       </div>
     </div>
 
