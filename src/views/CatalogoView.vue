@@ -46,6 +46,7 @@ import {
   Edit3,
   Ruler,
   Maximize2,
+  Hash,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -469,6 +470,15 @@ function getPartParamValue(part: RepuestoTecnico, key: string): any {
   if (dims[key] !== undefined && dims[key] !== null) return dims[key]
   if (specs[key] !== undefined && specs[key] !== null) return specs[key]
 
+  // Si la parte tiene sub-filas (ej. Cojinetes), buscar en las sub-filas (Biela, Bancada)
+  if (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) {
+    for (const sf of dims.subfilas) {
+      if (sf.medidas && sf.medidas[key] !== undefined && sf.medidas[key] !== null && sf.medidas[key] !== '') {
+        return sf.medidas[key]
+      }
+    }
+  }
+
   const k = key.toLowerCase()
 
   // Diámetro cabeza / hongo (válvulas)
@@ -703,6 +713,7 @@ const customTolerancesCount = computed(() => {
 
 // Filtros para parámetros dinámicos de nuevos grupos
 const dynamicParamFilters = ref<Record<string, any>>({})
+const filterCodigoPart = ref<string>('')
 
 const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
   if (!selectedComponent.value) return null
@@ -786,6 +797,44 @@ const hasGroupSubcolumns = computed<boolean>(() => {
   if (isCurrentGroupRingsTable.value) return false // Anillos mantiene su matriz especializada
   return groupSubcolumnsHeaders.value.hasSubcolumns
 })
+
+export interface CatalogFilterGroupBlock {
+  parent: string | null
+  params: ParametroTecnicoDefinicion[]
+}
+
+const groupedCatalogFilterParams = computed<CatalogFilterGroupBlock[]>(() => {
+  if (!currentGroupDefinition.value?.parametros) return []
+  const filterable = currentGroupDefinition.value.parametros.filter(p => p.filtrable !== false)
+  const blocks: CatalogFilterGroupBlock[] = []
+
+  for (const p of filterable) {
+    const parent = p.columna_padre?.trim() || null
+    const existing = blocks.find(b => b.parent === parent)
+    if (existing) {
+      existing.params.push(p)
+    } else {
+      blocks.push({ parent, params: [p] })
+    }
+  }
+  return blocks
+})
+
+const hasGroupedFilterBlocks = computed<boolean>(() => {
+  return groupedCatalogFilterParams.value.some(b => b.parent !== null)
+})
+
+const getShortParamFilterLabel = (param: ParametroTecnicoDefinicion): string => {
+  const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
+  const key = (param.clave || '').toLowerCase()
+  if (lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')) {
+    return 'Dmin (mm)'
+  }
+  if (lbl.includes('máx') || lbl.includes('max') || key.endsWith('_max') || key.endsWith('_max_mm')) {
+    return 'Dmax (mm)'
+  }
+  return param.etiqueta_corta || param.etiqueta
+}
 
 const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion): string => {
   if (val == null || val === '') return '—'
@@ -969,6 +1018,9 @@ const isFilterActive = (val: unknown): val is number => {
 // Contador de filtros de medida activos (Especializado Anillos + Dinámico para todos los demás)
 const activeMeasurementsCount = computed(() => {
   let count = 0
+  if (filterCodigoPart.value.trim() !== '') {
+    count++
+  }
   if (selectedComponent.value && isCurrentGroupTable.value) {
     count += [
       filterAnilloDiametro.value, 
@@ -988,6 +1040,7 @@ const activeMeasurementsCount = computed(() => {
 })
 
 const resetMeasurementsFilters = () => {
+  filterCodigoPart.value = ''
   filterSelloDiamInt.value = undefined
   filterSelloDiamExt.value = undefined
   filterSelloAltura.value = undefined
@@ -1947,12 +2000,39 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       }
     }
 
+    // 2.a.bis Filtro específico de Código de parte en la barra de medidas
+    if (filterCodigoPart.value.trim()) {
+      const q = filterCodigoPart.value.toLowerCase().trim()
+      list = list.filter(r => 
+        r.codigo_oem.toLowerCase().includes(q) ||
+        getPartOemCodes(r).some(c => c.toLowerCase().includes(q)) ||
+        (Array.isArray((r.dimensiones as any)?.subfilas) && (r.dimensiones as any).subfilas.some((sf: any) => sf.codigo?.toLowerCase().includes(q) || sf.nombre?.toLowerCase().includes(q))) ||
+        r.equivalencias?.some(eq => eq.codigo_alterno.toLowerCase().includes(q))
+      )
+    }
+
     // 2.b. Filtros de parámetros dinámicos para todas las familias (guiados por la definición técnica)
     if (Object.keys(dynamicParamFilters.value).length > 0) {
       for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
         if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
           const tolParam = getTol(key)
           list = list.filter(r => {
+            const dims = (r.dimensiones as any) || {}
+            // Si la pieza tiene sub-filas, comprobar si alguna sub-fila coincide con esta cota
+            if (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) {
+              const matchedInSubfila = dims.subfilas.some((sf: any) => {
+                const sfVal = sf.medidas ? sf.medidas[key] : undefined
+                if (sfVal === undefined || sfVal === null || sfVal === '') return false
+                if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
+                  return Math.abs(Number(sfVal) - Number(filterVal)) <= tolParam
+                }
+                const strSf = String(sfVal).toLowerCase().trim()
+                const strFlt = String(filterVal).toLowerCase().trim()
+                return strSf.includes(strFlt) || strFlt.includes(strSf)
+              })
+              if (matchedInSubfila) return true
+            }
+
             const partVal = getPartParamValue(r, key)
             if (partVal === undefined || partVal === null) return false
 
@@ -3548,7 +3628,7 @@ onUnmounted(() => {
         </div>
 
         <!-- FILTROS ESPECIALIZADOS PARA FAMILIAS EN TABLA / ANILLOS DE MOTOR (Sincronizado con Gestor de Familias) -->
-        <div v-if="isCurrentGroupTable" class="space-y-2.5">
+        <div v-if="isCurrentGroupRingsTable" class="space-y-2.5">
           <!-- Barra superior de selección de Anillo y Nota Técnica -->
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
             <!-- Tabs de navegación: Todos, 1, 2, 3, Anillo de aceite -->
@@ -4015,58 +4095,183 @@ onUnmounted(() => {
         <!-- FILTROS TÉCNICOS DINÁMICOS BASADOS EN PARÁMETROS DE LA FAMILIA (SUPABASE / STORE) -->
         <div 
           v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0"
-          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
+          class="space-y-2.5"
         >
-          <div 
-            v-for="param in currentGroupDefinition.parametros.filter(p => p.filtrable !== false)" 
-            :key="param.clave"
-          >
-            <!-- Caso A: Número Decimal con Tolerancia Específica / Universal -->
-            <template v-if="param.tipo_dato === 'numero'">
-              <div class="flex items-center justify-between mb-0.5">
-                <label class="block text-[10px] font-bold text-slate-600 truncate">
-                  {{ param.etiqueta }} 
-                  <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
-                </label>
-                <ToleranceBadge v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+          <!-- Caso A: Si la familia tiene sub-columnas / etapas agrupadas (ej. Cojinetes: Código, STD: Dmin y Dmax, 1er...) -->
+          <div v-if="hasGroupedFilterBlocks" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
+            <!-- Bloque 1: Filtro de Código / Identificador de Parte -->
+            <div class="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 transition space-y-1.5 shadow-2xs flex flex-col justify-between">
+              <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+                <div class="flex items-center gap-1.5">
+                  <Hash class="w-3.5 h-3.5 text-[#004B97]" />
+                  <span class="text-xs font-black uppercase tracking-wider text-[#004B97] font-mono">
+                    Código
+                  </span>
+                </div>
+                <span class="text-[9px] font-bold text-slate-400 uppercase">OEM / Parte</span>
               </div>
-              <input
-                v-model.number="dynamicParamFilters[param.clave]"
-                type="number"
-                step="0.1"
-                :placeholder="`ej. 50 ${param.unidad || ''}`"
-                class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-              />
-            </template>
+              <div class="relative flex-1 flex flex-col justify-center">
+                <input
+                  v-model="filterCodigoPart"
+                  type="text"
+                  placeholder="ej. 4-4160, 7367..."
+                  class="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
+                />
+                <button
+                  v-if="filterCodigoPart"
+                  type="button"
+                  @click="filterCodigoPart = ''"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  title="Limpiar código"
+                >
+                  <X class="w-3 h-3" />
+                </button>
+              </div>
+              <span class="text-[9px] text-slate-400 font-sans block truncate">Biela, Bancada o alterno</span>
+            </div>
 
-            <!-- Caso B: Menú Desplegable / Cascada de Selección (ej. Admisión / Escape, IN / EX) -->
-            <template v-else-if="param.tipo_dato === 'seleccion' || (param.opciones && param.opciones.length > 0)">
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
-                {{ param.etiqueta }}
-              </label>
-              <select
-                v-model="dynamicParamFilters[param.clave]"
-                class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-              >
-                <option value="">Todas las opciones</option>
-                <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">
-                  {{ opt }}
-                </option>
-              </select>
-            </template>
+            <!-- Bloques Agrupados por Etapa / Columna Padre (STD, 1er, 2da, 3er, 4ta...) -->
+            <div 
+              v-for="block in groupedCatalogFilterParams.filter(b => b.parent !== null)" 
+              :key="block.parent!"
+              class="bg-blue-50/40 p-2.5 rounded-xl border border-blue-200/90 hover:border-blue-300 transition space-y-1.5 shadow-2xs"
+            >
+              <!-- Cabecera del Grupo (ej. STD, 1er, 2da...) -->
+              <div class="flex items-center justify-between pb-1 border-b border-blue-200/80">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                  <span class="text-xs font-black uppercase tracking-wider text-[#004B97] font-mono">
+                    {{ block.parent }}
+                  </span>
+                </div>
+                <span class="text-[9px] font-bold text-[#038391] bg-blue-100/80 px-1.5 py-0.2 rounded font-mono">
+                  {{ block.params.map(p => getShortParamFilterLabel(p).replace(' (mm)', '')).join(' · ') }}
+                </span>
+              </div>
 
-            <!-- Caso C: Texto libre -->
-            <template v-else>
-              <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
-                {{ param.etiqueta }}
-              </label>
-              <input
-                v-model="dynamicParamFilters[param.clave]"
-                type="text"
-                placeholder="Filtrar..."
-                class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-              />
-            </template>
+              <!-- Inputs de medidas (ej. Dmin y Dmax lado a lado) -->
+              <div :class="block.params.length === 2 ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1 gap-1.5'">
+                <div v-for="param in block.params" :key="param.clave">
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-extrabold uppercase text-slate-700 truncate" :title="param.etiqueta">
+                      {{ getShortParamFilterLabel(param) }}
+                    </label>
+                    <ToleranceBadge v-if="param.tipo_dato === 'numero'" v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                  </div>
+                  <input
+                    v-if="param.tipo_dato === 'numero'"
+                    v-model.number="dynamicParamFilters[param.clave]"
+                    type="number"
+                    step="0.001"
+                    placeholder="0.00"
+                    class="w-full px-2 py-1 text-xs font-mono font-bold text-center bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
+                  />
+                  <input
+                    v-else
+                    v-model="dynamicParamFilters[param.clave]"
+                    type="text"
+                    placeholder="—"
+                    class="w-full px-2 py-1 text-xs font-bold text-center bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Bloque para parámetros sueltos sin padre (si existen) -->
+            <div 
+              v-for="block in groupedCatalogFilterParams.filter(b => b.parent === null)" 
+              :key="'standalone-block'"
+              class="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/90 hover:border-slate-300 transition space-y-1.5 shadow-2xs"
+            >
+              <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+                <span class="text-xs font-black uppercase tracking-wider text-slate-700 font-mono">
+                  Otras Cotas
+                </span>
+              </div>
+              <div class="grid grid-cols-1 gap-1.5">
+                <div v-for="param in block.params" :key="param.clave">
+                  <div class="flex items-center justify-between mb-0.5">
+                    <label class="block text-[9px] font-bold uppercase text-slate-700 truncate">
+                      {{ param.etiqueta_corta || param.etiqueta }}
+                    </label>
+                    <ToleranceBadge v-if="param.tipo_dato === 'numero'" v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                  </div>
+                  <input
+                    v-if="param.tipo_dato === 'numero'"
+                    v-model.number="dynamicParamFilters[param.clave]"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                  <input
+                    v-else
+                    v-model="dynamicParamFilters[param.clave]"
+                    type="text"
+                    placeholder="Filtrar..."
+                    class="w-full px-2 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Caso B: Formato plano estándar cuando no hay sub-columnas / padres -->
+          <div 
+            v-else
+            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"
+          >
+            <div 
+              v-for="param in currentGroupDefinition.parametros.filter(p => p.filtrable !== false)" 
+              :key="param.clave"
+            >
+              <!-- Caso A: Número Decimal con Tolerancia Específica / Universal -->
+              <template v-if="param.tipo_dato === 'numero'">
+                <div class="flex items-center justify-between mb-0.5">
+                  <label class="block text-[10px] font-bold text-slate-600 truncate">
+                    {{ param.etiqueta }} 
+                    <span v-if="param.unidad" class="text-slate-400 font-normal">({{ param.unidad }})</span>
+                  </label>
+                  <ToleranceBadge v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />
+                </div>
+                <input
+                  v-model.number="dynamicParamFilters[param.clave]"
+                  type="number"
+                  step="0.1"
+                  :placeholder="`ej. 50 ${param.unidad || ''}`"
+                  class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </template>
+
+              <!-- Caso B: Menú Desplegable / Cascada de Selección (ej. Admisión / Escape, IN / EX) -->
+              <template v-else-if="param.tipo_dato === 'seleccion' || (param.opciones && param.opciones.length > 0)">
+                <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                  {{ param.etiqueta }}
+                </label>
+                <select
+                  v-model="dynamicParamFilters[param.clave]"
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                >
+                  <option value="">Todas las opciones</option>
+                  <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">
+                    {{ opt }}
+                  </option>
+                </select>
+              </template>
+
+              <!-- Caso C: Texto libre -->
+              <template v-else>
+                <label class="block text-[10px] font-bold text-slate-600 mb-0.5 truncate">
+                  {{ param.etiqueta }}
+                </label>
+                <input
+                  v-model="dynamicParamFilters[param.clave]"
+                  type="text"
+                  placeholder="Filtrar..."
+                  class="w-full px-2 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+              </template>
+            </div>
           </div>
         </div>
 

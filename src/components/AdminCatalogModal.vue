@@ -3765,43 +3765,66 @@ onUnmounted(() => {
                     />
                   </div>
 
-                  <!-- Chips / Inputs de filtros por parámetro dinámico -->
-                  <div class="pt-1.5 flex flex-wrap gap-2 items-center">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Cotas:</span>
-                    
-                    <div
-                      v-for="param in dynamicParams.filter(p => isParamFilterVisible(p))"
-                      :key="`preview-filter-${param.id}`"
-                      class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs"
-                    >
-                      <span class="text-[10px] font-bold text-slate-300">{{ param.etiqueta_corta || param.etiqueta }}:</span>
-                      
-                      <template v-if="param.tipo_dato === 'numero'">
-                        <span class="font-mono font-bold text-[#04C4D9] text-[11px]">
-                          {{ param.valor_muestra || '50.00' }}
-                        </span>
-                        <span v-if="param.unidad" class="text-[9px] text-slate-400">{{ param.unidad }}</span>
-                        <span class="text-[9px] font-mono font-bold px-1 rounded bg-slate-700 text-slate-300" title="Tolerancia universal">
-                          ±1.0
-                        </span>
-                      </template>
-
-                      <template v-else-if="param.tipo_dato === 'seleccion'">
-                        <span class="text-[10px] font-bold text-cyan-300">Todas</span>
-                      </template>
-
-                      <template v-else-if="param.tipo_dato === 'booleano'">
-                        <span class="text-[10px] font-bold text-amber-300">STD</span>
-                      </template>
-
-                      <template v-else>
-                        <span class="text-[10px] text-slate-400 italic">libre</span>
-                      </template>
+                  <!-- Chips / Inputs de filtros por parámetro dinámico (Agrupados por Padre / Sub-columna) -->
+                  <div class="pt-1.5 space-y-2">
+                    <div class="flex items-center gap-2">
+                      <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Filtros:</span>
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-200">
+                        <strong class="text-cyan-300">Código:</strong> <span>4-4160</span>
+                      </span>
                     </div>
 
-                    <span v-if="dynamicParams.filter(p => isParamFilterVisible(p)).length === 0" class="text-[11px] text-slate-500 italic">
-                      Sin filtros dimensionales activos (todos ocultos o fuera de tabla).
-                    </span>
+                    <!-- Si hay grupos/sub-columnas (STD, 1er, 2da...) -->
+                    <div v-if="hasSubcolumnsInPreview" class="flex flex-wrap gap-2 items-center">
+                      <div
+                        v-for="item in nestedPreviewHeaders.tier1.filter(t => t.isGroup)"
+                        :key="`prev-grp-flt-${item.id}`"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-800/80 text-xs font-mono"
+                      >
+                        <span class="text-[10px] font-black uppercase text-[#04C4D9]">{{ item.label }}:</span>
+                        <span class="text-[10px] text-slate-300">Dmin: <strong class="text-[#04C4D9]">48.97</strong></span>
+                        <span class="text-slate-600">·</span>
+                        <span class="text-[10px] text-slate-300">Dmax: <strong class="text-emerald-400">48.99</strong></span>
+                        <span class="text-[9px] font-mono font-bold px-1 rounded bg-slate-800 text-slate-400">±0.2</span>
+                      </div>
+                    </div>
+
+                    <!-- Si es plano estándar -->
+                    <div v-else class="flex flex-wrap gap-2 items-center">
+                      <div
+                        v-for="param in dynamicParams.filter(p => isParamFilterVisible(p))"
+                        :key="`preview-filter-${param.id}`"
+                        class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs"
+                      >
+                        <span class="text-[10px] font-bold text-slate-300">{{ param.etiqueta_corta || param.etiqueta }}:</span>
+                        
+                        <template v-if="param.tipo_dato === 'numero'">
+                          <span class="font-mono font-bold text-[#04C4D9] text-[11px]">
+                            {{ param.valor_muestra || '50.00' }}
+                          </span>
+                          <span v-if="param.unidad" class="text-[9px] text-slate-400">{{ param.unidad }}</span>
+                          <span class="text-[9px] font-mono font-bold px-1 rounded bg-slate-700 text-slate-300" title="Tolerancia universal">
+                            ±1.0
+                          </span>
+                        </template>
+
+                        <template v-else-if="param.tipo_dato === 'seleccion'">
+                          <span class="text-[10px] font-bold text-cyan-300">Todas</span>
+                        </template>
+
+                        <template v-else-if="param.tipo_dato === 'booleano'">
+                          <span class="text-[10px] font-bold text-amber-300">STD</span>
+                        </template>
+
+                        <template v-else>
+                          <span class="text-[10px] text-slate-400 italic">libre</span>
+                        </template>
+                      </div>
+
+                      <span v-if="dynamicParams.filter(p => isParamFilterVisible(p)).length === 0" class="text-[11px] text-slate-500 italic">
+                        Sin filtros dimensionales activos (todos ocultos o fuera de tabla).
+                      </span>
+                    </div>
                   </div>
                 </div>
 
