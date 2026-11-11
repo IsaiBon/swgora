@@ -720,15 +720,6 @@ const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
   return catalogStore.grupos.find(g => g.codigo === selectedComponent.value?.id || g.id === selectedComponent.value?.id) || null
 })
 
-// Determina si la familia activa está configurada como Tabla (como Anillos) o Normal
-const isCurrentGroupTable = computed<boolean>(() => {
-  if (!selectedComponent.value) return false
-  if (currentGroupDefinition.value?.tipo_vista) {
-    return currentGroupDefinition.value.tipo_vista === 'tabla'
-  }
-  return selectedComponent.value.id === 'anillos_motor'
-})
-
 // Determina si la familia activa es una matriz con sub-filas (ej. Cojinetes: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
 const isCurrentGroupSubfilas = computed<boolean>(() => {
   if (!currentGroupDefinition.value) return false
@@ -743,17 +734,18 @@ const isCurrentGroupSubfilas = computed<boolean>(() => {
 })
 
 const isCurrentGroupRingsTable = computed<boolean>(() => {
-  if (!isCurrentGroupTable.value) return false
+  if (!selectedComponent.value) return false
   if (isCurrentGroupSubfilas.value) return false
-  return true
+  const code = (currentGroupDefinition.value?.codigo || selectedComponent.value.id || '').toLowerCase()
+  const cat = (currentGroupDefinition.value?.categoria || selectedComponent.value.category || '').toLowerCase()
+  return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
 })
 
 const isPartTableFormat = (part: RepuestoTecnico): boolean => {
   if (isCurrentGroupRingsTable.value) return true
   if (part.categoria === 'Anillos') return true
   const catLower = (part.categoria || '').toLowerCase()
-  const grp = catalogStore.grupos.find(g => g.categoria.toLowerCase() === catLower || g.codigo.toLowerCase() === catLower)
-  if (grp?.tipo_vista === 'tabla' && grp.tabla_config?.modo_filas !== 'cojinetes') return true
+  if (catLower.includes('anillo')) return true
   return Array.isArray((part.dimensiones as any)?.anillos) && (part.dimensiones as any).anillos.length > 0
 }
 
@@ -1021,7 +1013,7 @@ const activeMeasurementsCount = computed(() => {
   if (filterCodigoPart.value.trim() !== '') {
     count++
   }
-  if (selectedComponent.value && isCurrentGroupTable.value) {
+  if (selectedComponent.value && isCurrentGroupRingsTable.value) {
     count += [
       filterAnilloDiametro.value, 
       filterAnilloGrosor1.value, 
@@ -1915,7 +1907,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
 
     // 2. Filtros de medidas dimensionales específicas
     // Caso Especializado: FAMILIAS EN TABLA / ANILLOS DE MOTOR (Mantiene estructura y cálculos exactos)
-    if (isCurrentGroupTable.value) {
+    if (isCurrentGroupRingsTable.value) {
       // Diámetro (la primera siempre)
       if (isFilterActive(filterAnilloDiametro.value)) {
         const tolAnilloDiametro = getTol('anilloDiametro')
@@ -4427,7 +4419,7 @@ onUnmounted(() => {
                   Catálogos Alternos
                 </th>
                 
-                <th v-if="isCurrentGroupTable || selectedComponent?.category === 'Anillos'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                <th v-if="isCurrentGroupRingsTable" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null].filter(Boolean).join(' / ') || 'Especificaciones' }}
                 </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">

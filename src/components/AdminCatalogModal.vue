@@ -547,7 +547,6 @@ const isSubfilasGroup = computed<boolean>(() => {
 const isRingsGroup = computed<boolean>(() => {
   if (!activeGroup.value) return false
   if (isSubfilasGroup.value) return false
-  if (activeGroup.value.tipo_vista === 'tabla' && (activeGroup.value.tabla_config?.modo_filas === 'incremental' || activeGroup.value.tabla_config?.titulo_primera_columna === 'Anillo')) return true
   const code = (activeGroup.value.codigo || '').toLowerCase()
   const cat = (activeGroup.value.categoria || '').toLowerCase()
   return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
@@ -3091,8 +3090,8 @@ onUnmounted(() => {
                       >
                         <Table class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'tabla' ? 'text-[#038391]' : 'text-slate-400'" />
                         <div>
-                          <div class="text-xs font-black">En Tabla (Anillos)</div>
-                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Matriz multinivel por ranura / fila (1°, 2°, Aceite...)</div>
+                          <div class="text-xs font-black">En Tabla / Matriz</div>
+                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Vista tabular estructurada (columnas y sub-columnas de cotas)</div>
                         </div>
                       </button>
                     </div>
