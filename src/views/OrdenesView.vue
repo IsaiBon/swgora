@@ -12,13 +12,15 @@ import {
   Filter, 
   Plus, 
   Eye, 
-  Printer,
-  Trash2,
-  Wrench,
-  CheckCircle2,
-  FileText,
-  Lock,
-  SlidersHorizontal
+  Printer, 
+  Trash2, 
+  Wrench, 
+  CheckCircle2, 
+  FileText, 
+  Lock, 
+  SlidersHorizontal,
+  Copy,
+  AlertCircle
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -112,6 +114,45 @@ const filteredOrders = computed(() => {
 const openPrintOrder = (order: Order) => {
   orderToPrint.value = order
   printModalOpen.value = true
+}
+
+const isDuplicating = ref<string | null>(null)
+const toastMessage = ref<{ text: string; type: 'success' | 'info' | 'error'; orderId?: string } | null>(null)
+let toastTimeout: any = null
+
+const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success', orderId?: string) => {
+  if (toastTimeout) clearTimeout(toastTimeout)
+  toastMessage.value = { text, type, orderId }
+  toastTimeout = setTimeout(() => {
+    toastMessage.value = null
+  }, 5000)
+}
+
+const handleDuplicateOrder = async (order: Order) => {
+  const confirmDuplicate = confirm(
+    `¿Deseas duplicar la orden ${order.orderNumber}?\n\nSe creará una nueva orden con un número consecutivo nuevo, manteniendo las operaciones, repuestos y datos del motor, con la información del cliente y taller en blanco.`
+  )
+  if (!confirmDuplicate) return
+
+  isDuplicating.value = order.id
+  try {
+    const duplicated = await ordersService.duplicateOrder(order.id)
+    if (duplicated) {
+      await loadOrders()
+      showToast(
+        `Orden ${order.orderNumber} duplicada exitosamente como ${duplicated.orderNumber} con cliente/taller en blanco.`,
+        'success',
+        duplicated.id
+      )
+    } else {
+      showToast('No se pudo duplicar la orden.', 'error')
+    }
+  } catch (err) {
+    console.error('Error al duplicar orden:', err)
+    showToast('Error al conectar con la base de datos al duplicar la orden.', 'error')
+  } finally {
+    isDuplicating.value = null
+  }
 }
 
 const handleDeleteOrder = async (id: string) => {
@@ -339,8 +380,9 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                   {{ order.orderNumber }}
                 </td>
                 <td class="px-5 py-3.5">
-                  <div class="font-bold text-slate-900">{{ order.customer }}</div>
+                  <div class="font-bold text-slate-900">{{ order.customer || '— Sin Asignar —' }}</div>
                   <div v-if="order.workshop" class="text-[10px] text-slate-400">{{ order.workshop }}</div>
+                  <div v-else-if="!order.customer" class="text-[10px] text-amber-600 font-semibold">Cliente por asignar</div>
                 </td>
                 <td class="px-5 py-3.5 text-slate-700">
                   <div class="font-medium">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Motor de banco' }}</div>
@@ -395,6 +437,15 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
                     </button>
                     <button
                       type="button"
+                      @click="handleDuplicateOrder(order)"
+                      :disabled="isDuplicating === order.id"
+                      class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition disabled:opacity-50"
+                      title="Duplicar orden (nuevo número, cliente en blanco)"
+                    >
+                      <Copy class="w-4 h-4" :class="{ 'animate-pulse text-indigo-600': isDuplicating === order.id }" />
+                    </button>
+                    <button
+                      type="button"
                       @click="openPrintOrder(order)"
                       class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
                       title="Imprimir (Clean Print)"
@@ -436,5 +487,39 @@ const totalBilled = computed(() => orders.value.reduce((acc, curr) => acc + (cur
       v-if="showOperationsModal"
       @close="showOperationsModal = false"
     />
+
+    <!-- Toast Flotante de Notificaciones -->
+    <transition
+      enter-active-class="transform transition ease-out duration-300"
+      enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+      enter-to-class="translate-y-0 opacity-100 sm:translate-x-0"
+      leave-active-class="transition ease-in duration-200"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div 
+        v-if="toastMessage" 
+        class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold max-w-md backdrop-blur-md"
+        :class="[
+          toastMessage.type === 'success' ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/50' : 
+          toastMessage.type === 'error' ? 'bg-rose-950/90 text-rose-200 border-rose-500/50' : 
+          'bg-slate-950/90 text-slate-200 border-slate-600'
+        ]"
+      >
+        <CheckCircle2 v-if="toastMessage.type === 'success'" class="w-5 h-5 text-emerald-400 flex-shrink-0" />
+        <AlertCircle v-else class="w-5 h-5 text-rose-400 flex-shrink-0" />
+        <div class="flex-1">
+          <span>{{ toastMessage.text }}</span>
+          <button 
+            v-if="toastMessage.orderId" 
+            type="button" 
+            @click="openEditOrder(toastMessage.orderId!)"
+            class="block mt-1 text-xs font-bold text-[#05F2F2] hover:underline"
+          >
+            Abrir orden para asignar cliente &rarr;
+          </button>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>

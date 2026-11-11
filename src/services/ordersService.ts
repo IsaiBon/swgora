@@ -585,6 +585,50 @@ export const ordersService = {
     return this.updateOrder(id, { status: newStatus })
   },
 
+  async duplicateOrder(orderId: string): Promise<Order | null> {
+    const existing = await this.getOrderById(orderId)
+    if (!existing) return null
+
+    const todayStr = new Date().toISOString().split('T')[0]
+    const nextNumber = await this.getNextOrderNumber()
+
+    const duplicatedPayload: Omit<Order, 'id'> = {
+      orderNumber: nextNumber,
+      customer: '',
+      customerId: undefined,
+      customerCode: undefined,
+      customerPhone: '',
+      customerAddress: '',
+      workshop: '',
+      workshopCode: undefined,
+      date: todayStr,
+      deliveryDate: undefined,
+      status: 'Pendiente',
+      type: existing.type || 'orden',
+      vehicleBrand: existing.vehicleBrand || '',
+      vehicleModel: existing.vehicleModel || '',
+      vehicleYear: existing.vehicleYear || '',
+      engineNumber: existing.engineNumber || '',
+      engineType: existing.engineType || '',
+      component: existing.component,
+      engine: existing.engine,
+      observations: existing.observations || '',
+      operations: JSON.parse(JSON.stringify(existing.operations || [])),
+      parts: JSON.parse(JSON.stringify(existing.parts || [])),
+      materials: JSON.parse(JSON.stringify(existing.materials || [])),
+      laborTotal: existing.laborTotal || 0,
+      partsTotal: existing.partsTotal || 0,
+      materialsTotal: existing.materialsTotal || 0,
+      hasIva: existing.hasIva || false,
+      subtotal: existing.subtotal || 0,
+      iva: existing.iva || 0,
+      total: existing.total || 0,
+      itemsCount: existing.itemsCount || 0,
+    }
+
+    return await this.createOrder(duplicatedPayload)
+  },
+
   async getOrdersByClientId(clientIdOrCode: string): Promise<Order[]> {
     const orders = await this.getOrders()
     const target = clientIdOrCode.toLowerCase().trim()
