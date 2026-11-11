@@ -91,7 +91,38 @@ export const authService = {
   },
 
   /**
-   * Escucha cambios en el estado de autenticación (login, logout, refresh de token)
+   * Envía un correo de recuperación de contraseña mediante Supabase Auth
+   */
+  async resetPasswordForEmail(email: string, redirectTo?: string): Promise<void> {
+    const targetRedirect =
+      redirectTo || `${window.location.origin}/login?mode=reset`
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: targetRedirect,
+    })
+
+    if (error) {
+      throw error
+    }
+  },
+
+  /**
+   * Actualiza la contraseña del usuario autenticado (flujo de restablecimiento)
+   */
+  async updatePassword(newPassword: string): Promise<User | null> {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return data.user
+  },
+
+  /**
+   * Escucha cambios en el estado de autenticación (login, logout, refresh de token, recuperación)
    */
   onAuthStateChange(callback: (event: string, session: Session | null) => void) {
     return supabase.auth.onAuthStateChange((event, session) => {
