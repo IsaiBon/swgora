@@ -80,6 +80,16 @@ export interface ParametroTecnicoDefinicion {
 
 export type GrupoTipoVista = 'normal' | 'tabla'
 
+export interface TablaConfiguracion {
+  titulo_primera_columna: string
+  modo_filas: 'incremental' | 'libre'
+  usar_prefijo_titulo?: boolean
+  etiqueta_ultima_fila?: string
+  habilitar_identificador: boolean
+  etiqueta_identificador: string
+  opciones_identificador?: string[]
+}
+
 export interface GrupoRepuesto {
   id: string
   codigo: string
@@ -89,6 +99,7 @@ export interface GrupoRepuesto {
   descripcion?: string
   icono?: string
   tipo_vista?: GrupoTipoVista
+  tabla_config?: TablaConfiguracion
   parametros: ParametroTecnicoDefinicion[]
   activo: boolean
   orden_visual?: number
@@ -104,6 +115,7 @@ export interface GrupoRepuestoInsert {
   descripcion?: string
   icono?: string
   tipo_vista?: GrupoTipoVista
+  tabla_config?: TablaConfiguracion
   parametros: ParametroTecnicoDefinicion[]
   activo?: boolean
   orden_visual?: number
@@ -337,17 +349,21 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
     descripcion: 'Juegos de aros de pistón (Desglose explícito 1°, 2° y aceite)',
     icono: 'Layers',
     tipo_vista: 'tabla',
+    tabla_config: {
+      titulo_primera_columna: 'Anillo',
+      modo_filas: 'incremental',
+      usar_prefijo_titulo: true,
+      etiqueta_ultima_fila: 'Anillo de aceite',
+      habilitar_identificador: true,
+      etiqueta_identificador: 'Cónico',
+      opciones_identificador: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral']
+    },
     activo: true,
     orden_visual: 3,
     parametros: [
-      { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de Cilindro (d1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Calibre del orificio del cilindro' },
-      { id: 'p_anil_2', clave: 'anillo1_h1', etiqueta: '1° Anillo (Fuego) - Grosor (h1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Espesor o grosor del aro superior' },
-      { id: 'p_anil_3', clave: 'anillo1_a1', etiqueta: '1° Anillo (Fuego) - Altura (a1)', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Ancho radial del aro superior' },
-      { id: 'p_anil_4', clave: 'anillo2_h1', etiqueta: '2° Anillo (Compresión) - Grosor (h1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Espesor o grosor del segundo aro' },
-      { id: 'p_anil_5', clave: 'anillo2_a1', etiqueta: '2° Anillo (Compresión) - Altura (a1)', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Ancho radial del segundo aro' },
-      { id: 'p_anil_6', clave: 'aceite_h1', etiqueta: 'Anillo de Aceite - Grosor (h1)', unidad: 'mm', tipo_dato: 'numero', requerido: true, descripcion: 'Espesor del aro rascador de aceite' },
-      { id: 'p_anil_7', clave: 'aceite_a1', etiqueta: 'Anillo de Aceite - Altura (a1)', unidad: 'mm', tipo_dato: 'numero', requerido: false, descripcion: 'Ancho radial del aro rascador de aceite' },
-      { id: 'p_anil_8', clave: 'diseno_conico', etiqueta: 'Diseño Cónico / Keystone', unidad: '', tipo_dato: 'booleano', requerido: false, descripcion: '1° Anillo con diseño trapezoidal / keystone' }
+      { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro', etiqueta_corta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Calibre del orificio del cilindro' },
+      { id: 'p_anil_2', clave: 'grosor_mm', etiqueta: 'Grosor', etiqueta_corta: 'Grosor', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor o grosor axial del anillo' },
+      { id: 'p_anil_3', clave: 'altura_mm', etiqueta: 'Altura', etiqueta_corta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Altura o ancho radial del anillo' }
     ]
   },
   {
@@ -2006,6 +2022,83 @@ export const catalogService = {
   async getGrupos(): Promise<GrupoRepuesto[]> {
     const localGrupos = getLocalDynamicGrupos()
 
+    const normalizeTableGroup = (grp: GrupoRepuesto): GrupoRepuesto => {
+      const isTable = grp.tipo_vista === 'tabla' || grp.codigo === 'anillos_motor'
+      if (!isTable) return grp
+
+      const defaultTablaConfig: TablaConfiguracion = {
+        titulo_primera_columna: grp.codigo === 'anillos_motor' ? 'Anillo' : (grp.categoria || 'Posición'),
+        modo_filas: 'incremental',
+        usar_prefijo_titulo: true,
+        etiqueta_ultima_fila: grp.codigo === 'anillos_motor' ? 'Anillo de aceite' : '',
+        habilitar_identificador: true,
+        etiqueta_identificador: 'Cónico',
+        opciones_identificador: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral']
+      }
+
+      const metaTablaConfig = (grp.parametros?.[0] as any)?._tabla_config as TablaConfiguracion | undefined
+      const resolvedTablaConfig: TablaConfiguracion = grp.tabla_config || metaTablaConfig || defaultTablaConfig
+
+      // Si aún tiene las claves individuales antiguas (anillo1_h1, anillo2_h1, aceite_h1), migrarlas al esquema general de columnas
+      const legacyPerRingKeys = new Set([
+        'anillo1_h1', 'anillo1_a1', 'anillo2_h1', 'anillo2_a1',
+        'anillo3_h1', 'anillo3_a1', 'aceite_h1', 'aceite_a1', 'diseno_conico'
+      ])
+      const hasLegacyRingParams = grp.parametros.some(p => legacyPerRingKeys.has(p.clave))
+      let normalizedParams = grp.parametros
+
+      if (hasLegacyRingParams) {
+        const diamOld = grp.parametros.find(p => p.clave === 'diametro_cilindro_mm')
+        const h1Old = grp.parametros.find(p => p.clave === 'anillo1_h1')
+        const a1Old = grp.parametros.find(p => p.clave === 'anillo1_a1')
+        const extraCustom = grp.parametros.filter(p => p.clave !== 'diametro_cilindro_mm' && !legacyPerRingKeys.has(p.clave))
+
+        normalizedParams = [
+          {
+            id: diamOld?.id || 'p_anil_1',
+            clave: 'diametro_cilindro_mm',
+            etiqueta: diamOld?.etiqueta && !diamOld.etiqueta.includes('(d1)') ? diamOld.etiqueta : 'Diámetro',
+            etiqueta_corta: diamOld?.etiqueta_corta || 'Diámetro',
+            unidad: diamOld?.unidad ?? 'mm',
+            tipo_dato: diamOld?.tipo_dato || 'numero',
+            requerido: diamOld ? diamOld.requerido : true,
+            filtrable: diamOld?.filtrable !== false,
+            descripcion: diamOld?.descripcion || 'Calibre del orificio del cilindro'
+          },
+          {
+            id: h1Old?.id || 'p_anil_2',
+            clave: 'grosor_mm',
+            etiqueta: 'Grosor',
+            etiqueta_corta: 'Grosor',
+            unidad: h1Old?.unidad ?? 'mm',
+            tipo_dato: 'numero',
+            requerido: h1Old ? h1Old.requerido : true,
+            filtrable: h1Old?.filtrable !== false,
+            descripcion: 'Espesor o grosor axial del anillo'
+          },
+          {
+            id: a1Old?.id || 'p_anil_3',
+            clave: 'altura_mm',
+            etiqueta: 'Altura',
+            etiqueta_corta: 'Altura',
+            unidad: a1Old?.unidad ?? 'mm',
+            tipo_dato: 'numero',
+            requerido: true,
+            filtrable: a1Old?.filtrable !== false,
+            descripcion: 'Altura o ancho radial del anillo'
+          },
+          ...extraCustom
+        ]
+      }
+
+      return {
+        ...grp,
+        tipo_vista: 'tabla',
+        tabla_config: resolvedTablaConfig,
+        parametros: normalizedParams
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('grupos_repuestos')
@@ -2017,13 +2110,14 @@ export const catalogService = {
         const fromDb: GrupoRepuesto[] = data.map((row: Record<string, unknown>) => {
           const params = Array.isArray(row.parametros) ? (row.parametros as ParametroTecnicoDefinicion[]) : []
           const metaTipoVista = (params[0] as any)?._tipo_vista as GrupoTipoVista | undefined
+          const metaTablaConfig = (params[0] as any)?._tabla_config as TablaConfiguracion | undefined
           const codigoStr = String(row.codigo)
           const resolvedTipoVista: GrupoTipoVista =
             (row.tipo_vista as GrupoTipoVista) ||
             metaTipoVista ||
             (codigoStr === 'anillos_motor' ? 'tabla' : 'normal')
 
-          return {
+          return normalizeTableGroup({
             id: String(row.id),
             codigo: codigoStr,
             nombre: String(row.nombre),
@@ -2032,17 +2126,19 @@ export const catalogService = {
             descripcion: row.descripcion ? String(row.descripcion) : undefined,
             icono: row.icono ? String(row.icono) : 'Layers',
             tipo_vista: resolvedTipoVista,
+            tabla_config: (row.tabla_config as TablaConfiguracion | undefined) || metaTablaConfig,
             parametros: params,
             activo: Boolean(row.activo),
             orden_visual: Number(row.orden_visual || 0),
             created_at: row.created_at ? String(row.created_at) : undefined,
             updated_at: row.updated_at ? String(row.updated_at) : undefined
-          }
+          })
         })
 
         // Fusionar con grupos locales creados o editados (priorizando la versión local actualizada)
         const merged = [...fromDb]
-        for (const loc of localGrupos) {
+        for (const locRaw of localGrupos) {
+          const loc = normalizeTableGroup(locRaw)
           const existingIdx = merged.findIndex(m => m.codigo === loc.codigo || m.id === loc.id)
           if (existingIdx >= 0) {
             merged[existingIdx] = {
@@ -2061,8 +2157,9 @@ export const catalogService = {
     }
 
     // Fallback a mockGruposRepuestos + grupos locales (priorizando la versión local actualizada)
-    const merged = [...mockGruposRepuestos]
-    for (const loc of localGrupos) {
+    const merged = mockGruposRepuestos.map(normalizeTableGroup)
+    for (const locRaw of localGrupos) {
+      const loc = normalizeTableGroup(locRaw)
       const existingIdx = merged.findIndex(m => m.codigo === loc.codigo || m.id === loc.id)
       if (existingIdx >= 0) {
         merged[existingIdx] = {
@@ -2097,8 +2194,9 @@ export const catalogService = {
       .replace(/^_+|_+$/g, '')
 
     const tipoVista: GrupoTipoVista = grupoData.tipo_vista || (slug === 'anillos_motor' ? 'tabla' : 'normal')
+    const tablaConfig = tipoVista === 'tabla' ? grupoData.tabla_config : undefined
     const paramsWithMeta = (grupoData.parametros || []).map((p, idx) =>
-      idx === 0 ? ({ ...p, _tipo_vista: tipoVista } as ParametroTecnicoDefinicion) : p
+      idx === 0 ? ({ ...p, _tipo_vista: tipoVista, _tabla_config: tablaConfig } as ParametroTecnicoDefinicion) : p
     )
 
     const newGroup: GrupoRepuesto = {
@@ -2110,6 +2208,7 @@ export const catalogService = {
       descripcion: grupoData.descripcion?.trim() || undefined,
       icono: grupoData.icono || 'Layers',
       tipo_vista: tipoVista,
+      tabla_config: tablaConfig,
       parametros: paramsWithMeta,
       activo: grupoData.activo !== false,
       orden_visual: grupoData.orden_visual || 10,
@@ -2148,7 +2247,7 @@ export const catalogService = {
   },
 
   /**
-   * Modifica un grupo o familia de piezas existente (nombre, categoría, subsistema, icono, tipo_vista, parámetros técnicos)
+   * Modifica un grupo o familia de piezas existente (nombre, categoría, subsistema, icono, tipo_vista, tabla_config, parámetros técnicos)
    */
   async updateGrupo(idOrCode: string, grupoData: Partial<GrupoRepuestoInsert>): Promise<GrupoRepuesto> {
     const existingList = await this.getGrupos()
@@ -2162,9 +2261,14 @@ export const catalogService = {
         ? grupoData.tipo_vista
         : (existing.tipo_vista || (existing.codigo === 'anillos_motor' ? 'tabla' : 'normal'))
 
+    const resolvedTablaConfig: TablaConfiguracion | undefined =
+      resolvedTipoVista === 'tabla'
+        ? (grupoData.tabla_config !== undefined ? grupoData.tabla_config : existing.tabla_config)
+        : undefined
+
     const rawParams = grupoData.parametros !== undefined ? grupoData.parametros : existing.parametros
     const paramsWithMeta = rawParams.map((p, idx) =>
-      idx === 0 ? ({ ...p, _tipo_vista: resolvedTipoVista } as ParametroTecnicoDefinicion) : p
+      idx === 0 ? ({ ...p, _tipo_vista: resolvedTipoVista, _tabla_config: resolvedTablaConfig } as ParametroTecnicoDefinicion) : p
     )
 
     const updated: GrupoRepuesto = {
@@ -2175,6 +2279,7 @@ export const catalogService = {
       descripcion: grupoData.descripcion !== undefined ? grupoData.descripcion.trim() : existing.descripcion,
       icono: grupoData.icono !== undefined ? grupoData.icono : existing.icono,
       tipo_vista: resolvedTipoVista,
+      tabla_config: resolvedTablaConfig,
       parametros: paramsWithMeta,
       activo: grupoData.activo !== undefined ? grupoData.activo : existing.activo,
       orden_visual: grupoData.orden_visual !== undefined ? grupoData.orden_visual : existing.orden_visual,

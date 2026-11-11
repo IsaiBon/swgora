@@ -726,6 +726,8 @@ const isPartTableFormat = (part: RepuestoTecnico): boolean => {
 
 const CORE_TABLE_RING_KEYS = new Set([
   'diametro_cilindro_mm',
+  'grosor_mm',
+  'altura_mm',
   'anillo1_h1',
   'anillo1_a1',
   'anillo2_h1',
@@ -739,7 +741,16 @@ const CORE_TABLE_RING_KEYS = new Set([
 ])
 
 const getTableGroupParam = (clave: string) => {
-  return currentGroupDefinition.value?.parametros.find(p => p.clave === clave) || null
+  const params = currentGroupDefinition.value?.parametros || []
+  const direct = params.find(p => p.clave === clave)
+  if (direct) return direct
+  if (clave.endsWith('_h1')) {
+    return params.find(p => p.clave === 'grosor_mm') || null
+  }
+  if (clave.endsWith('_a1')) {
+    return params.find(p => p.clave === 'altura_mm') || null
+  }
+  return null
 }
 
 const getTableParamLabel = (clave: string, fallback: string): string => {
@@ -759,17 +770,34 @@ const isTableParamInTable = (clave: string): boolean => {
 }
 
 const isTableParamInFilter = (clave: string): boolean => {
+  if (clave === 'diseno_conico') {
+    const p = currentGroupDefinition.value?.parametros.find(x => x.clave === 'diseno_conico')
+    if (p) return p.filtrable !== false
+    return currentGroupDefinition.value?.tabla_config?.habilitar_identificador !== false
+  }
   const p = getTableGroupParam(clave)
   return p ? (p.filtrable !== false) : true
 }
 
+const tableColFirstHeader = computed<string>(() => {
+  return currentGroupDefinition.value?.tabla_config?.titulo_primera_columna || 'Anillo'
+})
+
+const tableShowIdentifier = computed<boolean>(() => {
+  return currentGroupDefinition.value?.tabla_config?.habilitar_identificador !== false
+})
+
 const showTableColDiametro = computed<boolean>(() => isTableParamInTable('diametro_cilindro_mm'))
-const showTableColGrosor = computed<boolean>(() =>
-  isTableParamInTable('anillo1_h1') || isTableParamInTable('anillo2_h1') || isTableParamInTable('aceite_h1')
-)
-const showTableColAltura = computed<boolean>(() =>
-  isTableParamInTable('anillo1_a1') || isTableParamInTable('anillo2_a1') || isTableParamInTable('aceite_a1')
-)
+const showTableColGrosor = computed<boolean>(() => {
+  const gParam = currentGroupDefinition.value?.parametros.find(p => p.clave === 'grosor_mm')
+  if (gParam) return Boolean(gParam.requerido)
+  return isTableParamInTable('anillo1_h1') || isTableParamInTable('anillo2_h1') || isTableParamInTable('aceite_h1')
+})
+const showTableColAltura = computed<boolean>(() => {
+  const aParam = currentGroupDefinition.value?.parametros.find(p => p.clave === 'altura_mm')
+  if (aParam) return Boolean(aParam.requerido)
+  return isTableParamInTable('anillo1_a1') || isTableParamInTable('anillo2_a1') || isTableParamInTable('aceite_a1')
+})
 
 const tableColDiametroHeader = computed<string>(() => {
   const p = getTableGroupParam('diametro_cilindro_mm')
@@ -779,15 +807,17 @@ const tableColDiametroHeader = computed<string>(() => {
 })
 
 const tableColGrosorHeader = computed<string>(() => {
-  const p = getTableGroupParam('anillo1_h1') || getTableGroupParam('anillo2_h1') || getTableGroupParam('aceite_h1')
+  const p = getTableGroupParam('grosor_mm') || getTableGroupParam('anillo1_h1') || getTableGroupParam('anillo2_h1') || getTableGroupParam('aceite_h1')
   if (!p) return 'Grosor'
-  return p.unidad && p.unidad !== 'mm' ? `Grosor (${p.unidad})` : 'Grosor'
+  const base = p.etiqueta_corta || p.etiqueta || 'Grosor'
+  return p.unidad && p.unidad !== 'mm' ? `${base} (${p.unidad})` : base
 })
 
 const tableColAlturaHeader = computed<string>(() => {
-  const p = getTableGroupParam('anillo1_a1') || getTableGroupParam('anillo2_a1') || getTableGroupParam('aceite_a1')
+  const p = getTableGroupParam('altura_mm') || getTableGroupParam('anillo1_a1') || getTableGroupParam('anillo2_a1') || getTableGroupParam('aceite_a1')
   if (!p) return 'Altura'
-  return p.unidad && p.unidad !== 'mm' ? `Altura (${p.unidad})` : 'Altura'
+  const base = p.etiqueta_corta || p.etiqueta || 'Altura'
+  return p.unidad && p.unidad !== 'mm' ? `${base} (${p.unidad})` : base
 })
 
 const extraTableFilterParams = computed(() => {
@@ -1442,7 +1472,7 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
     result = rings.map((r, idx) => {
       const isLast = idx === total - 1
       const isOil = String(r.posicion || '').toLowerCase().includes('oil') || String(r.posicion || '').toLowerCase().includes('aceite') || isLast
-      const rawPerfil = r.perfil || (r.forma && (
+      const rawPerfil = r.identificador || r.perfil || (r.forma && (
         String(r.forma).toUpperCase().includes('KEYSTONE') ||
         String(r.forma).toUpperCase().includes('CÓNIC') ||
         String(r.forma).toUpperCase().includes('CONIC') ||
@@ -1451,7 +1481,8 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
         String(r.forma).toUpperCase().includes('RASPADOR')
       ) ? String(r.forma) : undefined) || (idx === 0 && isPartConical(part) ? 'Cónico / Keystone' : undefined)
       return {
-        posicion: isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`,
+        ...r,
+        posicion: (r.posicion && String(r.posicion).trim()) ? String(r.posicion).trim() : (isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`),
         d1: r.d1 != null ? Number(r.d1) : (part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null),
         h1: r.h1 != null ? Number(r.h1) : null,
         a1: r.a1 != null ? Number(r.a1) : null,
@@ -4129,10 +4160,18 @@ onUnmounted(() => {
                       <table class="border-collapse text-center text-xs">
                         <thead>
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                            <th class="px-2.5 py-1 border-r border-slate-200 text-left">Anillo</th>
+                            <th class="px-2.5 py-1 border-r border-slate-200 text-left">{{ tableColFirstHeader }}</th>
                             <th v-if="showTableColDiametro" class="px-2.5 py-1 border-r border-slate-200">{{ tableColDiametroHeader }}</th>
                             <th v-if="showTableColGrosor" class="px-2.5 py-1 border-r border-slate-200">{{ tableColGrosorHeader }}</th>
-                            <th v-if="showTableColAltura" class="px-2.5 py-1">{{ tableColAlturaHeader }}</th>
+                            <th v-if="showTableColAltura" class="px-2.5 py-1" :class="extraTableVisibleParams.length > 0 ? 'border-r border-slate-200' : ''">{{ tableColAlturaHeader }}</th>
+                            <th
+                              v-for="(extCol, extIdx) in extraTableVisibleParams"
+                              :key="`cat-th-ext-${extCol.id}`"
+                              class="px-2.5 py-1"
+                              :class="extIdx < extraTableVisibleParams.length - 1 ? 'border-r border-slate-200' : ''"
+                            >
+                              {{ extCol.etiqueta_corta || extCol.etiqueta }}{{ extCol.unidad && extCol.unidad !== 'mm' ? ` (${extCol.unidad})` : '' }}
+                            </th>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-[11px]">
@@ -4144,14 +4183,14 @@ onUnmounted(() => {
                             <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
                               <span>{{ ring.posicion }}</span>
                               <span
-                                v-if="(ring.perfil && ring.perfil !== 'Plano' && ring.perfil !== 'Estándar') || (rIdx === 0 && isPartConical(part))"
+                                v-if="tableShowIdentifier && ((ring.perfil && ring.perfil !== 'Plano' && ring.perfil !== 'Estándar') || (rIdx === 0 && isPartConical(part)))"
                                 class="ml-1 text-[9px] px-1 py-0.2 rounded font-extrabold border uppercase tracking-tight"
                                 :class="(ring.perfil && (ring.perfil.toLowerCase().includes('cónico') || ring.perfil.toLowerCase().includes('conico') || ring.perfil.toLowerCase().includes('keystone'))) || (rIdx === 0 && isPartConical(part))
                                   ? 'bg-amber-100 text-amber-900 border-amber-300'
                                   : 'bg-cyan-50 text-[#038391] border-cyan-300'"
-                                :title="ring.perfil || getKeystoneLabel(part) || 'Perfil técnico de anillo'"
+                                :title="ring.perfil || getKeystoneLabel(part) || 'Identificador de fila'"
                               >
-                                {{ ring.perfil ? (ring.perfil.includes('Keystone') ? 'Cónico' : ring.perfil) : 'Cónico' }}
+                                {{ ring.perfil ? (ring.perfil.includes('Keystone') ? (currentGroupDefinition?.tabla_config?.etiqueta_identificador || 'Cónico') : ring.perfil) : (currentGroupDefinition?.tabla_config?.etiqueta_identificador || 'Cónico') }}
                               </span>
                             </td>
                             <td 
@@ -4171,9 +4210,20 @@ onUnmounted(() => {
                             <td 
                               v-if="showTableColAltura"
                               class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length)"
+                              :class="[
+                                getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length),
+                                extraTableVisibleParams.length > 0 ? 'border-r border-slate-200' : ''
+                              ]"
                             >
                               {{ formatRingVal(ring.a1) }}
+                            </td>
+                            <td
+                              v-for="(extCol, extIdx) in extraTableVisibleParams"
+                              :key="`cat-td-ext-${rIdx}-${extCol.id}`"
+                              class="px-2.5 py-1 font-mono font-bold transition"
+                              :class="extIdx < extraTableVisibleParams.length - 1 ? 'border-r border-slate-200' : ''"
+                            >
+                              {{ (ring as any)[extCol.clave] ?? getPartParamValue(part, extCol.clave) ?? '—' }}
                             </td>
                           </tr>
                         </tbody>

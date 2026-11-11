@@ -5,6 +5,7 @@ import PartImageUploader from '@/components/catalog/PartImageUploader.vue'
 import { 
   type GrupoRepuesto, 
   type ParametroTecnicoDefinicion,
+  type TablaConfiguracion,
   type RepuestoTecnico,
   type Motor
 } from '@/services/catalogService'
@@ -58,17 +59,30 @@ const activeTab = ref<'repuesto' | 'grupo'>(props.initialTab || 'repuesto')
 
 export interface RingFormRow {
   id: string
+  posicion: string
   tipo_aro: 'fuego' | 'compresion' | 'aceite'
   h1: number | null
   a1: number | null
   perfil: string
+  tiene_identificador: boolean
+  identificador_texto: string
+  extra: Record<string, any>
 }
 
-const createDefaultRingRows = (): RingFormRow[] => [
-  { id: 'ring-1', tipo_aro: 'fuego', h1: null, a1: null, perfil: 'Plano' },
-  { id: 'ring-2', tipo_aro: 'compresion', h1: null, a1: null, perfil: 'Plano' },
-  { id: 'ring-oil', tipo_aro: 'aceite', h1: null, a1: null, perfil: 'Estándar' }
-]
+const createDefaultRingRows = (cfg?: TablaConfiguracion): RingFormRow[] => {
+  const titulo = cfg?.titulo_primera_columna || 'Anillo'
+  const usarPref = cfg?.usar_prefijo_titulo !== false
+  const modo = cfg?.modo_filas || 'incremental'
+  const ult = cfg?.etiqueta_ultima_fila !== undefined ? cfg.etiqueta_ultima_fila : 'Anillo de aceite'
+  const row1Pos = modo === 'incremental' ? (usarPref ? `${titulo} 1` : '1') : `${titulo} 1`
+  const row2Pos = modo === 'incremental' ? (usarPref ? `${titulo} 2` : '2') : `${titulo} 2`
+  const row3Pos = modo === 'incremental' ? (ult ? ult : (usarPref ? `${titulo} 3` : '3')) : (ult || `${titulo} 3`)
+  return [
+    { id: 'ring-1', posicion: row1Pos, tipo_aro: 'fuego', h1: null, a1: null, perfil: 'Plano', tiene_identificador: false, identificador_texto: '', extra: {} },
+    { id: 'ring-2', posicion: row2Pos, tipo_aro: 'compresion', h1: null, a1: null, perfil: 'Plano', tiene_identificador: false, identificador_texto: '', extra: {} },
+    { id: 'ring-oil', posicion: row3Pos, tipo_aro: 'aceite', h1: null, a1: null, perfil: 'Estándar', tiene_identificador: false, identificador_texto: '', extra: {} }
+  ]
+}
 
 const isEditPartMode = ref<boolean>(false)
 const editingPartId = ref<string | null>(null)
@@ -351,51 +365,101 @@ const allOemCodesPreview = computed<string[]>(() => {
   return Array.from(new Set(list))
 })
 
+const activeGroup = computed<GrupoRepuesto | null>(() => {
+  if (!selectedGroupCode.value) return null
+  return catalogStore.grupos.find(g => g.codigo === selectedGroupCode.value || g.id === selectedGroupCode.value) || null
+})
+
+const activeTablaConfig = computed<TablaConfiguracion>(() => {
+  return activeGroup.value?.tabla_config || {
+    titulo_primera_columna: 'Anillo',
+    modo_filas: 'incremental',
+    usar_prefijo_titulo: true,
+    etiqueta_ultima_fila: 'Anillo de aceite',
+    habilitar_identificador: true,
+    etiqueta_identificador: 'Cónico'
+  }
+})
+
+const getDefaultRowPosition = (idx: number, totalRows: number, cfg?: TablaConfiguracion): string => {
+  const conf = cfg || activeTablaConfig.value
+  const titulo = conf.titulo_primera_columna || 'Anillo'
+  const usarPref = conf.usar_prefijo_titulo !== false
+  const isLast = idx === totalRows - 1 && totalRows >= 2
+  if (isLast && conf.etiqueta_ultima_fila && conf.etiqueta_ultima_fila.trim()) {
+    return conf.etiqueta_ultima_fila.trim()
+  }
+  if (conf.modo_filas === 'incremental') {
+    return usarPref ? `${titulo} ${idx + 1}` : `${idx + 1}`
+  }
+  return `${titulo} ${idx + 1}`
+}
+
+const syncIncrementalRowPositions = () => {
+  if (activeTablaConfig.value.modo_filas !== 'incremental') return
+  const total = ringRows.value.length
+  ringRows.value.forEach((row, idx) => {
+    row.posicion = getDefaultRowPosition(idx, total)
+  })
+}
+
 const addRingRow = () => {
   const oilIdx = ringRows.value.findIndex(r => r.tipo_aro === 'aceite')
+  const insertIdx = oilIdx >= 0 ? oilIdx : ringRows.value.length
   const newRing: RingFormRow = {
     id: `ring-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    posicion: getDefaultRowPosition(insertIdx, ringRows.value.length + 1),
     tipo_aro: 'compresion',
     h1: null,
     a1: null,
-    perfil: 'Plano'
+    perfil: 'Plano',
+    tiene_identificador: false,
+    identificador_texto: '',
+    extra: {}
   }
   if (oilIdx >= 0) {
     ringRows.value.splice(oilIdx, 0, newRing)
   } else {
     ringRows.value.push(newRing)
   }
+  syncIncrementalRowPositions()
   hasThirdRing.value = ringRows.value.length >= 4
 }
 
 const removeRingRow = (idx: number) => {
-  if (ringRows.value.length <= 2) return
-  const target = ringRows.value[idx]
-  if (!target || target.tipo_aro === 'fuego' || target.tipo_aro === 'aceite') return
-  if (idx === 1 && ringRows.value.filter(r => r.tipo_aro === 'compresion').length <= 1) {
-    // Permitir eliminar aros intermedios desde el 2do aro si hay más aros o si desea configuración de 2 aros
-  }
+  if (ringRows.value.length <= 1) return
   ringRows.value.splice(idx, 1)
+  syncIncrementalRowPositions()
   hasThirdRing.value = ringRows.value.length >= 4
 }
 
-const getRingProfileOptions = (row: RingFormRow, idx: number): string[] => {
-  if (row.tipo_aro === 'fuego' || idx === 0) {
-    return ['Plano', 'Cónico / Keystone', 'Semi-cónico']
+const toggleRowIdentificador = (row: RingFormRow) => {
+  row.tiene_identificador = !row.tiene_identificador
+  const defaultIdent = activeTablaConfig.value.etiqueta_identificador || 'Cónico'
+  if (row.tiene_identificador) {
+    if (!row.identificador_texto || row.identificador_texto === 'Plano' || row.identificador_texto === 'Estándar') {
+      row.identificador_texto = defaultIdent
+    }
+    row.perfil = row.identificador_texto
+  } else {
+    row.identificador_texto = ''
+    row.perfil = row.tipo_aro === 'aceite' ? 'Estándar' : 'Plano'
   }
-  if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) {
-    return ['Estándar', '1 Espiral', 'Doble Espiral']
+}
+
+const onRowIdentificadorTextInput = (row: RingFormRow) => {
+  if (row.identificador_texto && row.identificador_texto.trim()) {
+    row.tiene_identificador = true
+    row.perfil = row.identificador_texto.trim()
+  } else {
+    row.tiene_identificador = false
+    row.perfil = row.tipo_aro === 'aceite' ? 'Estándar' : 'Plano'
   }
-  if (idx === 1) {
-    return ['Plano', 'Cónico / Keystone', 'Raspador con escalón']
-  }
-  return ['Plano', 'Cónico / Keystone', 'Escalonado']
 }
 
 const getRingRowTitle = (row: RingFormRow, idx: number): string => {
-  if (row.tipo_aro === 'fuego' || idx === 0) return '1° Anillo (Fuego)'
-  if (row.tipo_aro === 'aceite' || idx === ringRows.value.length - 1) return 'Anillo de Aceite'
-  return `${idx + 1}° Anillo (Compresión)`
+  if (row.posicion && row.posicion.trim()) return row.posicion
+  return getDefaultRowPosition(idx, ringRows.value.length)
 }
 
 // Valores dinámicos de parámetros técnicos: clave -> valor
@@ -447,11 +511,6 @@ const equivalencias = ref<Array<{ marca_alterna: string; codigo_alterno: string;
   { marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }
 ])
 
-const activeGroup = computed<GrupoRepuesto | null>(() => {
-  if (!selectedGroupCode.value) return null
-  return catalogStore.grupos.find(g => g.codigo === selectedGroupCode.value || g.id === selectedGroupCode.value) || null
-})
-
 const isRingsGroup = computed<boolean>(() => {
   if (!activeGroup.value) return false
   if (activeGroup.value.tipo_vista === 'tabla') return true
@@ -462,6 +521,8 @@ const isRingsGroup = computed<boolean>(() => {
 
 const CORE_RING_PARAM_KEYS = new Set([
   'diametro_cilindro_mm',
+  'grosor_mm',
+  'altura_mm',
   'anillo1_h1',
   'anillo1_a1',
   'anillo2_h1',
@@ -494,7 +555,7 @@ watch(activeGroup, (grp) => {
     if (!isEditPartMode.value) {
       paramValues.value = {}
       hasThirdRing.value = false
-      ringRows.value = createDefaultRingRows()
+      ringRows.value = createDefaultRingRows(grp.tabla_config)
     }
     // Mantener valores previos o inicializar vacíos
     const current = { ...paramValues.value }
@@ -726,53 +787,87 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     ringRows.value = ringItems.map((ri: any, idx: number) => {
       const isLast = idx === ringItems.length - 1
       const tipoAro: 'fuego' | 'compresion' | 'aceite' = idx === 0 ? 'fuego' : (isLast ? 'aceite' : 'compresion')
-      let perfil = ri.perfil || ri.forma || ''
+      let perfil = ri.identificador || ri.perfil || ri.forma || ''
       if (!perfil) {
         if (idx === 0) perfil = isPartConico ? 'Cónico / Keystone' : 'Plano'
         else if (isLast) perfil = 'Estándar'
         else perfil = 'Plano'
       }
+      const isCustomIdent = Boolean(
+        ri.identificador ||
+        (perfil && perfil !== 'Plano' && perfil !== 'Estándar')
+      )
+      const extraCols: Record<string, any> = {}
+      if (ri && typeof ri === 'object') {
+        for (const [k, v] of Object.entries(ri)) {
+          if (!['id', 'posicion', 'tipo_aro', 'd1', 'h1', 'a1', 'perfil', 'forma', 'identificador'].includes(k)) {
+            extraCols[k] = v
+          }
+        }
+      }
       return {
         id: `ring-${idx}-${Date.now()}`,
+        posicion: ri.posicion || getDefaultRowPosition(idx, ringItems.length, matchedGroup?.tabla_config),
         tipo_aro: tipoAro,
         h1: ri.h1 != null ? Number(ri.h1) : null,
         a1: ri.a1 != null ? Number(ri.a1) : null,
-        perfil
+        perfil,
+        tiene_identificador: isCustomIdent,
+        identificador_texto: isCustomIdent ? (ri.identificador || (perfil.includes('Keystone') ? 'Cónico' : perfil)) : '',
+        extra: extraCols
       }
     })
     hasThirdRing.value = ringRows.value.length >= 4
   } else {
+    const has3 = (part.dimensiones as any)?.espesor_anillo3_mm != null || part.espesor_anillo3_mm != null
+    const totalCount = has3 ? 4 : 3
     const builtRows: RingFormRow[] = [
       {
         id: 'ring-1',
+        posicion: getDefaultRowPosition(0, totalCount, matchedGroup?.tabla_config),
         tipo_aro: 'fuego',
         h1: loadedParams.espesor_anillo1_mm ?? null,
         a1: (part.dimensiones as any)?.espesor_radial1_mm ?? (part.dimensiones as any)?.altura_radial1_mm ?? null,
-        perfil: isPartConico ? 'Cónico / Keystone' : 'Plano'
+        perfil: isPartConico ? 'Cónico / Keystone' : 'Plano',
+        tiene_identificador: isPartConico,
+        identificador_texto: isPartConico ? (matchedGroup?.tabla_config?.etiqueta_identificador || 'Cónico') : '',
+        extra: {}
       },
       {
         id: 'ring-2',
+        posicion: getDefaultRowPosition(1, totalCount, matchedGroup?.tabla_config),
         tipo_aro: 'compresion',
         h1: loadedParams.espesor_anillo2_mm ?? null,
         a1: (part.dimensiones as any)?.espesor_radial2_mm ?? (part.dimensiones as any)?.altura_radial2_mm ?? null,
-        perfil: 'Plano'
+        perfil: 'Plano',
+        tiene_identificador: false,
+        identificador_texto: '',
+        extra: {}
       }
     ]
-    if ((part.dimensiones as any)?.espesor_anillo3_mm != null || part.espesor_anillo3_mm != null) {
+    if (has3) {
       builtRows.push({
         id: 'ring-3',
+        posicion: getDefaultRowPosition(2, totalCount, matchedGroup?.tabla_config),
         tipo_aro: 'compresion',
         h1: loadedParams.espesor_anillo3_mm ?? (part.dimensiones as any)?.espesor_anillo3_mm ?? null,
         a1: (part.dimensiones as any)?.espesor_radial3_mm ?? (part.dimensiones as any)?.altura_radial3_mm ?? null,
-        perfil: 'Plano'
+        perfil: 'Plano',
+        tiene_identificador: false,
+        identificador_texto: '',
+        extra: {}
       })
     }
     builtRows.push({
       id: 'ring-oil',
+      posicion: getDefaultRowPosition(totalCount - 1, totalCount, matchedGroup?.tabla_config),
       tipo_aro: 'aceite',
       h1: loadedParams.espesor_aceite_mm ?? null,
       a1: (part.dimensiones as any)?.espesor_radial_aceite_mm ?? (part.dimensiones as any)?.altura_radial_aceite_mm ?? null,
-      perfil: 'Estándar'
+      perfil: 'Estándar',
+      tiene_identificador: false,
+      identificador_texto: '',
+      extra: {}
     })
     ringRows.value = builtRows
     hasThirdRing.value = ringRows.value.length >= 4
@@ -844,7 +939,7 @@ const handleSavePart = async () => {
       }
     }
 
-    // Sincronizar cotas radiales y array `anillos` para familias de anillos
+    // Sincronizar cotas radiales y array `anillos` para familias en tabla / anillos
     if (isRingsGroup.value) {
       const d = dimensionesPayload.diametro_cilindro_mm != null 
         ? Number(dimensionesPayload.diametro_cilindro_mm) 
@@ -852,16 +947,33 @@ const handleSavePart = async () => {
 
       const serializedRings = ringRows.value.map((r, idx) => {
         const isOil = r.tipo_aro === 'aceite' || idx === ringRows.value.length - 1
+        const finalPos = (r.posicion && r.posicion.trim())
+          ? r.posicion.trim()
+          : getDefaultRowPosition(idx, ringRows.value.length)
+        const finalIdent = r.tiene_identificador
+          ? (r.identificador_texto?.trim() || activeTablaConfig.value.etiqueta_identificador || 'Cónico')
+          : ''
+        const finalPerfil = finalIdent || r.perfil || (isOil ? 'Estándar' : 'Plano')
         return {
-          posicion: isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`,
+          ...(r.extra || {}),
+          posicion: finalPos,
           tipo_aro: isOil ? 'aceite' : (idx === 0 ? 'fuego' : 'compresion'),
           d1: d,
           h1: r.h1 != null && !isNaN(Number(r.h1)) ? Number(r.h1) : null,
           a1: r.a1 != null && !isNaN(Number(r.a1)) ? Number(r.a1) : null,
-          perfil: r.perfil,
-          forma: r.perfil
+          perfil: finalPerfil,
+          forma: finalPerfil,
+          identificador: finalIdent || undefined
         }
       })
+
+      // También sincronizar las columnas extra de la 1ra fila en dimensionesPayload para filtros dimensionales
+      for (const extParam of extraRingGroupParams.value) {
+        const rowVal = ringRows.value[0]?.extra?.[extParam.clave]
+        if (rowVal !== undefined && rowVal !== null && rowVal !== '' && dimensionesPayload[extParam.clave] === undefined) {
+          dimensionesPayload[extParam.clave] = extParam.tipo_dato === 'numero' ? Number(rowVal) : rowVal
+        }
+      }
 
       const r1 = serializedRings[0]
       const rOil = serializedRings[serializedRings.length - 1]
@@ -1060,118 +1172,59 @@ const groupIcono = ref<string>('Layers')
 const groupTipoVista = ref<'normal' | 'tabla'>('normal')
 const soloFiltrosEnTabla = ref<boolean>(false)
 
+const getDefaultTablaConfig = (): TablaConfiguracion => ({
+  titulo_primera_columna: 'Anillo',
+  modo_filas: 'incremental',
+  usar_prefijo_titulo: true,
+  etiqueta_ultima_fila: 'Anillo de aceite',
+  habilitar_identificador: true,
+  etiqueta_identificador: 'Cónico'
+})
+
+const groupTablaConfig = ref<TablaConfiguracion>(getDefaultTablaConfig())
+
 const getDefaultTableParams = (): DynamicParamRow[] => [
   {
     id: `param-${Date.now()}-t1`,
-    etiqueta: 'Diámetro de Cilindro (d1)',
+    etiqueta: 'Diámetro',
     etiqueta_corta: 'Diámetro',
     clave: 'diametro_cilindro_mm',
     unidad: 'mm',
     tipo_dato: 'numero',
     requerido: true,
     filtrable: true,
-    descripcion: 'Calibre del cilindro o diámetro nominal',
+    descripcion: 'Diámetro nominal en mm',
     decimales: 2,
     mostrar_unidad: true,
     valor_muestra: 96.00
   },
   {
     id: `param-${Date.now()}-t2`,
-    etiqueta: '1° Anillo (Fuego) - Grosor (h1)',
-    etiqueta_corta: '1° Grosor',
-    clave: 'anillo1_h1',
+    etiqueta: 'Grosor',
+    etiqueta_corta: 'Grosor',
+    clave: 'grosor_mm',
     unidad: 'mm',
     tipo_dato: 'numero',
     requerido: true,
     filtrable: true,
-    descripcion: 'Espesor o grosor del aro superior',
+    descripcion: 'Espesor axial de cada fila en mm',
     decimales: 2,
     mostrar_unidad: true,
     valor_muestra: 2.00
   },
   {
     id: `param-${Date.now()}-t3`,
-    etiqueta: '1° Anillo (Fuego) - Altura (a1)',
-    etiqueta_corta: '1° Altura',
-    clave: 'anillo1_a1',
+    etiqueta: 'Altura',
+    etiqueta_corta: 'Altura',
+    clave: 'altura_mm',
     unidad: 'mm',
     tipo_dato: 'numero',
     requerido: true,
     filtrable: true,
-    descripcion: 'Ancho radial del aro superior',
+    descripcion: 'Altura o ancho radial de cada fila en mm',
     decimales: 2,
     mostrar_unidad: true,
     valor_muestra: 3.80
-  },
-  {
-    id: `param-${Date.now()}-t4`,
-    etiqueta: '2° Anillo (Compresión) - Grosor (h1)',
-    etiqueta_corta: '2° Grosor',
-    clave: 'anillo2_h1',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Espesor o grosor del segundo aro',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 2.00
-  },
-  {
-    id: `param-${Date.now()}-t5`,
-    etiqueta: '2° Anillo (Compresión) - Altura (a1)',
-    etiqueta_corta: '2° Altura',
-    clave: 'anillo2_a1',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Ancho radial del segundo aro',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 4.10
-  },
-  {
-    id: `param-${Date.now()}-t6`,
-    etiqueta: 'Anillo de Aceite - Grosor (h1)',
-    etiqueta_corta: 'Aceite Grosor',
-    clave: 'aceite_h1',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Espesor del aro rascador de aceite',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 3.00
-  },
-  {
-    id: `param-${Date.now()}-t7`,
-    etiqueta: 'Anillo de Aceite - Altura (a1)',
-    etiqueta_corta: 'Aceite Altura',
-    clave: 'aceite_a1',
-    unidad: 'mm',
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: 'Ancho radial del aro rascador de aceite',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 3.40
-  },
-  {
-    id: `param-${Date.now()}-t8`,
-    etiqueta: 'Diseño Cónico / Keystone',
-    etiqueta_corta: 'Cónico',
-    clave: 'diseno_conico',
-    unidad: '',
-    tipo_dato: 'booleano',
-    requerido: false,
-    filtrable: true,
-    descripcion: 'Perfil trapezoidal o keystone',
-    decimales: 0,
-    mostrar_unidad: false,
-    valor_muestra: 0
   }
 ]
 
@@ -1226,9 +1279,10 @@ const setGroupTipoVista = (tipo: 'normal' | 'tabla') => {
   if (!isEditMode.value) {
     const keys = dynamicParams.value.map(p => p.clave)
     const isDefaultNormal = keys.length === 3 && keys.includes('diametro_interior_mm') && keys.includes('diametro_exterior_mm')
-    const isDefaultTable = keys.includes('anillo1_h1') && keys.includes('aceite_h1')
+    const isDefaultTable = keys.includes('grosor_mm') || keys.includes('anillo1_h1')
     if (tipo === 'tabla' && isDefaultNormal) {
       dynamicParams.value = getDefaultTableParams()
+      groupTablaConfig.value = getDefaultTablaConfig()
     } else if (tipo === 'normal' && isDefaultTable) {
       dynamicParams.value = getDefaultNormalParams()
     }
@@ -1377,6 +1431,9 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
   groupDescripcion.value = grp.descripcion || ''
   groupIcono.value = grp.icono || 'Layers'
   groupTipoVista.value = grp.tipo_vista || (grp.codigo === 'anillos_motor' ? 'tabla' : 'normal')
+  groupTablaConfig.value = grp.tabla_config
+    ? { ...getDefaultTablaConfig(), ...grp.tabla_config }
+    : getDefaultTablaConfig()
 
   const nonReqParams = grp.parametros.filter(p => !p.requerido)
   if (nonReqParams.length > 0) {
@@ -1415,6 +1472,7 @@ const switchToCreateMode = () => {
   groupDescripcion.value = ''
   groupIcono.value = 'Layers'
   groupTipoVista.value = 'normal'
+  groupTablaConfig.value = getDefaultTablaConfig()
   soloFiltrosEnTabla.value = false
   dynamicParams.value = getDefaultNormalParams()
   groupErrors.value = {}
@@ -1518,46 +1576,44 @@ const visibleTableColumns = computed(() => {
   return dynamicParams.value.filter(p => p.requerido)
 })
 
-const previewTableDiametroParam = computed(() => {
-  return dynamicParams.value.find(p => p.clave === 'diametro_cilindro_mm' || p.clave.includes('diametro')) || null
-})
+const getPreviewRowLabel = (rowIdx: number): string => {
+  const cfg = groupTablaConfig.value
+  const titulo = (cfg.titulo_primera_columna || 'Anillo').trim()
+  if (rowIdx === 2 && cfg.etiqueta_ultima_fila && cfg.etiqueta_ultima_fila.trim()) {
+    return cfg.etiqueta_ultima_fila.trim()
+  }
+  if (cfg.modo_filas === 'incremental') {
+    return cfg.usar_prefijo_titulo !== false ? `${titulo} ${rowIdx + 1}` : `${rowIdx + 1}`
+  }
+  const letters = ['A', 'B', 'C']
+  return `${titulo} ${letters[rowIdx] || rowIdx + 1}`
+}
 
-const previewShowDiametroCol = computed(() => {
-  return previewTableDiametroParam.value ? previewTableDiametroParam.value.requerido : true
-})
-
-const previewShowGrosorCol = computed(() => {
-  const hParams = dynamicParams.value.filter(p => p.clave.endsWith('_h1') || p.clave.includes('grosor') || p.clave.includes('espesor'))
-  return hParams.length > 0 ? hParams.some(p => p.requerido) : true
-})
-
-const previewShowAlturaCol = computed(() => {
-  const aParams = dynamicParams.value.filter(p => p.clave.endsWith('_a1') || p.clave.includes('altura') || p.clave.includes('radial'))
-  return aParams.length > 0 ? aParams.some(p => p.requerido) : true
-})
-
-const previewDiametroHeader = computed(() => {
-  const p = previewTableDiametroParam.value
-  if (!p) return 'Diámetro'
-  const base = p.etiqueta_corta || p.etiqueta || 'Diámetro'
-  return p.unidad && p.unidad !== 'mm' ? `${base} (${p.unidad})` : base
-})
-
-const previewGrosorHeader = computed(() => {
-  const p = dynamicParams.value.find(x => x.clave === 'anillo1_h1' || x.clave.endsWith('_h1'))
-  if (!p) return 'Grosor'
-  return p.unidad && p.unidad !== 'mm' ? `Grosor (${p.unidad})` : 'Grosor'
-})
-
-const previewAlturaHeader = computed(() => {
-  const p = dynamicParams.value.find(x => x.clave === 'anillo1_a1' || x.clave.endsWith('_a1'))
-  if (!p) return 'Altura'
-  return p.unidad && p.unidad !== 'mm' ? `Altura (${p.unidad})` : 'Altura'
-})
-
-const previewExtraTableParams = computed(() => {
-  return dynamicParams.value.filter(p => p.requerido && !CORE_RING_PARAM_KEYS.has(p.clave))
-})
+const getPreviewTableCellValue = (param: DynamicParamRow, partIdx: number, ringIdx: number): string => {
+  const key = (param.clave || '').toLowerCase()
+  const label = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
+  if (key.includes('diametro') || label.includes('diámetro') || label.includes('diametro')) {
+    return partIdx === 0 ? '96' : '96.5'
+  }
+  if (key.includes('grosor') || key.includes('espesor') || key.endsWith('_h1') || label.includes('grosor')) {
+    return ringIdx === 2 ? '3' : '2'
+  }
+  if (key.includes('altura') || key.includes('radial') || key.endsWith('_a1') || label.includes('altura')) {
+    return ringIdx === 0 ? '3.8' : (ringIdx === 1 ? '4.1' : '3.4')
+  }
+  if (param.tipo_dato === 'booleano') {
+    return ringIdx === 0 ? 'Sí' : 'No'
+  }
+  if (param.tipo_dato === 'seleccion') {
+    const opts = param.opcionesStr ? param.opcionesStr.split(',').map(s => s.trim()).filter(Boolean) : (param.opciones || [])
+    return opts.length > 0 ? opts[ringIdx % opts.length] : 'STD'
+  }
+  if (param.tipo_dato === 'texto') {
+    return ringIdx === 0 ? 'Cromo' : 'Hierro'
+  }
+  const baseVal = param.valor_muestra != null && param.valor_muestra !== '' ? Number(param.valor_muestra) : 10
+  return String(Number((baseVal + ringIdx * 0.5).toFixed(2)))
+}
 
 const cycleDecimals = (param: DynamicParamRow) => {
   if (param.decimales === undefined || param.decimales === 2) {
@@ -1656,6 +1712,7 @@ const handleSaveGroup = async () => {
         descripcion: groupDescripcion.value.trim() || undefined,
         icono: groupIcono.value,
         tipo_vista: groupTipoVista.value,
+        tabla_config: groupTipoVista.value === 'tabla' ? { ...groupTablaConfig.value } : undefined,
         parametros: paramsPayload
       })
 
@@ -1669,6 +1726,7 @@ const handleSaveGroup = async () => {
         descripcion: groupDescripcion.value.trim() || undefined,
         icono: groupIcono.value,
         tipo_vista: groupTipoVista.value,
+        tabla_config: groupTipoVista.value === 'tabla' ? { ...groupTablaConfig.value } : undefined,
         parametros: paramsPayload
       })
 
@@ -2140,19 +2198,28 @@ onUnmounted(() => {
                   </span>
                 </div>
 
-                <!-- A. MATRIZ TABULAR DINÁMICA PARA ANILLOS DE MOTOR (3, 4, 5 O 6+ AROS) -->
+                <!-- A. MATRIZ TABULAR DINÁMICA GENERAL PARA FAMILIAS EN TABLA (ANILLOS, ETC.) -->
                 <div v-if="isRingsGroup" class="space-y-3">
                   
-                  <!-- Tabla de medidas compacta -->
-                  <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs font-mono select-text">
+                  <!-- Tabla de medidas compacta y 100% configurable -->
+                  <div class="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs font-mono select-text">
                     <table class="border-collapse text-center text-xs w-full">
                       <thead>
                         <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
-                          <th class="px-3 py-2 text-left border-r border-slate-200">Ranura / Posición</th>
-                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro (d1)') }}</th>
-                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('anillo1_h1', 'Grosor (h1)') }}</th>
-                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('anillo1_a1', 'Radial (a1)') }}</th>
-                          <th class="px-2.5 py-2">Perfil / Expansor</th>
+                          <th class="px-3 py-2 text-left border-r border-slate-200">{{ activeTablaConfig.titulo_primera_columna || 'Anillo' }}</th>
+                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro') }}</th>
+                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('grosor_mm', getActiveGroupParamLabel('anillo1_h1', 'Grosor')) }}</th>
+                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('altura_mm', getActiveGroupParamLabel('anillo1_a1', 'Altura')) }}</th>
+                          <th
+                            v-for="extParam in extraRingGroupParams"
+                            :key="`th-ext-${extParam.id}`"
+                            class="px-2 py-2 border-r border-slate-200"
+                          >
+                            {{ extParam.etiqueta_corta || extParam.etiqueta }}{{ extParam.unidad ? ` (${extParam.unidad})` : '' }}
+                          </th>
+                          <th v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2.5 py-2">
+                            {{ activeTablaConfig.etiqueta_identificador || 'Cónico' }}
+                          </th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-slate-100 text-[11px]">
@@ -2162,24 +2229,29 @@ onUnmounted(() => {
                           class="hover:bg-slate-50/70 transition"
                           :class="[
                             formErrors[`ring_h1_${rIdx}`] || (rIdx === 0 && formErrors.diametro_cilindro_mm) ? 'bg-rose-50/20' : '',
-                            rIdx >= 2 && ring.tipo_aro !== 'aceite' ? 'bg-amber-50/20' : ''
+                            ring.tiene_identificador ? 'bg-amber-50/25' : ''
                           ]"
                         >
-                          <!-- Ranura / Posición -->
-                          <td class="px-3 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
+                          <!-- 1ra Columna: Incremental (1, 2, 3...) o Libre -->
+                          <td class="px-2.5 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
                             <div class="flex items-center justify-between gap-1.5">
-                              <div class="flex items-center gap-1.5">
+                              <div class="flex items-center gap-1.5 flex-1 min-w-[110px]">
                                 <span
                                   class="w-2 h-2 rounded-full shrink-0"
-                                  :class="ring.tipo_aro === 'aceite' ? 'bg-[#04C4D9]' : (rIdx >= 2 ? 'bg-amber-500' : 'bg-[#004B97]')"
+                                  :class="ring.tiene_identificador ? 'bg-amber-500' : (rIdx === ringRows.length - 1 ? 'bg-[#04C4D9]' : 'bg-[#004B97]')"
                                 ></span>
-                                <strong class="font-extrabold text-slate-900">{{ getRingRowTitle(ring, rIdx) }}</strong>
+                                <input
+                                  v-model="ring.posicion"
+                                  type="text"
+                                  :placeholder="getDefaultRowPosition(rIdx, ringRows.length)"
+                                  class="w-full px-1.5 py-0.5 text-xs font-extrabold text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-[#04C4D9] rounded focus:outline-none transition"
+                                />
                               </div>
                               <button
-                                v-if="ring.tipo_aro !== 'fuego' && ring.tipo_aro !== 'aceite' && ringRows.length > 2"
+                                v-if="ringRows.length > 1"
                                 type="button"
                                 @click="removeRingRow(rIdx)"
-                                class="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                class="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
                                 :title="`Quitar ${getRingRowTitle(ring, rIdx)}`"
                               >
                                 <Trash2 class="w-3.5 h-3.5" />
@@ -2187,7 +2259,7 @@ onUnmounted(() => {
                             </div>
                           </td>
 
-                          <!-- Diámetro común STD (Editable en 1er aro, heredado en los demás) -->
+                          <!-- Diámetro común STD (Editable en 1ra fila, heredado en las demás) -->
                           <td v-if="rIdx === 0" class="px-2 py-1.5 border-r border-slate-200">
                             <div class="relative flex items-center justify-center">
                               <input
@@ -2210,49 +2282,78 @@ onUnmounted(() => {
                               v-model.number="ring.h1"
                               type="number"
                               step="0.001"
-                              :placeholder="ring.tipo_aro === 'aceite' ? '3.000' : '1.500'"
+                              :placeholder="rIdx === ringRows.length - 1 ? '3.000' : '1.500'"
                               class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                               :class="formErrors[`ring_h1_${rIdx}`] ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
                             />
                           </td>
 
-                          <!-- Radial a1 -->
+                          <!-- Altura a1 -->
                           <td class="px-2 py-1.5 border-r border-slate-200">
                             <input
                               v-model.number="ring.a1"
                               type="number"
                               step="0.01"
-                              :placeholder="ring.tipo_aro === 'aceite' ? '2.80' : '3.40'"
+                              :placeholder="rIdx === ringRows.length - 1 ? '2.80' : '3.40'"
                               class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                             />
                           </td>
 
-                          <!-- Selector de Perfil Geométrico / Tipo de Expansor -->
-                          <td class="px-2 py-1.5 whitespace-nowrap">
-                            <select
-                              v-model="ring.perfil"
-                              class="w-full min-w-[130px] px-2 py-1 rounded-lg text-[10px] font-sans font-extrabold transition border focus:outline-none focus:border-[#04C4D9]"
-                              :class="(ring.perfil || '').toLowerCase().includes('cónico') || (ring.perfil || '').toLowerCase().includes('keystone')
-                                ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
-                                : ((ring.perfil || '').toLowerCase().includes('espiral') || (ring.perfil || '').toLowerCase().includes('escalon') || (ring.perfil || '').toLowerCase().includes('raspador')
-                                  ? 'bg-cyan-50 text-[#004B97] border-cyan-300'
-                                  : 'bg-slate-50 text-slate-700 border-slate-200')"
-                            >
-                              <option
-                                v-for="opt in getRingProfileOptions(ring, rIdx)"
-                                :key="opt"
-                                :value="opt"
+                          <!-- Columnas personalizadas adicionales por fila -->
+                          <td
+                            v-for="extParam in extraRingGroupParams"
+                            :key="`td-ext-${ring.id}-${extParam.id}`"
+                            class="px-2 py-1.5 border-r border-slate-200"
+                          >
+                            <input
+                              v-if="extParam.tipo_dato === 'numero'"
+                              v-model.number="ring.extra[extParam.clave]"
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              class="w-16 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                            <input
+                              v-else
+                              v-model="ring.extra[extParam.clave]"
+                              type="text"
+                              placeholder="—"
+                              class="w-20 px-1.5 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </td>
+
+                          <!-- Identificador aparte por fila (ej. poner X anillo en Cónico o libre) -->
+                          <td v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2 py-1.5 whitespace-nowrap">
+                            <div class="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                @click="toggleRowIdentificador(ring)"
+                                class="px-2 py-1 rounded-lg text-[10px] font-sans font-extrabold border transition flex items-center gap-1"
+                                :class="ring.tiene_identificador
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
+                                  : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'"
+                                :title="`Marcar o desmarcar ${activeTablaConfig.etiqueta_identificador || 'Cónico'} en esta fila`"
                               >
-                                {{ opt }}
-                              </option>
-                            </select>
+                                <Check v-if="ring.tiene_identificador" class="w-3 h-3 text-amber-700" />
+                                <span>{{ activeTablaConfig.etiqueta_identificador || 'Cónico' }}</span>
+                              </button>
+                              <input
+                                v-if="ring.tiene_identificador"
+                                v-model="ring.identificador_texto"
+                                @input="onRowIdentificadorTextInput(ring)"
+                                type="text"
+                                :placeholder="activeTablaConfig.etiqueta_identificador || 'Cónico'"
+                                class="w-20 px-1.5 py-1 text-[10px] font-sans font-bold bg-amber-50/60 border border-amber-300 text-amber-950 rounded-lg focus:bg-white focus:outline-none focus:border-amber-500"
+                                title="Puedes personalizar el texto del identificador para esta fila"
+                              />
+                            </div>
                           </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
 
-                  <!-- Controles auxiliares bajo la tabla: + Agregar Anillo -->
+                  <!-- Controles auxiliares bajo la tabla: + Agregar Fila -->
                   <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
                     <button
                       type="button"
@@ -2260,7 +2361,7 @@ onUnmounted(() => {
                       class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
                     >
                       <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>+ Agregar Anillo</span>
+                      <span>+ Agregar {{ activeTablaConfig.titulo_primera_columna || 'Anillo' }}</span>
                     </button>
 
                     <div class="flex items-center gap-3">
@@ -2271,63 +2372,6 @@ onUnmounted(() => {
                           type="number"
                           placeholder="4"
                           class="w-12 px-1.5 py-0.5 text-center text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Parámetros personalizados adicionales agregados a esta familia en tabla -->
-                  <div v-if="extraRingGroupParams.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-200">
-                    <div
-                      v-for="param in extraRingGroupParams"
-                      :key="param.id"
-                      class="bg-white p-2.5 rounded-xl border transition shadow-2xs"
-                      :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
-                    >
-                      <div class="flex items-center justify-between mb-1">
-                        <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
-                          <span>{{ param.etiqueta }}</span>
-                          <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
-                        </label>
-                        <span v-if="param.unidad" class="text-[9px] font-mono font-bold text-slate-500">{{ param.unidad }}</span>
-                      </div>
-                      <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
-                        <input
-                          v-model.number="paramValues[param.clave]"
-                          type="number"
-                          step="0.001"
-                          placeholder="0.00"
-                          class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                        />
-                        <span class="absolute right-2.5 text-[9px] font-black text-slate-400 pointer-events-none">
-                          {{ param.unidad || '' }}
-                        </span>
-                      </div>
-                      <div v-else-if="param.tipo_dato === 'seleccion'">
-                        <select
-                          v-model="paramValues[param.clave]"
-                          class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                        >
-                          <option value="">Selecciona opción</option>
-                          <option v-for="opt in param.opciones || []" :key="opt" :value="opt">{{ opt }}</option>
-                        </select>
-                      </div>
-                      <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
-                        <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                          <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                          <span>Sí</span>
-                        </label>
-                        <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                          <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                          <span>No</span>
-                        </label>
-                      </div>
-                      <div v-else>
-                        <input
-                          v-model="paramValues[param.clave]"
-                          type="text"
-                          placeholder="Valor"
-                          class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                         />
                       </div>
                     </div>
@@ -2761,12 +2805,130 @@ onUnmounted(() => {
                 </div>
               </div>
 
+              <!-- 1.B CONFIGURACIÓN DE PRIMERA COLUMNA (SOLO PARA FAMILIAS EN TABLA) -->
+              <div
+                v-if="groupTipoVista === 'tabla'"
+                class="bg-cyan-50/50 border border-cyan-200 rounded-2xl p-4 shadow-2xs space-y-3.5"
+              >
+                <div class="flex items-center justify-between border-b pb-2 border-cyan-200/80">
+                  <h3 class="text-xs font-black uppercase tracking-wider text-[#004B97] flex items-center gap-1.5">
+                    <Table class="w-4 h-4 text-[#04C4D9]" />
+                    <span>Primera Columna de la Tabla (Filas)</span>
+                  </h3>
+                  <span class="text-[10px] font-bold text-[#038391] bg-white px-2 py-0.5 rounded-full border border-cyan-200">
+                    Columna #1
+                  </span>
+                </div>
+
+                <!-- Título de la Primera Columna -->
+                <div>
+                  <label class="block text-xs font-bold text-slate-800 mb-1">
+                    Título de la Primera Columna <span class="text-rose-500">*</span>
+                  </label>
+                  <input
+                    v-model="groupTablaConfig.titulo_primera_columna"
+                    type="text"
+                    placeholder="Ej. Anillo, Posición, Ranura, Etapa..."
+                    class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+
+                <!-- Modo de las Filas: Incremental (1, 2, 3, 4) vs Libre -->
+                <div>
+                  <label class="block text-xs font-bold text-slate-800 mb-1.5">
+                    Comportamiento de las Filas
+                  </label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      @click="groupTablaConfig.modo_filas = 'incremental'"
+                      class="p-2 rounded-xl border text-left transition"
+                      :class="groupTablaConfig.modo_filas === 'incremental'
+                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
+                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
+                    >
+                      <div class="text-xs font-black">Incremental (1, 2, 3, 4...)</div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Numera automáticamente cada fila al agregar</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      @click="groupTablaConfig.modo_filas = 'libre'"
+                      class="p-2 rounded-xl border text-left transition"
+                      :class="groupTablaConfig.modo_filas === 'libre'
+                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
+                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
+                    >
+                      <div class="text-xs font-black">Libre (Texto abierto)</div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Permite escribir cualquier nombre por fila</div>
+                    </button>
+                  </div>
+
+                  <!-- Opciones extra para modo incremental -->
+                  <div v-if="groupTablaConfig.modo_filas === 'incremental'" class="mt-2.5 space-y-2 bg-white/80 p-2.5 rounded-xl border border-cyan-200/70">
+                    <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
+                      <input
+                        type="checkbox"
+                        v-model="groupTablaConfig.usar_prefijo_titulo"
+                        class="rounded text-[#04C4D9] focus:ring-[#04C4D9]"
+                      />
+                      <span>Mostrar título junto al número (ej. "{{ groupTablaConfig.titulo_primera_columna || 'Anillo' }} 1, 2..." en vez de solo "1, 2, 3")</span>
+                    </label>
+                    <div>
+                      <label class="block text-[10px] font-bold text-slate-600 mb-1">
+                        Nombre especial para última fila (opcional, dejar vacío para seguir numerando 1, 2, 3, 4):
+                      </label>
+                      <input
+                        v-model="groupTablaConfig.etiqueta_ultima_fila"
+                        type="text"
+                        placeholder="Ej. Anillo de aceite (o vacío para continuar 1, 2, 3, 4)"
+                        class="w-full px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Identificador aparte por fila (ej. poner X anillo en Cónico) -->
+                <div class="bg-white/90 p-3 rounded-xl border border-cyan-200/80 space-y-2.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <div class="text-xs font-black text-slate-800">
+                        Identificador aparte por fila (ej. Cónico)
+                      </div>
+                      <div class="text-[10px] text-slate-500">
+                        Permite marcar cualquier fila X con una etiqueta especial (ej. poner X anillo en Cónico)
+                      </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                      <input
+                        type="checkbox"
+                        v-model="groupTablaConfig.habilitar_identificador"
+                        class="sr-only peer"
+                      />
+                      <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#04C4D9]"></div>
+                    </label>
+                  </div>
+
+                  <div v-if="groupTablaConfig.habilitar_identificador" class="pt-1">
+                    <label class="block text-[10px] font-bold text-slate-700 mb-1">
+                      Nombre del Identificador por defecto
+                    </label>
+                    <input
+                      v-model="groupTablaConfig.etiqueta_identificador"
+                      type="text"
+                      placeholder="Ej. Cónico, Keystone, Espiral..."
+                      class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <!-- 2. GESTOR DE PARÁMETROS -->
               <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
                 <div class="flex items-center justify-between border-b pb-2.5 border-slate-100">
                   <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                     <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-                    <span>Gestor de Parámetros</span>
+                    <span>{{ groupTipoVista === 'tabla' ? 'Columnas / Parámetros de la Tabla' : 'Gestor de Parámetros' }}</span>
                   </h3>
                   <button
                     type="button"
@@ -2861,7 +3023,7 @@ onUnmounted(() => {
                       </div>
                     </div>
 
-                    <!-- Fila de Campos del Parámetro -->
+                    <!-- Fila de Campos del Parámetro (General: Nombre/Etiqueta, Abreviatura(Tabla), Tipo de Entrada, Unidad sin opciones, Clave Técnica, Descripción) -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <!-- Nombre / Etiqueta y Abreviatura en Tabla -->
                       <div>
@@ -2899,34 +3061,16 @@ onUnmounted(() => {
                         </select>
                       </div>
 
-                      <!-- Unidad de Medida (Permite seleccionar sugerencia o escribir cualquier unidad libremente) -->
+                      <!-- Unidad de Medida (Texto libre directo, sin opciones desplegables) -->
                       <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Unidad (Libre)</label>
+                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Unidad</label>
                         <input
                           v-model="param.unidad"
                           @input="handleParamUnitChange(param)"
                           type="text"
-                          list="unidades-sugeridas-list"
-                          placeholder="mm, °, bar, psi, Nm, piezas..."
+                          placeholder="Escribir unidad (ej. mm, °, bar, psi...)"
                           class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
-                        <datalist id="unidades-sugeridas-list">
-                          <option value="mm">mm (Milímetros)</option>
-                          <option value="°">° (Grados)</option>
-                          <option value="pulgadas">pulgadas</option>
-                          <option value="piezas">piezas</option>
-                          <option value="Nm">Nm</option>
-                          <option value="lb-ft">lb-ft</option>
-                          <option value="bar">bar</option>
-                          <option value="psi">psi</option>
-                          <option value="kg/cm²">kg/cm²</option>
-                          <option value="g">g (Gramos)</option>
-                          <option value="kg">kg (Kilogramos)</option>
-                          <option value="cc">cc</option>
-                          <option value="l">l (Litros)</option>
-                          <option value="%">% (Porcentaje)</option>
-                          <option value="micras">micras (µm)</option>
-                        </datalist>
                       </div>
 
                       <!-- Clave Técnica Inmutable (ReadOnly + Candado) -->
@@ -3154,47 +3298,42 @@ onUnmounted(() => {
                                 <table class="border-collapse text-center">
                                   <thead>
                                     <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
-                                      <th class="px-2 py-1 border-r border-slate-700 text-left">Anillo</th>
-                                      <th v-if="previewShowDiametroCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewDiametroHeader }}</th>
-                                      <th v-if="previewShowGrosorCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewGrosorHeader }}</th>
-                                      <th v-if="previewShowAlturaCol" class="px-2 py-1 text-cyan-300">{{ previewAlturaHeader }}</th>
+                                      <th class="px-2 py-1 border-r border-slate-700 text-left">{{ groupTablaConfig.titulo_primera_columna || 'Anillo' }}</th>
+                                      <th
+                                        v-for="(colParam, colIdx) in visibleTableColumns"
+                                        :key="`prev1-th-${colParam.id}`"
+                                        class="px-2 py-1 text-cyan-300"
+                                        :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
+                                      >
+                                        {{ colParam.etiqueta_corta || colParam.etiqueta }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
-                                    <tr>
+                                    <tr v-for="rIdx in [0, 1, 2]" :key="`prev1-tr-${rIdx}`">
                                       <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
-                                        <span>Anillo 1</span>
-                                        <span class="ml-1 text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold">CÓNICO</span>
+                                        <span>{{ getPreviewRowLabel(rIdx) }}</span>
+                                        <span
+                                          v-if="rIdx === 0 && groupTablaConfig.habilitar_identificador !== false"
+                                          class="ml-1 text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold uppercase"
+                                        >
+                                          {{ groupTablaConfig.etiqueta_identificador || 'CÓNICO' }}
+                                        </span>
                                       </td>
-                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">96</td>
-                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
-                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.8</td>
-                                    </tr>
-                                    <tr>
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo 2</td>
-                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">96</td>
-                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
-                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">4.1</td>
-                                    </tr>
-                                    <tr>
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo de aceite</td>
-                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">96</td>
-                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">3</td>
-                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.4</td>
+                                      <td
+                                        v-for="(colParam, colIdx) in visibleTableColumns"
+                                        :key="`prev1-td-${rIdx}-${colParam.id}`"
+                                        class="px-2 py-0.5 font-bold"
+                                        :class="[
+                                          colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : '',
+                                          colIdx <= 1 ? 'text-emerald-400' : 'text-slate-200'
+                                        ]"
+                                      >
+                                        {{ getPreviewTableCellValue(colParam, 0, rIdx) }}
+                                      </td>
                                     </tr>
                                   </tbody>
                                 </table>
-                              </div>
-                              <!-- Parámetros extra agregados a la familia en tabla -->
-                              <div v-if="previewExtraTableParams.length > 0" class="flex flex-wrap items-center gap-1 mt-1.5">
-                                <div
-                                  v-for="param in previewExtraTableParams"
-                                  :key="`row1-extra-${param.id}`"
-                                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-850 border border-cyan-500/40 text-[10px] font-mono font-bold text-cyan-300"
-                                >
-                                  <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
-                                  <span>{{ formatSampleValue(param, 0) }}</span>
-                                </div>
                               </div>
                             </template>
                             <div v-else class="flex flex-wrap items-center gap-1.5">
@@ -3270,43 +3409,36 @@ onUnmounted(() => {
                                 <table class="border-collapse text-center">
                                   <thead>
                                     <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
-                                      <th class="px-2 py-1 border-r border-slate-700 text-left">Anillo</th>
-                                      <th v-if="previewShowDiametroCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewDiametroHeader }}</th>
-                                      <th v-if="previewShowGrosorCol" class="px-2 py-1 border-r border-slate-700 text-cyan-300">{{ previewGrosorHeader }}</th>
-                                      <th v-if="previewShowAlturaCol" class="px-2 py-1 text-cyan-300">{{ previewAlturaHeader }}</th>
+                                      <th class="px-2 py-1 border-r border-slate-700 text-left">{{ groupTablaConfig.titulo_primera_columna || 'Anillo' }}</th>
+                                      <th
+                                        v-for="(colParam, colIdx) in visibleTableColumns"
+                                        :key="`prev2-th-${colParam.id}`"
+                                        class="px-2 py-1 text-cyan-300"
+                                        :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
+                                      >
+                                        {{ colParam.etiqueta_corta || colParam.etiqueta }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
-                                    <tr>
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo 1</td>
-                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-amber-300">96.5</td>
-                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
-                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.8</td>
-                                    </tr>
-                                    <tr>
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo 2</td>
-                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-amber-300">96.5</td>
-                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">2</td>
-                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">4.1</td>
-                                    </tr>
-                                    <tr>
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">Anillo de aceite</td>
-                                      <td v-if="previewShowDiametroCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-amber-300">96.5</td>
-                                      <td v-if="previewShowGrosorCol" class="px-2 py-0.5 border-r border-slate-700 font-bold text-emerald-400">3</td>
-                                      <td v-if="previewShowAlturaCol" class="px-2 py-0.5 font-bold">3.4</td>
+                                    <tr v-for="rIdx in [0, 1, 2]" :key="`prev2-tr-${rIdx}`">
+                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
+                                        <span>{{ getPreviewRowLabel(rIdx) }}</span>
+                                      </td>
+                                      <td
+                                        v-for="(colParam, colIdx) in visibleTableColumns"
+                                        :key="`prev2-td-${rIdx}-${colParam.id}`"
+                                        class="px-2 py-0.5 font-bold"
+                                        :class="[
+                                          colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : '',
+                                          colIdx === 0 ? 'text-amber-300' : (colIdx === 1 ? 'text-emerald-400' : 'text-slate-200')
+                                        ]"
+                                      >
+                                        {{ getPreviewTableCellValue(colParam, 1, rIdx) }}
+                                      </td>
                                     </tr>
                                   </tbody>
                                 </table>
-                              </div>
-                              <div v-if="previewExtraTableParams.length > 0" class="flex flex-wrap items-center gap-1 mt-1.5">
-                                <div
-                                  v-for="param in previewExtraTableParams"
-                                  :key="`row2-extra-${param.id}`"
-                                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-850 border border-cyan-500/40 text-[10px] font-mono font-bold text-cyan-300"
-                                >
-                                  <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta }}:</span>
-                                  <span>{{ formatSampleValue(param, 1) }}</span>
-                                </div>
                               </div>
                             </template>
                             <div v-else class="flex flex-wrap items-center gap-1.5">
