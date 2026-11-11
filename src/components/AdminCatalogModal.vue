@@ -7,7 +7,8 @@ import {
   type ParametroTecnicoDefinicion,
   type TablaConfiguracion,
   type RepuestoTecnico,
-  type Motor
+  type Motor,
+  buildNestedTableHeaders
 } from '@/services/catalogService'
 import { 
   X, 
@@ -31,7 +32,8 @@ import {
   Filter,
   Table,
   Copy,
-  Columns
+  Columns,
+  Split
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -1175,6 +1177,7 @@ export interface DynamicParamRow {
   decimales?: number
   mostrar_unidad?: boolean
   valor_muestra?: string | number
+  columna_padre?: string // Columna superior / padre para sub-columnas (ej. "STD", "1er", "2da", "Diámetros")
 }
 
 const isEditMode = ref<boolean>(false)
@@ -1473,7 +1476,8 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
     opcionesStr: (p.opciones || []).join(', '),
     decimales: p.unidad === '°' ? 0 : 2,
     mostrar_unidad: true,
-    valor_muestra: p.valor_minimo || (50 + idx * 5)
+    valor_muestra: p.valor_minimo || (50 + idx * 5),
+    columna_padre: p.columna_padre || ''
   }))
   groupErrors.value = {}
 }
@@ -1545,8 +1549,96 @@ const addParamRow = () => {
     descripcion: '',
     decimales: 2,
     mostrar_unidad: true,
-    valor_muestra: 50.00
+    valor_muestra: 50.00,
+    columna_padre: ''
   })
+}
+
+// Sugerencias rápidas de columnas superiores / padres
+const suggestedParentColumns = computed<string[]>(() => {
+  const defaults = ['STD', '1er', '2da', '3er', '4ta']
+  const inUse = dynamicParams.value
+    .map(p => p.columna_padre?.trim())
+    .filter((p): p is string => Boolean(p))
+  const merged = Array.from(new Set([...defaults, ...inUse]))
+  return merged.slice(0, 6)
+})
+
+// Agrega una sub-columna hermana bajo la misma columna padre
+const addSiblingSubcolumn = (param: DynamicParamRow, idx: number) => {
+  const parent = param.columna_padre?.trim() || 'STD'
+  param.columna_padre = parent
+  const count = dynamicParams.value.filter(p => p.columna_padre === parent).length + 1
+  
+  const isMin = (param.etiqueta || '').toLowerCase().includes('mín') || (param.etiqueta || '').toLowerCase().includes('min')
+  const newEtiqueta = isMin ? 'Diámetro Máximo' : `Sub-medida ${count}`
+  const newEtiquetaCorta = isMin ? 'Máx' : `Sub ${count}`
+  const unit = param.unidad || 'mm'
+
+  const newRow: DynamicParamRow = {
+    id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    etiqueta: newEtiqueta,
+    etiqueta_corta: newEtiquetaCorta,
+    clave: generateTechnicalKey(`${parent}_${newEtiqueta}`, unit),
+    unidad: unit,
+    tipo_dato: param.tipo_dato || 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: `Sub-columna de ${parent}`,
+    decimales: param.decimales ?? 2,
+    mostrar_unidad: true,
+    valor_muestra: 50.00,
+    columna_padre: parent
+  }
+
+  dynamicParams.value.splice(idx + 1, 0, newRow)
+}
+
+// Genera un par de sub-columnas (ej. Mín / Máx para rectificación estilo Federal Mogul)
+const addPairedSubcolumns = (parentName?: string) => {
+  let targetParent = parentName
+  if (!targetParent) {
+    const usedParents = new Set(
+      dynamicParams.value.map(p => p.columna_padre?.trim()).filter(Boolean)
+    )
+    const stages = ['STD', '1er', '2da', '3er', '4ta', '5ta']
+    targetParent = stages.find(s => !usedParents.has(s)) || `Etapa ${usedParents.size + 1}`
+  }
+
+  const unit = 'mm'
+  const rowMin: DynamicParamRow = {
+    id: `param-${Date.now()}-min`,
+    etiqueta: 'Diámetro Mínimo',
+    etiqueta_corta: 'Mín',
+    clave: generateTechnicalKey(`${targetParent}_min`, unit),
+    unidad: unit,
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: `Diámetro mínimo para rectificación ${targetParent}`,
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 48.97,
+    columna_padre: targetParent
+  }
+
+  const rowMax: DynamicParamRow = {
+    id: `param-${Date.now()}-max`,
+    etiqueta: 'Diámetro Máximo',
+    etiqueta_corta: 'Máx',
+    clave: generateTechnicalKey(`${targetParent}_max`, unit),
+    unidad: unit,
+    tipo_dato: 'numero',
+    requerido: true,
+    filtrable: true,
+    descripcion: `Diámetro máximo para rectificación ${targetParent}`,
+    decimales: 2,
+    mostrar_unidad: true,
+    valor_muestra: 48.99,
+    columna_padre: targetParent
+  }
+
+  dynamicParams.value.push(rowMin, rowMax)
 }
 
 const removeParamRow = (index: number) => {
@@ -1667,6 +1759,43 @@ const formatSampleValue = (param: DynamicParamRow, rowIdx: number = 0): string =
   return showUnit && param.unidad ? `${numStr} ${param.unidad}` : numStr
 }
 
+// Organización anidada para el Live Preview ("Espejo de Portada")
+const nestedPreviewHeaders = computed(() => {
+  return buildNestedTableHeaders(visibleTableColumns.value)
+})
+
+const hasSubcolumnsInPreview = computed<boolean>(() => {
+  return nestedPreviewHeaders.value.hasSubcolumns
+})
+
+const formatSubcolumnSample = (param: DynamicParamRow, rowIdx: number = 0): string => {
+  const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
+  const key = (param.clave || '').toLowerCase()
+  if (lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')) {
+    return rowIdx === 0 ? '48.970' : '53.970'
+  }
+  if (lbl.includes('máx') || lbl.includes('max') || key.endsWith('_max') || key.endsWith('_max_mm')) {
+    return rowIdx === 0 ? '48.990' : '53.990'
+  }
+  return formatSampleValue(param, rowIdx)
+}
+
+// Agrupación de parámetros para el formulario de captura de repuesto
+const groupedActiveParams = computed(() => {
+  if (!activeGroup.value?.parametros) return []
+  const blocks: { parent: string | null; params: ParametroTecnicoDefinicion[] }[] = []
+  for (const p of activeGroup.value.parametros) {
+    const parent = p.columna_padre?.trim() || null
+    const existing = blocks.find(b => b.parent === parent)
+    if (existing) {
+      existing.params.push(p)
+    } else {
+      blocks.push({ parent, params: [p] })
+    }
+  }
+  return blocks
+})
+
 const validateGroupForm = (): boolean => {
   const errors: Record<string, string> = {}
   if (!groupNombre.value.trim()) {
@@ -1717,7 +1846,8 @@ const handleSaveGroup = async () => {
         requerido: p.requerido,
         filtrable: soloFiltrosEnTabla.value ? (p.requerido && p.filtrable !== false) : (p.filtrable !== false),
         descripcion: p.descripcion.trim() || undefined,
-        opciones: parsedOpciones
+        opciones: parsedOpciones,
+        columna_padre: p.columna_padre?.trim() || undefined
       }
     })
 
@@ -2396,77 +2526,99 @@ onUnmounted(() => {
 
                 </div>
 
-                <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS -->
-                <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS (CON SOPORTE DE SUB-COLUMNAS) -->
+                <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="space-y-3">
                   <div 
-                    v-for="param in activeGroup.parametros" 
-                    :key="param.id"
-                    class="bg-white p-3 rounded-xl border transition shadow-2xs"
-                    :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
+                    v-for="block in groupedActiveParams" 
+                    :key="block.parent || 'standalone'"
+                    :class="block.parent ? 'p-3 bg-blue-50/40 rounded-2xl border border-blue-200/80 space-y-2.5' : ''"
                   >
-                    <div class="flex items-center justify-between mb-1">
-                      <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
-                        <span>{{ param.etiqueta }}</span>
-                        <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
-                      </label>
-                      <span 
-                        :class="[
-                          'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full uppercase',
-                          param.requerido ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-slate-100 text-slate-500'
-                        ]"
+                    <!-- Encabezado de Agrupación de Sub-columnas si aplica -->
+                    <div v-if="block.parent" class="flex items-center justify-between pb-1.5 border-b border-blue-200/70">
+                      <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-[#004B97]"></span>
+                        <span class="text-xs font-black uppercase text-[#004B97] font-mono tracking-wider">
+                          {{ block.parent }}
+                        </span>
+                        <span class="text-[9px] font-bold text-blue-800 bg-blue-100 border border-blue-200 px-1.5 py-0.2 rounded-full">
+                          {{ block.params.length }} Sub-columnas
+                        </span>
+                      </div>
+                      <span class="text-[10px] text-slate-500 font-sans font-medium">Medidas agrupadas para rectificación</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" :class="block.parent ? 'pt-0.5' : ''">
+                      <div 
+                        v-for="param in block.params" 
+                        :key="param.id"
+                        class="bg-white p-3 rounded-xl border transition shadow-2xs"
+                        :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
                       >
-                        {{ param.requerido ? 'Req' : 'Opc' }}
-                      </span>
-                    </div>
+                        <div class="flex items-center justify-between mb-1">
+                          <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
+                            <span>{{ param.etiqueta }}</span>
+                            <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
+                          </label>
+                          <span 
+                            :class="[
+                              'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full uppercase',
+                              param.requerido ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-slate-100 text-slate-500'
+                            ]"
+                          >
+                            {{ param.requerido ? 'Req' : 'Opc' }}
+                          </span>
+                        </div>
 
-                    <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
-                      <input
-                        v-model.number="paramValues[param.clave]"
-                        type="number"
-                        step="0.001"
-                        placeholder="0.00"
-                        class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                      />
-                      <span class="absolute right-2.5 text-[9px] font-black text-slate-400 uppercase pointer-events-none">
-                        {{ param.unidad || 'mm' }}
-                      </span>
-                    </div>
+                        <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
+                          <input
+                            v-model.number="paramValues[param.clave]"
+                            type="number"
+                            step="0.001"
+                            placeholder="0.00"
+                            class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                          />
+                          <span class="absolute right-2.5 text-[9px] font-black text-slate-400 uppercase pointer-events-none">
+                            {{ param.unidad || 'mm' }}
+                          </span>
+                        </div>
 
-                    <div v-else-if="param.tipo_dato === 'seleccion'" class="relative">
-                      <select
-                        v-model="paramValues[param.clave]"
-                        class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                      >
-                        <option value="">Selecciona opción</option>
-                        <option v-for="opt in param.opciones || []" :key="opt" :value="opt">
-                          {{ opt }}
-                        </option>
-                      </select>
-                    </div>
+                        <div v-else-if="param.tipo_dato === 'seleccion'" class="relative">
+                          <select
+                            v-model="paramValues[param.clave]"
+                            class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                          >
+                            <option value="">Selecciona opción</option>
+                            <option v-for="opt in param.opciones || []" :key="opt" :value="opt">
+                              {{ opt }}
+                            </option>
+                          </select>
+                        </div>
 
-                    <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
-                      <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                        <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                        <span>Sí</span>
-                      </label>
-                      <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                        <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                        <span>No</span>
-                      </label>
-                    </div>
+                        <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
+                          <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                            <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
+                            <span>Sí</span>
+                          </label>
+                          <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                            <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
+                            <span>No</span>
+                          </label>
+                        </div>
 
-                    <div v-else class="relative">
-                      <input
-                        v-model="paramValues[param.clave]"
-                        type="text"
-                        placeholder="Valor"
-                        class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                      />
-                    </div>
+                        <div v-else class="relative">
+                          <input
+                            v-model="paramValues[param.clave]"
+                            type="text"
+                            placeholder="Valor"
+                            class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                          />
+                        </div>
 
-                    <p v-if="formErrors[param.clave]" class="text-[9px] text-rose-600 font-bold mt-1">
-                      {{ formErrors[param.clave] }}
-                    </p>
+                        <p v-if="formErrors[param.clave]" class="text-[9px] text-rose-600 font-bold mt-1">
+                          {{ formErrors[param.clave] }}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2947,14 +3099,25 @@ onUnmounted(() => {
                     <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
                     <span>{{ groupTipoVista === 'tabla' ? 'Columnas / Parámetros de la Tabla' : 'Gestor de Parámetros' }}</span>
                   </h3>
-                  <button
-                    type="button"
-                    @click="addParamRow"
-                    class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95"
-                  >
-                    <Plus class="w-3.5 h-3.5" />
-                    <span>+ Medida</span>
-                  </button>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      @click="addPairedSubcolumns()"
+                      class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#004B97] border border-blue-200 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
+                      title="Añade un par de sub-columnas (Mín / Máx) agrupadas bajo una columna padre (ej: STD, 1er, 2da...)"
+                    >
+                      <Split class="w-3.5 h-3.5 text-[#004B97]" />
+                      <span>+ Sub-columnas (Mín/Máx)</span>
+                    </button>
+                    <button
+                      type="button"
+                      @click="addParamRow"
+                      class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
+                    >
+                      <Plus class="w-3.5 h-3.5" />
+                      <span>+ Medida</span>
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Opción Global: Ocultar en filtros los que no se muestren en la tabla -->
@@ -3132,6 +3295,64 @@ onUnmounted(() => {
                           class="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
+
+                      <!-- Sub-columna / Columna Superior Agrupadora -->
+                      <div class="sm:col-span-2 pt-2 border-t border-slate-200/80">
+                        <div class="flex flex-wrap items-center justify-between gap-1 mb-1.5">
+                          <label class="text-[11px] font-extrabold text-slate-800 flex items-center gap-1.5">
+                            <Split class="w-3.5 h-3.5 text-[#004B97]" />
+                            <span>Columna Superior / Padre</span>
+                            <span class="text-[10px] font-normal text-slate-500">(Para crear sub-columnas adentro)</span>
+                          </label>
+                          <div class="flex items-center gap-1 flex-wrap">
+                            <span class="text-[9px] text-slate-400 font-bold uppercase">Sugerencias:</span>
+                            <button
+                              v-for="sug in suggestedParentColumns"
+                              :key="sug"
+                              type="button"
+                              @click="param.columna_padre = param.columna_padre === sug ? '' : sug"
+                              class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border transition cursor-pointer"
+                              :class="param.columna_padre === sug 
+                                ? 'bg-[#004B97] text-white border-[#004B97] shadow-2xs' 
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-100'"
+                            >
+                              {{ sug }}
+                            </button>
+                          </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <div class="relative flex-1">
+                            <input
+                              v-model="param.columna_padre"
+                              type="text"
+                              placeholder="ej. STD, 1er, 2da, 3er, 4ta, Rectificación..."
+                              class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                            />
+                            <button
+                              v-if="param.columna_padre"
+                              type="button"
+                              @click="param.columna_padre = ''"
+                              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                              title="Quitar columna padre"
+                            >
+                              <X class="w-3 h-3" />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            @click="addSiblingSubcolumn(param, idx)"
+                            class="px-2.5 py-1.5 rounded-lg bg-cyan-50 border border-cyan-300 text-[#038391] hover:bg-cyan-100 text-xs font-bold transition flex items-center gap-1 shadow-2xs whitespace-nowrap active:scale-95 cursor-pointer"
+                            title="Crea otra sub-columna dentro de este mismo encabezado"
+                          >
+                            <Plus class="w-3 h-3" />
+                            <span>+ Sub-columna</span>
+                          </button>
+                        </div>
+                        <p v-if="param.columna_padre" class="text-[10px] text-cyan-800 font-semibold mt-1 flex items-center gap-1">
+                          <span>↳ Se agrupa como sub-columna debajo de</span>
+                          <strong class="bg-cyan-100 px-1.5 py-0.2 rounded text-cyan-900 font-mono">{{ param.columna_padre }}</strong>
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3245,7 +3466,45 @@ onUnmounted(() => {
                   <!-- Contenedor con scroll horizontal de tabla -->
                   <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-x-auto shadow-inner">
                     <table class="w-full text-left text-xs border-collapse">
-                      <thead>
+                      <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
+                      <thead v-if="hasSubcolumnsInPreview">
+                        <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
+                          <th rowspan="2" class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Componente</th>
+                          <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">Código OEM</th>
+                          <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">Catálogos Alternos</th>
+                          <template v-for="item in nestedPreviewHeaders.tier1" :key="item.id">
+                            <th 
+                              v-if="item.isGroup"
+                              :colspan="item.colspan"
+                              class="py-1 px-2 border-r border-b border-slate-700 bg-cyan-950/60 text-[#04C4D9] text-center font-black uppercase tracking-wider text-[10px]"
+                            >
+                              {{ item.label }}
+                            </th>
+                            <th 
+                              v-else
+                              rowspan="2"
+                              class="py-2 px-2.5 border-r border-slate-800 text-cyan-300 font-bold uppercase text-[10px] text-center whitespace-nowrap"
+                            >
+                              {{ item.label }}
+                            </th>
+                          </template>
+                          <th rowspan="2" class="py-2 px-3 text-right w-24 whitespace-nowrap">Acciones</th>
+                        </tr>
+                        <!-- Fila 2 de Cabecera: Sub-columnas -->
+                        <tr class="bg-slate-900 text-[9px] text-slate-300 font-bold uppercase tracking-tight border-b border-slate-800">
+                          <th 
+                            v-for="sub in nestedPreviewHeaders.tier2"
+                            :key="sub.id"
+                            class="py-1 px-2 text-center border-r border-slate-800 whitespace-nowrap bg-slate-900/90 font-mono"
+                          >
+                            <span>{{ sub.label }}</span>
+                            <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <!-- Caso B: Cabecera Estándar de 1 Nivel -->
+                      <thead v-else>
                         <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
                           <!-- 1. COMPONENTE -->
                           <th class="py-2 px-3 border-r border-slate-800 w-44 whitespace-nowrap">Componente</th>
@@ -3308,8 +3567,18 @@ onUnmounted(() => {
                             <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
                           </td>
 
-                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Tabla si groupTipoVista === 'tabla', o Badges si 'normal') -->
-                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
+                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Con Sub-columnas o Formato Estándar) -->
+                          <template v-if="hasSubcolumnsInPreview">
+                            <td 
+                              v-for="colParam in visibleTableColumns" 
+                              :key="`prev1-subcol-${colParam.id}`"
+                              class="py-2.5 px-2 border-r border-slate-800/70 text-center font-mono font-bold text-xs"
+                              :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                            >
+                              {{ formatSubcolumnSample(colParam, 0) }}
+                            </td>
+                          </template>
+                          <td v-else class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
                             <template v-if="groupTipoVista === 'tabla'">
                               <div class="inline-block border border-slate-700 rounded-lg overflow-hidden bg-slate-900 font-mono text-[11px]">
                                 <table class="border-collapse text-center">
@@ -3419,8 +3688,18 @@ onUnmounted(() => {
                             <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
                           </td>
 
-                          <!-- 4. COTAS / MEDIDAS AGRUPADAS -->
-                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
+                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Con Sub-columnas o Formato Estándar) -->
+                          <template v-if="hasSubcolumnsInPreview">
+                            <td 
+                              v-for="colParam in visibleTableColumns" 
+                              :key="`prev2-subcol-${colParam.id}`"
+                              class="py-2.5 px-2 border-r border-slate-800/70 text-center font-mono font-bold text-xs"
+                              :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                            >
+                              {{ formatSubcolumnSample(colParam, 1) }}
+                            </td>
+                          </template>
+                          <td v-else class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
                             <template v-if="groupTipoVista === 'tabla'">
                               <div class="inline-block border border-slate-700 rounded-lg overflow-hidden bg-slate-900 font-mono text-[11px]">
                                 <table class="border-collapse text-center">

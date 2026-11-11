@@ -76,6 +76,109 @@ export interface ParametroTecnicoDefinicion {
   opciones?: string[]
   valor_minimo?: number
   valor_maximo?: number
+  columna_padre?: string // Columna superior/padre para sub-columnas (ej. "STD", "1er", "2da", "Diámetros")
+}
+
+export interface HeaderTier1Item<T = unknown> {
+  id: string
+  label: string
+  isGroup: boolean
+  colspan: number
+  rowspan: number
+  param?: T
+  subParams?: T[]
+}
+
+export interface HeaderTier2Item<T = unknown> {
+  id: string
+  label: string
+  unidad?: string
+  param: T
+}
+
+export interface NestedHeadersResult<T = unknown> {
+  hasSubcolumns: boolean
+  tier1: HeaderTier1Item<T>[]
+  tier2: HeaderTier2Item<T>[]
+}
+
+/**
+ * Organiza columnas con sub-columnas en cabeceras HTML de dos niveles (rowspan / colspan).
+ * ponytail: Utilidad pura y determinista sin dependencias externas.
+ */
+export function buildNestedTableHeaders<T extends { id: string; etiqueta: string; etiqueta_corta?: string; unidad?: string; columna_padre?: string }>(
+  columns: T[]
+): NestedHeadersResult<T> {
+  const hasSubcolumns = columns.some(c => !!c.columna_padre && c.columna_padre.trim().length > 0)
+  if (!hasSubcolumns) {
+    return {
+      hasSubcolumns: false,
+      tier1: columns.map(c => ({
+        id: c.id,
+        label: c.etiqueta_corta || c.etiqueta,
+        isGroup: false,
+        colspan: 1,
+        rowspan: 1,
+        param: c
+      })),
+      tier2: []
+    }
+  }
+
+  const tier1: HeaderTier1Item<T>[] = []
+  const tier2: HeaderTier2Item<T>[] = []
+
+  let currentParent: string | null = null
+  let currentGroupChildren: T[] = []
+
+  const flushGroup = () => {
+    if (currentParent && currentGroupChildren.length > 0) {
+      tier1.push({
+        id: `grp-hdr-${currentParent}-${tier1.length}`,
+        label: currentParent,
+        isGroup: true,
+        colspan: currentGroupChildren.length,
+        rowspan: 1,
+        subParams: [...currentGroupChildren]
+      })
+      for (const child of currentGroupChildren) {
+        tier2.push({
+          id: child.id,
+          label: child.etiqueta_corta || child.etiqueta,
+          unidad: child.unidad,
+          param: child
+        })
+      }
+      currentParent = null
+      currentGroupChildren = []
+    }
+  }
+
+  for (const col of columns) {
+    const parent = col.columna_padre?.trim()
+    if (parent) {
+      if (currentParent === parent) {
+        currentGroupChildren.push(col)
+      } else {
+        flushGroup()
+        currentParent = parent
+        currentGroupChildren = [col]
+      }
+    } else {
+      flushGroup()
+      tier1.push({
+        id: col.id,
+        label: col.etiqueta_corta || col.etiqueta,
+        isGroup: false,
+        colspan: 1,
+        rowspan: 2,
+        param: col
+      })
+    }
+  }
+  flushGroup()
+
+  return { hasSubcolumns: true, tier1, tier2 }
 }
 
 export type GrupoTipoVista = 'normal' | 'tabla'

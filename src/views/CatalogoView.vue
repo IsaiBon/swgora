@@ -8,6 +8,8 @@ import {
   type Fabricante,
   type GrupoRepuesto,
   type Equivalencia,
+  type ParametroTecnicoDefinicion,
+  buildNestedTableHeaders,
   normalizeText,
   sortMotorsByRelevance
 } from '@/services/catalogService'
@@ -723,6 +725,32 @@ const isPartTableFormat = (part: RepuestoTecnico): boolean => {
   const grp = catalogStore.grupos.find(g => g.categoria.toLowerCase() === catLower || g.codigo.toLowerCase() === catLower)
   if (grp?.tipo_vista === 'tabla') return true
   return Array.isArray((part.dimensiones as any)?.anillos) && (part.dimensiones as any).anillos.length > 0
+}
+
+// Columnas técnicas visibles (en tabla) para la familia actual
+const activeTableGroupColumns = computed<ParametroTecnicoDefinicion[]>(() => {
+  if (!currentGroupDefinition.value?.parametros) return []
+  return currentGroupDefinition.value.parametros.filter(p => p.requerido)
+})
+
+// Estructura de cabeceras de tabla anidadas (2 niveles: padre / sub-columnas)
+const groupSubcolumnsHeaders = computed(() => {
+  return buildNestedTableHeaders(activeTableGroupColumns.value)
+})
+
+// Determina si la familia actual activa el modo de sub-columnas
+const hasGroupSubcolumns = computed<boolean>(() => {
+  if (isCurrentGroupTable.value) return false // Anillos mantiene su matriz especializada
+  return groupSubcolumnsHeaders.value.hasSubcolumns
+})
+
+const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion): string => {
+  if (val == null || val === '') return '—'
+  if (col.tipo_dato === 'booleano') return val ? 'Sí' : 'No'
+  if (typeof val === 'number') {
+    return col.unidad === '°' ? `${val}°` : val.toFixed(2)
+  }
+  return String(val)
 }
 
 const CORE_TABLE_RING_KEYS = new Set([
@@ -2220,7 +2248,8 @@ const getModalExtraDimensions = (part: RepuestoTecnico | null | undefined): Arra
     if (rawVal === undefined || rawVal === null || rawVal === '' || typeof rawVal === 'object') continue
 
     const paramDef = params.find(p => p.clave === rawKey)
-    const label = paramDef?.etiqueta || rawKey.replace(/_mm$/i, '').replace(/_/g, ' ')
+    const baseLabel = paramDef?.etiqueta || rawKey.replace(/_mm$/i, '').replace(/_/g, ' ')
+    const label = paramDef?.columna_padre ? `${paramDef.columna_padre} › ${baseLabel}` : baseLabel
     const unit = paramDef?.unidad || (rawKey.endsWith('_mm') ? 'mm' : (rawKey.includes('angulo') || rawKey.includes('grados') ? '°' : ''))
     const valStr = String(rawVal).trim()
     const formattedVal = unit && !valStr.toLowerCase().endsWith(unit.toLowerCase()) ? `${valStr} ${unit}` : valStr
@@ -4018,7 +4047,48 @@ onUnmounted(() => {
 
         <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-separate border-spacing-0">
-            <thead class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+            <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
+            <thead v-if="hasGroupSubcolumns" class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+              <tr>
+                <th rowspan="2" class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Componente</th>
+                <th rowspan="2" class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Código OEM</th>
+                <th rowspan="2" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Catálogos Alternos</th>
+                
+                <!-- Columnas Padre / Standalone de la Familia -->
+                <template v-for="item in groupSubcolumnsHeaders.tier1" :key="item.id">
+                  <th 
+                    v-if="item.isGroup"
+                    :colspan="item.colspan"
+                    class="py-1 px-2.5 text-center font-black text-[#004B97] bg-blue-50/90 border-b border-r border-slate-200 tracking-wider text-[11px]"
+                  >
+                    {{ item.label }}
+                  </th>
+                  <th 
+                    v-else
+                    rowspan="2"
+                    class="py-1.5 px-2.5 text-center align-middle font-bold text-slate-700 border-b border-r border-slate-200 bg-slate-100/95 whitespace-nowrap"
+                  >
+                    {{ item.label }}
+                  </th>
+                </template>
+
+                <th rowspan="2" class="py-1.5 px-3 w-24 text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
+              </tr>
+              <!-- Fila 2 de Cabecera: Sub-columnas -->
+              <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase tracking-tight">
+                <th 
+                  v-for="sub in groupSubcolumnsHeaders.tier2"
+                  :key="sub.id"
+                  class="py-1 px-2 text-center border-b border-r border-slate-200 whitespace-nowrap bg-slate-50 font-mono"
+                >
+                  <span>{{ sub.label }}</span>
+                  <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
+                </th>
+              </tr>
+            </thead>
+
+            <!-- Caso B: Cabecera Estándar (Existente) -->
+            <thead v-else class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
                 <th class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Componente</th>
                 <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Código OEM</th>
@@ -4044,7 +4114,10 @@ onUnmounted(() => {
                 <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-20 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
-                <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
+                <template v-if="hasGroupSubcolumns">
+                  <td v-for="col in activeTableGroupColumns" :key="`skel-col-${col.id}`" class="py-2 px-2 border-b border-slate-100"><div class="h-3.5 w-12 mx-auto bg-slate-200 rounded"></div></td>
+                </template>
+                <td v-else class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-3 text-right border-b border-slate-100"><div class="h-3.5 w-14 bg-slate-200 rounded ml-auto"></div></td>
               </tr>
             </tbody>
@@ -4243,8 +4316,19 @@ onUnmounted(() => {
                   </div>
                 </td>
 
-                <!-- 4. MEDIDAS Y COTAS -->
-                <td class="py-2 px-3 align-middle border-b border-slate-100">
+                <!-- 4. MEDIDAS Y COTAS (Modo Sub-columnas Anidadas o formato estándar) -->
+                <template v-if="hasGroupSubcolumns">
+                  <td 
+                    v-for="col in activeTableGroupColumns" 
+                    :key="`td-subcol-${part.id}-${col.id}`"
+                    class="py-2 px-2 text-center align-middle border-b border-r border-slate-100 font-mono font-bold text-xs"
+                    :class="getMeasurementMatchClass(getPartParamValue(part, col.clave), dynamicParamFilters[col.clave], getTol(col.clave))"
+                  >
+                    {{ formatPartParamColValue(getPartParamValue(part, col.clave), col) }}
+                  </td>
+                </template>
+
+                <td v-else class="py-2 px-3 align-middle border-b border-slate-100">
                   
                   <!-- Caso Especializado: Familias en Tabla / Anillos de motor (Sincronizado con Gestor de Familias) -->
                   <div v-if="isPartTableFormat(part)" class="py-1">
