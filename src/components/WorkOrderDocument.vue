@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import type { Order } from '@/services/ordersService'
+import { useTallerStore } from '@/stores/taller'
 
 const props = withDefaults(
   defineProps<{
@@ -11,6 +12,12 @@ const props = withDefaults(
     variant: 'preview'
   }
 )
+
+const tallerStore = useTallerStore()
+
+onMounted(async () => {
+  await tallerStore.loadTallerInfo()
+})
 
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 
@@ -191,11 +198,11 @@ const orderGrandTotal = computed(() => {
     <div class="border-b-2 border-slate-900 pb-3 mb-3">
       <div class="flex items-start justify-between gap-3">
         
-        <!-- Logo + Información de la Empresa Rectificadora -->
+        <!-- Logo + Información de la Empresa Rectificadora (Dinámica desde Supabase) -->
         <div class="flex items-center gap-3.5 flex-1">
           <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
             <img
-              src="/logo-taller.png"
+              :src="tallerStore.tallerInfo.logo_url || '/logo-taller.png'"
               alt="Logo Rectificadora"
               class="max-w-full max-h-full object-contain"
               @error="(e: any) => e.target.style.display = 'none'"
@@ -204,14 +211,14 @@ const orderGrandTotal = computed(() => {
 
           <div>
             <h1 class="text-sm sm:text-base font-black tracking-tight text-slate-900 uppercase leading-tight">
-              TALLER INDUSTRIAL Y RECTIFICADO DE MOTORES
+              {{ tallerStore.tallerInfo.nombre }}
             </h1>
             <p class="text-[11px] font-medium text-slate-700 mt-0.5 leading-snug">
-              Col. Milagro de la Paz, Av. San Luis y Calle Oriente #12 San Miguel, El Salvador
+              {{ tallerStore.tallerInfo.direccion }}
             </p>
             <div class="flex items-center gap-4 text-[11px] font-bold text-slate-800 mt-1">
-              <span>Cel: 7831-2641</span>
-              <span>Cel: 7142-0401</span>
+              <span v-if="tallerStore.tallerInfo.celular1">Cel: {{ tallerStore.tallerInfo.celular1 }}</span>
+              <span v-if="tallerStore.tallerInfo.celular2">Cel: {{ tallerStore.tallerInfo.celular2 }}</span>
             </div>
           </div>
         </div>
@@ -384,7 +391,7 @@ const orderGrandTotal = computed(() => {
       <!-- Izquierda: Eslogan y Términos -->
       <div class="flex-1 space-y-2">
         <div class="text-[11.5px] font-black italic text-slate-800 tracking-wide font-serif">
-          "APOYARTE ES NUESTRO COMPROMISO"
+          "{{ tallerStore.tallerInfo.eslogan || 'APOYARTE ES NUESTRO COMPROMISO' }}"
         </div>
         
         <div class="pt-6 border-b border-slate-500 w-48 text-center">

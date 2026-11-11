@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
+import { useTallerStore } from '@/stores/taller'
 import { ordersService, type Order } from '@/services/ordersService'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
@@ -30,6 +31,7 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
+const tallerStore = useTallerStore()
 
 // Vistas: 'list' (listado) o 'form' (formulario de creación/edición)
 const currentView = ref<'list' | 'form'>('list')
@@ -130,6 +132,7 @@ const handleDownloadOrder = async (order: Order) => {
   orderForDownload.value = order
 
   try {
+    await tallerStore.loadTallerInfo()
     await nextTick()
     await new Promise((resolve) => setTimeout(resolve, 80))
 

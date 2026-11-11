@@ -17,6 +17,16 @@ const routes = [
       allowedRoles: ['Administrador'],
     },
   },
+  {
+    path: '/taller',
+    name: 'Taller',
+    component: () => import('@/views/TallerView.vue'),
+    meta: {
+      layout: 'main',
+      title: 'Configuración del Taller - JR Blanco',
+      allowedRoles: ['Administrador'],
+    },
+  },
 
 
   {

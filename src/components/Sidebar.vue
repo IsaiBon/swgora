@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   Package,
   Users,
+  Building2,
   X,
   ChevronRight,
 } from 'lucide-vue-next'
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { name: 'Catálogo', path: '/catalogo', icon: Package },
   { name: 'Clientes', path: '/clientes', icon: Users },
   { name: 'Usuarios', path: '/usuarios', icon: Users },
+  { name: 'Taller', path: '/taller', icon: Building2 },
 ]
 
 const visibleNavItems = computed(() => {
