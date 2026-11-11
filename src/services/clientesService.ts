@@ -175,6 +175,49 @@ export const clientesService = {
   /**
    * Obtiene todos los clientes aplicando filtros opcionales (búsqueda, tipo, estado).
    */
+  async getClientesFromSupabase(searchQuery?: string): Promise<Cliente[]> {
+    try {
+      let query = supabase
+        .from('clientes')
+        .select('*')
+        .order('nombre', { ascending: true })
+
+      if (searchQuery && searchQuery.trim()) {
+        const s = searchQuery.trim()
+        query = query.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,taller.ilike.%${s}%`)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('[ClientesService] Error consultando clientes desde Supabase:', error)
+        return []
+      }
+
+      return (data || []).map((item: any, idx: number) => ({
+        id: item.id,
+        codigo: item.codigo || generateClientCode(item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente', data.slice(0, idx)),
+        nombre: item.nombre || '',
+        telefono: item.telefono || '',
+        direccion: item.direccion || '',
+        tipo: (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType,
+        estado: (item.estado === 'Inactivo' ? 'Inactivo' : 'Activo') as ClientStatus,
+        especificaciones_tecnicas: {
+          ...(item.especificaciones_tecnicas || {}),
+          ...(item.taller && !item.especificaciones_tecnicas?.taller ? { taller: item.taller } : {})
+        },
+        created_at: item.created_at || new Date().toISOString(),
+        updated_at: item.updated_at || new Date().toISOString(),
+      }))
+    } catch (err) {
+      console.error('[ClientesService] Error inesperado consultando Supabase:', err)
+      return []
+    }
+  },
+
+  /**
+   * Obtiene todos los clientes aplicando filtros opcionales (búsqueda, tipo, estado).
+   */
   async getClientes(filters?: ClienteFilters): Promise<Cliente[]> {
     try {
       let query = supabase

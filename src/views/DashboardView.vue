@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ordersService, type Order, type OrderStatus } from '@/services/ordersService'
@@ -15,17 +15,17 @@ import {
   TrendingUp, 
   ArrowUpRight, 
   Activity, 
-  Sparkles,
-  Cog,
-  Calendar,
-  DollarSign,
-  Car,
-  Eye,
-  Building2,
-  X,
-  BarChart3,
-  Search,
-  CalendarDays
+  Sparkles, 
+  Cog, 
+  Calendar, 
+  DollarSign, 
+  Car, 
+  Eye, 
+  Building2, 
+  X, 
+  BarChart3, 
+  Search, 
+  CalendarDays 
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -35,7 +35,6 @@ const authStore = useAuthStore()
 const orders = ref<Order[]>([])
 const clients = ref<Cliente[]>([])
 const loading = ref(true)
-const refreshing = ref(false)
 const toastMessage = ref<{ text: string; type: 'success' | 'info' | 'error' } | null>(null)
 let toastTimeout: any = null
 
@@ -45,8 +44,15 @@ const selectedPeriod = ref<TimePeriod>('mes')
 const customStartDate = ref('')
 const customEndDate = ref('')
 
-// Filtro Reactivo de Cliente / Taller
+// Buscador Reactivo de Cliente / Taller consultado directamente en Supabase
+const supabaseClients = ref<Cliente[]>([])
+const selectedClient = ref<Cliente | null>(null)
 const selectedClientFilter = ref<string>('ALL')
+const clientSearchInput = ref('')
+const isClientDropdownOpen = ref(false)
+const isSearchingClients = ref(false)
+const clientSearchContainerRef = ref<HTMLElement | null>(null)
+let clientSearchDebounce: any = null
 
 // Filtros de la Tabla de Órdenes Recientes
 const tableSearchQuery = ref('')
@@ -62,30 +68,55 @@ const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success')
   }, 3500)
 }
 
-// Carga inicial y refresco desde Supabase
-const loadDashboardData = async (isManualRefresh = false) => {
-  if (isManualRefresh) {
-    refreshing.value = true
-  } else {
-    loading.value = true
-  }
-
+// Carga inicial consultando directamente Supabase (sin caché local)
+const loadDashboardData = async () => {
+  loading.value = true
   try {
     const [fetchedOrders, fetchedClients] = await Promise.all([
       ordersService.getOrders(),
-      clientesService.getClientes()
+      clientesService.getClientesFromSupabase()
     ])
     orders.value = fetchedOrders
+    supabaseClients.value = fetchedClients
     clients.value = fetchedClients
-    if (isManualRefresh) {
-      showToast('Datos sincronizados correctamente con Supabase', 'success')
-    }
   } catch (err) {
     console.error('[DashboardView] Error cargando datos de Supabase:', err)
-    showToast('Error de conexión con Supabase. Usando caché local.', 'error')
+    showToast('Error de conexión con Supabase al cargar clientes.', 'error')
   } finally {
     loading.value = false
-    refreshing.value = false
+  }
+}
+
+// Búsqueda asistida en vivo directo en Supabase
+const handleClientSearchInput = () => {
+  isClientDropdownOpen.value = true
+  if (clientSearchDebounce) clearTimeout(clientSearchDebounce)
+  clientSearchDebounce = setTimeout(async () => {
+    isSearchingClients.value = true
+    try {
+      supabaseClients.value = await clientesService.getClientesFromSupabase(clientSearchInput.value)
+    } catch (err) {
+      console.error('[DashboardView] Error buscando clientes en Supabase:', err)
+    } finally {
+      isSearchingClients.value = false
+    }
+  }, 250)
+}
+
+const selectClient = (client: Cliente | null) => {
+  selectedClient.value = client
+  selectedClientFilter.value = client ? client.id : 'ALL'
+  clientSearchInput.value = ''
+  isClientDropdownOpen.value = false
+}
+
+const clearClientFilter = () => {
+  selectClient(null)
+}
+
+const handleClickOutsideClientSearch = (event: MouseEvent) => {
+  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(event.target as Node)) {
+    isClientDropdownOpen.value = false
   }
 }
 
@@ -95,6 +126,8 @@ onMounted(async () => {
     return
   }
 
+  document.addEventListener('click', handleClickOutsideClientSearch)
+
   // Inicializar fechas para filtro personalizado (últimos 30 días)
   const today = new Date()
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000)
@@ -102,6 +135,10 @@ onMounted(async () => {
   customStartDate.value = thirtyDaysAgo.toISOString().split('T')[0]
 
   await loadDashboardData()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutsideClientSearch)
 })
 
 // === FILTRADO TEMPORAL Y DE CUENTA REACTIVO ===
@@ -152,15 +189,23 @@ const filteredOrders = computed(() => {
 
     if (!matchesPeriod) return false
 
-    // 2. Filtro de Cliente / Taller
-    if (selectedClientFilter.value !== 'ALL') {
-      const target = selectedClientFilter.value.toLowerCase().trim()
+    // 2. Filtro de Cliente / Taller consultado en Supabase
+    if (selectedClient.value) {
+      const c = selectedClient.value
+      const targetId = (c.id || '').toLowerCase()
+      const targetCode = (c.codigo || '').toLowerCase()
+      const targetName = (c.nombre || '').toLowerCase()
+      const targetTaller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+
       const matchesClient = 
-        (order.customerId && order.customerId.toLowerCase() === target) ||
-        (order.customerCode && order.customerCode.toLowerCase() === target) ||
-        (order.workshopCode && order.workshopCode.toLowerCase() === target) ||
-        (order.customer && order.customer.toLowerCase().includes(target)) ||
-        (order.workshop && order.workshop.toLowerCase().includes(target))
+        (order.customerId && order.customerId.toLowerCase() === targetId) ||
+        (order.customerCode && order.customerCode.toLowerCase() === targetCode) ||
+        (order.workshopCode && order.workshopCode.toLowerCase() === targetCode) ||
+        (targetName && order.customer && order.customer.toLowerCase().includes(targetName)) ||
+        (targetTaller && order.customer && order.customer.toLowerCase().includes(targetTaller)) ||
+        (targetTaller && order.workshop && order.workshop.toLowerCase().includes(targetTaller)) ||
+        (targetName && order.workshop && order.workshop.toLowerCase().includes(targetName))
+
       if (!matchesClient) return false
     }
 
@@ -190,14 +235,9 @@ const periodDescription = computed(() => {
   }
 })
 
-// Cliente seleccionado (si aplica)
+// Cliente seleccionado consultado directamente en Supabase
 const selectedClientInfo = computed(() => {
-  if (selectedClientFilter.value === 'ALL') return null
-  return clients.value.find(c => 
-    c.id === selectedClientFilter.value || 
-    c.codigo === selectedClientFilter.value ||
-    c.nombre.toLowerCase() === selectedClientFilter.value.toLowerCase()
-  ) || { nombre: selectedClientFilter.value, tipo: 'Cuenta' }
+  return selectedClient.value
 })
 
 // === MÉTRICAS CLAVE (KPIS) ===
@@ -407,14 +447,22 @@ const monthlyTrends = computed<MonthTrend[]>(() => {
   // Considerar todas las órdenes del año actual (o filtradas si hay cliente seleccionado)
   orders.value.forEach(order => {
     // Si hay filtro de cliente, respetarlo en la tendencia
-    if (selectedClientFilter.value !== 'ALL') {
-      const target = selectedClientFilter.value.toLowerCase().trim()
+    if (selectedClient.value) {
+      const c = selectedClient.value
+      const targetId = (c.id || '').toLowerCase()
+      const targetCode = (c.codigo || '').toLowerCase()
+      const targetName = (c.nombre || '').toLowerCase()
+      const targetTaller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+
       const matchesClient = 
-        (order.customerId && order.customerId.toLowerCase() === target) ||
-        (order.customerCode && order.customerCode.toLowerCase() === target) ||
-        (order.workshopCode && order.workshopCode.toLowerCase() === target) ||
-        (order.customer && order.customer.toLowerCase().includes(target)) ||
-        (order.workshop && order.workshop.toLowerCase().includes(target))
+        (order.customerId && order.customerId.toLowerCase() === targetId) ||
+        (order.customerCode && order.customerCode.toLowerCase() === targetCode) ||
+        (order.workshopCode && order.workshopCode.toLowerCase() === targetCode) ||
+        (targetName && order.customer && order.customer.toLowerCase().includes(targetName)) ||
+        (targetTaller && order.customer && order.customer.toLowerCase().includes(targetTaller)) ||
+        (targetTaller && order.workshop && order.workshop.toLowerCase().includes(targetTaller)) ||
+        (targetName && order.workshop && order.workshop.toLowerCase().includes(targetName))
+
       if (!matchesClient) return
     }
 
@@ -711,38 +759,127 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
           </div>
         </div>
 
-        <!-- Filtro por Cliente o Taller (Medir volumen por cuenta) -->
+        <!-- Filtro por Cliente o Taller (Buscador Reactivo en Supabase) -->
         <div class="flex flex-col sm:flex-row sm:items-center gap-2">
           <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
             <Building2 class="w-3.5 h-3.5 text-blue-600" />
             Tallerista / Cliente:
           </span>
 
-          <div class="relative min-w-[240px] sm:min-w-[280px]">
-            <select
-              v-model="selectedClientFilter"
-              class="w-full pl-3 pr-8 py-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-colors"
+          <div ref="clientSearchContainerRef" class="relative min-w-[260px] sm:min-w-[340px]">
+            <!-- Vista cuando hay un cliente seleccionado -->
+            <div 
+              v-if="selectedClient" 
+              class="flex items-center justify-between gap-2 px-3 py-1.5 bg-blue-50/90 border border-blue-300 rounded-xl text-xs shadow-xs"
             >
-              <option value="ALL">Todos los clientes y talleres</option>
-              <optgroup label="Talleres Mecánicos">
-                <option 
-                  v-for="c in clients.filter(cl => cl.tipo === 'Tallerista')" 
-                  :key="c.id" 
-                  :value="c.id"
+              <div class="flex items-center gap-2 min-w-0">
+                <span 
+                  class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider flex-shrink-0"
+                  :class="selectedClient.tipo === 'Tallerista' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
                 >
-                  {{ c.nombre }} {{ c.especificaciones_tecnicas?.taller ? `(${c.especificaciones_tecnicas.taller})` : '' }}
-                </option>
-              </optgroup>
-              <optgroup label="Clientes Particulares">
-                <option 
-                  v-for="c in clients.filter(cl => cl.tipo === 'Cliente')" 
-                  :key="c.id" 
-                  :value="c.id"
+                  {{ selectedClient.codigo || (selectedClient.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
+                </span>
+                <div class="truncate">
+                  <span class="font-bold text-slate-900 block truncate">{{ selectedClient.nombre }}</span>
+                  <span v-if="selectedClient.especificaciones_tecnicas?.taller" class="text-[10px] text-blue-700 font-medium block truncate">
+                    Taller: {{ selectedClient.especificaciones_tecnicas.taller }}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                @click="clearClientFilter"
+                class="p-1 hover:bg-blue-200/70 text-blue-700 hover:text-blue-900 rounded-lg transition flex-shrink-0"
+                title="Quitar filtro de cliente"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <!-- Input Buscador cuando NO hay cliente seleccionado -->
+            <div v-else class="relative">
+              <Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                v-model="clientSearchInput"
+                @focus="isClientDropdownOpen = true"
+                @input="handleClientSearchInput"
+                placeholder="Buscar cliente o taller en Supabase..."
+                class="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition-all"
+              />
+              <span v-if="isSearchingClients" class="absolute right-3 top-1/2 -translate-y-1/2">
+                <div class="w-3.5 h-3.5 border-2 border-[#038896] border-t-transparent rounded-full animate-spin"></div>
+              </span>
+            </div>
+
+            <!-- Desplegable de Resultados de Búsqueda de Supabase -->
+            <div
+              v-if="isClientDropdownOpen && !selectedClient"
+              class="absolute z-40 top-full mt-1.5 left-0 w-full sm:w-[380px] bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden"
+            >
+              <!-- Cabecera del desplegable -->
+              <div class="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500">
+                <span class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Clientes en Supabase
+                </span>
+                <span v-if="supabaseClients.length > 0">
+                  {{ supabaseClients.length }} disponibles
+                </span>
+              </div>
+
+              <!-- Lista con scroll -->
+              <div class="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                <!-- Opción para ver todos -->
+                <button
+                  type="button"
+                  @click="selectClient(null)"
+                  class="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center justify-between text-slate-700 font-semibold transition"
                 >
-                  {{ c.nombre }}
-                </option>
-              </optgroup>
-            </select>
+                  <span class="flex items-center gap-2">
+                    <Users class="w-4 h-4 text-slate-400" />
+                    Todos los clientes y talleres
+                  </span>
+                  <span class="text-[10px] text-slate-400">Sin filtro</span>
+                </button>
+
+                <!-- Clientes encontrados en Supabase -->
+                <button
+                  v-for="c in supabaseClients"
+                  :key="c.id"
+                  type="button"
+                  @click="selectClient(c)"
+                  class="w-full text-left px-3.5 py-2.5 hover:bg-cyan-50/60 transition group flex items-start gap-2.5"
+                >
+                  <span 
+                    class="px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5 flex-shrink-0"
+                    :class="c.tipo === 'Tallerista' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
+                  >
+                    {{ c.codigo }}
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-bold text-slate-900 group-hover:text-cyan-800 truncate">
+                      {{ c.nombre }}
+                    </div>
+                    <div v-if="c.especificaciones_tecnicas?.taller" class="text-[11px] text-blue-700 font-medium truncate">
+                      Taller: {{ c.especificaciones_tecnicas.taller }}
+                    </div>
+                    <div v-else-if="c.telefono" class="text-[10px] text-slate-400 truncate">
+                      Tel: {{ c.telefono }}
+                    </div>
+                  </div>
+                  <span class="text-[10px] font-medium text-slate-400 flex-shrink-0">
+                    {{ c.tipo }}
+                  </span>
+                </button>
+
+                <!-- Estado sin resultados -->
+                <div v-if="!isSearchingClients && supabaseClients.length === 0" class="px-4 py-6 text-center text-slate-500 text-xs">
+                  No se encontraron clientes en Supabase que coincidan con "{{ clientSearchInput }}".
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
@@ -784,10 +921,10 @@ const getStatusBadgeConfig = (status: OrderStatus) => {
             class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-semibold"
           >
             <Building2 class="w-3.5 h-3.5 text-blue-600" />
-            Cuenta: <strong class="text-blue-950">{{ selectedClientInfo.nombre }}</strong>
+            Cuenta en Supabase: <strong class="text-blue-950">{{ selectedClientInfo.nombre }}</strong>
             <button 
               type="button" 
-              @click="selectedClientFilter = 'ALL'"
+              @click="clearClientFilter"
               class="ml-1 text-blue-600 hover:text-blue-900"
               title="Quitar filtro de cuenta"
             >
