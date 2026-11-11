@@ -122,37 +122,37 @@ const handleNewOrder = () => {
 
 <template>
   <header class="sticky top-0 z-40 w-full flex justify-center pointer-events-none px-2 sm:px-4">
-    <!-- Notch Container Compacto Estilo Supaste / Dynamic Island -->
+    <!-- Notch Container Amplio Estilo Supaste / Dynamic Island -->
     <div
-      class="pointer-events-auto relative w-full sm:w-auto max-w-5xl h-12 bg-[#0a0a0a] text-white rounded-b-[20px] border-b border-x border-neutral-800/90 px-3 sm:px-4 flex items-center justify-between sm:justify-center gap-3 sm:gap-6 lg:gap-8 transition-all"
+      class="pointer-events-auto relative w-full sm:w-auto max-w-6xl xl:max-w-7xl h-14 bg-[#0a0a0a] text-white rounded-b-[22px] border-b border-x border-neutral-800/90 px-4 sm:px-6 lg:px-7 flex items-center justify-between sm:justify-center gap-3 sm:gap-6 lg:gap-8 xl:gap-10 transition-all shadow-xl shadow-black/40"
     >
       <!-- Oreja Izquierda Curva Cóncava (Inverted Fillet Ear) -->
       <svg
-        class="absolute top-0 -left-[18px] w-[18px] h-[18px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
-        viewBox="0 0 18 18"
+        class="absolute top-0 -left-[22px] w-[22px] h-[22px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
+        viewBox="0 0 22 22"
       >
-        <path d="M18 0 H0 C9.941 0 18 8.059 18 18 V0 Z" />
-        <path d="M0 0 C9.941 0 18 8.059 18 18" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+        <path d="M22 0 H0 C12.15 0 22 9.85 22 22 V0 Z" />
+        <path d="M0 0 C12.15 0 22 9.85 22 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
       </svg>
 
       <!-- Oreja Derecha Curva Cóncava (Inverted Fillet Ear) -->
       <svg
-        class="absolute top-0 -right-[18px] w-[18px] h-[18px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
-        viewBox="0 0 18 18"
+        class="absolute top-0 -right-[22px] w-[22px] h-[22px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
+        viewBox="0 0 22 22"
       >
-        <path d="M0 0 H18 C8.059 0 0 8.059 0 18 Z" />
-        <path d="M18 0 C8.059 0 0 8.059 0 18" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+        <path d="M0 0 H22 C9.85 0 0 12.15 0 22 Z" />
+        <path d="M22 0 C9.85 0 0 12.15 0 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
       </svg>
 
       <!-- 1. Left: Brand / Logo con efecto Glossy Glass (Estilo Supaste) -->
       <router-link
         :to="authStore.defaultRoute"
-        class="flex items-center gap-2 group select-none shrink-0"
+        class="flex items-center gap-2.5 group select-none shrink-0"
         title="Ir al inicio"
       >
         <!-- Ícono Squircle con brillo vítreo tipo iOS / Supaste -->
         <div
-          class="relative w-7 h-7 rounded-lg bg-gradient-to-br from-[#05C7F2] via-[#0284c7] to-[#004b97] p-1 flex items-center justify-center shadow-sm shadow-[#05C7F2]/25 ring-1 ring-white/30 overflow-hidden group-hover:scale-105 transition-transform"
+          class="relative w-8 h-8 rounded-lg bg-gradient-to-br from-[#05C7F2] via-[#0284c7] to-[#004b97] p-1 flex items-center justify-center shadow-sm shadow-[#05C7F2]/25 ring-1 ring-white/30 overflow-hidden group-hover:scale-105 transition-transform"
         >
           <!-- Reflejo brillante de cristal superior -->
           <div class="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/40 to-transparent rounded-t-lg pointer-events-none"></div>
@@ -172,13 +172,13 @@ const handleNewOrder = () => {
       </router-link>
 
       <!-- 2. Center: Enlaces de Navegación (Desktop) -->
-      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-0.5 bg-neutral-900/50 rounded-full border border-neutral-800/60">
+      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-1 bg-neutral-900/60 rounded-full border border-neutral-800/70 shadow-inner">
         <router-link
           v-for="item in visibleNavItems"
           :key="item.path"
           :to="item.path"
           :class="[
-            'relative px-3.5 py-1 rounded-full text-xs font-semibold transition-all duration-200 ease-out flex items-center gap-1.5 whitespace-nowrap select-none group',
+            'relative px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ease-out flex items-center gap-1.5 whitespace-nowrap select-none group',
             isActive(item.path)
               ? 'text-[#05F2F2] shadow-sm'
               : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
@@ -205,13 +205,13 @@ const handleNewOrder = () => {
       </nav>
 
       <!-- 3. Right: Botón Destacado '+ Nueva Orden' + Perfil con Dropdown -->
-      <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+      <div class="flex items-center gap-2 sm:gap-3 shrink-0">
         <!-- Botón Blanco Destacado Estilo 'Download' de Supaste -->
         <button
           v-if="authStore.canAccess('/ordenes')"
           type="button"
           @click="handleNewOrder"
-          class="bg-white hover:bg-neutral-100 text-neutral-950 font-bold text-xs px-3 py-1 rounded-full shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+          class="bg-white hover:bg-neutral-100 text-neutral-950 font-bold text-xs px-3.5 py-1.5 rounded-full shadow-sm hover:shadow active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
           title="Crear nueva orden de trabajo o cotización"
         >
           <Plus class="w-3.5 h-3.5 stroke-[2.5]" />
@@ -231,11 +231,11 @@ const handleNewOrder = () => {
           <button
             type="button"
             @click.stop="toggleUserMenu"
-            class="flex items-center gap-1.5 px-2 py-0.5 rounded-full hover:bg-neutral-800/80 border border-transparent hover:border-neutral-700/60 transition cursor-pointer select-none group shrink-0"
+            class="flex items-center gap-1.5 px-2.5 py-1 rounded-full hover:bg-neutral-800/80 border border-transparent hover:border-neutral-700/60 transition cursor-pointer select-none group shrink-0"
             :class="{ 'bg-neutral-800 border-neutral-700/80': userMenuOpen }"
             aria-label="Perfil y opciones de usuario"
           >
-            <div class="w-6 h-6 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/10 group-hover:ring-white/25 transition">
+            <div class="w-7 h-7 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0 ring-1 ring-white/10 group-hover:ring-white/25 transition">
               <img 
                 v-if="authStore.user?.avatar" 
                 :src="authStore.user.avatar" 
@@ -245,12 +245,12 @@ const handleNewOrder = () => {
               <UserIcon v-else class="w-3.5 h-3.5 text-neutral-400" />
             </div>
 
-            <span class="hidden sm:inline text-xs font-semibold text-neutral-200 group-hover:text-white transition truncate max-w-[110px]">
+            <span class="hidden sm:inline text-xs font-semibold text-neutral-200 group-hover:text-white transition truncate max-w-[120px]">
               {{ authStore.user?.name }}
             </span>
 
             <ChevronDown
-              class="w-3 h-3 text-neutral-400 group-hover:text-white transition-transform duration-200"
+              class="w-3.5 h-3.5 text-neutral-400 group-hover:text-white transition-transform duration-200"
               :class="{ 'rotate-180 text-white': userMenuOpen }"
             />
           </button>
@@ -378,7 +378,7 @@ const handleNewOrder = () => {
     >
       <div
         v-if="mobileMenuOpen"
-        class="pointer-events-auto absolute top-14 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 space-y-3 z-50 lg:hidden"
+        class="pointer-events-auto absolute top-16 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 space-y-3 z-50 lg:hidden"
       >
         <div class="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-2">
           Navegación
