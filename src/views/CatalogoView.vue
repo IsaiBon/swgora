@@ -11,6 +11,7 @@ import {
   type ParametroTecnicoDefinicion,
   buildNestedTableHeaders,
   buildRowSpanMeta,
+  normalizeLegacyRingDesign,
   normalizeText,
   resolveOptionBadgeClass,
   sanitizeGroupParams,
@@ -847,7 +848,10 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
     return dims.subfilas.map((sf: any, idx: number) => ({
       ...sf,
-      grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (configuredPadres[idx] || '')
+      grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (configuredPadres[idx] || ''),
+      medidas: sf.medidas?.tipo_diseno !== undefined
+        ? { ...sf.medidas, tipo_diseno: normalizeLegacyRingDesign([sf.medidas.tipo_diseno]) }
+        : (sf.medidas || {})
     }))
   }
   if (
@@ -857,12 +861,10 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   ) {
     const isConical = Boolean(part.diseno_conico || dims?.diseno_conico || dims?.keystone)
     return getPartRingsList(part).map((ring: any, idx: number) => {
-      const rawDesign =
-        ring.tipo_diseno ||
-        ring.identificador ||
-        (ring.perfil && ring.perfil !== 'Estándar' ? ring.perfil : undefined) ||
-        ring.forma ||
-        (idx === 0 && isConical ? 'Cónico' : 'Plano')
+      const rawDesign = normalizeLegacyRingDesign(
+        [ring.tipo_diseno, ring.identificador, ring.perfil, ring.forma],
+        idx === 0 && isConical
+      )
       return {
         nombre: ring.posicion || `Anillo ${idx + 1}`,
         codigo: ring.codigo || (idx === 0 ? (part.codigo_oem || '') : ''),
@@ -2101,7 +2103,9 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
                   key === 'diametro_cilindro_mm' ? ring.d1 : (
                     key === 'grosor_mm' ? ring.h1 : (
                       key === 'altura_mm' ? ring.a1 : (
-                        key === 'tipo_diseno' ? (ring.tipo_diseno || ring.identificador || ring.perfil || ring.forma) : undefined
+                        key === 'tipo_diseno'
+                          ? normalizeLegacyRingDesign([ring.tipo_diseno, ring.identificador, ring.perfil, ring.forma])
+                          : undefined
                       )
                     )
                   )

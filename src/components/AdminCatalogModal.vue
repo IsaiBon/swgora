@@ -13,6 +13,7 @@ import {
   buildNestedTableHeaders,
   buildRowSpanMeta,
   getOptionBadgeClassByIndex,
+  normalizeLegacyRingDesign,
   sanitizeGroupParams
 } from '@/services/catalogService'
 import { 
@@ -1021,16 +1022,24 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
       nombre: sf.nombre || `Fila ${idx + 1}`,
       codigo: sf.codigo || '',
       grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (padres[idx] || ''),
-      medidas: sf.medidas ? { ...sf.medidas } : {}
+      medidas: sf.medidas
+        ? {
+            ...sf.medidas,
+            ...(sf.medidas.tipo_diseno !== undefined
+              ? { tipo_diseno: normalizeLegacyRingDesign([sf.medidas.tipo_diseno]) }
+              : {})
+          }
+        : {}
     }))
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   } else if (matchedGroup?.tipo_vista === 'tabla' && ringRows.value.length > 0) {
     const dFallback = loadedParams.diametro_cilindro_mm ?? part.diametro_cilindro_mm ?? null
     subfilasRows.value = ringRows.value.map((r, idx) => {
-      const perfilClean =
-        r.identificador_texto?.trim() ||
-        (r.perfil && !r.perfil.includes('Keystone') ? r.perfil : (r.tiene_identificador ? 'Cónico' : 'Plano'))
+      const perfilClean = normalizeLegacyRingDesign(
+        [r.extra?.tipo_diseno, r.identificador_texto, r.perfil, r.extra?.forma],
+        Boolean(r.tiene_identificador)
+      )
       return {
         id: r.id || `sf-${idx}-${Date.now()}`,
         tipo: r.tipo_aro || `fila_${idx + 1}`,
@@ -1042,7 +1051,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
           diametro_cilindro_mm: r.extra?.diametro_cilindro_mm ?? dFallback,
           grosor_mm: r.h1 ?? r.extra?.grosor_mm ?? null,
           altura_mm: r.a1 ?? r.extra?.altura_mm ?? null,
-          tipo_diseno: r.extra?.tipo_diseno ?? perfilClean
+          tipo_diseno: perfilClean
         }
       }
     })

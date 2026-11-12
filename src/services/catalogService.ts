@@ -205,6 +205,29 @@ export function resolveOptionBadgeClass(value: unknown, opciones?: string[], isF
   return isFilteredMatch ? `${base} ring-2 ring-offset-1 ring-slate-900/30` : base
 }
 
+/** Normaliza perfiles legados de catálogos RIK/OEM (ej. RECTANGULAR, ESTÁNDAR) hacia las opciones unificadas de Diseño / Perfil. */
+export function normalizeLegacyRingDesign(candidates: Array<unknown>, isConicalFallback = false): string {
+  const raw = candidates.map(c => String(c ?? '').trim()).find(Boolean) || ''
+  if (!raw) return isConicalFallback ? 'Cónico' : 'Plano'
+  const up = raw.toUpperCase()
+  if (
+    up === 'RECTANGULAR' ||
+    up === 'RECTANGULAR / PLANO' ||
+    up === 'ESTANDAR' ||
+    up === 'ESTÁNDAR' ||
+    up === 'STANDARD' ||
+    up === 'PLANO'
+  ) {
+    return isConicalFallback ? 'Cónico' : 'Plano'
+  }
+  if (up.includes('SEMI')) return 'Semi-cónico'
+  if (up.includes('KEYSTONE') || up.includes('CÓNIC') || up.includes('CONIC')) return 'Cónico'
+  if (up.includes('DOBLE ESPIRAL')) return 'Doble Espiral'
+  if (up.includes('ESPIRAL')) return '1 Espiral'
+  if (up.includes('ESCALON')) return 'Escalonado'
+  return raw
+}
+
 export interface RowClusterItem<T = string> {
   rowIdx: number
   name: T
