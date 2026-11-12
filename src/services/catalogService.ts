@@ -181,6 +181,147 @@ export function buildNestedTableHeaders<T extends { id: string; etiqueta: string
   return { hasSubcolumns: true, tier1, tier2 }
 }
 
+const OPTION_BADGE_PALETTE = [
+  'bg-amber-100 text-amber-900 border-amber-300 font-bold',       // 1ª opción: Amarillo
+  'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold', // 2ª opción: Verde
+  'bg-sky-100 text-sky-900 border-sky-300 font-bold',             // 3ª opción: Azul
+  'bg-purple-100 text-purple-900 border-purple-300 font-bold',    // 4ª opción: Morado
+  'bg-rose-100 text-rose-900 border-rose-300 font-bold',          // 5ª opción: Rosa
+  'bg-cyan-100 text-cyan-900 border-cyan-300 font-bold'           // 6ª opción: Cian
+] as const
+
+export function getOptionBadgeClassByIndex(index: number): string {
+  if (index < 0) return 'bg-slate-100 text-slate-700 border-slate-300 font-bold'
+  return OPTION_BADGE_PALETTE[index % OPTION_BADGE_PALETTE.length]!
+}
+
+export function resolveOptionBadgeClass(value: unknown, opciones?: string[], isFilteredMatch?: boolean): string {
+  const str = String(value ?? '').trim()
+  if (!str) return 'bg-slate-50 text-slate-400 border-slate-200'
+  const idx = Array.isArray(opciones)
+    ? opciones.findIndex(o => o.trim().toLowerCase() === str.toLowerCase())
+    : -1
+  const base = getOptionBadgeClassByIndex(idx >= 0 ? idx : 0)
+  return isFilteredMatch ? `${base} ring-2 ring-offset-1 ring-slate-900/30` : base
+}
+
+export interface RowClusterItem<T = string> {
+  rowIdx: number
+  name: T
+  parent: string
+}
+
+export interface RowCluster<T = string> {
+  key: string
+  name: string
+  isGrouped: boolean
+  startIdx: number
+  endIdx: number
+  items: RowClusterItem<T>[]
+}
+
+export function buildRowClusters<T>(
+  rows: T[],
+  getParent: (row: T, idx: number) => string | undefined
+): RowCluster<T>[] {
+  const clusters: RowCluster<T>[] = []
+  let i = 0
+  while (i < rows.length) {
+    const parentName = (getParent(rows[i]!, i) || '').trim()
+    if (!parentName) {
+      clusters.push({
+        key: `r-single-${i}`,
+        name: '',
+        isGrouped: false,
+        startIdx: i,
+        endIdx: i,
+        items: [{ rowIdx: i, name: rows[i]!, parent: '' }]
+      })
+      i++
+    } else {
+      const start = i
+      const items: RowClusterItem<T>[] = []
+      while (i < rows.length && (getParent(rows[i]!, i) || '').trim() === parentName) {
+        items.push({ rowIdx: i, name: rows[i]!, parent: parentName })
+        i++
+      }
+      clusters.push({
+        key: `r-group-${start}-${parentName}`,
+        name: parentName,
+        isGrouped: true,
+        startIdx: start,
+        endIdx: i - 1,
+        items
+      })
+    }
+  }
+  return clusters
+}
+
+export interface RowSpanCellMeta {
+  show: boolean
+  rowspan: number
+  label: string
+}
+
+export function buildRowSpanMeta<T>(
+  rows: T[],
+  getParent: (row: T, idx: number) => string | undefined
+): RowSpanCellMeta[] {
+  const meta: RowSpanCellMeta[] = new Array(rows.length)
+  let i = 0
+  while (i < rows.length) {
+    const label = (getParent(rows[i]!, i) || '').trim()
+    if (!label) {
+      meta[i] = { show: true, rowspan: 1, label: '' }
+      i++
+    } else {
+      const start = i
+      while (i < rows.length && (getParent(rows[i]!, i) || '').trim() === label) {
+        i++
+      }
+      const span = i - start
+      meta[start] = { show: true, rowspan: span, label }
+      for (let j = start + 1; j < i; j++) {
+        meta[j] = { show: false, rowspan: 0, label }
+      }
+    }
+  }
+  return meta
+}
+
+export function sanitizeGroupParams(params: ParametroTecnicoDefinicion[]): ParametroTecnicoDefinicion[] {
+  if (!Array.isArray(params)) return []
+  const seen = new Map<string, number>()
+  return params.map(p => {
+    let key = p.clave
+    if (p.columna_padre && p.columna_padre.trim()) {
+      const parentSlug = p.columna_padre
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+      if (parentSlug && !key.startsWith(parentSlug)) {
+        key = `${parentSlug}_${key}`
+      }
+    }
+    const count = seen.get(key) || 0
+    if (count > 0) {
+      let suffix = count + 1
+      let uniqueKey = `${key}_${suffix}`
+      while (seen.has(uniqueKey)) {
+        suffix++
+        uniqueKey = `${key}_${suffix}`
+      }
+      key = uniqueKey
+    }
+    seen.set(key, (seen.get(key) || 0) + 1)
+    return { ...p, clave: key }
+  })
+}
+
 export type GrupoTipoVista = 'normal' | 'tabla'
 
 export interface RepuestoSubfilaItem {
@@ -188,12 +329,14 @@ export interface RepuestoSubfilaItem {
   tipo: string
   nombre: string
   codigo: string
+  grupo?: string
   medidas: Record<string, any>
   extra?: Record<string, any>
 }
 
 export interface TablaConfiguracion {
   titulo_primera_columna: string
+  titulo_grupo_filas?: string
   modo_filas: 'incremental' | 'libre' | 'cojinetes' | 'subfilas'
   usar_prefijo_titulo?: boolean
   etiqueta_ultima_fila?: string
@@ -204,6 +347,7 @@ export interface TablaConfiguracion {
   tiene_cabecera_marca?: boolean
   etiqueta_marca?: string
   subfilas?: string[]
+  subfila_padres?: string[]
 }
 
 export interface GrupoRepuesto {
@@ -596,7 +740,7 @@ function getLocalDynamicGrupos(): GrupoRepuesto[] {
     // Limpiar residuos de anillos_motor en localStorage para que solo tenga las 3 columnas cabales
     let modified = false
     const cleaned = list.map(g => {
-      if (g.codigo === 'anillos_motor' || g.categoria === 'Anillos') {
+      if (g.codigo === 'anillos_motor') {
         modified = true
         return {
           ...g,
@@ -2350,62 +2494,32 @@ export const catalogService = {
   async getGrupos(): Promise<GrupoRepuesto[]> {
     const localGrupos = getLocalDynamicGrupos()
 
-    const ensureGroupParamsUnique = (params: ParametroTecnicoDefinicion[]): ParametroTecnicoDefinicion[] => {
-      if (!Array.isArray(params)) return []
-      const seen = new Map<string, number>()
-      return params.map(p => {
-        let key = p.clave
-        if (p.columna_padre && p.columna_padre.trim()) {
-          const parentSlug = p.columna_padre
-            .toLowerCase()
-            .trim()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9]+/g, '_')
-            .replace(/^_+|_+$/g, '')
-          if (parentSlug && !key.startsWith(parentSlug)) {
-            key = `${parentSlug}_${key}`
-          }
-        }
-        const count = seen.get(key) || 0
-        if (count > 0) {
-          let suffix = count + 1
-          let uniqueKey = `${key}_${suffix}`
-          while (seen.has(uniqueKey)) {
-            suffix++
-            uniqueKey = `${key}_${suffix}`
-          }
-          key = uniqueKey
-        }
-        seen.set(key, (seen.get(key) || 0) + 1)
-        return { ...p, clave: key }
-      })
-    }
-
     const normalizeTableGroup = (grp: GrupoRepuesto): GrupoRepuesto => {
       const isTable = grp.tipo_vista === 'tabla' || grp.codigo === 'anillos_motor'
       if (!isTable) {
         return {
           ...grp,
-          parametros: ensureGroupParamsUnique(grp.parametros)
+          parametros: sanitizeGroupParams(grp.parametros)
         }
       }
 
       const defaultTablaConfig: TablaConfiguracion = {
         titulo_primera_columna: grp.codigo === 'anillos_motor' ? 'Anillo' : (grp.categoria || 'Posición'),
-        modo_filas: 'incremental',
+        modo_filas: grp.codigo === 'anillos_motor' ? 'incremental' : 'subfilas',
         usar_prefijo_titulo: true,
         etiqueta_ultima_fila: grp.codigo === 'anillos_motor' ? 'Anillo de aceite' : '',
-        habilitar_identificador: true,
-        etiqueta_identificador: 'Cónico',
+        habilitar_identificador: grp.codigo === 'anillos_motor',
+        etiqueta_identificador: grp.codigo === 'anillos_motor' ? 'Cónico' : '',
         opciones_identificador: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral']
       }
 
       const metaTablaConfig = (grp.parametros?.[0] as any)?._tabla_config as TablaConfiguracion | undefined
-      const resolvedTablaConfig: TablaConfiguracion = grp.tabla_config || metaTablaConfig || defaultTablaConfig
+      const resolvedTablaConfig: TablaConfiguracion = {
+        ...(grp.tabla_config || metaTablaConfig || defaultTablaConfig)
+      }
 
-      // Si es la familia de Anillos de motor, garantizar estricta y cabalmente las 3 columnas estándar
-      if (grp.codigo === 'anillos_motor' || grp.categoria === 'Anillos') {
+      // Solo la familia base `anillos_motor` fuerza la matriz clásica de 3 columnas
+      if (grp.codigo === 'anillos_motor') {
         const diamParam = grp.parametros.find(p => p.clave === 'diametro_cilindro_mm')
         const grosorParam = grp.parametros.find(p => p.clave === 'grosor_mm' || p.clave === 'anillo1_h1')
         const alturaParam = grp.parametros.find(p => p.clave === 'altura_mm' || p.clave === 'anillo1_a1')
@@ -2450,6 +2564,24 @@ export const catalogService = {
             }
           ]
         }
+      }
+
+      // Reparar grupos en tabla ya creados (ej. con `subfilas` guardadas bajo modo_filas incremental/cojinetes/libre o restos de 'Anillo de aceite')
+      const isAnillosCategory = (grp.categoria || '').toLowerCase().includes('anillo')
+      if (!isAnillosCategory && resolvedTablaConfig.etiqueta_ultima_fila === 'Anillo de aceite') {
+        resolvedTablaConfig.etiqueta_ultima_fila = ''
+      }
+      if (!Array.isArray(resolvedTablaConfig.subfilas) || resolvedTablaConfig.subfilas.length === 0) {
+        resolvedTablaConfig.subfilas = isAnillosCategory
+          ? ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de aceite']
+          : ['Fila 1']
+      }
+      resolvedTablaConfig.modo_filas = 'subfilas'
+      resolvedTablaConfig.subfilas_activas = true
+      if (Array.isArray(resolvedTablaConfig.subfila_padres)) {
+        resolvedTablaConfig.subfila_padres = resolvedTablaConfig.subfilas.map(
+          (_, idx) => (resolvedTablaConfig.subfila_padres?.[idx] || '').trim()
+        )
       }
 
       // Si aún tiene las claves individuales antiguas (anillo1_h1, anillo2_h1, aceite_h1), migrarlas al esquema general de columnas
@@ -2510,7 +2642,7 @@ export const catalogService = {
         ...grp,
         tipo_vista: 'tabla',
         tabla_config: resolvedTablaConfig,
-        parametros: ensureGroupParamsUnique(normalizedParams)
+        parametros: sanitizeGroupParams(normalizedParams)
       }
     }
 

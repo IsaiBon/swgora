@@ -10,7 +10,10 @@ import {
   type TablaConfiguracion,
   type RepuestoTecnico,
   type Motor,
-  buildNestedTableHeaders
+  buildNestedTableHeaders,
+  buildRowSpanMeta,
+  getOptionBadgeClassByIndex,
+  sanitizeGroupParams
 } from '@/services/catalogService'
 import { 
   X, 
@@ -19,7 +22,6 @@ import {
   Save, 
   SlidersHorizontal, 
   Tag, 
-  Hash, 
   Ruler, 
   FolderPlus, 
   PackagePlus, 
@@ -108,6 +110,7 @@ export interface SubfilaFormRow {
   tipo: string
   nombre: string
   codigo: string
+  grupo?: string
   medidas: Record<string, any>
 }
 
@@ -332,9 +335,6 @@ const partModelo = ref<string>('')
 const partAno = ref<string>('')
 const partNombre = ref<string>('')
 const partSubsistema = ref<string>('Block')
-const partPrecio = ref<number | null>(null)
-const partStock = ref<number>(12)
-const partEstado = ref<'Disponible' | 'Bajo Stock' | 'Agotado'>('Disponible')
 const partCatalogoOrigen = ref<string>('OEM')
 const partImagenUrl = ref<string>('')
 
@@ -426,38 +426,6 @@ const allOemCodesPreview = computed<string[]>(() => {
   }
   return Array.from(new Set(list))
 })
-
-const sanitizeGroupParams = (params: ParametroTecnicoDefinicion[]): ParametroTecnicoDefinicion[] => {
-  if (!Array.isArray(params)) return []
-  const seen = new Map<string, number>()
-  return params.map(p => {
-    let key = p.clave
-    if (p.columna_padre && p.columna_padre.trim()) {
-      const parentSlug = p.columna_padre
-        .toLowerCase()
-        .trim()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-      if (parentSlug && !key.startsWith(parentSlug)) {
-        key = `${parentSlug}_${key}`
-      }
-    }
-    const count = seen.get(key) || 0
-    if (count > 0) {
-      let suffix = count + 1
-      let uniqueKey = `${key}_${suffix}`
-      while (seen.has(uniqueKey)) {
-        suffix++
-        uniqueKey = `${key}_${suffix}`
-      }
-      key = uniqueKey
-    }
-    seen.set(key, (seen.get(key) || 0) + 1)
-    return { ...p, clave: key }
-  })
-}
 
 const activeGroup = computed<GrupoRepuesto | null>(() => {
   if (!selectedGroupCode.value) return null
@@ -620,8 +588,14 @@ const equivalencias = ref<Array<{ marca_alterna: string; codigo_alterno: string;
 
 const isSubfilasGroup = computed<boolean>(() => {
   if (!activeGroup.value || activeGroup.value.tipo_vista !== 'tabla') return false
+  if (activeGroup.value.codigo === 'anillos_motor') return false
   const cfg = activeGroup.value.tabla_config
-  return Boolean(cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas')
+  return Boolean(
+    cfg?.subfilas_activas ||
+    cfg?.modo_filas === 'cojinetes' ||
+    cfg?.modo_filas === 'subfilas' ||
+    (Array.isArray(cfg?.subfilas) && cfg!.subfilas!.length > 0)
+  )
 })
 
 const isRingsGroup = computed<boolean>(() => {
@@ -629,7 +603,7 @@ const isRingsGroup = computed<boolean>(() => {
   if (isSubfilasGroup.value) return false
   const code = (activeGroup.value.codigo || '').toLowerCase()
   const cat = (activeGroup.value.categoria || '').toLowerCase()
-  return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
+  return code === 'anillos_motor' || (activeGroup.value.tipo_vista !== 'tabla' && (cat === 'anillos' || cat.includes('anillo')))
 })
 
 const isGeneralTableGroup = computed<boolean>(() => {
@@ -701,17 +675,19 @@ watch(activeGroup, (grp) => {
       ringRows.value = createDefaultRingRows(grp.tabla_config, isRingsGroup.value)
       if (isSubfilasGroup.value) {
         if (grp.tabla_config?.subfilas && grp.tabla_config.subfilas.length > 0) {
+          const padres = grp.tabla_config.subfila_padres || []
           subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => ({
             id: `sf-${idx}-${Date.now()}`,
             tipo: name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
             nombre: name,
             codigo: '',
+            grupo: (padres[idx] || '').trim(),
             medidas: {}
           }))
         } else {
           subfilasRows.value = [
-            { id: 'sf-biela', tipo: 'biela', nombre: 'Biela', codigo: '', medidas: {} },
-            { id: 'sf-bancada', tipo: 'bancada', nombre: 'Bancada', codigo: '', medidas: {} }
+            { id: 'sf-biela', tipo: 'biela', nombre: 'Biela', codigo: '', grupo: '', medidas: {} },
+            { id: 'sf-bancada', tipo: 'bancada', nombre: 'Bancada', codigo: '', grupo: '', medidas: {} }
           ]
         }
         if (selectedMotor.value) {
@@ -831,9 +807,6 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   partModelo.value = spec.modelo || spec.vehiculo || dims.modelo || (part.motor?.modelo?.nombre) || ''
   partAno.value = spec.ano || spec.anios || dims.ano || (part.motor?.anios) || ''
   partSubsistema.value = part.subsistema || 'Block'
-  partPrecio.value = part.precio != null ? part.precio : null
-  partStock.value = part.stock != null ? part.stock : 12
-  partEstado.value = (part.estado as any) || 'Disponible'
   partCatalogoOrigen.value = part.catalogo_origen || 'OEM'
   partImagenUrl.value = part.imagen_url || ''
 
@@ -1047,11 +1020,13 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   // Cargar sub-filas multilínea si existen (ej. Cojinetes: Biela y Bancada)
   const partSubfilas = (part.dimensiones as any)?.subfilas
   if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
+    const padres = matchedGroup?.tabla_config?.subfila_padres || []
     subfilasRows.value = partSubfilas.map((sf: any, idx: number) => ({
       id: sf.id || `sf-${idx}-${Date.now()}`,
-      tipo: sf.tipo || (idx === 0 ? 'biela' : 'bancada'),
-      nombre: sf.nombre || (idx === 0 ? 'Biela' : 'Bancada'),
+      tipo: sf.tipo || `fila_${idx + 1}`,
+      nombre: sf.nombre || `Fila ${idx + 1}`,
       codigo: sf.codigo || '',
+      grupo: sf.grupo ?? padres[idx] ?? '',
       medidas: sf.medidas ? { ...sf.medidas } : {}
     }))
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
@@ -1117,13 +1092,14 @@ const handleSavePart = async () => {
       }
     }
 
-    // Sincronizar sub-filas para familias multilínea (Cojinetes: Marca, Biela, Bancada)
+    // Sincronizar sub-filas para familias multilínea (Cojinetes: Marca, Biela, Bancada, etc.)
     if (isSubfilasGroup.value) {
-      dimensionesPayload.subfilas = subfilasRows.value.map(sf => ({
+      dimensionesPayload.subfilas = subfilasRows.value.map((sf, idx) => ({
         id: sf.id,
         tipo: sf.tipo,
         nombre: sf.nombre,
         codigo: sf.codigo?.trim() || '',
+        grupo: (sf.grupo ?? activeTablaConfig.value.subfila_padres?.[idx] ?? '').trim(),
         medidas: { ...sf.medidas }
       }))
       dimensionesPayload.marca_banner = subfilasMarcaBanner.value.trim() || (selectedMotor.value ? getBrandName(selectedMotor.value.fabricante_id) : '')
@@ -1274,9 +1250,9 @@ const handleSavePart = async () => {
       nombre: finalNombre,
       subsistema: partSubsistema.value,
       categoria: activeGroup.value?.categoria || 'General',
-      precio: Number(partPrecio.value || 0),
-      stock: Number(partStock.value || 0),
-      estado: partEstado.value,
+      precio: editingPartId.value && props.editPart ? (props.editPart.precio ?? 0) : 0,
+      stock: editingPartId.value && props.editPart ? (props.editPart.stock ?? 0) : 0,
+      estado: editingPartId.value && props.editPart ? (props.editPart.estado ?? 'Disponible') : 'Disponible',
       catalogo_origen: partCatalogoOrigen.value,
       imagen_url: partImagenUrl.value ? partImagenUrl.value.trim() : undefined,
       dimensiones: dimensionesPayload,
@@ -1337,9 +1313,6 @@ const resetPartForm = () => {
   partMotorId.value = ''
   motorSearchQuery.value = ''
   isMotorDropdownOpen.value = false
-  partPrecio.value = null
-  partStock.value = 12
-  partEstado.value = 'Disponible'
   partCatalogoOrigen.value = 'OEM'
   partImagenUrl.value = ''
   paramValues.value = {}
@@ -1415,6 +1388,29 @@ const subfilasActiveHeaders = computed(() => {
     return { tier1: [], tier2: [], hasSubcolumns: false }
   }
   return buildNestedTableHeaders(activeGroup.value.parametros)
+})
+
+const subfilasRowSpans = computed(() => {
+  return buildRowSpanMeta(
+    subfilasRows.value,
+    (sf, idx) => sf.grupo || activeTablaConfig.value.subfila_padres?.[idx] || ''
+  )
+})
+
+const hasSubfilasRowGroups = computed<boolean>(() => {
+  return subfilasRowSpans.value.some(m => m.label.length > 0)
+})
+
+const activeGroupStructureSummary = computed<string>(() => {
+  const grp = activeGroup.value
+  if (!grp) return ''
+  const colsCount = grp.parametros?.length || 0
+  if (isSubfilasGroup.value) {
+    const rowsCount = grp.tabla_config?.subfilas?.length || 1
+    const groupedCols = new Set((grp.parametros || []).map(p => p.columna_padre).filter(Boolean)).size
+    return `${rowsCount} ${rowsCount === 1 ? 'fila' : 'filas'} • ${colsCount} ${colsCount === 1 ? 'columna' : 'columnas'}${groupedCols > 0 ? ` • ${groupedCols} grupos` : ''}`
+  }
+  return `${colsCount} ${colsCount === 1 ? 'medida' : 'medidas'}`
 })
 
 // Guardado de familia a través de FamilyTemplatePicker
@@ -1660,92 +1656,94 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- ARQUITECTURA SPLIT-VIEW (2 COLUMNAS EN ESCRITORIO) -->
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <!-- 1. SELECTOR DE FAMILIA TÉCNICA + RESUMEN DE ESTRUCTURA -->
+          <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-[11px] font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
+                  <span>Familia Técnica</span>
+                </label>
+                <span
+                  v-if="activeGroupStructureSummary"
+                  class="text-[10px] font-bold text-[#004B97] bg-cyan-50 border border-cyan-200 px-2.5 py-0.5 rounded-full"
+                >
+                  {{ activeGroupStructureSummary }}
+                </span>
+              </div>
+              <button
+                type="button"
+                @click="openFamilyTabForCurrentContext"
+                class="text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2.5 py-1 rounded-lg border border-cyan-200 shadow-2xs transition cursor-pointer"
+              >
+                {{ isEditPartMode ? 'Ver / Editar Familia' : '+ Gestionar / Editar Familias' }}
+              </button>
+            </div>
 
-            <!-- ============================================================= -->
-            <!-- COLUMNA IZQUIERDA: FAMILIA, IDENTIFICACIÓN, MOTOR Y COMERCIAL -->
-            <!-- ============================================================= -->
-            <div class="lg:col-span-5 space-y-3.5">
+            <div v-if="isEditPartMode" class="flex items-center justify-between p-2.5 bg-white border border-cyan-200 rounded-xl shadow-2xs">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#04C4D9] shrink-0"></span>
+                <span class="text-xs font-bold text-slate-900 truncate">{{ activeGroup?.nombre || 'Familia asignada' }}</span>
+                <span class="text-[9px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-bold shrink-0">
+                  {{ activeGroup?.parametros?.length || 0 }} columnas
+                </span>
+              </div>
+              <span class="text-[10px] font-bold text-[#004B97] bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200 shrink-0">
+                {{ activeGroup?.subsistema || 'Block' }}
+              </span>
+            </div>
 
-              <!-- 1. Familia Técnica (Selector Compacto de Alta Densidad) -->
-              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3 space-y-2">
-                <div class="flex items-center justify-between">
-                  <label class="text-[11px] font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
-                    <span>Familia Técnica</span>
-                  </label>
-                  <button
-                    v-if="!isEditPartMode"
-                    type="button"
-                    @click="openFamilyTabForCurrentContext"
-                    class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] transition"
-                  >
-                    + Gestionar Familias
-                  </button>
+            <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+              <button
+                v-for="grp in catalogStore.grupos"
+                :key="grp.id"
+                type="button"
+                @click="selectedGroupCode = grp.codigo"
+                :class="[
+                  'px-2.5 py-2 rounded-xl border text-left transition flex items-center justify-between gap-1.5 cursor-pointer',
+                  selectedGroupCode === grp.codigo
+                    ? 'border-[#004B97] bg-white ring-2 ring-[#004B97]/15 shadow-2xs'
+                    : 'border-slate-200 bg-white/60 hover:bg-white text-slate-700'
+                ]"
+              >
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span
+                    class="w-2 h-2 rounded-full shrink-0"
+                    :class="selectedGroupCode === grp.codigo ? 'bg-[#04C4D9]' : 'bg-slate-300'"
+                  ></span>
+                  <span class="text-xs font-bold text-slate-900 truncate">{{ grp.nombre }}</span>
                 </div>
+                <span class="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono shrink-0">
+                  {{ grp.parametros.length }}
+                </span>
+              </button>
+            </div>
+          </div>
 
-                <!-- Si está editando una pieza, mostrar la familia asignada fija -->
-                <div v-if="isEditPartMode" class="flex items-center justify-between p-2.5 bg-white border border-cyan-200 rounded-xl shadow-2xs">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <span class="w-2.5 h-2.5 rounded-full bg-[#04C4D9] shrink-0"></span>
-                    <span class="text-xs font-bold text-slate-900 truncate">{{ activeGroup?.nombre || 'Familia asignada' }}</span>
-                    <span class="text-[9px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-bold shrink-0">
-                      {{ activeGroup?.parametros?.length || 0 }} parámetros
-                    </span>
-                  </div>
-                  <span class="text-[10px] font-bold text-[#004B97] bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200 shrink-0">
-                    {{ activeGroup?.subsistema || 'Block' }}
-                  </span>
-                </div>
+          <!-- 2. IDENTIFICACIÓN, APLICACIÓN VEHICULAR Y DIAGRAMA (SIN COMERCIAL NI STOCK) -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
 
-                <div v-else class="grid grid-cols-2 gap-1.5">
-                  <button
-                    v-for="grp in catalogStore.grupos"
-                    :key="grp.id"
-                    type="button"
-                    @click="selectedGroupCode = grp.codigo"
-                    :class="[
-                      'px-2.5 py-2 rounded-xl border text-left transition flex items-center justify-between gap-1.5',
-                      selectedGroupCode === grp.codigo
-                        ? 'border-[#004B97] bg-white ring-2 ring-[#004B97]/15 shadow-2xs'
-                        : 'border-slate-200 bg-white/60 hover:bg-white text-slate-700'
-                    ]"
-                  >
-                    <div class="flex items-center gap-1.5 min-w-0">
-                      <span 
-                        class="w-2 h-2 rounded-full shrink-0" 
-                        :class="selectedGroupCode === grp.codigo ? 'bg-[#04C4D9]' : 'bg-slate-300'"
-                      ></span>
-                      <span class="text-xs font-bold text-slate-900 truncate">{{ grp.nombre }}</span>
-                    </div>
-                    <span class="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono shrink-0">
-                      {{ grp.parametros.length }}
-                    </span>
-                  </button>
-                </div>
+            <!-- Identificación OEM + Vehículo + Origen + Motor (7 cols) -->
+            <div class="lg:col-span-7 bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+              <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <Tag class="w-3.5 h-3.5 text-[#004B97]" />
+                  <span>Identificación OEM &amp; Aplicación</span>
+                </h3>
+                <button
+                  type="button"
+                  @click="addCodigoOemAdicional"
+                  class="text-[10px] font-extrabold text-[#004B97] hover:text-[#038391] flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0 cursor-pointer"
+                >
+                  <Plus class="w-3 h-3 text-[#04C4D9]" />
+                  <span>+ Agregar OEM</span>
+                </button>
               </div>
 
-              <!-- 2. Bloque A: Códigos Originales del Fabricante (OEM) e Identificación -->
-              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
-                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <Tag class="w-3.5 h-3.5 text-[#004B97]" />
-                    <span>Códigos Originales del Fabricante (OEM)</span>
-                  </h3>
-                  <button
-                    type="button"
-                    @click="addCodigoOemAdicional"
-                    class="text-[10px] font-extrabold text-[#004B97] hover:text-[#038391] flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0"
-                  >
-                    <Plus class="w-3 h-3 text-[#04C4D9]" />
-                    <span>+ Agregar Código</span>
-                  </button>
-                </div>
-
-                <!-- Código OEM Principal + Adicionales y Vehículo (Marca, Modelo, Año) -->
-                <div class="space-y-2.5">
-                  <div>
+              <!-- Código OEM Principal + Adicionales -->
+              <div class="space-y-2">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div class="sm:col-span-2">
                     <div class="flex items-center justify-between mb-1">
                       <label class="text-[11px] font-bold text-slate-700">
                         Código OEM <span class="text-rose-600 font-black">*</span>
@@ -1766,138 +1764,152 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Listado dinámico de Códigos OEM Adicionales -->
-                  <div v-if="partCodigosOemAdicionales.length > 0" class="space-y-1.5 pt-0.5">
-                    <div
-                      v-for="(_, oemIdx) in partCodigosOemAdicionales"
-                      :key="oemIdx"
-                      class="flex items-center gap-1.5"
-                    >
-                      <span class="text-[9px] font-mono font-extrabold text-[#004B97] bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-lg shrink-0">
-                        OEM #{{ oemIdx + 2 }}
-                      </span>
-                      <input
-                        v-model="partCodigosOemAdicionales[oemIdx]"
-                        @input="handleAdditionalOemInput(oemIdx)"
-                        @blur="normalizeOemInputs"
-                        type="text"
-                        placeholder="Código adicional"
-                        class="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                      />
-                      <button
-                        type="button"
-                        @click="removeCodigoOemAdicional(oemIdx)"
-                        class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
-                        title="Quitar código adicional"
-                      >
-                        <Trash2 class="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Cuadritos detectados en vivo (mismo color para todos) -->
-                  <div v-if="allOemCodesPreview.length > 0" class="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span
-                      v-for="(codeToken, cIdx) in allOemCodesPreview"
-                      :key="`preview-oem-${cIdx}`"
-                      class="inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-900 shadow-2xs"
-                    >
-                      {{ codeToken }}
-                    </span>
-                  </div>
-
-                  <!-- Vehículo: Marca, Modelo y Año (Obligatorios) -->
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                    <!-- Marca (Obligatoria) -->
-                    <div>
-                      <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                        Marca <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <input
-                        v-model="partMarca"
-                        list="modal-fabricantes-list"
-                        type="text"
-                        placeholder="Ej. TOYOTA, NISSAN..."
-                        class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                        :class="formErrors.partMarca ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                      />
-                      <datalist id="modal-fabricantes-list">
-                        <option v-for="fab in catalogStore.fabricantes" :key="fab.id" :value="fab.nombre" />
-                      </datalist>
-                      <span v-if="formErrors.partMarca" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                        {{ formErrors.partMarca }}
-                      </span>
-                    </div>
-
-                    <!-- Modelo (Obligatorio) -->
-                    <div>
-                      <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                        Modelo <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <input
-                        v-model="partModelo"
-                        list="modal-modelos-list"
-                        type="text"
-                        placeholder="Ej. HILUX, COROLLA..."
-                        class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                        :class="formErrors.partModelo ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                      />
-                      <datalist id="modal-modelos-list">
-                        <option v-for="mod in availableModalModelos" :key="mod.id" :value="mod.nombre" />
-                      </datalist>
-                      <span v-if="formErrors.partModelo" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                        {{ formErrors.partModelo }}
-                      </span>
-                    </div>
-
-                    <!-- Año (Obligatorio) -->
-                    <div>
-                      <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                        Año <span class="text-rose-600 font-black">*</span>
-                      </label>
-                      <input
-                        v-model="partAno"
-                        list="modal-anos-list"
-                        type="text"
-                        placeholder="Ej. 2015, 2005-2012..."
-                        class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                        :class="formErrors.partAno ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                      />
-                      <datalist id="modal-anos-list">
-                        <option v-for="yr in commonYearsList" :key="yr" :value="yr" />
-                      </datalist>
-                      <span v-if="formErrors.partAno" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                        {{ formErrors.partAno }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Nombre o Descripción Técnica (Opcional) -->
                   <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nombre o Descripción Técnica <span class="text-[10px] font-normal text-slate-400">(Opcional)</span>
-                    </label>
-                    <input
-                      v-model="partNombre"
-                      type="text"
-                      :placeholder="partMarca && partModelo ? `${partMarca} ${partModelo} - ${activeGroup?.nombre || 'Repuesto'}` : 'Nombre o descripción técnica (opcional)'"
-                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                    />
+                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Catálogo / Origen</label>
+                    <select
+                      v-model="partCatalogoOrigen"
+                      class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
+                    >
+                      <option value="OEM">OEM Original</option>
+                      <option value="Rik">Rik / Riken</option>
+                      <option value="NPR">NPR</option>
+                      <option value="Dokuro">Dokuro</option>
+                      <option value="MRK">MRK</option>
+                      <option value="Ajusa">Ajusa</option>
+                      <option value="NDC">NDC</option>
+                      <option value="Pioneer">Pioneer</option>
+                    </select>
                   </div>
                 </div>
 
-                <!-- Motor Asociado (Buscador reactivo con autocompletado) -->
-                <div class="relative combobox-motor-asociado pt-1">
+                <!-- Listado dinámico de Códigos OEM Adicionales -->
+                <div v-if="partCodigosOemAdicionales.length > 0" class="space-y-1.5 pt-0.5">
+                  <div
+                    v-for="(_, oemIdx) in partCodigosOemAdicionales"
+                    :key="oemIdx"
+                    class="flex items-center gap-1.5"
+                  >
+                    <span class="text-[9px] font-mono font-extrabold text-[#004B97] bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-lg shrink-0">
+                      OEM #{{ oemIdx + 2 }}
+                    </span>
+                    <input
+                      v-model="partCodigosOemAdicionales[oemIdx]"
+                      @input="handleAdditionalOemInput(oemIdx)"
+                      @blur="normalizeOemInputs"
+                      type="text"
+                      placeholder="Código adicional"
+                      class="flex-1 px-2.5 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                    />
+                    <button
+                      type="button"
+                      @click="removeCodigoOemAdicional(oemIdx)"
+                      class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
+                      title="Quitar código adicional"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Cuadritos detectados en vivo -->
+                <div v-if="allOemCodesPreview.length > 0" class="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span
+                    v-for="(codeToken, cIdx) in allOemCodesPreview"
+                    :key="`preview-oem-${cIdx}`"
+                    class="inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-900 shadow-2xs"
+                  >
+                    {{ codeToken }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Vehículo: Marca, Modelo y Año (Obligatorios) -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                    Marca <span class="text-rose-600 font-black">*</span>
+                  </label>
+                  <input
+                    v-model="partMarca"
+                    list="modal-fabricantes-list"
+                    type="text"
+                    placeholder="Ej. TOYOTA, NISSAN..."
+                    class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                    :class="formErrors.partMarca ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                  />
+                  <datalist id="modal-fabricantes-list">
+                    <option v-for="fab in catalogStore.fabricantes" :key="fab.id" :value="fab.nombre" />
+                  </datalist>
+                  <span v-if="formErrors.partMarca" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                    {{ formErrors.partMarca }}
+                  </span>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                    Modelo <span class="text-rose-600 font-black">*</span>
+                  </label>
+                  <input
+                    v-model="partModelo"
+                    list="modal-modelos-list"
+                    type="text"
+                    placeholder="Ej. HILUX, COROLLA..."
+                    class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                    :class="formErrors.partModelo ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                  />
+                  <datalist id="modal-modelos-list">
+                    <option v-for="mod in availableModalModelos" :key="mod.id" :value="mod.nombre" />
+                  </datalist>
+                  <span v-if="formErrors.partModelo" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                    {{ formErrors.partModelo }}
+                  </span>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                    Año <span class="text-rose-600 font-black">*</span>
+                  </label>
+                  <input
+                    v-model="partAno"
+                    list="modal-anos-list"
+                    type="text"
+                    placeholder="Ej. 2015, 2005-2012..."
+                    class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                    :class="formErrors.partAno ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                  />
+                  <datalist id="modal-anos-list">
+                    <option v-for="yr in commonYearsList" :key="yr" :value="yr" />
+                  </datalist>
+                  <span v-if="formErrors.partAno" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                    {{ formErrors.partAno }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Descripción + Motor Asociado -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                    Descripción Técnica <span class="text-[10px] font-normal text-slate-400">(Opcional)</span>
+                  </label>
+                  <input
+                    v-model="partNombre"
+                    type="text"
+                    :placeholder="partMarca && partModelo ? `${partMarca} ${partModelo} - ${activeGroup?.nombre || 'Repuesto'}` : 'Descripción técnica (opcional)'"
+                    class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                  />
+                </div>
+
+                <!-- Motor Asociado -->
+                <div class="relative combobox-motor-asociado">
                   <div class="flex items-center justify-between mb-1">
                     <label class="block text-[11px] font-bold text-slate-700">
-                      Motor Asociado (Opcional)
+                      Motor Asociado <span class="text-[10px] font-normal text-slate-400">(Opc.)</span>
                     </label>
-                    <span v-if="selectedMotor" class="text-[10px] font-bold text-[#038896] bg-cyan-50 px-2 py-0.2 rounded-full border border-cyan-200">
-                      {{ selectedMotor.codigo }} ({{ getBrandName(selectedMotor.fabricante_id) }})
+                    <span v-if="selectedMotor" class="text-[10px] font-bold text-[#038896] bg-cyan-50 px-2 py-0.2 rounded-full border border-cyan-200 truncate max-w-[140px]">
+                      {{ selectedMotor.codigo }}
                     </span>
-                    <span v-else class="text-[10px] font-medium text-slate-400">
-                      Universal
-                    </span>
+                    <span v-else class="text-[10px] font-medium text-slate-400">Universal</span>
                   </div>
 
                   <div class="relative flex items-center">
@@ -1973,712 +1985,693 @@ onUnmounted(() => {
                   </div>
                 </div>
               </div>
-
-              <!-- 3. Parámetros Comerciales & Stock -->
-              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
-                <div class="flex items-center justify-between border-b border-slate-200 pb-1.5">
-                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <Hash class="w-3.5 h-3.5 text-[#004B97]" />
-                    <span>Comercial & Stock</span>
-                  </h3>
-                </div>
-
-                <div class="grid grid-cols-3 gap-2">
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Origen</label>
-                    <select
-                      v-model="partCatalogoOrigen"
-                      class="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    >
-                      <option value="OEM">OEM Original</option>
-                      <option value="Rik">Rik / Riken</option>
-                      <option value="NPR">NPR</option>
-                      <option value="Dokuro">Dokuro</option>
-                      <option value="MRK">MRK</option>
-                      <option value="Ajusa">Ajusa</option>
-                      <option value="NDC">NDC</option>
-                      <option value="Pioneer">Pioneer</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Precio ($)</label>
-                    <input
-                      v-model.number="partPrecio"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-[11px] font-bold text-slate-700 mb-1">Stock (Pzs)</label>
-                    <input
-                      v-model.number="partStock"
-                      type="number"
-                      placeholder="12"
-                      class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <!-- 4. Imagen Técnica / Diagrama de explosión (Compacto) -->
-              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3">
-                <PartImageUploader
-                  v-model="partImagenUrl"
-                  :part-code="partCodigoOem"
-                  label="Diagrama / Foto de Pieza"
-                />
-              </div>
-
             </div>
 
-            <!-- ============================================================= -->
-            <!-- COLUMNA DERECHA: COTAS TÉCNICAS (MATRIZ ANILLOS) Y EQUIVS    -->
-            <!-- ============================================================= -->
-            <div class="lg:col-span-7 space-y-3.5">
+            <!-- Imagen Técnica / Diagrama de explosión (5 cols) -->
+            <div class="lg:col-span-5 bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5">
+              <PartImageUploader
+                v-model="partImagenUrl"
+                :part-code="partCodigoOem"
+                label="Diagrama / Foto de Pieza"
+              />
+            </div>
 
-              <!-- 1. Cotas Dimensionales Técnicas -->
-              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
-                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-lg bg-[#004B97] text-white flex items-center justify-center">
-                      <Ruler class="w-3.5 h-3.5 text-[#04C4D9]" />
-                    </div>
-                    <div>
-                      <h3 class="text-xs font-black uppercase tracking-wider text-slate-900">
-                        Cotas Técnicas de Maquinado
-                      </h3>
-                    </div>
+          </div>
+
+          <!-- 3. MATRIZ Y COTAS TÉCNICAS DE LA FAMILIA (ANCHO COMPLETO 1:1 CON LA FAMILIA) -->
+          <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-[#004B97] text-white flex items-center justify-center">
+                  <Ruler class="w-3.5 h-3.5 text-[#04C4D9]" />
+                </div>
+                <div>
+                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-900">
+                    Matriz &amp; Medidas de {{ activeGroup?.nombre || 'la Familia' }}
+                  </h3>
+                </div>
+              </div>
+
+              <span v-if="activeGroup" class="text-[10px] font-extrabold text-[#004B97] bg-white border border-cyan-200 px-2.5 py-0.5 rounded-full">
+                {{ isGeneralTableGroup ? `${ringRows.length} Filas` : (isSubfilasGroup ? `${subfilasRows.length} Filas` : `${activeGroup.parametros.length} Medidas`) }}
+              </span>
+            </div>
+
+            <!-- A. MATRIZ ANILLOS (ESPECIAL DE FABRICACIÓN DE AROS) -->
+            <div v-if="isGeneralTableGroup" class="space-y-3">
+              <div class="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs font-mono select-text">
+                <table class="border-collapse text-center text-xs w-full">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
+                      <th class="px-3 py-2 text-left border-r border-slate-200">{{ activeTablaConfig.titulo_primera_columna || (isRingsGroup ? 'Anillo' : 'Posición') }}</th>
+                      <template v-if="isRingsGroup">
+                        <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro') }}</th>
+                        <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('grosor_mm', getActiveGroupParamLabel('anillo1_h1', 'Grosor')) }}</th>
+                        <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('altura_mm', getActiveGroupParamLabel('anillo1_a1', 'Altura')) }}</th>
+                      </template>
+                      <th
+                        v-for="extParam in extraRingGroupParams"
+                        :key="`th-ext-${extParam.id}`"
+                        class="px-2 py-2 border-r border-slate-200"
+                      >
+                        {{ extParam.etiqueta_corta || extParam.etiqueta }}{{ extParam.unidad ? ` (${extParam.unidad})` : '' }}
+                      </th>
+                      <th v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2.5 py-2">
+                        {{ activeTablaConfig.etiqueta_identificador || (isRingsGroup ? 'Cónico' : 'Especial') }}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 text-[11px]">
+                    <tr
+                      v-for="(ring, rIdx) in ringRows"
+                      @paste.stop="handleExcelPasteToRings($event, rIdx)"
+                      :key="ring.id"
+                      class="hover:bg-slate-50/70 transition"
+                      :class="[
+                        formErrors[`ring_h1_${rIdx}`] || (rIdx === 0 && formErrors.diametro_cilindro_mm) ? 'bg-rose-50/20' : '',
+                        ring.tiene_identificador ? 'bg-amber-50/25' : ''
+                      ]"
+                    >
+                      <td class="px-2.5 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
+                        <div class="flex items-center justify-between gap-1.5">
+                          <div class="flex items-center gap-1.5 flex-1 min-w-[110px]">
+                            <span
+                              class="w-2 h-2 rounded-full shrink-0"
+                              :class="ring.tiene_identificador ? 'bg-amber-500' : (rIdx === ringRows.length - 1 ? 'bg-[#04C4D9]' : 'bg-[#004B97]')"
+                            ></span>
+                            <input
+                              v-model="ring.posicion"
+                              type="text"
+                              :placeholder="getDefaultRowPosition(rIdx, ringRows.length)"
+                              class="w-full px-1.5 py-0.5 text-xs font-extrabold text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-[#04C4D9] rounded focus:outline-none transition"
+                            />
+                          </div>
+                          <button
+                            v-if="ringRows.length > 1"
+                            type="button"
+                            @click="removeRingRow(rIdx)"
+                            class="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
+                            :title="`Quitar ${getRingRowTitle(ring, rIdx)}`"
+                          >
+                            <Trash2 class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+
+                      <template v-if="isRingsGroup">
+                        <td v-if="rIdx === 0" class="px-2 py-1.5 border-r border-slate-200">
+                          <div class="relative flex items-center justify-center">
+                            <input
+                              v-model.number="paramValues.diametro_cilindro_mm"
+                              type="number"
+                              step="0.001"
+                              placeholder="86.000"
+                              class="w-20 px-1.5 py-1 text-center font-mono font-black text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              :class="formErrors.diametro_cilindro_mm ? 'border-rose-400 bg-rose-50' : 'border-slate-300'"
+                            />
+                          </div>
+                        </td>
+                        <td v-else class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
+                          <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
+                        </td>
+
+                        <td class="px-2 py-1.5 border-r border-slate-200">
+                          <input
+                            v-model.number="ring.h1"
+                            type="number"
+                            step="0.001"
+                            :placeholder="rIdx === ringRows.length - 1 ? '3.000' : '1.500'"
+                            class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            :class="formErrors[`ring_h1_${rIdx}`] ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
+                          />
+                        </td>
+
+                        <td class="px-2 py-1.5 border-r border-slate-200">
+                          <input
+                            v-model.number="ring.a1"
+                            type="number"
+                            step="0.01"
+                            :placeholder="rIdx === ringRows.length - 1 ? '2.80' : '3.40'"
+                            class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                          />
+                        </td>
+                      </template>
+
+                      <td
+                        v-for="extParam in extraRingGroupParams"
+                        :key="`td-ext-${ring.id}-${extParam.id}`"
+                        class="px-2 py-1.5 border-r border-slate-200"
+                      >
+                        <input
+                          v-if="extParam.tipo_dato === 'numero'"
+                          v-model.number="ring.extra[extParam.clave]"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          class="w-16 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                        />
+                        <button
+                          v-else-if="extParam.tipo_dato === 'booleano'"
+                          type="button"
+                          @click="ring.extra[extParam.clave] = !ring.extra[extParam.clave]"
+                          :class="[
+                            'px-2 py-0.5 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
+                            ring.extra[extParam.clave]
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                              : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                          ]"
+                        >
+                          <Check v-if="ring.extra[extParam.clave]" class="w-3 h-3 text-emerald-600" />
+                          <X v-else class="w-3 h-3 text-slate-400" />
+                          <span>{{ ring.extra[extParam.clave] ? 'Sí' : 'No' }}</span>
+                        </button>
+                        <div v-else-if="extParam.tipo_dato === 'seleccion'" class="flex flex-wrap items-center justify-center gap-1">
+                          <button
+                            v-for="(opt, optIdx) in (extParam.opciones || [])"
+                            :key="opt"
+                            type="button"
+                            @click="ring.extra[extParam.clave] = ring.extra[extParam.clave] === opt ? '' : opt"
+                            :class="[
+                              'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer',
+                              ring.extra[extParam.clave] === opt
+                                ? `${getOptionBadgeClassByIndex(optIdx)} ring-1 ring-offset-1 ring-slate-400 shadow-2xs`
+                                : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
+                            ]"
+                          >
+                            {{ opt }}
+                          </button>
+                        </div>
+                        <input
+                          v-else
+                          v-model="ring.extra[extParam.clave]"
+                          type="text"
+                          placeholder="—"
+                          class="w-20 px-1.5 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </td>
+
+                      <td v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2 py-1.5 whitespace-nowrap">
+                        <div class="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            @click="toggleRowIdentificador(ring)"
+                            class="px-2 py-1 rounded-lg text-[10px] font-sans font-extrabold border transition flex items-center gap-1"
+                            :class="ring.tiene_identificador
+                              ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'"
+                            :title="`Marcar o desmarcar ${activeTablaConfig.etiqueta_identificador || 'Especial'} en esta fila`"
+                          >
+                            <Check v-if="ring.tiene_identificador" class="w-3 h-3 text-amber-700" />
+                            <span>{{ activeTablaConfig.etiqueta_identificador || (isRingsGroup ? 'Cónico' : 'Especial') }}</span>
+                          </button>
+                          <input
+                            v-if="ring.tiene_identificador"
+                            v-model="ring.identificador_texto"
+                            @input="onRowIdentificadorTextInput(ring)"
+                            type="text"
+                            :placeholder="activeTablaConfig.etiqueta_identificador || 'Especial'"
+                            class="w-20 px-1.5 py-1 text-[10px] font-sans font-bold bg-amber-50/60 border border-amber-300 text-amber-950 rounded-lg focus:bg-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                <button
+                  type="button"
+                  @click="addRingRow"
+                  class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                >
+                  <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                  <span>+ Agregar {{ activeTablaConfig.titulo_primera_columna || 'Fila' }}</span>
+                </button>
+
+                <div v-if="isRingsGroup" class="flex items-center gap-3">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-bold text-slate-600">Cilindros:</span>
+                    <input
+                      v-model.number="paramValues.cilindros"
+                      type="number"
+                      placeholder="4"
+                      class="w-12 px-1.5 py-0.5 text-center text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                    />
                   </div>
+                </div>
+              </div>
+            </div>
 
-                  <span v-if="activeGroup" class="text-[10px] font-extrabold text-[#004B97] bg-white border border-cyan-200 px-2 py-0.5 rounded-full">
-                    {{ isGeneralTableGroup ? `${ringRows.length} Filas` : (isSubfilasGroup ? `${subfilasRows.length} Filas` : `${activeGroup.parametros.filter(p => p.requerido).length} Medidas`) }}
+            <!-- A2. TABLA UNIFICADA DE FAMILIA (FILAS, UNIONES CENTRALES, SUB-COLUMNAS Y OPCIONES CON COLOR) -->
+            <div v-else-if="isSubfilasGroup" class="space-y-3.5">
+              <div v-if="activeTablaConfig.tiene_cabecera_marca" class="p-3 bg-cyan-50/60 border border-cyan-200 rounded-2xl space-y-2">
+                <div class="flex items-center justify-between border-b border-cyan-200/70 pb-1.5">
+                  <span class="text-xs font-black uppercase text-[#004B97] tracking-wider">
+                    Barra de Título / Aplicación del Juego
                   </span>
                 </div>
 
-                <!-- A. MATRIZ TABULAR DINÁMICA GENERAL PARA FAMILIAS EN TABLA (ANILLOS Y CUALQUIER FAMILIA TABULAR) -->
-                <div v-if="isGeneralTableGroup" class="space-y-3">
-                  
-                  <!-- Tabla de medidas compacta y 100% configurable -->
-                  <div class="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs font-mono select-text">
-                    <table class="border-collapse text-center text-xs w-full">
-                      <thead>
-                        <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
-                          <th class="px-3 py-2 text-left border-r border-slate-200">{{ activeTablaConfig.titulo_primera_columna || (isRingsGroup ? 'Anillo' : 'Posición') }}</th>
-                          <template v-if="isRingsGroup">
-                            <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro') }}</th>
-                            <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('grosor_mm', getActiveGroupParamLabel('anillo1_h1', 'Grosor')) }}</th>
-                            <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('altura_mm', getActiveGroupParamLabel('anillo1_a1', 'Altura')) }}</th>
-                          </template>
-                          <th
-                            v-for="extParam in extraRingGroupParams"
-                            :key="`th-ext-${extParam.id}`"
-                            class="px-2 py-2 border-r border-slate-200"
-                          >
-                            {{ extParam.etiqueta_corta || extParam.etiqueta }}{{ extParam.unidad ? ` (${extParam.unidad})` : '' }}
-                          </th>
-                          <th v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2.5 py-2">
-                            {{ activeTablaConfig.etiqueta_identificador || (isRingsGroup ? 'Cónico' : 'Especial') }}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-100 text-[11px]">
-                        <tr
-                          v-for="(ring, rIdx) in ringRows"
-                          @paste.stop="handleExcelPasteToRings($event, rIdx)"
-                          :key="ring.id"
-                          class="hover:bg-slate-50/70 transition"
-                          :class="[
-                            formErrors[`ring_h1_${rIdx}`] || (rIdx === 0 && formErrors.diametro_cilindro_mm) ? 'bg-rose-50/20' : '',
-                            ring.tiene_identificador ? 'bg-amber-50/25' : ''
-                          ]"
-                        >
-                          <!-- 1ra Columna: Incremental (1, 2, 3...) o Libre -->
-                          <td class="px-2.5 py-1.5 bg-slate-50/80 font-bold text-slate-800 border-r border-slate-200 text-left whitespace-nowrap">
-                            <div class="flex items-center justify-between gap-1.5">
-                              <div class="flex items-center gap-1.5 flex-1 min-w-[110px]">
-                                <span
-                                  class="w-2 h-2 rounded-full shrink-0"
-                                  :class="ring.tiene_identificador ? 'bg-amber-500' : (rIdx === ringRows.length - 1 ? 'bg-[#04C4D9]' : 'bg-[#004B97]')"
-                                ></span>
-                                <input
-                                  v-model="ring.posicion"
-                                  type="text"
-                                  :placeholder="getDefaultRowPosition(rIdx, ringRows.length)"
-                                  class="w-full px-1.5 py-0.5 text-xs font-extrabold text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-[#04C4D9] rounded focus:outline-none transition"
-                                />
-                              </div>
-                              <button
-                                v-if="ringRows.length > 1"
-                                type="button"
-                                @click="removeRingRow(rIdx)"
-                                class="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
-                                :title="`Quitar ${getRingRowTitle(ring, rIdx)}`"
-                              >
-                                <Trash2 class="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-
-                          <template v-if="isRingsGroup">
-                            <!-- Diámetro común STD (Editable en 1ra fila, heredado en las demás) -->
-                            <td v-if="rIdx === 0" class="px-2 py-1.5 border-r border-slate-200">
-                              <div class="relative flex items-center justify-center">
-                                <input
-                                  v-model.number="paramValues.diametro_cilindro_mm"
-                                  type="number"
-                                  step="0.001"
-                                  placeholder="86.000"
-                                  class="w-20 px-1.5 py-1 text-center font-mono font-black text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                                  :class="formErrors.diametro_cilindro_mm ? 'border-rose-400 bg-rose-50' : 'border-slate-300'"
-                                />
-                              </div>
-                            </td>
-                            <td v-else class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
-                              <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
-                            </td>
-
-                            <!-- Grosor h1 -->
-                            <td class="px-2 py-1.5 border-r border-slate-200">
-                              <input
-                                v-model.number="ring.h1"
-                                type="number"
-                                step="0.001"
-                                :placeholder="rIdx === ringRows.length - 1 ? '3.000' : '1.500'"
-                                class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                                :class="formErrors[`ring_h1_${rIdx}`] ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
-                              />
-                            </td>
-
-                            <!-- Altura a1 -->
-                            <td class="px-2 py-1.5 border-r border-slate-200">
-                              <input
-                                v-model.number="ring.a1"
-                                type="number"
-                                step="0.01"
-                                :placeholder="rIdx === ringRows.length - 1 ? '2.80' : '3.40'"
-                                class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              />
-                            </td>
-                          </template>
-
-                          <!-- Columnas personalizadas por fila -->
-                          <td
-                            v-for="extParam in extraRingGroupParams"
-                            :key="`td-ext-${ring.id}-${extParam.id}`"
-                            class="px-2 py-1.5 border-r border-slate-200"
-                          >
-                            <input
-                              v-if="extParam.tipo_dato === 'numero'"
-                              v-model.number="ring.extra[extParam.clave]"
-                              type="number"
-                              step="0.01"
-                              placeholder="0.00"
-                              class="w-16 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                            />
-                            <!-- Booleano (Sí / No) -->
-                            <button
-                              v-else-if="extParam.tipo_dato === 'booleano'"
-                              type="button"
-                              @click="ring.extra[extParam.clave] = !ring.extra[extParam.clave]"
-                              :class="[
-                                'px-2 py-0.5 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
-                                ring.extra[extParam.clave]
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
-                                  : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                              ]"
-                            >
-                              <Check v-if="ring.extra[extParam.clave]" class="w-3 h-3 text-emerald-600" />
-                              <X v-else class="w-3 h-3 text-slate-400" />
-                              <span>{{ ring.extra[extParam.clave] ? 'Sí' : 'No' }}</span>
-                            </button>
-                            <!-- Selección (Opciones) -->
-                            <select
-                              v-else-if="extParam.tipo_dato === 'seleccion'"
-                              v-model="ring.extra[extParam.clave]"
-                              class="w-20 px-1 py-1 text-center font-sans font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                            >
-                              <option value="">—</option>
-                              <option v-for="opt in (extParam.opciones || [])" :key="opt" :value="opt">{{ opt }}</option>
-                            </select>
-                            <input
-                              v-else
-                              v-model="ring.extra[extParam.clave]"
-                              type="text"
-                              placeholder="—"
-                              class="w-20 px-1.5 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                            />
-                          </td>
-
-                          <!-- Identificador aparte por fila -->
-                          <td v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2 py-1.5 whitespace-nowrap">
-                            <div class="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                @click="toggleRowIdentificador(ring)"
-                                class="px-2 py-1 rounded-lg text-[10px] font-sans font-extrabold border transition flex items-center gap-1"
-                                :class="ring.tiene_identificador
-                                  ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
-                                  : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'"
-                                :title="`Marcar o desmarcar ${activeTablaConfig.etiqueta_identificador || 'Especial'} en esta fila`"
-                              >
-                                <Check v-if="ring.tiene_identificador" class="w-3 h-3 text-amber-700" />
-                                <span>{{ activeTablaConfig.etiqueta_identificador || (isRingsGroup ? 'Cónico' : 'Especial') }}</span>
-                              </button>
-                              <input
-                                v-if="ring.tiene_identificador"
-                                v-model="ring.identificador_texto"
-                                @input="onRowIdentificadorTextInput(ring)"
-                                type="text"
-                                :placeholder="activeTablaConfig.etiqueta_identificador || 'Especial'"
-                                class="w-20 px-1.5 py-1 text-[10px] font-sans font-bold bg-amber-50/60 border border-amber-300 text-amber-950 rounded-lg focus:bg-white focus:outline-none focus:border-amber-500"
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
+                  <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wide text-slate-700 mb-1">
+                      Marca / Título Corto
+                    </label>
+                    <input
+                      v-model="subfilasMarcaBanner"
+                      type="text"
+                      placeholder="Ej. TOYOTA, NISSAN, UNIVERSAL..."
+                      class="w-full px-3 py-1.5 text-center text-xs font-black tracking-wider uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-900 shadow-2xs"
+                    />
                   </div>
 
-                  <!-- Controles auxiliares bajo la tabla: + Agregar Fila -->
-                  <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
-                    <button
-                      type="button"
-                      @click="addRingRow"
-                      class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
-                    >
-                      <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>+ Agregar {{ activeTablaConfig.titulo_primera_columna || 'Fila' }}</span>
-                    </button>
-
-                    <div v-if="isRingsGroup" class="flex items-center gap-3">
-                      <div class="flex items-center gap-1.5">
-                        <span class="text-[10px] font-bold text-slate-600">Cilindros:</span>
-                        <input
-                          v-model.number="paramValues.cilindros"
-                          type="number"
-                          placeholder="4"
-                          class="w-12 px-1.5 py-0.5 text-center text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-                    </div>
+                  <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wide text-slate-700 mb-1">
+                      Aplicación / Modelos
+                    </label>
+                    <input
+                      v-model="subfilasAplicacionBanner"
+                      type="text"
+                      placeholder="Ej. Hilux 2.4 / 2.8, Motor 2L / 3L..."
+                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-800 shadow-2xs"
+                    />
                   </div>
-
-                </div>
-
-                <!-- A2. TABLA DE FILAS FIJAS (PLANTILLA GENERAL PARA CUALQUIER GRUPO) -->
-                <div v-else-if="isSubfilasGroup" class="space-y-3.5">
-                  <!-- Encabezado opcional del juego -->
-                  <div v-if="activeTablaConfig.tiene_cabecera_marca" class="p-3 bg-cyan-50/60 border border-cyan-200 rounded-2xl space-y-2">
-                    <div class="flex items-center justify-between border-b border-cyan-200/70 pb-1.5">
-                      <span class="text-xs font-black uppercase text-[#004B97] tracking-wider">
-                        Barra de Título / Aplicación del Juego
-                      </span>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
-                      <div>
-                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-slate-700 mb-1">
-                          Marca / Título Corto
-                        </label>
-                        <input
-                          v-model="subfilasMarcaBanner"
-                          type="text"
-                          placeholder="Ej. TOYOTA, NISSAN, UNIVERSAL..."
-                          class="w-full px-3 py-1.5 text-center text-xs font-black tracking-wider uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-900 shadow-2xs"
-                        />
-                      </div>
-
-                      <div>
-                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-slate-700 mb-1">
-                          Aplicación / Modelos
-                        </label>
-                        <input
-                          v-model="subfilasAplicacionBanner"
-                          type="text"
-                          placeholder="Ej. Hilux 2.4 / 2.8, Motor 2L / 3L..."
-                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-800 shadow-2xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Tabla de Filas Fijas -->
-                  <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
-                    <div class="p-2.5 bg-slate-100/90 border-b border-slate-200 flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                        <span class="text-xs font-black uppercase tracking-wider text-slate-800">
-                          Filas de Medidas de la Tabla
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        @click="addFormSubfila"
-                        class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus class="w-3 h-3 text-[#04C4D9]" />
-                        <span>+ Agregar Fila</span>
-                      </button>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                      <table class="w-full text-center border-collapse text-xs font-mono">
-                        <!-- Cabecera de 2 niveles si hay sub-columnas -->
-                        <thead v-if="subfilasActiveHeaders.hasSubcolumns">
-                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                            <th rowspan="2" class="px-3 py-2 text-left border-r border-slate-200 w-28 whitespace-nowrap">
-                              {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
-                            </th>
-                            <th rowspan="2" class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
-                              Código
-                            </th>
-                            <template v-for="item in subfilasActiveHeaders.tier1" :key="item.id">
-                              <th
-                                v-if="item.isGroup"
-                                :colspan="item.colspan"
-                                class="py-1 px-2 border-r border-b border-slate-200 bg-cyan-100/60 text-[#004B97] text-center font-black uppercase text-[10px]"
-                              >
-                                {{ item.label }}
-                              </th>
-                              <th
-                                v-else
-                                rowspan="2"
-                                class="py-2 px-2 border-r border-slate-200 text-[#004B97] font-bold uppercase text-[10px] text-center whitespace-nowrap"
-                              >
-                                {{ item.label }}
-                              </th>
-                            </template>
-                            <th rowspan="2" class="px-2 py-2 w-12 text-center">Acción</th>
-                          </tr>
-                          <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase border-b border-slate-200">
-                            <th
-                              v-for="sub in subfilasActiveHeaders.tier2"
-                              :key="sub.id"
-                              class="py-1 px-1.5 text-center border-r border-slate-200 whitespace-nowrap font-mono"
-                            >
-                              <span>{{ sub.label }}</span>
-                              <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
-                            </th>
-                          </tr>
-                        </thead>
-
-                        <!-- Cabecera plana estándar si no hay sub-columnas -->
-                        <thead v-else>
-                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
-                            <th class="px-3 py-2 text-left border-r border-slate-200 w-28 whitespace-nowrap">
-                              {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
-                            </th>
-                            <th class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
-                              Código
-                            </th>
-                            <th
-                              v-for="param in (activeGroup?.parametros || [])"
-                              :key="`th-flat-${param.id}`"
-                              class="px-2 py-2 border-r border-slate-200 whitespace-nowrap"
-                            >
-                              {{ param.etiqueta_corta || param.etiqueta }}{{ param.unidad ? ` (${param.unidad})` : '' }}
-                            </th>
-                            <th class="px-2 py-2 w-12 text-center">Acción</th>
-                          </tr>
-                        </thead>
-
-                        <tbody class="divide-y divide-slate-100 text-[11px]">
-                          <tr
-                            v-for="(sf, sfIdx) in subfilasRows"
-                            @paste.stop="handleExcelPasteToSubfilas($event, sfIdx)"
-                            :key="sf.id"
-                            class="hover:bg-slate-50/70 transition"
-                          >
-                            <td class="px-2.5 py-1.5 border-r border-slate-200 text-left bg-slate-50/50">
-                              <div class="flex items-center gap-1.5">
-                                <span
-                                  class="w-2 h-2 rounded-full shrink-0"
-                                  :class="sfIdx === 0 ? 'bg-[#004B97]' : (sfIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
-                                ></span>
-                                <input
-                                  v-model="sf.nombre"
-                                  type="text"
-                                  :placeholder="`Fila ${sfIdx + 1}`"
-                                  class="w-full px-1.5 py-0.5 text-xs font-black text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-[#04C4D9] rounded focus:outline-none transition"
-                                />
-                              </div>
-                            </td>
-
-                            <td class="px-2 py-1.5 border-r border-slate-200">
-                              <input
-                                v-model="sf.codigo"
-                                type="text"
-                                placeholder="Código..."
-                                class="w-28 px-1.5 py-1 text-center font-mono font-black text-xs uppercase bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              />
-                            </td>
-
-                            <td
-                              v-for="param in (activeGroup?.parametros || [])"
-                              :key="`td-sf-${sf.id}-${param.id}`"
-                              class="px-1.5 py-1.5 border-r border-slate-200"
-                            >
-                              <input
-                                v-if="param.tipo_dato === 'numero'"
-                                v-model.number="sf.medidas[param.clave]"
-                                type="number"
-                                step="0.001"
-                                placeholder="0.00"
-                                class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              />
-                              <!-- Booleano (Sí / No) -->
-                              <button
-                                v-else-if="param.tipo_dato === 'booleano'"
-                                type="button"
-                                @click="sf.medidas[param.clave] = !sf.medidas[param.clave]"
-                                :class="[
-                                  'px-2 py-1 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
-                                  sf.medidas[param.clave]
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
-                                    : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                                ]"
-                              >
-                                <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-emerald-600" />
-                                <X v-else class="w-3 h-3 text-slate-400" />
-                                <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
-                              </button>
-                              <!-- Selección (Opciones) -->
-                              <select
-                                v-else-if="param.tipo_dato === 'seleccion'"
-                                v-model="sf.medidas[param.clave]"
-                                class="w-24 px-1 py-1 text-center font-sans font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              >
-                                <option value="">—</option>
-                                <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">{{ opt }}</option>
-                              </select>
-                              <input
-                                v-else
-                                v-model="sf.medidas[param.clave]"
-                                type="text"
-                                placeholder="—"
-                                class="w-20 px-1 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              />
-                            </td>
-
-                            <td class="px-2 py-1.5 text-center">
-                              <button
-                                v-if="subfilasRows.length > 1"
-                                type="button"
-                                @click="removeFormSubfila(sfIdx)"
-                                class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                :title="`Eliminar ${sf.nombre || 'esta fila'}`"
-                              >
-                                <Trash2 class="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- B. GRINTA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS (CON SOPORTE DE SUB-COLUMNAS) -->
-                <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="space-y-3">
-                  <div 
-                    v-for="block in groupedActiveParams" 
-                    :key="block.parent || 'standalone'"
-                    :class="block.parent ? 'p-3 bg-blue-50/40 rounded-2xl border border-blue-200/80 space-y-2.5' : ''"
-                  >
-                    <!-- Encabezado de Agrupación de Sub-columnas si aplica -->
-                    <div v-if="block.parent" class="flex items-center justify-between pb-1.5 border-b border-blue-200/70">
-                      <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-[#004B97]"></span>
-                        <span class="text-xs font-black uppercase text-[#004B97] font-mono tracking-wider">
-                          {{ block.parent }}
-                        </span>
-                        <span class="text-[9px] font-bold text-blue-800 bg-blue-100 border border-blue-200 px-1.5 py-0.2 rounded-full">
-                          {{ block.params.length }} Sub-columnas
-                        </span>
-                      </div>
-                      <span class="text-[10px] text-slate-500 font-sans font-medium">Medidas agrupadas para rectificación</span>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" :class="block.parent ? 'pt-0.5' : ''">
-                      <div 
-                        v-for="param in block.params" 
-                        :key="param.id"
-                        class="bg-white p-3 rounded-xl border transition shadow-2xs"
-                        :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
-                      >
-                        <div class="flex items-center justify-between mb-1">
-                          <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
-                            <span>{{ param.etiqueta }}</span>
-                            <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
-                          </label>
-                          <span 
-                            :class="[
-                              'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full uppercase',
-                              param.requerido ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-slate-100 text-slate-500'
-                            ]"
-                          >
-                            {{ param.requerido ? 'Req' : 'Opc' }}
-                          </span>
-                        </div>
-
-                        <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
-                          <input
-                            v-model.number="paramValues[param.clave]"
-                            type="number"
-                            step="0.001"
-                            placeholder="0.00"
-                            class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                          />
-                          <span class="absolute right-2.5 text-[9px] font-black text-slate-400 uppercase pointer-events-none">
-                            {{ param.unidad || 'mm' }}
-                          </span>
-                        </div>
-
-                        <div v-else-if="param.tipo_dato === 'seleccion'" class="relative">
-                          <select
-                            v-model="paramValues[param.clave]"
-                            class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                          >
-                            <option value="">Selecciona opción</option>
-                            <option v-for="opt in param.opciones || []" :key="opt" :value="opt">
-                              {{ opt }}
-                            </option>
-                          </select>
-                        </div>
-
-                        <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
-                          <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                            <input type="radio" :value="true" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                            <span>Sí</span>
-                          </label>
-                          <label class="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                            <input type="radio" :value="false" v-model="paramValues[param.clave]" class="text-[#04C4D9]" />
-                            <span>No</span>
-                          </label>
-                        </div>
-
-                        <div v-else class="relative">
-                          <input
-                            v-model="paramValues[param.clave]"
-                            type="text"
-                            placeholder="Valor"
-                            class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                          />
-                        </div>
-
-                        <p v-if="formErrors[param.clave]" class="text-[9px] text-rose-600 font-bold mt-1">
-                          {{ formErrors[param.clave] }}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-else class="p-4 text-center bg-white border border-slate-200 rounded-xl text-xs text-slate-500">
-                  Este grupo no tiene medidas dimensionales adicionales.
                 </div>
               </div>
 
-              <!-- 2. Bloque B: Equivalencias Multimarca Alternas -->
-              <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
-                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
-                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Equivalencias Multimarca Alternas
-                    </h3>
+              <!-- Tabla idéntica al diseñador de la familia -->
+              <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+                <div class="p-2.5 bg-slate-100/90 border-b border-slate-200 flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
+                    <span class="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Filas y Medidas de la Tabla
+                    </span>
                   </div>
                   <button
                     type="button"
-                    @click="addEquivalenceRow"
-                    class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0"
+                    @click="addFormSubfila"
+                    class="text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2.5 py-1 rounded-lg border border-cyan-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
                   >
-                    <Plus class="w-3 h-3 text-[#04C4D9]" />
-                    <span>+ Agregar Marca</span>
+                    <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                    <span>+ Agregar Fila</span>
                   </button>
                 </div>
 
-                <div class="space-y-1.5">
-                  <div 
-                    v-for="(eq, idx) in equivalencias" 
-                    :key="idx" 
-                    class="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs"
-                  >
-                    <select
-                      v-model="eq.marca_alterna"
-                      class="w-28 px-2 py-1 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                    >
-                      <option v-for="brand in availableAltBrands" :key="brand" :value="brand">
-                        {{ brand }}
-                      </option>
-                    </select>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-center border-collapse text-xs font-mono">
+                    <!-- Cabecera de 2 niveles si hay sub-columnas -->
+                    <thead v-if="subfilasActiveHeaders.hasSubcolumns">
+                      <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                        <th
+                          v-if="hasSubfilasRowGroups"
+                          rowspan="2"
+                          class="px-3 py-2 text-center border-r border-slate-200 bg-cyan-50/70 text-[#004B97] font-black whitespace-nowrap"
+                        >
+                          {{ activeTablaConfig.titulo_grupo_filas || 'Grupo' }}
+                        </th>
+                        <th rowspan="2" class="px-3 py-2 text-left border-r border-slate-200 min-w-[140px] whitespace-nowrap">
+                          {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
+                        </th>
+                        <th rowspan="2" class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
+                          Código
+                        </th>
+                        <template v-for="item in subfilasActiveHeaders.tier1" :key="item.id">
+                          <th
+                            v-if="item.isGroup"
+                            :colspan="item.colspan"
+                            class="py-1 px-2 border-r border-b border-slate-200 bg-cyan-100/60 text-[#004B97] text-center font-black uppercase text-[10px]"
+                          >
+                            {{ item.label }}
+                          </th>
+                          <th
+                            v-else
+                            rowspan="2"
+                            class="py-2 px-2 border-r border-slate-200 text-[#004B97] font-bold uppercase text-[10px] text-center whitespace-nowrap"
+                          >
+                            {{ item.label }}
+                          </th>
+                        </template>
+                        <th rowspan="2" class="px-2 py-2 w-12 text-center">Acción</th>
+                      </tr>
+                      <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase border-b border-slate-200">
+                        <th
+                          v-for="sub in subfilasActiveHeaders.tier2"
+                          :key="sub.id"
+                          class="py-1 px-1.5 text-center border-r border-slate-200 whitespace-nowrap font-mono"
+                        >
+                          <span>{{ sub.label }}</span>
+                          <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
+                        </th>
+                      </tr>
+                    </thead>
 
-                    <input
-                      v-model="eq.codigo_alterno"
-                      type="text"
-                      placeholder="Código alterno"
-                      class="flex-1 px-2.5 py-1 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] uppercase"
-                    />
+                    <!-- Cabecera plana estándar si no hay sub-columnas -->
+                    <thead v-else>
+                      <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
+                        <th
+                          v-if="hasSubfilasRowGroups"
+                          class="px-3 py-2 text-center border-r border-slate-200 bg-cyan-50/70 text-[#004B97] font-black whitespace-nowrap"
+                        >
+                          {{ activeTablaConfig.titulo_grupo_filas || 'Grupo' }}
+                        </th>
+                        <th class="px-3 py-2 text-left border-r border-slate-200 min-w-[140px] whitespace-nowrap">
+                          {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
+                        </th>
+                        <th class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
+                          Código
+                        </th>
+                        <th
+                          v-for="param in (activeGroup?.parametros || [])"
+                          :key="`th-flat-${param.id}`"
+                          class="px-2 py-2 border-r border-slate-200 whitespace-nowrap"
+                        >
+                          {{ param.etiqueta_corta || param.etiqueta }}{{ param.unidad ? ` (${param.unidad})` : '' }}
+                        </th>
+                        <th class="px-2 py-2 w-12 text-center">Acción</th>
+                      </tr>
+                    </thead>
 
-                    <input
-                      v-model="eq.notas"
-                      type="text"
-                      placeholder="Notas"
-                      class="w-32 sm:w-36 px-2.5 py-1 text-[11px] font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                    />
+                    <tbody class="divide-y divide-slate-100 text-[11px]">
+                      <tr
+                        v-for="(sf, sfIdx) in subfilasRows"
+                        @paste.stop="handleExcelPasteToSubfilas($event, sfIdx)"
+                        :key="sf.id"
+                        class="hover:bg-slate-50/70 transition"
+                      >
+                        <!-- Columna central agrupadora de filas (rowspan) -->
+                        <td
+                          v-if="hasSubfilasRowGroups && subfilasRowSpans[sfIdx]?.show"
+                          :rowspan="subfilasRowSpans[sfIdx]?.rowspan"
+                          class="px-2.5 py-2 border-r border-slate-200 bg-cyan-50/35 text-center align-middle font-black text-[#004B97] uppercase text-[10px] tracking-wider"
+                        >
+                          {{ subfilasRowSpans[sfIdx]?.label || '—' }}
+                        </td>
 
-                    <button
-                      type="button"
-                      @click="removeEquivalenceRow(idx)"
-                      class="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
-                      title="Eliminar fila"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
+                        <td class="px-2.5 py-1.5 border-r border-slate-200 text-left bg-slate-50/50">
+                          <div class="flex items-center gap-1.5">
+                            <span
+                              class="w-2 h-2 rounded-full shrink-0"
+                              :class="sfIdx === 0 ? 'bg-[#004B97]' : (sfIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                            ></span>
+                            <input
+                              v-model="sf.nombre"
+                              type="text"
+                              :placeholder="`Fila ${sfIdx + 1}`"
+                              class="w-full px-1.5 py-0.5 text-xs font-black text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-[#04C4D9] rounded focus:outline-none transition"
+                            />
+                          </div>
+                        </td>
+
+                        <td class="px-2 py-1.5 border-r border-slate-200">
+                          <input
+                            v-model="sf.codigo"
+                            type="text"
+                            placeholder="Código..."
+                            class="w-28 px-1.5 py-1 text-center font-mono font-black text-xs uppercase bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                          />
+                        </td>
+
+                        <td
+                          v-for="param in (activeGroup?.parametros || [])"
+                          :key="`td-sf-${sf.id}-${param.id}`"
+                          class="px-1.5 py-1.5 border-r border-slate-200"
+                        >
+                          <input
+                            v-if="param.tipo_dato === 'numero'"
+                            v-model.number="sf.medidas[param.clave]"
+                            type="number"
+                            step="0.001"
+                            placeholder="0.00"
+                            class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                          />
+                          <!-- Booleano (Sí / No) -->
+                          <button
+                            v-else-if="param.tipo_dato === 'booleano'"
+                            type="button"
+                            @click="sf.medidas[param.clave] = !sf.medidas[param.clave]"
+                            :class="[
+                              'px-2.5 py-1 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
+                              sf.medidas[param.clave]
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                            ]"
+                          >
+                            <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-emerald-600" />
+                            <X v-else class="w-3 h-3 text-slate-400" />
+                            <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
+                          </button>
+                          <!-- Selección (Opciones con color por posición) -->
+                          <div
+                            v-else-if="param.tipo_dato === 'seleccion'"
+                            class="flex flex-wrap items-center justify-center gap-1 min-w-[110px]"
+                          >
+                            <button
+                              v-for="(opt, optIdx) in (param.opciones || [])"
+                              :key="opt"
+                              type="button"
+                              @click="sf.medidas[param.clave] = sf.medidas[param.clave] === opt ? '' : opt"
+                              :class="[
+                                'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer',
+                                sf.medidas[param.clave] === opt
+                                  ? `${getOptionBadgeClassByIndex(optIdx)} ring-1 ring-offset-1 ring-slate-400 shadow-2xs`
+                                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
+                              ]"
+                            >
+                              {{ opt }}
+                            </button>
+                          </div>
+                          <input
+                            v-else
+                            v-model="sf.medidas[param.clave]"
+                            type="text"
+                            placeholder="—"
+                            class="w-24 px-1 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                          />
+                        </td>
+
+                        <td class="px-2 py-1.5 text-center">
+                          <button
+                            v-if="subfilasRows.length > 1"
+                            type="button"
+                            @click="removeFormSubfila(sfIdx)"
+                            class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            :title="`Eliminar ${sf.nombre || 'esta fila'}`"
+                          >
+                            <Trash2 class="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- B. GRILLA DINÁMICA DE PARÁMETROS PARA OTRAS FAMILIAS -->
+            <div v-else-if="activeGroup && activeGroup.parametros.length > 0" class="space-y-3">
+              <div
+                v-for="block in groupedActiveParams"
+                :key="block.parent || 'standalone'"
+                :class="block.parent ? 'p-3 bg-blue-50/40 rounded-2xl border border-blue-200/80 space-y-2.5' : ''"
+              >
+                <div v-if="block.parent" class="flex items-center justify-between pb-1.5 border-b border-blue-200/70">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-[#004B97]"></span>
+                    <span class="text-xs font-black uppercase text-[#004B97] font-mono tracking-wider">
+                      {{ block.parent }}
+                    </span>
+                    <span class="text-[9px] font-bold text-blue-800 bg-blue-100 border border-blue-200 px-1.5 py-0.2 rounded-full">
+                      {{ block.params.length }} Sub-columnas
+                    </span>
                   </div>
+                  <span class="text-[10px] text-slate-500 font-sans font-medium">Medidas agrupadas</span>
+                </div>
 
-                  <!-- Añadir marca personalizada si no está en la lista -->
-                  <div class="pt-1">
-                    <button
-                      v-if="!showNewBrandInput"
-                      type="button"
-                      @click="showNewBrandInput = true"
-                      class="text-[10px] text-slate-500 hover:text-[#038391] font-bold flex items-center gap-1 transition"
-                    >
-                      <Plus class="w-3 h-3 text-[#04C4D9]" />
-                      <span>+ Otra marca</span>
-                    </button>
-                    <div v-else class="flex items-center gap-1.5 pt-1">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" :class="block.parent ? 'pt-0.5' : ''">
+                  <div
+                    v-for="param in block.params"
+                    :key="param.id"
+                    class="bg-white p-3 rounded-xl border transition shadow-2xs"
+                    :class="formErrors[param.clave] ? 'border-rose-400 bg-rose-50/30 ring-1 ring-rose-300' : 'border-slate-200'"
+                  >
+                    <div class="flex items-center justify-between mb-1.5">
+                      <label class="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
+                        <span>{{ param.etiqueta }}</span>
+                        <span v-if="param.requerido" class="text-rose-600 font-black">*</span>
+                      </label>
+                      <span
+                        :class="[
+                          'text-[8px] font-extrabold px-1.5 py-0.2 rounded-full uppercase',
+                          param.requerido ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-slate-100 text-slate-500'
+                        ]"
+                      >
+                        {{ param.requerido ? 'Req' : 'Opc' }}
+                      </span>
+                    </div>
+
+                    <div v-if="param.tipo_dato === 'numero'" class="relative flex items-center">
                       <input
-                        v-model="newBrandInputName"
-                        type="text"
-                        placeholder="Nombre de la marca..."
-                        class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-cyan-300 rounded-lg focus:outline-none"
-                        @keydown.enter.prevent="handleAddNewAltBrand"
+                        v-model.number="paramValues[param.clave]"
+                        type="number"
+                        step="0.001"
+                        placeholder="0.00"
+                        class="w-full pl-2.5 pr-10 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                       />
+                      <span class="absolute right-2.5 text-[9px] font-black text-slate-400 uppercase pointer-events-none">
+                        {{ param.unidad || 'mm' }}
+                      </span>
+                    </div>
+
+                    <div v-else-if="param.tipo_dato === 'seleccion'" class="flex flex-wrap items-center gap-1.5 pt-0.5">
                       <button
+                        v-for="(opt, optIdx) in (param.opciones || [])"
+                        :key="opt"
                         type="button"
-                        @click="handleAddNewAltBrand"
-                        class="px-2.5 py-1 rounded-lg bg-[#04C4D9] text-white text-xs font-bold hover:bg-[#038896] transition"
+                        @click="paramValues[param.clave] = paramValues[param.clave] === opt ? '' : opt"
+                        :class="[
+                          'px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer',
+                          paramValues[param.clave] === opt
+                            ? `${getOptionBadgeClassByIndex(optIdx)} ring-2 ring-offset-1 ring-slate-400 shadow-2xs`
+                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
+                        ]"
                       >
-                        Agregar
-                      </button>
-                      <button
-                        type="button"
-                        @click="showNewBrandInput = false"
-                        class="px-2 py-1 text-xs text-slate-400 hover:text-slate-600 font-bold transition"
-                      >
-                        Cancelar
+                        {{ opt }}
                       </button>
                     </div>
+
+                    <div v-else-if="param.tipo_dato === 'booleano'" class="flex items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        @click="paramValues[param.clave] = !paramValues[param.clave]"
+                        :class="[
+                          'px-3 py-1 rounded-lg text-xs font-black transition flex items-center gap-1.5 cursor-pointer',
+                          paramValues[param.clave]
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                        ]"
+                      >
+                        <Check v-if="paramValues[param.clave]" class="w-3.5 h-3.5 text-emerald-600" />
+                        <X v-else class="w-3.5 h-3.5 text-slate-400" />
+                        <span>{{ paramValues[param.clave] ? 'Sí' : 'No' }}</span>
+                      </button>
+                    </div>
+
+                    <div v-else class="relative">
+                      <input
+                        v-model="paramValues[param.clave]"
+                        type="text"
+                        placeholder="Valor"
+                        class="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                      />
+                    </div>
+
+                    <p v-if="formErrors[param.clave]" class="text-[9px] text-rose-600 font-bold mt-1">
+                      {{ formErrors[param.clave] }}
+                    </p>
                   </div>
                 </div>
               </div>
-
             </div>
 
+            <div v-else class="p-4 text-center bg-white border border-slate-200 rounded-xl text-xs text-slate-500">
+              Este grupo no tiene medidas dimensionales adicionales.
+            </div>
+          </div>
+
+          <!-- 4. EQUIVALENCIAS MULTIMARCA ALTERNAS -->
+          <div class="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
+                <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
+                  Equivalencias Multimarca Alternas
+                </h3>
+              </div>
+              <button
+                type="button"
+                @click="addEquivalenceRow"
+                class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0 cursor-pointer"
+              >
+                <Plus class="w-3 h-3 text-[#04C4D9]" />
+                <span>+ Agregar Marca</span>
+              </button>
+            </div>
+
+            <div class="space-y-1.5">
+              <div
+                v-for="(eq, idx) in equivalencias"
+                :key="idx"
+                class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs"
+              >
+                <select
+                  v-model="eq.marca_alterna"
+                  class="w-32 px-2 py-1 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                >
+                  <option v-for="brand in availableAltBrands" :key="brand" :value="brand">
+                    {{ brand }}
+                  </option>
+                </select>
+
+                <input
+                  v-model="eq.codigo_alterno"
+                  type="text"
+                  placeholder="Código alterno"
+                  class="flex-1 min-w-[140px] px-2.5 py-1 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] uppercase"
+                />
+
+                <input
+                  v-model="eq.notas"
+                  type="text"
+                  placeholder="Notas"
+                  class="w-36 sm:w-44 px-2.5 py-1 text-[11px] font-medium bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                />
+
+                <button
+                  type="button"
+                  @click="removeEquivalenceRow(idx)"
+                  class="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                  title="Eliminar fila"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div class="pt-1">
+                <button
+                  v-if="!showNewBrandInput"
+                  type="button"
+                  @click="showNewBrandInput = true"
+                  class="text-[10px] text-slate-500 hover:text-[#038391] font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Plus class="w-3 h-3 text-[#04C4D9]" />
+                  <span>+ Otra marca</span>
+                </button>
+                <div v-else class="flex items-center gap-1.5 pt-1">
+                  <input
+                    v-model="newBrandInputName"
+                    type="text"
+                    placeholder="Nombre de la marca..."
+                    class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-cyan-300 rounded-lg focus:outline-none"
+                    @keydown.enter.prevent="handleAddNewAltBrand"
+                  />
+                  <button
+                    type="button"
+                    @click="handleAddNewAltBrand"
+                    class="px-2.5 py-1 rounded-lg bg-[#04C4D9] text-white text-xs font-bold hover:bg-[#038896] transition"
+                  >
+                    Agregar
+                  </button>
+                  <button
+                    type="button"
+                    @click="showNewBrandInput = false"
+                    class="px-2 py-1 text-xs text-slate-400 hover:text-slate-600 font-bold transition"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>

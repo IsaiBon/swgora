@@ -8,7 +8,13 @@ import {
   type FamilyTemplate,
   type TemplateColumnDef
 } from './FamilyTemplates'
-import type { GrupoRepuesto, GrupoRepuestoInsert } from '@/services/catalogService'
+import {
+  buildRowClusters,
+  buildRowSpanMeta,
+  getOptionBadgeClassByIndex,
+  type GrupoRepuesto,
+  type GrupoRepuestoInsert
+} from '@/services/catalogService'
 import {
   Layers,
   CircleDot,
@@ -181,11 +187,14 @@ const onSubfilaDrop = (targetIdx: number) => {
   draggedSubfilaIdx.value = null
   dragOverSubfilaIdx.value = null
   if (fromIdx === null || fromIdx === targetIdx) return
-  const arr = currentTemplate.value.tabla_config?.subfilas
-  if (!arr || fromIdx < 0 || fromIdx >= arr.length) return
+  const arr = ensureTablaSubfilas()
+  const padres = ensureTablaSubfilaPadres()
+  if (fromIdx < 0 || fromIdx >= arr.length) return
   const [moved] = arr.splice(fromIdx, 1)
+  const [movedParent] = padres.splice(fromIdx, 1)
   if (moved !== undefined) {
     arr.splice(targetIdx, 0, moved)
+    padres.splice(targetIdx, 0, movedParent || '')
   }
 }
 
@@ -305,6 +314,18 @@ const ensureTablaSubfilas = (): string[] => {
   return currentTemplate.value.tabla_config.subfilas
 }
 
+const ensureTablaSubfilaPadres = (): string[] => {
+  const rows = ensureTablaSubfilas()
+  const cfg = currentTemplate.value.tabla_config!
+  if (!Array.isArray(cfg.subfila_padres)) {
+    cfg.subfila_padres = rows.map(() => '')
+  } else {
+    while (cfg.subfila_padres.length < rows.length) cfg.subfila_padres.push('')
+    if (cfg.subfila_padres.length > rows.length) cfg.subfila_padres.length = rows.length
+  }
+  return cfg.subfila_padres
+}
+
 const firstColumnTitle = computed({
   get(): string {
     return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Posición / Componente'
@@ -315,6 +336,16 @@ const firstColumnTitle = computed({
   }
 })
 
+const rowGroupColumnTitle = computed({
+  get(): string {
+    return currentTemplate.value.tabla_config?.titulo_grupo_filas ?? 'Grupo'
+  },
+  set(val: string) {
+    ensureTablaSubfilas()
+    currentTemplate.value.tabla_config!.titulo_grupo_filas = val
+  }
+})
+
 const unifiedRows = computed<string[]>(() => {
   const arr = currentTemplate.value.tabla_config?.subfilas
   return Array.isArray(arr) && arr.length > 0 ? arr : ['Fila 1']
@@ -322,19 +353,124 @@ const unifiedRows = computed<string[]>(() => {
 
 const updateUnifiedRowName = (idx: number, val: string) => {
   const arr = ensureTablaSubfilas()
+  ensureTablaSubfilaPadres()
   arr[idx] = val
 }
 
 const addUnifiedRow = () => {
   const arr = ensureTablaSubfilas()
+  const padres = ensureTablaSubfilaPadres()
   const count = arr.length + 1
   arr.push(`Fila ${count}`)
+  padres.push('')
 }
 
 const removeUnifiedRow = (index: number) => {
   const arr = currentTemplate.value.tabla_config?.subfilas
   if (!arr || arr.length <= 1) return
   arr.splice(index, 1)
+  if (Array.isArray(currentTemplate.value.tabla_config?.subfila_padres)) {
+    currentTemplate.value.tabla_config!.subfila_padres.splice(index, 1)
+  }
+}
+
+// --- AGRUPACIÓN DE FILAS EN BLOQUES UNIDOS ("CENTRAR" + COLUMNA CENTRAL DE FILAS) ---
+const rowClusterGroups = computed(() => {
+  const padres = currentTemplate.value.tabla_config?.subfila_padres || []
+  return buildRowClusters(unifiedRows.value, (_, i) => padres[i])
+})
+
+const hasGroupedRows = computed<boolean>(() => {
+  return rowClusterGroups.value.some(c => c.isGrouped)
+})
+
+const previewRowSpans = computed(() => {
+  if (!hasGroupedRows.value) return []
+  const padres = currentTemplate.value.tabla_config?.subfila_padres || []
+  return buildRowSpanMeta(previewSampleRows.value, (_, i) => padres[i])
+})
+
+const areAdjacentRowsJoined = (leftIdx: number): boolean => {
+  const padres = currentTemplate.value.tabla_config?.subfila_padres || []
+  const left = (padres[leftIdx] || '').trim()
+  const right = (padres[leftIdx + 1] || '').trim()
+  return left.length > 0 && left === right
+}
+
+const toggleJoinAdjacentRows = (leftIdx: number) => {
+  const rows = ensureTablaSubfilas()
+  const padres = ensureTablaSubfilaPadres()
+  if (leftIdx < 0 || leftIdx >= rows.length - 1) return
+
+  if (areAdjacentRowsJoined(leftIdx)) {
+    const shared = (padres[leftIdx] || '').trim()
+    let startIdx = leftIdx
+    while (startIdx > 0 && (padres[startIdx - 1] || '').trim() === shared) startIdx--
+    let endIdx = leftIdx + 1
+    while (endIdx < rows.length - 1 && (padres[endIdx + 1] || '').trim() === shared) endIdx++
+
+    const leftLen = leftIdx - startIdx + 1
+    const rightLen = endIdx - leftIdx
+    if (leftLen < 2) {
+      padres[startIdx] = ''
+    }
+    if (rightLen < 2) {
+      padres[endIdx] = ''
+    } else if (leftLen >= 2) {
+      const rightName = `${shared || 'Bloque'} 2`
+      for (let i = leftIdx + 1; i <= endIdx; i++) {
+        padres[i] = rightName
+      }
+    }
+    return
+  }
+
+  let leftStart = leftIdx
+  const leftParent = (padres[leftIdx] || '').trim()
+  if (leftParent) {
+    while (leftStart > 0 && (padres[leftStart - 1] || '').trim() === leftParent) leftStart--
+  }
+
+  let rightEnd = leftIdx + 1
+  const rightParent = (padres[leftIdx + 1] || '').trim()
+  if (rightParent) {
+    while (rightEnd < rows.length - 1 && (padres[rightEnd + 1] || '').trim() === rightParent) rightEnd++
+  }
+
+  const centralName = leftParent || rightParent || 'Bloque Central'
+  for (let i = leftStart; i <= rightEnd; i++) {
+    padres[i] = centralName
+  }
+}
+
+const renameRowCluster = (startIdx: number, endIdx: number, newName: string) => {
+  const padres = ensureTablaSubfilaPadres()
+  for (let i = startIdx; i <= endIdx; i++) {
+    padres[i] = newName
+  }
+}
+
+const ensureRowClusterNameOnBlur = (startIdx: number, endIdx: number) => {
+  const padres = ensureTablaSubfilaPadres()
+  if ((padres[startIdx] || '').trim() === '') {
+    for (let i = startIdx; i <= endIdx; i++) {
+      padres[i] = 'Bloque Central'
+    }
+  }
+}
+
+const ungroupRowCluster = (startIdx: number, endIdx: number) => {
+  const padres = ensureTablaSubfilaPadres()
+  for (let i = startIdx; i <= endIdx; i++) {
+    padres[i] = ''
+  }
+}
+
+const getParsedOptionsList = (col: TemplateColumnDef): string[] => {
+  if (col.opcionesStr !== undefined) {
+    return col.opcionesStr.split(',').map(s => s.trim()).filter(Boolean)
+  }
+  return Array.isArray(col.opciones) ? col.opciones : []
 }
 
 // Agrupación visual para la cabecera en vivo (Tier 1 y Tier 2 con sub-columnas)
@@ -794,77 +930,154 @@ const handleSave = () => {
           </button>
         </div>
 
-        <!-- Editor editable de la 1ra columna -->
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200/90">
-          <label class="text-[11px] font-black text-slate-700 shrink-0">
-            Nombre de la 1ra columna:
-          </label>
-          <input
-            v-model="firstColumnTitle"
-            type="text"
-            placeholder="Ej. Posición, Sección, Paso, Anillo, Cojinete..."
-            class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-          />
-          <span class="text-[10px] text-slate-400">
-            Aparecerá al inicio de la tabla
-          </span>
+        <!-- Editor editable de la 1ra columna y nombre columna central de filas -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div class="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200/90">
+            <label class="text-[11px] font-black text-slate-700 shrink-0">
+              1ra columna:
+            </label>
+            <input
+              v-model="firstColumnTitle"
+              type="text"
+              placeholder="Ej. Posición, Sección, Paso, Anillo..."
+              class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+            />
+          </div>
+
+          <div v-if="hasGroupedRows" class="flex items-center gap-2 bg-cyan-50/60 px-3 py-2 rounded-xl border border-cyan-200">
+            <label class="text-[11px] font-black text-[#004B97] shrink-0">
+              Columna central filas:
+            </label>
+            <input
+              v-model="rowGroupColumnTitle"
+              type="text"
+              placeholder="Ej. Grupo, Bloque, Sección..."
+              class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-white border border-cyan-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+            />
+          </div>
         </div>
 
-        <!-- Bloques arrastrables de filas (unidos visualmente cuando hay 2 o más filas) -->
-        <div class="p-3 rounded-2xl bg-cyan-50/50 border-2 border-dashed border-[#04C4D9]/50">
-          <div class="flex items-center flex-wrap gap-y-2">
-            <template
-              v-for="(rowName, sfIdx) in unifiedRows"
-              :key="sfIdx"
-            >
+        <!-- Bloques arrastrables de filas con uniones ("Centrar") y columna central compartida -->
+        <div class="overflow-x-auto pb-1">
+          <div class="flex items-stretch gap-y-2 flex-wrap">
+            <template v-for="(rCluster, rcIdx) in rowClusterGroups" :key="rCluster.key">
+              <!-- Contenedor de cluster: unido si está centrado/agrupado, o bloque suelto -->
               <div
-                draggable="true"
-                @dragstart="onSubfilaDragStart(sfIdx, $event)"
-                @dragover.prevent="onSubfilaDragOver(sfIdx)"
-                @drop.prevent="onSubfilaDrop(sfIdx)"
-                @dragend="onSubfilaDragEnd"
                 :class="[
-                  'flex items-center gap-1.5 bg-white border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
-                  draggedSubfilaIdx === sfIdx
-                    ? 'opacity-50 border-[#04C4D9] scale-95'
-                    : (dragOverSubfilaIdx === sfIdx
-                      ? 'border-[#004B97] ring-2 ring-[#04C4D9]/40 bg-cyan-50/40'
-                      : 'border-slate-300 hover:border-[#04C4D9]')
+                  'flex flex-col justify-between transition',
+                  rCluster.isGrouped
+                    ? 'p-2.5 rounded-2xl bg-cyan-50/55 border-2 border-dashed border-[#04C4D9]/70 space-y-2'
+                    : ''
                 ]"
               >
-                <GripVertical class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span class="w-4 h-4 rounded-full bg-[#004B97] text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
-                  {{ sfIdx + 1 }}
-                </span>
-                <input
-                  :value="rowName"
-                  @input="updateUnifiedRowName(sfIdx, ($event.target as HTMLInputElement).value)"
-                  type="text"
-                  class="w-32 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
-                  placeholder="Nombre de fila"
-                />
-                <button
-                  v-if="unifiedRows.length > 1"
-                  type="button"
-                  @click="removeUnifiedRow(sfIdx)"
-                  class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
-                  title="Quitar fila"
+                <!-- Cabecera editable de la columna central compartida entre todas las filas unidas -->
+                <div
+                  v-if="rCluster.isGrouped"
+                  class="flex items-center justify-between gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-cyan-200 shadow-2xs"
                 >
-                  <Trash2 class="w-3.5 h-3.5" />
-                </button>
+                  <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                    <Link2 class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                    <span class="text-[10px] font-black uppercase tracking-wider text-[#004B97] shrink-0">
+                      Central:
+                    </span>
+                    <input
+                      :value="rCluster.name"
+                      @input="renameRowCluster(rCluster.startIdx, rCluster.endIdx, ($event.target as HTMLInputElement).value)"
+                      @blur="ensureRowClusterNameOnBlur(rCluster.startIdx, rCluster.endIdx)"
+                      type="text"
+                      placeholder="Nombre central (ej. Parte Superior...)"
+                      class="flex-1 min-w-[130px] text-xs font-black text-slate-900 bg-cyan-50/40 px-2 py-0.5 rounded-lg border border-cyan-200 focus:outline-none focus:border-[#04C4D9]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    @click="ungroupRowCluster(rCluster.startIdx, rCluster.endIdx)"
+                    class="px-2 py-0.5 rounded-lg text-[10px] font-black text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition flex items-center gap-1 cursor-pointer shrink-0"
+                    title="Separar todo este grupo de filas"
+                  >
+                    <Unlink2 class="w-3 h-3" />
+                    <span>Separar</span>
+                  </button>
+                </div>
+
+                <!-- Filas dentro del bloque + puente interno separador -->
+                <div class="flex items-center flex-wrap gap-y-2">
+                  <template v-for="(item, itemPos) in rCluster.items" :key="item.rowIdx">
+                    <div
+                      draggable="true"
+                      @dragstart="onSubfilaDragStart(item.rowIdx, $event)"
+                      @dragover.prevent="onSubfilaDragOver(item.rowIdx)"
+                      @drop.prevent="onSubfilaDrop(item.rowIdx)"
+                      @dragend="onSubfilaDragEnd"
+                      :class="[
+                        'flex items-center gap-1.5 bg-white border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
+                        draggedSubfilaIdx === item.rowIdx
+                          ? 'opacity-50 border-[#04C4D9] scale-95'
+                          : (dragOverSubfilaIdx === item.rowIdx
+                            ? 'border-[#004B97] ring-2 ring-[#04C4D9]/40 bg-cyan-50/40'
+                            : (rCluster.isGrouped
+                              ? 'border-[#04C4D9]/70 hover:border-[#004B97]'
+                              : 'border-slate-300 hover:border-[#04C4D9]'))
+                      ]"
+                    >
+                      <GripVertical class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span class="w-4 h-4 rounded-full bg-[#004B97] text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
+                        {{ item.rowIdx + 1 }}
+                      </span>
+                      <input
+                        :value="item.name"
+                        @input="updateUnifiedRowName(item.rowIdx, ($event.target as HTMLInputElement).value)"
+                        type="text"
+                        class="w-32 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
+                        placeholder="Nombre de fila"
+                      />
+                      <button
+                        v-if="unifiedRows.length > 1"
+                        type="button"
+                        @click="removeUnifiedRow(item.rowIdx)"
+                        class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+                        title="Quitar fila"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <!-- Puente interno dentro del grupo unido (permite separar justo entre estas dos) -->
+                    <div
+                      v-if="itemPos < rCluster.items.length - 1"
+                      class="flex items-center px-1 shrink-0"
+                    >
+                      <span class="w-2 h-0.5 bg-[#04C4D9]"></span>
+                      <button
+                        type="button"
+                        @click="toggleJoinAdjacentRows(item.rowIdx)"
+                        class="px-1.5 py-0.5 rounded-full bg-white border border-[#04C4D9] text-[#004B97] hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 shadow-2xs transition flex items-center cursor-pointer"
+                        title="Unidas bajo columna central (clic para separar aquí)"
+                      >
+                        <Link2 class="w-3 h-3" />
+                      </button>
+                      <span class="w-2 h-0.5 bg-[#04C4D9]"></span>
+                    </div>
+                  </template>
+                </div>
               </div>
 
-              <!-- Puente de unión visual entre filas contiguas -->
+              <!-- Puente con botón CENTRAR entre filas o grupos cercanos -->
               <div
-                v-if="sfIdx < unifiedRows.length - 1"
-                class="flex items-center px-1"
-                title="Unidos en el mismo conjunto"
+                v-if="rcIdx < rowClusterGroups.length - 1"
+                class="flex items-center px-1 shrink-0"
               >
-                <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
-                <span class="w-5 h-5 rounded-full bg-white border border-[#04C4D9] flex items-center justify-center shadow-2xs">
-                  <Link2 class="w-3 h-3 text-[#004B97]" />
-                </span>
-                <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
+                <span class="w-2 border-t-2 border-dotted border-slate-300"></span>
+                <button
+                  type="button"
+                  @click="toggleJoinAdjacentRows(rCluster.endIdx)"
+                  class="px-2 py-1 rounded-full bg-white border border-slate-300 hover:border-[#04C4D9] hover:bg-cyan-50 text-slate-600 hover:text-[#004B97] shadow-2xs transition flex items-center gap-1 cursor-pointer group"
+                  title="Centrar y unir filas cercanas bajo una misma columna central"
+                >
+                  <Link2 class="w-3 h-3 text-[#04C4D9] group-hover:scale-110 transition" />
+                  <span class="text-[9px] font-black leading-none">Centrar</span>
+                </button>
+                <span class="w-2 border-t-2 border-dotted border-slate-300"></span>
               </div>
             </template>
           </div>
@@ -1069,13 +1282,23 @@ const handleSave = () => {
                           <span>Estado Sí / No (ej. Cónico)</span>
                         </div>
 
-                        <div v-else-if="item.col.tipo_dato === 'seleccion'" class="space-y-1">
+                        <div v-else-if="item.col.tipo_dato === 'seleccion'" class="space-y-1.5">
                           <input
                             v-model="item.col.opcionesStr"
                             type="text"
-                            placeholder="Opciones: Admisión, Escape..."
+                            placeholder="Opciones separadas por coma..."
                             class="w-full px-2 py-1 text-[10px] font-bold bg-white border border-purple-200 rounded-lg focus:outline-none focus:border-purple-400"
                           />
+                          <div v-if="getParsedOptionsList(item.col).length > 0" class="flex flex-wrap gap-1">
+                            <span
+                              v-for="(optLabel, oIdx) in getParsedOptionsList(item.col)"
+                              :key="`${item.colIdx}-opt-${oIdx}`"
+                              class="px-1.5 py-0.5 rounded-md border text-[9px] leading-tight"
+                              :class="getOptionBadgeClassByIndex(oIdx)"
+                            >
+                              {{ oIdx + 1 }}. {{ optLabel }}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1145,8 +1368,14 @@ const handleSave = () => {
               <thead>
                 <!-- Tier 1: Grupos Superiores si existen (ej. STD, 0.25...) -->
                 <tr v-if="hasGroupedHeaders" class="bg-slate-100/90 text-slate-700 border-b border-slate-200">
+                  <th
+                    v-if="hasGroupedRows"
+                    class="py-1.5 px-2.5 font-black text-[10px] text-[#004B97] uppercase tracking-wider border-r border-slate-200 bg-cyan-50/70"
+                  >
+                    {{ rowGroupColumnTitle }}
+                  </th>
                   <th class="py-1.5 px-3 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200">
-                    {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Componente' }}
+                    {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Posición / Componente' }}
                   </th>
                   <th class="py-1.5 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center">
                     CÓDIGO
@@ -1163,6 +1392,13 @@ const handleSave = () => {
 
                 <!-- Tier 2: Columnas individuales -->
                 <tr class="bg-slate-50 text-slate-700 border-b border-slate-300">
+                  <th
+                    v-if="hasGroupedRows && !hasGroupedHeaders"
+                    class="py-2 px-2.5 font-black text-xs text-[#004B97] border-r border-slate-200 bg-cyan-50/70 min-w-[110px]"
+                  >
+                    {{ rowGroupColumnTitle }}
+                  </th>
+                  <th v-else-if="hasGroupedRows" class="py-1.5 px-2.5 border-r border-slate-200 bg-cyan-50/40"></th>
                   <th class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px]">
                     <input
                       v-model="firstColumnTitle"
@@ -1200,12 +1436,22 @@ const handleSave = () => {
                   :key="rIdx"
                   class="hover:bg-slate-50/70"
                 >
-                  <td class="py-2 px-3 font-black text-slate-800 flex items-center gap-2 border-r border-slate-100">
-                    <span
-                      class="w-2 h-2 rounded-full"
-                      :class="rIdx === 0 ? 'bg-[#004B97]' : (rIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
-                    ></span>
-                    <span>{{ rowLabel }}</span>
+                  <td
+                    v-if="hasGroupedRows && previewRowSpans[rIdx]?.show"
+                    :rowspan="previewRowSpans[rIdx]?.rowspan || 1"
+                    class="py-2 px-2.5 font-black text-[11px] text-center align-middle border-r border-slate-200"
+                    :class="previewRowSpans[rIdx]?.label ? 'bg-cyan-50/70 text-[#004B97]' : 'bg-slate-50/40 text-slate-400'"
+                  >
+                    {{ previewRowSpans[rIdx]?.label || '—' }}
+                  </td>
+                  <td class="py-2 px-3 font-black text-slate-800 border-r border-slate-100">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="w-2 h-2 rounded-full shrink-0"
+                        :class="rIdx === 0 ? 'bg-[#004B97]' : (rIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                      ></span>
+                      <span>{{ rowLabel }}</span>
+                    </div>
                   </td>
                   <td class="py-2 px-2 text-center font-mono text-[11px] text-slate-400 border-r border-slate-100">
                     {{ 770 + rIdx }}
@@ -1225,12 +1471,13 @@ const handleSave = () => {
                       <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
                     </span>
 
-                    <!-- Muestra de Selección -->
+                    <!-- Muestra de Selección con color diferente según posición (1° amarillo, 2° verde...) -->
                     <span
                       v-else-if="col.tipo_dato === 'seleccion'"
-                      class="inline-flex items-center px-2 py-0.5 rounded-lg bg-purple-50 text-purple-800 text-[10px] font-bold border border-purple-200"
+                      class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] border"
+                      :class="getOptionBadgeClassByIndex(getParsedOptionsList(col).length > 0 ? rIdx % getParsedOptionsList(col).length : 0)"
                     >
-                      {{ (col.opcionesStr ? col.opcionesStr.split(',')[0]?.trim() : col.opciones?.[0]) || 'Opción' }}
+                      {{ getParsedOptionsList(col).length > 0 ? getParsedOptionsList(col)[rIdx % getParsedOptionsList(col).length] : 'Opción' }}
                     </span>
 
                     <!-- Muestra de Número -->

@@ -29,8 +29,11 @@ export interface FamilyTemplate {
   colorTag?: string
   tabla_config?: {
     titulo_primera_columna: string
+    titulo_grupo_filas?: string
     modo_filas: 'cojinetes' | 'subfilas' | 'incremental' | 'libre'
     subfilas?: string[]
+    subfila_padres?: string[]
+    subfilas_activas?: boolean
     tiene_cabecera_marca?: boolean
     usar_prefijo_titulo?: boolean
     etiqueta_ultima_fila?: string
@@ -239,8 +242,11 @@ export function cloneExistingGrupoToTemplate(grupo: GrupoRepuesto): FamilyTempla
     tabla_config: grupo.tabla_config
       ? {
           titulo_primera_columna: grupo.tabla_config.titulo_primera_columna || 'Componente',
-          modo_filas: grupo.tabla_config.modo_filas || 'libre',
+          titulo_grupo_filas: grupo.tabla_config.titulo_grupo_filas || 'Grupo',
+          modo_filas: grupo.tabla_config.modo_filas || 'subfilas',
           subfilas: Array.isArray(grupo.tabla_config.subfilas) ? [...grupo.tabla_config.subfilas] : undefined,
+          subfila_padres: Array.isArray(grupo.tabla_config.subfila_padres) ? [...grupo.tabla_config.subfila_padres] : undefined,
+          subfilas_activas: grupo.tabla_config.subfilas_activas,
           tiene_cabecera_marca: grupo.tabla_config.tiene_cabecera_marca,
           usar_prefijo_titulo: grupo.tabla_config.usar_prefijo_titulo,
           etiqueta_ultima_fila: grupo.tabla_config.etiqueta_ultima_fila,
@@ -341,13 +347,28 @@ export function convertTemplateToGrupoInsert(
 
   let tablaConfig: TablaConfiguracion | undefined
   if (template.tipo_vista === 'tabla') {
-    const cleanSubfilas = Array.isArray(template.tabla_config?.subfilas)
-      ? template.tabla_config!.subfilas.map(s => (s || '').trim()).filter(Boolean)
-      : []
+    const rawFilas = Array.isArray(template.tabla_config?.subfilas) ? template.tabla_config!.subfilas : []
+    const rawPadres = Array.isArray(template.tabla_config?.subfila_padres) ? template.tabla_config!.subfila_padres : []
+    const cleanFilas: string[] = []
+    const cleanPadres: string[] = []
+    rawFilas.forEach((s, idx) => {
+      const trimmed = (s || '').trim()
+      if (trimmed) {
+        cleanFilas.push(trimmed)
+        cleanPadres.push((rawPadres[idx] || '').trim())
+      }
+    })
+    const finalFilas = cleanFilas.length > 0 ? cleanFilas : ['Fila 1']
+    const finalPadres = cleanFilas.length > 0 ? cleanPadres : ['']
+    const hasAnyGroup = finalPadres.some(p => p.length > 0)
+    const modo = template.tabla_config?.modo_filas || 'subfilas'
     tablaConfig = {
       titulo_primera_columna: template.tabla_config?.titulo_primera_columna?.trim() || 'Posición / Componente',
-      modo_filas: template.tabla_config?.modo_filas || 'subfilas',
-      subfilas: cleanSubfilas.length > 0 ? cleanSubfilas : ['Fila 1'],
+      titulo_grupo_filas: hasAnyGroup ? (template.tabla_config?.titulo_grupo_filas?.trim() || 'Grupo') : undefined,
+      modo_filas: modo,
+      subfilas: finalFilas,
+      subfila_padres: hasAnyGroup ? finalPadres : undefined,
+      subfilas_activas: modo === 'subfilas' || modo === 'cojinetes' || template.tabla_config?.subfilas_activas,
       tiene_cabecera_marca: template.tabla_config?.tiene_cabecera_marca ?? false,
       usar_prefijo_titulo: template.tabla_config?.usar_prefijo_titulo,
       etiqueta_ultima_fila: template.tabla_config?.etiqueta_ultima_fila,
