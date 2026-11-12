@@ -552,27 +552,44 @@ export const ordersService = {
         return getStoredOrders()
       }
 
-      if (data && data.length > 0) {
-        const remoteOrders = data.map(mapDbToOrder)
+      if (data) {
+        let remoteOrders = data.map(mapDbToOrder)
 
-        // Resguardar cualquier orden local previa que no haya sincronizado aún a Supabase
+        // Sincronizar cualquier orden o cotización local pendiente hacia Supabase antes de reemplazar caché
         const localOrders = getStoredOrders()
         const remoteIds = new Set(remoteOrders.map(o => o.id))
-        const pendingSync = localOrders.filter(lo => !remoteIds.has(lo.id) && lo.id.startsWith('ord-'))
+        const MOCK_IDS = new Set(['ord-001', 'ord-002', 'ord-003'])
+        const pendingSync = localOrders.filter(
+          lo => !remoteIds.has(lo.id) && lo.id.startsWith('ord-') && !MOCK_IDS.has(lo.id)
+        )
 
         if (pendingSync.length > 0) {
-          (async () => {
-            for (const pending of pendingSync) {
-              try {
-                await supabase.from('ordenes_trabajo').upsert(mapOrderToDb(pending))
-              } catch (syncErr) {
-                console.warn('[OrdersService] Error sincronizando orden pendiente hacia Supabase:', syncErr)
+          const syncedOrders: Order[] = []
+          for (const pending of pendingSync) {
+            try {
+              const { data: upData, error: upErr } = await supabase
+                .from('ordenes_trabajo')
+                .upsert(mapOrderToDb(pending))
+                .select()
+                .single()
+
+              if (!upErr && upData) {
+                syncedOrders.push(mapDbToOrder(upData))
+              } else {
+                console.warn('[OrdersService] No se pudo sincronizar orden/cotización pendiente:', upErr)
+                syncedOrders.push(pending)
               }
+            } catch (syncErr) {
+              console.warn('[OrdersService] Error sincronizando orden/cotización pendiente hacia Supabase:', syncErr)
+              syncedOrders.push(pending)
             }
-          })()
+          }
+          remoteOrders = [...syncedOrders, ...remoteOrders]
         }
 
-        saveStoredOrders(remoteOrders)
+        if (remoteOrders.length > 0) {
+          saveStoredOrders(remoteOrders)
+        }
         return remoteOrders
       }
     } catch (err) {
@@ -666,17 +683,17 @@ export const ordersService = {
     }
     saveStoredOrders(currentOrders)
 
-    // 2. Persistir en la base de datos de Supabase
+    // 2. Persistir en la base de datos de Supabase (upsert garantiza sincronización de órdenes y cotizaciones)
     try {
       const dbPayload = mapOrderToDb(newOrder)
       const { data, error } = await supabase
         .from('ordenes_trabajo')
-        .insert(dbPayload)
+        .upsert(dbPayload)
         .select()
         .single()
 
       if (error) {
-        console.error('[OrdersService] Error guardando orden en Supabase:', error)
+        console.error('[OrdersService] Error guardando orden/cotización en Supabase:', error)
       } else if (data) {
         const serverOrder = mapDbToOrder(data)
         const updatedList = getStoredOrders().map(o => o.id === serverOrder.id ? serverOrder : o)
@@ -684,7 +701,7 @@ export const ordersService = {
         return serverOrder
       }
     } catch (err) {
-      console.error('[OrdersService] Excepción de conexión al guardar orden en Supabase:', err)
+      console.error('[OrdersService] Excepción de conexión al guardar orden/cotización en Supabase:', err)
     }
 
     return newOrder
@@ -718,18 +735,17 @@ export const ordersService = {
       saveStoredOrders(currentOrders)
     }
 
-    // Persistir cambios en Supabase
+    // Persistir cambios en Supabase (upsert evita pérdida si la orden/cotización existía solo localmente)
     try {
       const dbPayload = mapOrderToDb(updatedOrder)
       const { data, error } = await supabase
         .from('ordenes_trabajo')
-        .update(dbPayload)
-        .eq('id', id)
+        .upsert(dbPayload)
         .select()
         .single()
 
       if (error) {
-        console.error('[OrdersService] Error actualizando orden en Supabase:', error)
+        console.error('[OrdersService] Error actualizando orden/cotización en Supabase:', error)
       } else if (data) {
         const serverOrder = mapDbToOrder(data)
         const list = getStoredOrders().map(o => o.id === serverOrder.id ? serverOrder : o)

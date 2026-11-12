@@ -143,7 +143,25 @@ export const useAuthStore = defineStore('auth', () => {
     return isRouteAllowedForRole(path, user.value?.role || 'Consultor')
   }
 
-  async function syncUserWithProfile(sbUser: SupabaseUser | null) {
+  const DEVICE_TOKEN_KEY = 'swgora_device_token'
+
+  function getOrCreateDeviceToken(): string {
+    if (typeof window === 'undefined') return 'server-device'
+    let token = localStorage.getItem(DEVICE_TOKEN_KEY)
+    if (!token) {
+      token =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+      localStorage.setItem(DEVICE_TOKEN_KEY, token)
+    }
+    return token
+  }
+
+  async function syncUserWithProfile(
+    sbUser: SupabaseUser | null,
+    isExplicitLogin = false
+  ) {
     if (!sbUser) {
       user.value = null
       persistUser(null)
@@ -182,6 +200,31 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error(
         'Tu cuenta está desactivada. Contacta al administrador.'
       )
+    }
+
+    // Validación de sesión única por dispositivo
+    const deviceToken = getOrCreateDeviceToken()
+    if (perfil.sesion_unica) {
+      const activeToken = perfil.active_session_token
+      if (activeToken && activeToken !== deviceToken) {
+        session.value = null
+        user.value = null
+        persistUser(null)
+
+        try {
+          await authService.signOutLocal()
+        } catch (err) {
+          console.error('[AuthStore] Error cerrando sesión duplicada:', err)
+        }
+
+        throw new Error(
+          'Esta cuenta permite solo 1 dispositivo activo y ya tiene sesión abierta en otro equipo. Solicita al administrador liberar la sesión.'
+        )
+      }
+
+      if (!activeToken || isExplicitLogin) {
+        await perfilesService.claimDeviceSession(perfil.id, deviceToken)
+      }
     }
 
     const rawRole = perfil.rol || sbUser.user_metadata?.role || 'consultor'
@@ -314,7 +357,7 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await authService.signIn(email.trim(), password)
 
       session.value = data.session
-      await syncUserWithProfile(data.user)
+      await syncUserWithProfile(data.user, true)
       registrarCredencialUsuario({
         id: data.user?.id,
         email: email.trim(),
@@ -329,7 +372,8 @@ export const useAuthStore = defineStore('auth', () => {
         const msg = err.message.toLowerCase()
         if (
           err.message.includes('perfil') ||
-          err.message.includes('desactivada')
+          err.message.includes('desactivada') ||
+          err.message.includes('dispositivo')
         ) {
           throw err
         }
@@ -368,6 +412,17 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout(): Promise<void> {
     loading.value = true
     try {
+      if (user.value?.id && !user.value.id.startsWith('demo-')) {
+        try {
+          const perfil = await perfilesService.getPerfilById(user.value.id)
+          const deviceToken = getOrCreateDeviceToken()
+          if (!perfil?.active_session_token || perfil.active_session_token === deviceToken) {
+            await perfilesService.claimDeviceSession(user.value.id, null)
+          }
+        } catch {
+          // Mejor esfuerzo al liberar bloqueo de dispositivo
+        }
+      }
       await authService.signOut()
     } finally {
       session.value = null

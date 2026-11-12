@@ -11,6 +11,9 @@ import {
   Copy,
   Check,
   Mail,
+  Smartphone,
+  MonitorSmartphone,
+  Unlock,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -244,6 +247,53 @@ async function cargarUsuarios() {
     errorLista.value = 'No se pudo actualizar la lista. Pulsa Actualizar para reintentar.'
   } finally {
     cargandoUsuarios.value = false
+  }
+}
+
+const actualizandoSesionId = ref<string | null>(null)
+
+async function alternarSesionUnica(perfil: Perfil) {
+  if (!esAdministrador.value || actualizandoSesionId.value) return
+  actualizandoSesionId.value = perfil.id
+  errorLista.value = ''
+  mensajeExito.value = ''
+  const nuevoValor = !perfil.sesion_unica
+  try {
+    const actualizado = await perfilesService.setSesionUnica(perfil.id, nuevoValor)
+    const idx = usuarios.value.findIndex((u) => u.id === perfil.id)
+    if (idx !== -1 && usuarios.value[idx]) {
+      usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
+    }
+    mensajeExito.value = nuevoValor
+      ? `Sesión restringida a 1 dispositivo para ${perfil.nombre}.`
+      : `Acceso multi-dispositivo habilitado para ${perfil.nombre}.`
+  } catch (err: unknown) {
+    errorLista.value =
+      err instanceof Error ? err.message : 'No se pudo actualizar la política de sesión.'
+  } finally {
+    actualizandoSesionId.value = null
+  }
+}
+
+async function liberarDispositivoUsuario(perfil: Perfil) {
+  if (!esAdministrador.value || actualizandoSesionId.value) return
+  actualizandoSesionId.value = perfil.id
+  errorLista.value = ''
+  mensajeExito.value = ''
+  try {
+    const actualizado = await perfilesService.updatePerfil(perfil.id, {
+      active_session_token: null,
+    })
+    const idx = usuarios.value.findIndex((u) => u.id === perfil.id)
+    if (idx !== -1 && usuarios.value[idx]) {
+      usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
+    }
+    mensajeExito.value = `Bloqueo de dispositivo liberado para ${perfil.nombre}. Ya puede iniciar sesión en otro equipo.`
+  } catch (err: unknown) {
+    errorLista.value =
+      err instanceof Error ? err.message : 'No se pudo liberar la sesión del dispositivo.'
+  } finally {
+    actualizandoSesionId.value = null
   }
 }
 
@@ -693,6 +743,7 @@ onMounted(() => {
               <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Credenciales</th>
               <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Rol</th>
               <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Estado</th>
+              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Sesión</th>
               <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Fecha de creación</th>
               <th scope="col" class="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Acciones</th>
             </tr>
@@ -773,6 +824,35 @@ onMounted(() => {
                   ></span>
                   {{ usuario.estado }}
                 </span>
+              </td>
+              <td v-if="esAdministrador" class="whitespace-nowrap px-5 py-4">
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    :disabled="actualizandoSesionId === usuario.id"
+                    :title="usuario.sesion_unica ? 'Solo 1 dispositivo activo a la vez (clic para permitir multi-dispositivo)' : 'Múltiples dispositivos permitidos (clic para restringir a 1 dispositivo)'"
+                    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset transition cursor-pointer disabled:opacity-50"
+                    :class="usuario.sesion_unica
+                      ? 'bg-[#0D0D0D] text-[#05F2F2] ring-[#0D0D0D] hover:bg-black'
+                      : 'bg-[#F2F2F2] text-[#0D0D0D]/75 ring-[#0D0D0D]/15 hover:bg-[#05C7F2]/15 hover:text-[#0D0D0D]'"
+                    @click="alternarSesionUnica(usuario)"
+                  >
+                    <Smartphone v-if="usuario.sesion_unica" class="h-3.5 w-3.5 shrink-0" />
+                    <MonitorSmartphone v-else class="h-3.5 w-3.5 shrink-0" />
+                    <span>{{ usuario.sesion_unica ? '1 Dispositivo' : 'Multi-dispositivo' }}</span>
+                  </button>
+                  <button
+                    v-if="usuario.sesion_unica && usuario.active_session_token"
+                    type="button"
+                    :disabled="actualizandoSesionId === usuario.id"
+                    title="Liberar sesión activa para permitir acceso desde otro dispositivo"
+                    class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 cursor-pointer disabled:opacity-50"
+                    @click="liberarDispositivoUsuario(usuario)"
+                  >
+                    <Unlock class="h-3 w-3 shrink-0" />
+                    <span>Liberar</span>
+                  </button>
+                </div>
               </td>
               <td class="whitespace-nowrap px-5 py-4 text-[#0D0D0D]/70 font-mono text-xs tabular-nums">{{ fechaCreacion(usuario.created_at) }}</td>
               <td class="whitespace-nowrap px-5 py-4 text-right">

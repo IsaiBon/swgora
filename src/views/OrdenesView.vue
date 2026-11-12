@@ -587,25 +587,49 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
           />
         </div>
 
-        <!-- Filtros por Estado -->
-        <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-          <span class="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
-            <Filter class="w-3.5 h-3.5" /> Estado:
-          </span>
-          <button
-          v-for="status in ['Todos', 'En Proceso', 'Pendiente']"
-            :key="status"
-            type="button"
-            @click="selectedStatus = status"
-            :class="[
-              'px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition',
-              selectedStatus === status
-                ? 'bg-[#04c4d9] text-white shadow-xs'
-                : 'text-slate-600 bg-slate-100 hover:bg-slate-200',
-            ]"
-          >
-            {{ status }}
-          </button>
+        <!-- Filtros por Tipo y Estado -->
+        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto pb-1 md:pb-0">
+          <!-- Filtro por Tipo (Orden vs Cotización) -->
+          <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
+            <button
+              v-for="tOpt in [
+                { value: 'Todos', label: 'Todos' },
+                { value: 'orden', label: 'Órdenes' },
+                { value: 'cotizacion', label: 'Cotizaciones' }
+              ]"
+              :key="tOpt.value"
+              type="button"
+              @click="selectedType = tOpt.value"
+              :class="[
+                'px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap transition cursor-pointer',
+                selectedType === tOpt.value
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              ]"
+            >
+              {{ tOpt.label }}
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5 overflow-x-auto">
+            <span class="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
+              <Filter class="w-3.5 h-3.5" /> Estado:
+            </span>
+            <button
+              v-for="status in ['Todos', 'En Proceso', 'Pendiente']"
+              :key="status"
+              type="button"
+              @click="selectedStatus = status"
+              :class="[
+                'px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition cursor-pointer',
+                selectedStatus === status
+                  ? 'bg-[#04c4d9] text-white shadow-xs'
+                  : 'text-slate-600 bg-slate-100 hover:bg-slate-200',
+              ]"
+            >
+              {{ status }}
+            </button>
+          </div>
         </div>
       </div>
 

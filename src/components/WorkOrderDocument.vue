@@ -165,7 +165,8 @@ const orderIva = computed(() => {
   if (props.order?.iva !== undefined && props.order.iva > 0) {
     return props.order.iva
   }
-  return Number((orderSubtotal.value * 0.13).toFixed(2))
+  const pct = Number(tallerStore.tallerInfo.iva_porcentaje ?? 13)
+  return Number((orderSubtotal.value * (pct / 100)).toFixed(2))
 })
 
 const orderGrandTotal = computed(() => {

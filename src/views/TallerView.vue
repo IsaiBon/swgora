@@ -42,7 +42,8 @@ const form = reactive({
   celular1: '',
   celular2: '',
   eslogan: '',
-  logo_url: '/logo-taller.png'
+  logo_url: '/logo-taller.png',
+  iva_porcentaje: 13
 })
 
 const isSaving = ref(false)
@@ -65,6 +66,7 @@ const resetForm = () => {
   form.celular2 = current.celular2 || ''
   form.eslogan = current.eslogan || ''
   form.logo_url = current.logo_url || '/logo-taller.png'
+  form.iva_porcentaje = current.iva_porcentaje !== undefined ? Number(current.iva_porcentaje) : 13
   pendingLogoFile.value = null
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
@@ -137,7 +139,8 @@ const handleSubmit = async () => {
       celular1: form.celular1.trim(),
       celular2: form.celular2.trim(),
       eslogan: form.eslogan.trim(),
-      logo_url: finalLogoUrl
+      logo_url: finalLogoUrl,
+      iva_porcentaje: Number(form.iva_porcentaje)
     })
 
     form.logo_url = finalLogoUrl
@@ -339,20 +342,43 @@ const handleSubmit = async () => {
             </div>
           </div>
 
-          <!-- 4. Eslogan Comercial -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Eslogan / Lema Institucional
-            </label>
-            <input
-              v-model="form.eslogan"
-              type="text"
-              placeholder="Ej. APOYARTE ES NUESTRO COMPROMISO"
-              class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 italic focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
-            />
-            <p class="text-[10.5px] text-slate-400 mt-1">
-              Se imprime en el pie de página del documento junto a la firma de conformidad.
-            </p>
+          <!-- 4. Eslogan Comercial e IVA -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Eslogan / Lema Institucional
+              </label>
+              <input
+                v-model="form.eslogan"
+                type="text"
+                placeholder="Ej. APOYARTE ES NUESTRO COMPROMISO"
+                class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 italic focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
+              />
+              <p class="text-[10.5px] text-slate-400 mt-1">
+                Se imprime en el pie de página del documento junto a la firma de conformidad.
+              </p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Porcentaje de IVA (%)
+              </label>
+              <div class="relative flex items-center">
+                <input
+                  v-model.number="form.iva_porcentaje"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="100"
+                  placeholder="13"
+                  class="w-full px-3.5 py-2.5 pr-8 text-xs font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+                <span class="absolute right-3 text-xs font-bold text-slate-400">%</span>
+              </div>
+              <p class="text-[10.5px] text-slate-400 mt-1">
+                Se aplica automáticamente al marcar IVA en órdenes y cotizaciones.
+              </p>
+            </div>
           </div>
 
           <!-- Botón de guardado dentro del formulario -->

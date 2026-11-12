@@ -16,6 +16,7 @@ import { catalogService, type CatalogProduct, sortMotorsByRelevance } from '@/se
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useCatalogStore } from '@/stores/catalog'
 import { useAuthStore } from '@/stores/auth'
+import { useTallerStore } from '@/stores/taller'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
 import { 
   Search, 
@@ -50,6 +51,7 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const authStore = useAuthStore()
+const tallerStore = useTallerStore()
 
 // Estado de Ruta / Sucursal de la orden
 const availableRutas = ref<RutaSucursal[]>([])
@@ -383,9 +385,14 @@ const partsTotal = computed(() => 0)
 
 const materialsTotal = computed(() => 0)
 
+const ivaPercentage = computed(() => {
+  const raw = Number(tallerStore.tallerInfo.iva_porcentaje ?? 13)
+  return isNaN(raw) ? 13 : raw
+})
+
 const ivaAmount = computed(() => {
   if (!applyIva.value) return 0
-  return Number((laborTotal.value * 0.13).toFixed(2))
+  return Number((laborTotal.value * (ivaPercentage.value / 100)).toFixed(2))
 })
 
 const totalOrder = computed(() => {
@@ -611,6 +618,7 @@ onMounted(async () => {
   if (!catalogStore.fabricantes || catalogStore.fabricantes.length === 0) {
     catalogStore.initCatalog()
   }
+  await tallerStore.loadTallerInfo()
   const freshCatalog = await ordersService.getOperationsCatalogAsync()
   catalogProducts.value = await catalogService.getProducts()
   availableRutas.value = await rutasService.getRutas()
@@ -2049,7 +2057,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] focus:ring-2 cursor-pointer"
                 />
                 <span class="text-xs font-bold text-slate-800">
-                  Aplicar IVA (13%)
+                  Aplicar IVA ({{ ivaPercentage }}%)
                 </span>
               </label>
               <span v-if="applyIva" class="text-xs font-extrabold text-[#04c4d9] font-mono">
@@ -2068,7 +2076,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <span class="font-bold text-slate-900 font-mono">${{ laborTotal.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between items-center">
-              <span class="font-medium text-slate-600">IVA (13%):</span>
+              <span class="font-medium text-slate-600">IVA ({{ ivaPercentage }}%):</span>
               <span class="font-bold text-slate-900 font-mono">${{ ivaAmount.toFixed(2) }}</span>
             </div>
           </div>
@@ -2123,7 +2131,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             >
               <Save class="w-4 h-4" />
               <Printer class="w-4 h-4" />
-              <span>{{ isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Guardar Orden') }}</span>
+              <span>{{ isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : (docType === 'cotizacion' ? 'Guardar Cotización e Imprimir' : 'Guardar Orden e Imprimir')) }}</span>
             </button>
 
             <button

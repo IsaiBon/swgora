@@ -8,6 +8,7 @@ export interface TallerInfo {
   celular2: string
   eslogan?: string
   logo_url?: string
+  iva_porcentaje?: number
   created_at?: string
   updated_at?: string
 }
@@ -19,7 +20,8 @@ export const DEFAULT_TALLER_INFO: TallerInfo = {
   celular1: '7831-2641',
   celular2: '7142-0401',
   eslogan: 'APOYARTE ES NUESTRO COMPROMISO',
-  logo_url: '/logo-taller.png'
+  logo_url: '/logo-taller.png',
+  iva_porcentaje: 13
 }
 
 const LOCAL_STORAGE_KEY = 'swgora_taller_config'
@@ -38,6 +40,19 @@ export const tallerService = {
         .single()
 
       if (!error && data) {
+        let cachedIva = DEFAULT_TALLER_INFO.iva_porcentaje ?? 13
+        if (typeof window !== 'undefined' && window.localStorage) {
+          try {
+            const rawCache = window.localStorage.getItem(LOCAL_STORAGE_KEY)
+            if (rawCache) {
+              const parsedCache = JSON.parse(rawCache)
+              if (parsedCache?.iva_porcentaje !== undefined && !isNaN(Number(parsedCache.iva_porcentaje))) {
+                cachedIva = Number(parsedCache.iva_porcentaje)
+              }
+            }
+          } catch { /* ignorar */ }
+        }
+
         const info: TallerInfo = {
           id: data.id || 'principal',
           nombre: data.nombre || DEFAULT_TALLER_INFO.nombre,
@@ -46,6 +61,9 @@ export const tallerService = {
           celular2: data.celular2 !== undefined && data.celular2 !== null ? data.celular2 : DEFAULT_TALLER_INFO.celular2,
           eslogan: data.eslogan || DEFAULT_TALLER_INFO.eslogan,
           logo_url: data.logo_url || DEFAULT_TALLER_INFO.logo_url,
+          iva_porcentaje: data.iva_porcentaje !== undefined && data.iva_porcentaje !== null
+            ? Number(data.iva_porcentaje)
+            : cachedIva,
           created_at: data.created_at,
           updated_at: data.updated_at
         }
@@ -77,7 +95,11 @@ export const tallerService = {
    * Actualiza la información institucional del taller en Supabase y sincroniza localmente.
    */
   async updateTallerInfo(info: Partial<TallerInfo>): Promise<TallerInfo> {
-    const payload = {
+    const ivaPct = info.iva_porcentaje !== undefined && !isNaN(Number(info.iva_porcentaje))
+      ? Math.max(0, Math.min(100, Number(info.iva_porcentaje)))
+      : (DEFAULT_TALLER_INFO.iva_porcentaje ?? 13)
+
+    const basePayload = {
       id: 'principal',
       nombre: (info.nombre?.trim() || DEFAULT_TALLER_INFO.nombre).toUpperCase(),
       direccion: info.direccion?.trim() || DEFAULT_TALLER_INFO.direccion,
@@ -87,6 +109,7 @@ export const tallerService = {
       logo_url: info.logo_url || DEFAULT_TALLER_INFO.logo_url,
       updated_at: new Date().toISOString()
     }
+    const payload = { ...basePayload, iva_porcentaje: ivaPct }
 
     try {
       const { data, error } = await supabase
@@ -96,11 +119,25 @@ export const tallerService = {
         .single()
 
       if (!error && data) {
+        const merged = { ...data, iva_porcentaje: data.iva_porcentaje ?? ivaPct } as TallerInfo
         if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data))
+          window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged))
         }
-        return data as TallerInfo
+        return merged
       } else if (error) {
+        // Fallback si la columna iva_porcentaje aún no existe en Supabase
+        const { data: retryData, error: retryErr } = await supabase
+          .from('taller')
+          .upsert(basePayload)
+          .select('*')
+          .single()
+        if (!retryErr && retryData) {
+          const merged = { ...retryData, iva_porcentaje: ivaPct } as TallerInfo
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged))
+          }
+          return merged
+        }
         console.error('[tallerService] Error actualizando taller en Supabase:', error)
       }
     } catch (err) {
