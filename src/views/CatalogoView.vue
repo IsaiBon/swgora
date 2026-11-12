@@ -61,7 +61,6 @@ const componentInput = ref<string>('')
 
 const isBrandOpen = ref<boolean>(false)
 const isModelOpen = ref<boolean>(false)
-const isMotorOpen = ref<boolean>(false)
 const isComponentOpen = ref<boolean>(false)
 
 const selectedBrand = ref<Fabricante | null>(null)
@@ -100,10 +99,22 @@ const filteredYears = computed<string[]>(() => {
   return availableYears.value.filter(yr => yr.toLowerCase().includes(q))
 })
 
+const effectiveYearFilter = computed<string>(() => {
+  if (selectedYear.value.trim()) return selectedYear.value.trim()
+  const raw = yearInput.value.trim()
+  return /^\d{4}$/.test(raw) ? raw : ''
+})
+
 function handleSelectYear(yr: string) {
   selectedYear.value = yr
   yearInput.value = yr
   isYearOpen.value = false
+}
+
+function onInputYear() {
+  isYearOpen.value = true
+  const raw = yearInput.value.trim()
+  selectedYear.value = /^\d{4}$/.test(raw) ? raw : ''
 }
 
 function handleClearYear() {
@@ -234,7 +245,6 @@ const openQuickCreateMotorModal = (initialCode?: string) => {
   quickMotorCc.value = undefined
   quickMotorFuel.value = 'Diésel'
   quickMotorYears.value = selectedYear.value || ''
-  isMotorOpen.value = false
   isQuickCreateMotorOpen.value = true
 }
 
@@ -250,7 +260,6 @@ const openEditMotorModal = (mot: Motor, e?: Event) => {
   quickMotorCc.value = mot.cilindrada_cc
   quickMotorFuel.value = mot.combustible || 'Diésel'
   quickMotorYears.value = mot.anios || ''
-  isMotorOpen.value = false
   isQuickCreateMotorOpen.value = true
 }
 
@@ -399,7 +408,6 @@ const modelInputRef = ref<HTMLInputElement | null>(null)
 const componentInputRef = ref<HTMLInputElement | null>(null)
 
 const highlightedBrandIdx = ref<number>(0)
-const highlightedMotorIdx = ref<number>(0)
 const highlightedModelIdx = ref<number>(0)
 const highlightedComponentIdx = ref<number>(0)
 
@@ -413,7 +421,6 @@ const scrollItemIntoView = (selector: string) => {
 }
 
 watch(highlightedBrandIdx, (val) => scrollItemIntoView(`.brand-item-${val}`))
-watch(highlightedMotorIdx, (val) => scrollItemIntoView(`.motor-item-${val}`))
 watch(highlightedModelIdx, (val) => scrollItemIntoView(`.model-item-${val}`))
 watch(highlightedComponentIdx, (val) => scrollItemIntoView(`.component-item-${val}`))
 
@@ -447,31 +454,14 @@ const handleBrandKeydown = (e: KeyboardEvent) => {
 }
 
 const handleMotorKeydown = (e: KeyboardEvent) => {
-  if (!isMotorOpen.value) {
-    if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      isMotorOpen.value = true
-      highlightedMotorIdx.value = 0
-      e.preventDefault()
-    }
-    return
-  }
-  const len = filteredMotors.value.length
-  if (len === 0) return
-
-  if (e.key === 'ArrowDown') {
+  if (e.key === 'Enter') {
     e.preventDefault()
-    highlightedMotorIdx.value = (highlightedMotorIdx.value + 1) % len
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    highlightedMotorIdx.value = (highlightedMotorIdx.value - 1 + len) % len
-  } else if (e.key === 'Enter') {
-    e.preventDefault()
-    if (highlightedMotorIdx.value >= 0 && highlightedMotorIdx.value < len) {
-      handleSelectMotor(filteredMotors.value[highlightedMotorIdx.value])
+    if (brandMotorsList.value.length > 0 && brandMotorsList.value[0]) {
+      handleSelectMotor(brandMotorsList.value[0])
       setTimeout(() => componentInputRef.value?.focus(), 60)
     }
-  } else if (e.key === 'Escape') {
-    isMotorOpen.value = false
+  } else if (e.key === 'Escape' && motorInput.value) {
+    handleClearSelectedMotor()
   }
 }
 
@@ -1470,20 +1460,19 @@ const onFocusModel = (e?: Event) => {
 }
 const onInputModel = () => { isModelOpen.value = true }
 const onFocusMotor = (e?: Event) => {
-  isMotorOpen.value = true
   if (e?.target) {
     (e.target as HTMLInputElement).select?.()
   }
 }
 const onInputMotor = () => {
-  isMotorOpen.value = true
-  // Si el usuario edita el texto tras tener un motor seleccionado, limpiar selección y mostrar coincidencias en tabla
-  if (selectedMotor.value && motorInput.value.trim().toLowerCase() !== selectedMotor.value.codigo.toLowerCase()) {
+  // Al cambiar el filtro de motor, limpiar selección puntual y volver a mostrar los motores disponibles en la tabla
+  if (selectedMotor.value) {
     selectedMotor.value = null
     catalogStore.selectedMotorId = null
   }
-  if (!selectedMotor.value && motorInput.value.trim().length > 0 && !selectedComponent.value) {
-    activeViewTab.value = 'motores'
+  activeViewTab.value = 'motores'
+  if (motorInput.value.trim().length > 0 || !selectedBrand.value) {
+    showAllMotors.value = true
   }
 }
 
@@ -1492,30 +1481,9 @@ const availableMotors = computed(() => {
   return catalogStore.availableMotores
 })
 
-const filteredMotors = computed(() => {
-  const q = motorInput.value.toLowerCase().trim()
-  const list = availableMotors.value
-  if (!q || (selectedMotor.value && (
-    q === selectedMotor.value.codigo.toLowerCase().trim() ||
-    (selectedMotor.value.nombre_comercial && q === selectedMotor.value.nombre_comercial.toLowerCase().trim()) ||
-    (selectedMotor.value.denominacion_venta && q === selectedMotor.value.denominacion_venta.toLowerCase().trim())
-  ))) {
-    return list
-  }
-  const matched = list.filter(m => 
-    m.codigo.toLowerCase().includes(q) || 
-    (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
-    (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
-    m.combustible.toLowerCase().includes(q) ||
-    (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
-  )
-  return sortMotorsByRelevance(matched, q)
-})
-
 const handleSelectMotor = async (mot: Motor) => {
   selectedMotor.value = mot
   motorInput.value = mot.codigo
-  isMotorOpen.value = false
 
   // Limpiar filtros dimensionales previos para el nuevo motor
   resetMeasurementsFilters()
@@ -1549,12 +1517,14 @@ const handleClearSelectedMotor = async () => {
   selectedMotor.value = null
   motorInput.value = ''
   catalogStore.selectedMotorId = null
-  if (selectedComponent.value) {
+  activeViewTab.value = 'motores'
+  if (selectedBrand.value || selectedModel.value || effectiveYearFilter.value || showAllMotors.value) {
+    catalogStore.repuestos = []
+  } else if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
-    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id, selectedModel.value?.id)
+    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category)
   } else {
     catalogStore.repuestos = []
-    activeViewTab.value = 'motores'
   }
 }
 
@@ -1635,10 +1605,11 @@ const handleResetAll = async () => {
   selectedMotor.value = null
   selectedComponent.value = null
   selectedYear.value = ''
+  yearInput.value = ''
   showAllMotors.value = false
   isBrandOpen.value = false
   isModelOpen.value = false
-  isMotorOpen.value = false
+  isYearOpen.value = false
   isComponentOpen.value = false
   activeViewTab.value = 'motores'
   tableSearchFilter.value = ''
@@ -1691,34 +1662,38 @@ const brandMotorsList = computed<Motor[]>(() => {
   )
 
   if (q && !isSelectedMotorCurrent) {
-    const matched = list.filter(m => 
-      m.codigo.toLowerCase().includes(q) || 
+    const matched = list.filter(m =>
+      m.codigo.toLowerCase().includes(q) ||
       (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
       (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
+      getMotorModelName(m).toLowerCase().includes(q) ||
       m.combustible.toLowerCase().includes(q) ||
       (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
     )
     list = sortMotorsByRelevance(matched, q)
   }
 
-  if (selectedYear.value) {
-    const yr = Number(selectedYear.value)
+  if (effectiveYearFilter.value) {
+    const yr = Number(effectiveYearFilter.value)
     if (!isNaN(yr) && yr > 0) {
       list = list.filter(mot => {
-        if ((mot as any).anios && doesYearMatchText((mot as any).anios, yr)) return true
-        if (mot.denominacion_venta && doesYearMatchText(mot.denominacion_venta, yr)) return true
-        if (mot.nombre_comercial && doesYearMatchText(mot.nombre_comercial, yr)) return true
+        if ((mot as any).anios && String((mot as any).anios).trim() !== '') {
+          return doesYearMatchText((mot as any).anios, yr)
+        }
+        if (mot.denominacion_venta && /\b(19|20)\d{2}\b/.test(mot.denominacion_venta)) {
+          return doesYearMatchText(mot.denominacion_venta, yr)
+        }
+        if (mot.nombre_comercial && /\b(19|20)\d{2}\b/.test(mot.nombre_comercial)) {
+          return doesYearMatchText(mot.nombre_comercial, yr)
+        }
         if (mot.modelo_id) {
           const mod = catalogStore.modelos.find(m => m.id === mot.modelo_id)
           if (mod && mod.anio_inicio) {
             const end = mod.anio_fin || 2026
-            if (yr >= mod.anio_inicio && yr <= end) return true
-            return false
+            return yr >= mod.anio_inicio && yr <= end
           }
         }
-        // Si el motor tiene un rango explícito en anios y no coincidió, excluirlo
-        if ((mot as any).anios && String((mot as any).anios).trim() !== '') return false
-        return true
+        return false
       })
     }
   }
@@ -1740,7 +1715,7 @@ const goToPrevMotorPage = () => { if (motorCurrentPage.value > 1) motorCurrentPa
 const goToNextMotorPage = () => { if (motorCurrentPage.value < motorTotalPages.value) motorCurrentPage.value++ }
 const goToLastMotorPage = () => { motorCurrentPage.value = motorTotalPages.value }
 
-watch([selectedBrand, selectedModel, selectedYear, motorInput], () => {
+watch([selectedBrand, selectedModel, selectedYear, yearInput, motorInput], () => {
   motorCurrentPage.value = 1
 })
 
@@ -2114,16 +2089,6 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       )
     }
 
-    // 1b. Si hay marca seleccionada (y ningún motor específico), filtrar repuestos por esa marca
-    if (selectedBrand.value && !selectedMotor.value) {
-      const brandName = selectedBrand.value.nombre.toLowerCase().trim()
-      list = list.filter(r => {
-        const fabName = r.motor?.fabricante?.nombre?.toLowerCase() || ''
-        const fabId = r.motor?.fabricante_id || ''
-        return !fabName || fabName.includes(brandName) || fabId === selectedBrand.value?.id
-      })
-    }
-
     // 2. Filtros de medidas dimensionales específicas
     // Caso Especializado: FAMILIAS EN TABLA / ANILLOS DE MOTOR (Mantiene estructura y cálculos exactos)
     if (isCurrentGroupRingsTable.value) {
@@ -2294,16 +2259,60 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     }
   }
 
+  // 1b. Filtros principales obligatorios sobre los componentes: Motor, Fabricante y Modelo
+  if (selectedMotor.value) {
+    const targetMotorId = selectedMotor.value.id
+    list = list.filter(r => r.motor_id === targetMotorId || r.motor?.id === targetMotorId)
+  }
+
+  if (selectedBrand.value) {
+    const brandId = selectedBrand.value.id
+    const brandName = selectedBrand.value.nombre.toLowerCase().trim()
+    list = list.filter(r => {
+      if (r.motor?.fabricante_id === brandId) return true
+      const fabName = r.motor?.fabricante?.nombre?.toLowerCase() || ''
+      if (fabName && fabName.includes(brandName)) return true
+      if (r.motor_id) {
+        const mot = catalogStore.motores.find(m => m.id === r.motor_id)
+        if (mot?.fabricante_id === brandId) return true
+      }
+      return false
+    })
+  }
+
+  if (selectedModel.value) {
+    const modelId = selectedModel.value.id
+    const modelName = selectedModel.value.nombre.toLowerCase().trim()
+    list = list.filter(r => {
+      if (r.motor?.modelo_id === modelId) return true
+      if (r.motor?.modelo?.nombre?.toLowerCase().includes(modelName)) return true
+      if (r.motor?.denominacion_venta?.toLowerCase().includes(modelName)) return true
+      if (r.motor_id) {
+        return availableMotors.value.some(m => m.id === r.motor_id)
+      }
+      return false
+    })
+  }
+
   // 2.c. Filtro por Año de compatibilidad vehicular
-  if (selectedYear.value) {
-    const yr = Number(selectedYear.value)
+  if (effectiveYearFilter.value) {
+    const yr = Number(effectiveYearFilter.value)
     if (!isNaN(yr) && yr > 0) {
       list = list.filter(r => {
         const spec = (r.especificaciones_tecnicas || {}) as Record<string, any>
         const dims = (r.dimensiones || {}) as Record<string, any>
-        const yearText = spec.ano || spec.anos || dims.anos || dims.ano || (r.motor as any)?.anios
+        const linkedMot = r.motor || (r.motor_id ? catalogStore.motores.find(m => m.id === r.motor_id) : undefined)
+        const yearText = spec.ano || spec.anos || dims.anos || dims.ano || (linkedMot as any)?.anios
         if (yearText && String(yearText).trim() !== '' && String(yearText).trim() !== '—') {
           return doesYearMatchText(yearText, yr)
+        }
+        const motModelId = linkedMot?.modelo_id
+        if (motModelId) {
+          const mod = catalogStore.modelos.find(m => m.id === motModelId)
+          if (mod?.anio_inicio) {
+            const end = mod.anio_fin || 2026
+            return yr >= mod.anio_inicio && yr <= end
+          }
         }
         return true
       })
@@ -2790,7 +2799,6 @@ const handleDocumentClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.combobox-brand')) isBrandOpen.value = false
   if (!target.closest('.combobox-model')) isModelOpen.value = false
-  if (!target.closest('.combobox-motor')) isMotorOpen.value = false
   if (!target.closest('.combobox-year')) isYearOpen.value = false
   if (!target.closest('.combobox-component')) isComponentOpen.value = false
 }
@@ -3103,79 +3111,20 @@ onUnmounted(() => {
               ref="motorInputRef"
               v-model="motorInput"
               @focus="onFocusMotor"
-              @click="onFocusMotor"
-              @input="onInputMotor(); highlightedMotorIdx = 0"
+              @input="onInputMotor"
               @keydown="handleMotorKeydown"
               type="text"
-              placeholder="Buscar código de motor..."
+              placeholder="Filtrar código de motor en la tabla..."
               class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
             />
             <button
               v-if="motorInput"
               type="button"
               @click="handleClearSelectedMotor"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
+              class="absolute right-2.5 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
               title="Limpiar motor"
             >
               <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isMotorOpen = !isMotorOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
-          </div>
-
-          <!-- Dropdown Motores -->
-          <div
-            v-if="isMotorOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
-          >
-            <div
-              v-for="(mot, mIdx) in filteredMotors"
-              :key="mot.id"
-              @click="handleSelectMotor(mot)"
-              @mouseenter="highlightedMotorIdx = mIdx"
-              :class="[
-                'px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition motor-item-' + mIdx,
-                highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
-              ]"
-            >
-              <div class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                <div>
-                  <span v-if="!selectedBrand" class="text-[10px] font-bold text-[#038391] mr-1 uppercase">
-                    {{ getBrandName(mot.fabricante_id) }}
-                  </span>
-                  <strong class="font-mono text-xs font-black">{{ mot.codigo }}</strong>
-                  <span class="text-slate-600 ml-1.5 font-medium">{{ mot.nombre_comercial }}</span>
-                  <span v-if="mot.denominacion_venta" class="text-slate-400 ml-1 text-[11px]">({{ mot.denominacion_venta }})</span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <span v-if="mot.parts_count !== undefined" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200">
-                  {{ mot.parts_count }} pzs
-                </span>
-                <span v-if="mot.cilindros || mot.cilindrada_texto || mot.cilindrada_cc" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  <template v-if="mot.cilindros">{{ mot.cilindros }} Cil<template v-if="mot.cilindrada_texto || mot.cilindrada_cc"> / </template></template><template v-if="mot.cilindrada_texto || mot.cilindrada_cc">{{ mot.cilindrada_texto || (mot.cilindrada_cc + ' cc') }}</template>
-                </span>
-                <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              </div>
-            </div>
-            <div v-if="filteredMotors.length === 0" class="p-2.5 text-center text-xs text-slate-400">
-              No hay motores coincidentes
-            </div>
-            <!-- Acción rápida para registrar nuevo motor no existente -->
-            <button
-              v-if="motorInput.trim().length > 0 && !availableMotors.some(m => m.codigo.toLowerCase() === motorInput.trim().toLowerCase())"
-              type="button"
-              @mousedown.prevent="openQuickCreateMotorModal(motorInput)"
-              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
-            >
-              <span class="flex items-center gap-1.5 truncate">
-                <Plus class="w-3.5 h-3.5 shrink-0" />
-                <span class="truncate">+ Registrar nuevo motor "{{ motorInput.trim().toUpperCase() }}"</span>
-              </span>
-              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Crear</span>
             </button>
           </div>
         </div>
@@ -3309,7 +3258,7 @@ onUnmounted(() => {
               v-model="yearInput"
               @focus="isYearOpen = true"
               @click="isYearOpen = true"
-              @input="isYearOpen = true"
+              @input="onInputYear"
               @keydown.enter.prevent="filteredYears[0] ? handleSelectYear(filteredYears[0]) : (yearInput.trim() ? handleSaveQuickYear(yearInput) : null)"
               type="text"
               placeholder="Todos los años..."
@@ -3544,7 +3493,7 @@ onUnmounted(() => {
     <!-- ESTADO 1: PANTALLA INICIAL (MINIMALISTA)                                   -->
     <!-- ========================================================================= -->
     <div 
-      v-if="!selectedBrand && !brandInput && !selectedMotor && !motorInput && !selectedModel && !selectedComponent && !searchInput && !showAllMotors" 
+      v-if="!selectedBrand && !brandInput && !selectedMotor && !motorInput && !selectedModel && !selectedYear && !yearInput && !selectedComponent && !searchInput && !showAllMotors" 
       class="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
     >
       <div class="w-12 h-12 rounded-xl bg-cyan-50 border border-cyan-200/80 text-[#04C4D9] flex items-center justify-center mx-auto shadow-2xs">
@@ -3587,7 +3536,7 @@ onUnmounted(() => {
     <!-- ESTADO 2: TABLA DE MOTORES (MINIMALISTA, LIMPIA Y RÁPIDA)                 -->
     <!-- ========================================================================= -->
     <div 
-      v-else-if="(selectedBrand || brandInput || motorInput || selectedModel || showAllMotors || (activeViewTab === 'motores' && !selectedMotor)) && (!selectedMotor || activeViewTab === 'motores') && !searchInput && (!selectedComponent || activeViewTab === 'motores')"
+      v-else-if="(selectedBrand || brandInput || motorInput || selectedModel || selectedYear || yearInput || showAllMotors || (activeViewTab === 'motores' && !selectedMotor)) && (!selectedMotor || activeViewTab === 'motores') && !searchInput && (!selectedComponent || activeViewTab === 'motores')"
       class="space-y-3.5"
     >
       <!-- Encabezado de la tabla de motores -->
@@ -3600,6 +3549,7 @@ onUnmounted(() => {
               {{ selectedBrand?.nombre || brandInput || (motorInput ? `Coincidencias "${motorInput.trim().toUpperCase()}"` : 'Todos los fabricantes') }}
             </span>
             <span v-if="selectedModel" class="text-slate-600 font-medium ml-1">({{ selectedModel.nombre }})</span>
+            <span v-if="effectiveYearFilter" class="text-amber-700 font-mono text-xs font-bold ml-1.5">· Año {{ effectiveYearFilter }}</span>
           </h3>
           <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }})</span>
         </div>

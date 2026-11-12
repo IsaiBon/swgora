@@ -30,9 +30,9 @@ import {
   Hash,
   Type,
   ListFilter,
-  X,
   GripVertical,
   Link2,
+  Unlink2,
   Lightbulb,
   Ruler
 } from 'lucide-vue-next'
@@ -400,6 +400,150 @@ const previewHeaderGroups = computed(() => {
 const hasGroupedHeaders = computed(() => {
   return previewHeaderGroups.value.some(g => g.name !== '')
 })
+
+interface ColumnClusterItem {
+  col: TemplateColumnDef
+  colIdx: number
+}
+
+interface ColumnCluster {
+  key: string
+  isGrouped: boolean
+  name: string
+  startIdx: number
+  endIdx: number
+  items: ColumnClusterItem[]
+}
+
+const columnClusterGroups = computed<ColumnCluster[]>(() => {
+  const cols = currentTemplate.value.columnas
+  const clusters: ColumnCluster[] = []
+  let active: ColumnCluster | null = null
+
+  cols.forEach((col, colIdx) => {
+    const hasParent = col.columna_padre !== undefined && col.columna_padre !== null
+    const parentVal = hasParent ? col.columna_padre! : ''
+
+    if (hasParent) {
+      if (active && active.isGrouped && active.name === parentVal) {
+        active.endIdx = colIdx
+        active.items.push({ col, colIdx })
+      } else {
+        if (active) clusters.push(active)
+        active = {
+          key: `grp-${colIdx}`,
+          isGrouped: true,
+          name: parentVal,
+          startIdx: colIdx,
+          endIdx: colIdx,
+          items: [{ col, colIdx }]
+        }
+      }
+    } else {
+      if (active) {
+        clusters.push(active)
+        active = null
+      }
+      clusters.push({
+        key: `single-${colIdx}`,
+        isGrouped: false,
+        name: '',
+        startIdx: colIdx,
+        endIdx: colIdx,
+        items: [{ col, colIdx }]
+      })
+    }
+  })
+
+  if (active) clusters.push(active)
+  return clusters
+})
+
+const areAdjacentColsJoined = (leftIdx: number): boolean => {
+  const cols = currentTemplate.value.columnas
+  const left = cols[leftIdx]
+  const right = cols[leftIdx + 1]
+  if (!left || !right) return false
+  return (
+    left.columna_padre !== undefined &&
+    left.columna_padre !== null &&
+    left.columna_padre === right.columna_padre
+  )
+}
+
+const toggleJoinAdjacentColumns = (leftIdx: number) => {
+  const cols = currentTemplate.value.columnas
+  if (leftIdx < 0 || leftIdx >= cols.length - 1) return
+
+  if (areAdjacentColsJoined(leftIdx)) {
+    const shared = cols[leftIdx]!.columna_padre!
+    let startIdx = leftIdx
+    while (startIdx > 0 && cols[startIdx - 1]?.columna_padre === shared) startIdx--
+    let endIdx = leftIdx + 1
+    while (endIdx < cols.length - 1 && cols[endIdx + 1]?.columna_padre === shared) endIdx++
+
+    const leftLen = leftIdx - startIdx + 1
+    const rightLen = endIdx - leftIdx
+
+    if (leftLen < 2) {
+      cols[startIdx]!.columna_padre = undefined
+    }
+    if (rightLen < 2) {
+      cols[endIdx]!.columna_padre = undefined
+    } else if (leftLen >= 2) {
+      const rightName = `${shared.trim() || 'Grupo'} 2`
+      for (let i = leftIdx + 1; i <= endIdx; i++) {
+        cols[i]!.columna_padre = rightName
+      }
+    }
+    return
+  }
+
+  // Unir bloques cercanos: expandir a todo el grupo izquierdo y derecho contiguo y pasar el nombre central entre todas
+  let leftStart = leftIdx
+  const leftParent = cols[leftIdx]!.columna_padre
+  if (leftParent !== undefined && leftParent !== null) {
+    while (leftStart > 0 && cols[leftStart - 1]?.columna_padre === leftParent) leftStart--
+  }
+
+  let rightEnd = leftIdx + 1
+  const rightParent = cols[leftIdx + 1]!.columna_padre
+  if (rightParent !== undefined && rightParent !== null) {
+    while (rightEnd < cols.length - 1 && cols[rightEnd + 1]?.columna_padre === rightParent) rightEnd++
+  }
+
+  const centralName =
+    leftParent?.trim() ||
+    rightParent?.trim() ||
+    'Columna Central'
+
+  for (let i = leftStart; i <= rightEnd; i++) {
+    cols[i]!.columna_padre = centralName
+  }
+}
+
+const renameColumnCluster = (startIdx: number, endIdx: number, newName: string) => {
+  const cols = currentTemplate.value.columnas
+  for (let i = startIdx; i <= endIdx; i++) {
+    if (cols[i]) cols[i]!.columna_padre = newName
+  }
+}
+
+const ensureClusterNameOnBlur = (startIdx: number, endIdx: number) => {
+  const cols = currentTemplate.value.columnas
+  if ((cols[startIdx]?.columna_padre || '').trim() === '') {
+    for (let i = startIdx; i <= endIdx; i++) {
+      if (cols[i]) cols[i]!.columna_padre = 'Columna Central'
+    }
+  }
+}
+
+const ungroupCluster = (startIdx: number, endIdx: number) => {
+  const cols = currentTemplate.value.columnas
+  for (let i = startIdx; i <= endIdx; i++) {
+    if (cols[i]) cols[i]!.columna_padre = undefined
+  }
+}
 
 // Muestra de filas en la vista previa
 const previewSampleRows = computed<string[]>(() => {
@@ -813,7 +957,7 @@ const handleSave = () => {
               <span>Columnas de Medidas y Estados</span>
             </h4>
             <p class="text-[11px] text-slate-500 mt-0.5">
-              Personaliza el tipo de dato: Número, Estado Sí/No (ej. Cónico), Selección o Texto. Usa "+ Sub-columna" para agrupar bajo títulos como STD, 0.25, etc.
+              Personaliza cada medida o estado, arrástralas para ordenar y usa <strong>Centrar</strong> entre columnas cercanas para unirlas bajo una columna central compartida (2, 3, 4 o más sub-columnas).
             </p>
           </div>
 
@@ -827,169 +971,234 @@ const handleSave = () => {
           </button>
         </div>
 
-        <!-- TARJETAS HORIZONTALES EDITABLES Y ARRASTRABLES PARA CADA COLUMNA -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div
-            v-for="(col, cIdx) in currentTemplate.columnas"
-            :key="cIdx"
-            draggable="true"
-            @dragstart="onColDragStart(cIdx, $event)"
-            @dragover.prevent="onColDragOver(cIdx)"
-            @drop.prevent="onColDrop(cIdx)"
-            @dragend="onColDragEnd"
-            :class="[
-              'p-3.5 rounded-2xl border space-y-2.5 relative group transition',
-              draggedColIdx === cIdx
-                ? 'opacity-50 bg-cyan-50/40 border-[#04C4D9]'
-                : (dragOverColIdx === cIdx
-                  ? 'bg-cyan-50/50 border-[#004B97] ring-2 ring-[#04C4D9]/40'
-                  : 'bg-slate-50/80 border-slate-200 hover:border-slate-300')
-            ]"
-          >
-            <!-- Cabecera de Columna -->
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-1.5 min-w-0">
-                <span
-                  class="text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing shrink-0"
-                  title="Arrastra para reordenar columna"
+        <!-- DISEÑADOR VISUAL DE COLUMNAS UNIDAS CON BOTÓN CENTRAR ENTRE BLOQUES CERCANOS -->
+        <div class="overflow-x-auto pb-2">
+          <div class="flex items-stretch gap-y-2 min-w-max">
+            <template v-for="(cluster, clIdx) in columnClusterGroups" :key="cluster.key">
+              <!-- Contenedor de cluster: unido si está centrado/agrupado, o tarjeta suelta -->
+              <div
+                :class="[
+                  'flex flex-col justify-between transition',
+                  cluster.isGrouped
+                    ? 'p-3 rounded-2xl bg-cyan-50/55 border-2 border-dashed border-[#04C4D9]/70 space-y-2.5'
+                    : ''
+                ]"
+              >
+                <!-- Barra editable de Columna Central compartida para todas las columnas unidas (2, 3, 4+) -->
+                <div
+                  v-if="cluster.isGrouped"
+                  class="flex items-center justify-between gap-2 bg-white px-3 py-1.5 rounded-xl border border-[#04C4D9]/60 shadow-2xs"
                 >
-                  <GripVertical class="w-3.5 h-3.5" />
-                </span>
-                <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
-                  {{ cIdx + 1 }}
-                </span>
-                <input
-                  v-model="col.etiqueta"
-                  type="text"
-                  placeholder="Nombre de la medida..."
-                  class="font-black text-xs text-slate-900 bg-transparent border-b border-dashed border-slate-300 focus:border-[#04C4D9] focus:outline-none w-32 truncate"
-                />
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class="px-2 py-0.5 rounded-md bg-[#004B97] text-white text-[10px] font-black uppercase tracking-wider shrink-0">
+                      Columna Central · {{ cluster.items.length }} sub-col
+                    </span>
+                    <input
+                      :value="cluster.name"
+                      @input="renameColumnCluster(cluster.startIdx, cluster.endIdx, ($event.target as HTMLInputElement).value)"
+                      @blur="ensureClusterNameOnBlur(cluster.startIdx, cluster.endIdx)"
+                      type="text"
+                      placeholder="Nombre columna central (ej. STD, 0.25, Luz...)"
+                      class="flex-1 min-w-[160px] text-xs font-black text-slate-900 bg-cyan-50/40 px-2.5 py-1 rounded-lg border border-cyan-200 focus:outline-none focus:border-[#04C4D9]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    @click="ungroupCluster(cluster.startIdx, cluster.endIdx)"
+                    class="px-2 py-1 rounded-lg text-[10px] font-black text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition flex items-center gap-1 cursor-pointer shrink-0"
+                    title="Separar todo este bloque de columnas"
+                  >
+                    <Unlink2 class="w-3 h-3" />
+                    <span>Separar todo</span>
+                  </button>
+                </div>
+
+                <!-- Columnas dentro del cluster + puentes internos entre bloques cercanos -->
+                <div class="flex items-stretch">
+                  <template v-for="(item, itemPos) in cluster.items" :key="item.colIdx">
+                    <div
+                      draggable="true"
+                      @dragstart="onColDragStart(item.colIdx, $event)"
+                      @dragover.prevent="onColDragOver(item.colIdx)"
+                      @drop.prevent="onColDrop(item.colIdx)"
+                      @dragend="onColDragEnd"
+                      :class="[
+                        'w-[260px] shrink-0 p-3 rounded-2xl border space-y-2 relative group transition flex flex-col justify-between',
+                        draggedColIdx === item.colIdx
+                          ? 'opacity-50 bg-cyan-50/40 border-[#04C4D9]'
+                          : (dragOverColIdx === item.colIdx
+                            ? 'bg-cyan-50/50 border-[#004B97] ring-2 ring-[#04C4D9]/40'
+                            : (cluster.isGrouped
+                              ? 'bg-white border-2 border-[#04C4D9]/60 shadow-2xs'
+                              : 'bg-slate-50/90 border-slate-200 hover:border-slate-300'))
+                      ]"
+                    >
+                      <!-- Cabecera de Columna -->
+                      <div class="flex items-center justify-between gap-1.5">
+                        <div class="flex items-center gap-1.5 min-w-0">
+                          <span
+                            class="text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing shrink-0"
+                            title="Arrastra para reordenar columna"
+                          >
+                            <GripVertical class="w-3.5 h-3.5" />
+                          </span>
+                          <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
+                            {{ item.colIdx + 1 }}
+                          </span>
+                          <input
+                            v-model="item.col.etiqueta"
+                            type="text"
+                            placeholder="Nombre de sub-columna..."
+                            class="font-black text-xs text-slate-900 bg-transparent border-b border-dashed border-slate-300 focus:border-[#04C4D9] focus:outline-none w-28 truncate"
+                          />
+                        </div>
+
+                        <div class="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            @click="addSubcolumn(item.colIdx)"
+                            class="px-1.5 py-0.5 rounded-lg text-[10px] font-black bg-white border border-cyan-300 text-[#038391] hover:bg-cyan-50 transition flex items-center gap-0.5 shadow-2xs cursor-pointer"
+                            title="Duplicar como sub-columna unida bajo el mismo título central"
+                          >
+                            <Split class="w-3 h-3 text-[#04C4D9]" />
+                            <span>+ Sub</span>
+                          </button>
+
+                          <button
+                            v-if="currentTemplate.columnas.length > 1"
+                            type="button"
+                            @click="removeColumn(item.colIdx)"
+                            class="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                            title="Eliminar columna"
+                          >
+                            <Trash2 class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Selector de Tipo de Dato con Badges -->
+                      <div class="space-y-1.5">
+                        <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[10px] font-bold">
+                          <button
+                            type="button"
+                            @click="setColumnType(item.col, 'numero')"
+                            :class="[
+                              'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-0.5 cursor-pointer',
+                              (item.col.tipo_dato || 'numero') === 'numero' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                            ]"
+                          >
+                            <Hash class="w-3 h-3" />
+                            <span>Núm</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            @click="setColumnType(item.col, 'booleano')"
+                            :class="[
+                              'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-0.5 cursor-pointer',
+                              item.col.tipo_dato === 'booleano' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                            ]"
+                            title="Estado Sí / No (ej. Cónico, Nitrurado, Ranurado)"
+                          >
+                            <Binary class="w-3 h-3" />
+                            <span>Sí/No</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            @click="setColumnType(item.col, 'seleccion')"
+                            :class="[
+                              'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-0.5 cursor-pointer',
+                              item.col.tipo_dato === 'seleccion' ? 'bg-purple-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                            ]"
+                            title="Opciones desplegables"
+                          >
+                            <ListFilter class="w-3 h-3" />
+                            <span>Opc</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            @click="setColumnType(item.col, 'texto')"
+                            :class="[
+                              'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-0.5 cursor-pointer',
+                              item.col.tipo_dato === 'texto' ? 'bg-slate-700 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                            ]"
+                          >
+                            <Type class="w-3 h-3" />
+                            <span>Txt</span>
+                          </button>
+                        </div>
+
+                        <!-- Parámetros específicos según el tipo -->
+                        <div v-if="(item.col.tipo_dato || 'numero') === 'numero'" class="flex items-center gap-2">
+                          <span class="text-[10px] font-bold text-slate-500">Unidad:</span>
+                          <input
+                            v-model="item.col.unidad"
+                            type="text"
+                            placeholder="mm, pulg, °..."
+                            class="w-20 px-2 py-0.5 text-[11px] font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                          />
+                        </div>
+
+                        <div v-else-if="item.col.tipo_dato === 'booleano'" class="bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1">
+                          <Check class="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>Estado Sí / No (ej. Cónico)</span>
+                        </div>
+
+                        <div v-else-if="item.col.tipo_dato === 'seleccion'" class="space-y-1">
+                          <input
+                            v-model="item.col.opcionesStr"
+                            type="text"
+                            placeholder="Opciones: Admisión, Escape..."
+                            class="w-full px-2 py-1 text-[10px] font-bold bg-white border border-purple-200 rounded-lg focus:outline-none focus:border-purple-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Puente interno dentro del grupo unido (permite separar justo entre estas dos) -->
+                    <div
+                      v-if="itemPos < cluster.items.length - 1"
+                      class="flex flex-col items-center justify-center px-1.5 shrink-0"
+                    >
+                      <div class="flex items-center">
+                        <span class="w-2 h-0.5 bg-[#04C4D9]"></span>
+                        <button
+                          type="button"
+                          @click="toggleJoinAdjacentColumns(item.colIdx)"
+                          class="px-1.5 py-1 rounded-full bg-white border border-[#04C4D9] text-[#004B97] hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 shadow-2xs transition flex items-center gap-1 text-[9px] font-black cursor-pointer"
+                          title="Unidas en la misma columna central (clic para separar aquí)"
+                        >
+                          <Link2 class="w-3 h-3" />
+                        </button>
+                        <span class="w-2 h-0.5 bg-[#04C4D9]"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
               </div>
 
-              <div class="flex items-center gap-1">
-                <!-- Botón de Agregar Sub-columna agrupada -->
-                <button
-                  type="button"
-                  @click="addSubcolumn(cIdx)"
-                  class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-white border border-cyan-300 text-[#038391] hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs cursor-pointer"
-                  title="Crear una sub-columna hermana agrupada bajo un mismo título superior (ej. STD -> Mín y Máx)"
-                >
-                  <Split class="w-3 h-3 text-[#04C4D9]" />
-                  <span>+ Sub-col</span>
-                </button>
-
-                <button
-                  v-if="currentTemplate.columnas.length > 1"
-                  type="button"
-                  @click="removeColumn(cIdx)"
-                  class="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
-                  title="Eliminar columna"
-                >
-                  <Trash2 class="w-3.5 h-3.5" />
-                </button>
+              <!-- Puente con botón CENTRAR entre columnas o grupos cercanos -->
+              <div
+                v-if="clIdx < columnClusterGroups.length - 1"
+                class="flex flex-col items-center justify-center px-1.5 shrink-0"
+              >
+                <div class="flex items-center">
+                  <span class="w-2 border-t-2 border-dotted border-slate-300"></span>
+                  <button
+                    type="button"
+                    @click="toggleJoinAdjacentColumns(cluster.endIdx)"
+                    class="px-2 py-1 rounded-full bg-white border border-slate-300 hover:border-[#04C4D9] hover:bg-cyan-50 text-slate-600 hover:text-[#004B97] shadow-2xs transition flex flex-col items-center gap-0.5 cursor-pointer group"
+                    title="Centrar y unir columnas cercanas bajo una misma columna central"
+                  >
+                    <Link2 class="w-3.5 h-3.5 text-[#04C4D9] group-hover:scale-110 transition" />
+                    <span class="text-[9px] font-black leading-none">Centrar</span>
+                  </button>
+                  <span class="w-2 border-t-2 border-dotted border-slate-300"></span>
+                </div>
               </div>
-            </div>
-
-            <!-- Selector de Tipo de Dato con Badges -->
-            <div class="space-y-1.5">
-              <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[10px] font-bold">
-                <button
-                  type="button"
-                  @click="setColumnType(col, 'numero')"
-                  :class="[
-                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
-                    (col.tipo_dato || 'numero') === 'numero' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  ]"
-                >
-                  <Hash class="w-3 h-3" />
-                  <span>Número</span>
-                </button>
-
-                <button
-                  type="button"
-                  @click="setColumnType(col, 'booleano')"
-                  :class="[
-                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
-                    col.tipo_dato === 'booleano' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  ]"
-                  title="Estado Sí / No (ej. Cónico, Nitrurado, Ranurado)"
-                >
-                  <Binary class="w-3 h-3" />
-                  <span>Sí / No</span>
-                </button>
-
-                <button
-                  type="button"
-                  @click="setColumnType(col, 'seleccion')"
-                  :class="[
-                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
-                    col.tipo_dato === 'seleccion' ? 'bg-purple-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  ]"
-                  title="Opciones desplegables"
-                >
-                  <ListFilter class="w-3 h-3" />
-                  <span>Opciones</span>
-                </button>
-
-                <button
-                  type="button"
-                  @click="setColumnType(col, 'texto')"
-                  :class="[
-                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
-                    col.tipo_dato === 'texto' ? 'bg-slate-700 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  ]"
-                >
-                  <Type class="w-3 h-3" />
-                  <span>Texto</span>
-                </button>
-              </div>
-
-              <!-- Parámetros específicos según el tipo -->
-              <div v-if="(col.tipo_dato || 'numero') === 'numero'" class="flex items-center gap-2">
-                <span class="text-[10px] font-bold text-slate-500">Unidad:</span>
-                <input
-                  v-model="col.unidad"
-                  type="text"
-                  placeholder="mm, pulg, °..."
-                  class="w-20 px-2 py-0.5 text-[11px] font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                />
-              </div>
-
-              <div v-else-if="col.tipo_dato === 'booleano'" class="bg-emerald-50 text-emerald-900 border border-emerald-200 px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5">
-                <Check class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>Estado binario Sí / No (ej. Cónico, Nitrurado, Ranurado)</span>
-              </div>
-
-              <div v-else-if="col.tipo_dato === 'seleccion'" class="space-y-1">
-                <label class="block text-[9px] font-bold text-slate-500">Opciones separadas por coma:</label>
-                <input
-                  v-model="col.opcionesStr"
-                  type="text"
-                  placeholder="Ej. Admisión, Escape, Especial"
-                  class="w-full px-2 py-1 text-[11px] font-bold bg-white border border-purple-200 rounded-lg focus:outline-none focus:border-purple-400"
-                />
-              </div>
-
-              <!-- Título superior / Padre para sub-columna agrupada -->
-              <div class="pt-1 flex items-center gap-1.5">
-                <Split class="w-3 h-3 text-[#004B97] shrink-0" />
-                <input
-                  v-model="col.columna_padre"
-                  type="text"
-                  placeholder="Grupo superior (ej. STD, 0.25...)"
-                  class="flex-1 px-2 py-0.5 text-[10px] font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                />
-                <button
-                  v-if="col.columna_padre"
-                  type="button"
-                  @click="col.columna_padre = ''"
-                  class="text-slate-400 hover:text-slate-600 p-0.5"
-                  title="Quitar grupo padre"
-                >
-                  <X class="w-3 h-3" />
-                </button>
-              </div>
-            </div>
+            </template>
           </div>
         </div>
       </div>
