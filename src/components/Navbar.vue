@@ -125,11 +125,30 @@ const handleNewOrder = () => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 w-full bg-[#0a0a0a]/95 backdrop-blur-md border-b border-neutral-800 shadow-md">
+  <header class="sticky top-0 z-40 w-full flex justify-center bg-slate-50/95 backdrop-blur-md border-b border-slate-200/60 transition-colors">
+    <!-- Notch Container Estilo Dynamic Island / Supaste -->
     <div
-      class="w-full max-w-7xl mx-auto h-14 px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-3 sm:gap-6 transition-all"
+      class="relative w-full sm:w-auto max-w-6xl xl:max-w-7xl h-14 bg-[#0a0a0a] text-white rounded-b-[22px] border-b border-x border-neutral-800/90 px-4 sm:px-6 lg:px-7 flex items-center justify-between gap-3 sm:gap-6 lg:gap-8 xl:gap-10 transition-all shadow-xl shadow-black/40"
     >
-      <!-- 1. Left: Brand / Logo con efecto Glossy Glass -->
+      <!-- Oreja Izquierda Curva Cóncava (Inverted Fillet Ear) -->
+      <svg
+        class="absolute top-0 -left-[22px] w-[22px] h-[22px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
+        viewBox="0 0 22 22"
+      >
+        <path d="M22 0 H0 C12.15 0 22 9.85 22 22 V0 Z" />
+        <path d="M0 0 C12.15 0 22 9.85 22 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+      </svg>
+
+      <!-- Oreja Derecha Curva Cóncava (Inverted Fillet Ear) -->
+      <svg
+        class="absolute top-0 -right-[22px] w-[22px] h-[22px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
+        viewBox="0 0 22 22"
+      >
+        <path d="M0 0 H22 C9.85 0 0 12.15 0 22 Z" />
+        <path d="M22 0 C9.85 0 0 12.15 0 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+      </svg>
+
+      <!-- 1. Left: Brand / Logo con efecto Glossy Glass (Estilo Supaste) -->
       <router-link
         :to="authStore.defaultRoute"
         class="flex items-center gap-2.5 group select-none shrink-0"
@@ -157,7 +176,7 @@ const handleNewOrder = () => {
       </router-link>
 
       <!-- 2. Center: Enlaces de Navegación (Desktop) -->
-      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-1 bg-neutral-900/70 rounded-full border border-neutral-800/80 shadow-inner">
+      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-1 bg-neutral-900/60 rounded-full border border-neutral-800/70 shadow-inner">
         <router-link
           v-for="item in visibleNavItems"
           :key="item.path"
