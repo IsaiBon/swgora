@@ -442,18 +442,18 @@ const activeGroup = computed<GrupoRepuesto | null>(() => {
 
 const activeTablaConfig = computed<TablaConfiguracion>(() => {
   return activeGroup.value?.tabla_config || {
-    titulo_primera_columna: isRingsGroup.value ? 'Anillo' : 'Posición / Fila',
-    modo_filas: 'incremental',
-    usar_prefijo_titulo: true,
-    etiqueta_ultima_fila: isRingsGroup.value ? 'Anillo de aceite' : '',
-    habilitar_identificador: isRingsGroup.value,
-    etiqueta_identificador: isRingsGroup.value ? 'Cónico' : 'Especial'
+    titulo_primera_columna: 'Componente',
+    modo_filas: 'subfilas',
+    subfilas_activas: true,
+    subfilas: ['Fila 1'],
+    habilitar_identificador: false,
+    etiqueta_identificador: ''
   }
 })
 
 const getDefaultRowPosition = (idx: number, totalRows: number, cfg?: TablaConfiguracion): string => {
   const conf = cfg || activeTablaConfig.value
-  const titulo = conf.titulo_primera_columna || (isRingsGroup.value ? 'Anillo' : 'Fila')
+  const titulo = conf.titulo_primera_columna || 'Componente'
   const usarPref = conf.usar_prefijo_titulo !== false
   const isLast = idx === totalRows - 1 && totalRows >= 2
   if (isLast && conf.etiqueta_ultima_fila && conf.etiqueta_ultima_fila.trim()) {
@@ -588,22 +588,14 @@ const equivalencias = ref<Array<{ marca_alterna: string; codigo_alterno: string;
 
 const isSubfilasGroup = computed<boolean>(() => {
   if (!activeGroup.value || activeGroup.value.tipo_vista !== 'tabla') return false
-  if (activeGroup.value.codigo === 'anillos_motor') return false
-  const cfg = activeGroup.value.tabla_config
-  return Boolean(
-    cfg?.subfilas_activas ||
-    cfg?.modo_filas === 'cojinetes' ||
-    cfg?.modo_filas === 'subfilas' ||
-    (Array.isArray(cfg?.subfilas) && cfg!.subfilas!.length > 0)
-  )
+  return true
 })
 
 const isRingsGroup = computed<boolean>(() => {
   if (!activeGroup.value) return false
   if (isSubfilasGroup.value) return false
-  const code = (activeGroup.value.codigo || '').toLowerCase()
   const cat = (activeGroup.value.categoria || '').toLowerCase()
-  return code === 'anillos_motor' || (activeGroup.value.tipo_vista !== 'tabla' && (cat === 'anillos' || cat.includes('anillo')))
+  return cat === 'anillos' || cat.includes('anillo')
 })
 
 const isGeneralTableGroup = computed<boolean>(() => {
@@ -1017,10 +1009,10 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   loadedParams.keystone = (part.dimensiones as any)?.keystone || (part.especificaciones_tecnicas as any)?.keystone || ''
   loadedParams.cilindros = (part.dimensiones as any)?.cilindros || null
 
-  // Cargar sub-filas multilínea si existen (ej. Cojinetes: Biela y Bancada)
+  // Cargar sub-filas multilínea si existen (incluyendo familias migradas como anillos_motor)
   const partSubfilas = (part.dimensiones as any)?.subfilas
+  const padres = matchedGroup?.tabla_config?.subfila_padres || []
   if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
-    const padres = matchedGroup?.tabla_config?.subfila_padres || []
     subfilasRows.value = partSubfilas.map((sf: any, idx: number) => ({
       id: sf.id || `sf-${idx}-${Date.now()}`,
       tipo: sf.tipo || `fila_${idx + 1}`,
@@ -1029,6 +1021,29 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
       grupo: sf.grupo ?? padres[idx] ?? '',
       medidas: sf.medidas ? { ...sf.medidas } : {}
     }))
+    subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
+    subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
+  } else if (matchedGroup?.tipo_vista === 'tabla' && ringRows.value.length > 0) {
+    const dFallback = loadedParams.diametro_cilindro_mm ?? part.diametro_cilindro_mm ?? null
+    subfilasRows.value = ringRows.value.map((r, idx) => {
+      const perfilClean =
+        r.identificador_texto?.trim() ||
+        (r.perfil && !r.perfil.includes('Keystone') ? r.perfil : (r.tiene_identificador ? 'Cónico' : 'Plano'))
+      return {
+        id: r.id || `sf-${idx}-${Date.now()}`,
+        tipo: r.tipo_aro || `fila_${idx + 1}`,
+        nombre: r.posicion || `Fila ${idx + 1}`,
+        codigo: (r.extra?.codigo as string) || (idx === 0 ? (partCodigoOem.value || '') : ''),
+        grupo: padres[idx] || '',
+        medidas: {
+          ...(r.extra || {}),
+          diametro_cilindro_mm: r.extra?.diametro_cilindro_mm ?? dFallback,
+          grosor_mm: r.h1 ?? r.extra?.grosor_mm ?? null,
+          altura_mm: r.a1 ?? r.extra?.altura_mm ?? null,
+          tipo_diseno: r.extra?.tipo_diseno ?? perfilClean
+        }
+      }
+    })
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   }
@@ -1092,7 +1107,7 @@ const handleSavePart = async () => {
       }
     }
 
-    // Sincronizar sub-filas para familias multilínea (Cojinetes: Marca, Biela, Bancada, etc.)
+    // Sincronizar sub-filas para familias en tabla unificada (incluyendo Anillos y Cojinetes)
     if (isSubfilasGroup.value) {
       dimensionesPayload.subfilas = subfilasRows.value.map((sf, idx) => ({
         id: sf.id,
@@ -1104,6 +1119,50 @@ const handleSavePart = async () => {
       }))
       dimensionesPayload.marca_banner = subfilasMarcaBanner.value.trim() || (selectedMotor.value ? getBrandName(selectedMotor.value.fabricante_id) : '')
       dimensionesPayload.aplicacion_banner = subfilasAplicacionBanner.value.trim() || (selectedMotor.value?.denominacion_venta || selectedMotor.value?.nombre_comercial || '')
+
+      const isAnillosLike =
+        activeGroup.value?.codigo === 'anillos_motor' ||
+        (activeGroup.value?.categoria || '').toLowerCase().includes('anillo')
+      if (isAnillosLike) {
+        const dFirst = subfilasRows.value
+          .map(r => r.medidas?.diametro_cilindro_mm)
+          .find(v => v != null && !isNaN(Number(v)))
+        const dNum = dFirst != null
+          ? Number(dFirst)
+          : (dimensionesPayload.diametro_cilindro_mm != null ? Number(dimensionesPayload.diametro_cilindro_mm) : null)
+
+        const mappedRings = subfilasRows.value.map((sf, idx) => {
+          const isLast = idx === subfilasRows.value.length - 1
+          const isOil = isLast || sf.nombre.toLowerCase().includes('aceite')
+          const design = String(sf.medidas?.tipo_diseno || '').trim()
+          return {
+            ...sf.medidas,
+            posicion: sf.nombre || `Anillo ${idx + 1}`,
+            codigo: sf.codigo?.trim() || '',
+            tipo_aro: isOil ? 'aceite' : (idx === 0 ? 'fuego' : 'compresion'),
+            d1: sf.medidas?.diametro_cilindro_mm != null ? Number(sf.medidas.diametro_cilindro_mm) : dNum,
+            h1: sf.medidas?.grosor_mm != null ? Number(sf.medidas.grosor_mm) : null,
+            a1: sf.medidas?.altura_mm != null ? Number(sf.medidas.altura_mm) : null,
+            perfil: design || 'Plano',
+            forma: design || 'Plano',
+            identificador: (design && design !== 'Plano' && design !== 'Estándar') ? design : undefined
+          }
+        })
+        dimensionesPayload.anillos = mappedRings
+        if (dNum != null) dimensionesPayload.diametro_cilindro_mm = dNum
+        if (mappedRings[0]?.h1 != null) dimensionesPayload.espesor_anillo1_mm = mappedRings[0].h1
+        if (mappedRings.length >= 3 && mappedRings[1]?.h1 != null) dimensionesPayload.espesor_anillo2_mm = mappedRings[1].h1
+        const rOil = mappedRings[mappedRings.length - 1]
+        if (rOil?.h1 != null) dimensionesPayload.espesor_aceite_mm = rOil.h1
+        const conicoRow = mappedRings.find(r => (r.perfil || '').toLowerCase().includes('cónic') || (r.perfil || '').toLowerCase().includes('conic'))
+        if (conicoRow) {
+          dimensionesPayload.diseno_conico = true
+          dimensionesPayload.keystone = conicoRow.perfil
+        } else {
+          delete dimensionesPayload.diseno_conico
+          delete dimensionesPayload.keystone
+        }
+      }
     }
 
     // Sincronizar cotas radiales y array `anillos` para familias en tabla / anillos
@@ -2291,10 +2350,10 @@ onUnmounted(() => {
                           {{ activeTablaConfig.titulo_grupo_filas || 'Grupo' }}
                         </th>
                         <th rowspan="2" class="px-3 py-2 text-left border-r border-slate-200 min-w-[140px] whitespace-nowrap">
-                          {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
+                          {{ activeTablaConfig.titulo_primera_columna || 'Componente' }}
                         </th>
                         <th rowspan="2" class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
-                          Código
+                          Código OEM
                         </th>
                         <template v-for="item in subfilasActiveHeaders.tier1" :key="item.id">
                           <th
@@ -2336,10 +2395,10 @@ onUnmounted(() => {
                           {{ activeTablaConfig.titulo_grupo_filas || 'Grupo' }}
                         </th>
                         <th class="px-3 py-2 text-left border-r border-slate-200 min-w-[140px] whitespace-nowrap">
-                          {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
+                          {{ activeTablaConfig.titulo_primera_columna || 'Componente' }}
                         </th>
                         <th class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
-                          Código
+                          Código OEM
                         </th>
                         <th
                           v-for="param in (activeGroup?.parametros || [])"

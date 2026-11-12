@@ -820,7 +820,6 @@ const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
 // Determina si la familia activa usa el formato unificado de tabla / sub-filas
 const isCurrentGroupSubfilas = computed<boolean>(() => {
   if (!currentGroupDefinition.value) return false
-  if (currentGroupDefinition.value.codigo === 'anillos_motor') return false
   if (currentGroupDefinition.value.tipo_vista === 'tabla') return true
   const cfg = currentGroupDefinition.value.tabla_config
   return Boolean(
@@ -834,8 +833,7 @@ const isCurrentGroupSubfilas = computed<boolean>(() => {
 const isCurrentGroupRingsTable = computed<boolean>(() => {
   if (!selectedComponent.value) return false
   if (isCurrentGroupSubfilas.value) return false
-  const code = (currentGroupDefinition.value?.codigo || selectedComponent.value.id || '').toLowerCase()
-  return code === 'anillos_motor'
+  return false
 })
 
 const isCurrentGroupGeneralTable = computed<boolean>(() => {
@@ -874,6 +872,30 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
       ...sf,
       grupo: sf.grupo ?? configuredPadres[idx] ?? ''
     }))
+  }
+  if (Array.isArray(dims?.anillos) && dims.anillos.length > 0) {
+    const isConical = Boolean(part.diseno_conico || dims?.diseno_conico || dims?.keystone)
+    return dims.anillos.map((ring: any, idx: number) => {
+      const rawDesign =
+        ring.tipo_diseno ||
+        ring.identificador ||
+        (ring.perfil && ring.perfil !== 'Estándar' ? ring.perfil : undefined) ||
+        ring.forma ||
+        (idx === 0 && isConical ? 'Cónico' : 'Plano')
+      return {
+        nombre: ring.posicion || `Anillo ${idx + 1}`,
+        codigo: ring.codigo || (idx === 0 ? (part.codigo_oem || '') : ''),
+        grupo: configuredPadres[idx] || '',
+        medidas: {
+          ...(ring.extra || {}),
+          ...ring,
+          diametro_cilindro_mm: ring.d1 ?? part.diametro_cilindro_mm,
+          grosor_mm: ring.h1,
+          altura_mm: ring.a1,
+          tipo_diseno: rawDesign
+        }
+      }
+    })
   }
   const configuredSubfilas = currentGroupDefinition.value?.tabla_config?.subfilas
   if (Array.isArray(configuredSubfilas) && configuredSubfilas.length > 0) {
@@ -1074,7 +1096,7 @@ const isTableParamInFilter = (clave: string): boolean => {
 }
 
 const tableColFirstHeader = computed<string>(() => {
-  return currentGroupDefinition.value?.tabla_config?.titulo_primera_columna || (isCurrentGroupRingsTable.value ? 'Anillo' : 'Posición')
+  return currentGroupDefinition.value?.tabla_config?.titulo_primera_columna || 'Componente'
 })
 
 const tableShowIdentifier = computed<boolean>(() => {
@@ -2235,7 +2257,9 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
                 const ringVal = ring.extra?.[key] !== undefined ? ring.extra[key] : (ring[key] !== undefined ? ring[key] : (
                   key === 'diametro_cilindro_mm' ? ring.d1 : (
                     key === 'grosor_mm' ? ring.h1 : (
-                      key === 'altura_mm' ? ring.a1 : undefined
+                      key === 'altura_mm' ? ring.a1 : (
+                        key === 'tipo_diseno' ? (ring.tipo_diseno || ring.identificador || ring.perfil || ring.forma) : undefined
+                      )
                     )
                   )
                 ))
@@ -4681,10 +4705,10 @@ onUnmounted(() => {
                   {{ currentGroupDefinition?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
                 </th>
                 <th rowspan="2" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95" :class="isCurrentGroupSubfilas ? 'w-28 text-center' : 'w-44 min-w-[150px]'">
-                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Posición') : 'Componente' }}
+                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Componente') : 'Componente' }}
                 </th>
                 <th rowspan="2" class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
-                  {{ isCurrentGroupSubfilas ? 'Código' : 'Código OEM' }}
+                  Código OEM
                 </th>
                 <th v-if="!isCurrentGroupSubfilas" rowspan="2" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Catálogos Alternos
@@ -4733,10 +4757,10 @@ onUnmounted(() => {
                   {{ currentGroupDefinition?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
                 </th>
                 <th class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95" :class="isCurrentGroupSubfilas ? 'w-32 text-left' : 'w-44 min-w-[150px]'">
-                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Posición') : 'Componente' }}
+                  {{ isCurrentGroupSubfilas ? (currentGroupDefinition?.tabla_config?.titulo_primera_columna || 'Componente') : 'Componente' }}
                 </th>
                 <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
-                  {{ isCurrentGroupSubfilas ? 'Código' : 'Código OEM' }}
+                  Código OEM
                 </th>
                 <th v-if="!isCurrentGroupSubfilas" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Catálogos Alternos
@@ -4986,14 +5010,14 @@ onUnmounted(() => {
                           class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200"
                           title="Modelo de vehículo y aplicación técnica"
                         >
-                          <span class="text-blue-500 font-bold">🚗</span> {{ (part.especificaciones_tecnicas as any).vehiculo }}
+                          {{ (part.especificaciones_tecnicas as any).vehiculo }}
                         </span>
                         <span 
                           v-if="(part.especificaciones_tecnicas as any)?.ano && (part.especificaciones_tecnicas as any)?.ano !== '—'"
                           class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium border border-slate-200"
                           title="Años de aplicación"
                         >
-                          <span class="text-slate-500 font-bold">📅</span> {{ (part.especificaciones_tecnicas as any).ano }}
+                          {{ (part.especificaciones_tecnicas as any).ano }}
                         </span>
                         <span 
                           v-if="(part.especificaciones_tecnicas as any)?.cilindros"
@@ -5660,11 +5684,11 @@ onUnmounted(() => {
               class="bg-blue-50/70 border border-blue-200 p-3 rounded-xl flex flex-wrap items-center gap-3 text-xs"
             >
               <div v-if="(modalPart.especificaciones_tecnicas as any)?.vehiculo" class="flex items-center gap-1.5">
-                <span class="text-blue-600 font-bold">🚗 Vehículo:</span>
+                <span class="text-blue-600 font-bold">Vehículo:</span>
                 <strong class="text-blue-950 font-bold">{{ (modalPart.especificaciones_tecnicas as any).vehiculo }}</strong>
               </div>
               <div v-if="(modalPart.especificaciones_tecnicas as any)?.ano" class="flex items-center gap-1.5">
-                <span class="text-slate-600 font-bold">📅 Año:</span>
+                <span class="text-slate-600 font-bold">Año:</span>
                 <strong class="text-slate-900 font-mono">{{ (modalPart.especificaciones_tecnicas as any).ano }}</strong>
               </div>
               <div v-if="(modalPart.especificaciones_tecnicas as any)?.cilindros" class="flex items-center gap-1.5">

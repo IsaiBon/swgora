@@ -606,24 +606,25 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
     nombre: 'Anillos de motor',
     categoria: 'Anillos',
     subsistema: 'Block',
-    descripcion: 'Juegos de aros de pistón (Desglose explícito 1°, 2° y aceite)',
+    descripcion: 'Juegos de aros de pistón (1°, 2°, aceite y perfiles Cónico / Espiral)',
     icono: 'Layers',
     tipo_vista: 'tabla',
     tabla_config: {
-      titulo_primera_columna: 'Anillo',
-      modo_filas: 'incremental',
-      usar_prefijo_titulo: true,
-      etiqueta_ultima_fila: 'Anillo de aceite',
-      habilitar_identificador: true,
-      etiqueta_identificador: 'Cónico',
-      opciones_identificador: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral']
+      titulo_primera_columna: 'Componente',
+      modo_filas: 'subfilas',
+      subfilas_activas: true,
+      subfilas: ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de aceite'],
+      tiene_cabecera_marca: false,
+      habilitar_identificador: false,
+      etiqueta_identificador: ''
     },
     activo: true,
     orden_visual: 3,
     parametros: [
       { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro', etiqueta_corta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Calibre del orificio del cilindro' },
       { id: 'p_anil_2', clave: 'grosor_mm', etiqueta: 'Grosor', etiqueta_corta: 'Grosor', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor o grosor axial del anillo' },
-      { id: 'p_anil_3', clave: 'altura_mm', etiqueta: 'Altura', etiqueta_corta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Altura o ancho radial del anillo' }
+      { id: 'p_anil_3', clave: 'altura_mm', etiqueta: 'Altura', etiqueta_corta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Altura o ancho radial del anillo' },
+      { id: 'p_anil_4', clave: 'tipo_diseno', etiqueta: 'Diseño / Perfil', etiqueta_corta: 'Diseño', unidad: '', tipo_dato: 'seleccion', opciones: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral', 'Plano'], requerido: false, filtrable: true, descripcion: 'Perfil o tipo de diseño del anillo' }
     ]
   },
   {
@@ -736,28 +737,7 @@ function getLocalDynamicGrupos(): GrupoRepuesto[] {
   try {
     const raw = localStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
     if (!raw) return []
-    const list: GrupoRepuesto[] = JSON.parse(raw)
-    // Limpiar residuos de anillos_motor en localStorage para que solo tenga las 3 columnas cabales
-    let modified = false
-    const cleaned = list.map(g => {
-      if (g.codigo === 'anillos_motor') {
-        modified = true
-        return {
-          ...g,
-          tipo_vista: 'tabla' as const,
-          parametros: [
-            { id: 'p_anil_1', clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de cilindro', etiqueta_corta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero' as const, requerido: true, filtrable: true, descripcion: 'Calibre o diámetro del cilindro' },
-            { id: 'p_anil_2', clave: 'grosor_mm', etiqueta: 'Grosor', etiqueta_corta: 'Grosor', unidad: 'mm', tipo_dato: 'numero' as const, requerido: true, filtrable: true, descripcion: 'Espesor axial de cada fila o ranura' },
-            { id: 'p_anil_3', clave: 'altura_mm', etiqueta: 'Altura', etiqueta_corta: 'Altura', unidad: 'mm', tipo_dato: 'numero' as const, requerido: true, filtrable: true, descripcion: 'Altura o ancho radial de cada fila o ranura' }
-          ]
-        }
-      }
-      return g
-    })
-    if (modified) {
-      localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(cleaned))
-    }
-    return cleaned
+    return JSON.parse(raw) as GrupoRepuesto[]
   } catch {
     return []
   }
@@ -2504,12 +2484,12 @@ export const catalogService = {
       }
 
       const defaultTablaConfig: TablaConfiguracion = {
-        titulo_primera_columna: grp.codigo === 'anillos_motor' ? 'Anillo' : (grp.categoria || 'Posición'),
-        modo_filas: grp.codigo === 'anillos_motor' ? 'incremental' : 'subfilas',
+        titulo_primera_columna: grp.categoria || 'Componente',
+        modo_filas: 'subfilas',
         usar_prefijo_titulo: true,
-        etiqueta_ultima_fila: grp.codigo === 'anillos_motor' ? 'Anillo de aceite' : '',
-        habilitar_identificador: grp.codigo === 'anillos_motor',
-        etiqueta_identificador: grp.codigo === 'anillos_motor' ? 'Cónico' : '',
+        etiqueta_ultima_fila: '',
+        habilitar_identificador: false,
+        etiqueta_identificador: '',
         opciones_identificador: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral']
       }
 
@@ -2518,56 +2498,10 @@ export const catalogService = {
         ...(grp.tabla_config || metaTablaConfig || defaultTablaConfig)
       }
 
-      // Solo la familia base `anillos_motor` fuerza la matriz clásica de 3 columnas
-      if (grp.codigo === 'anillos_motor') {
-        const diamParam = grp.parametros.find(p => p.clave === 'diametro_cilindro_mm')
-        const grosorParam = grp.parametros.find(p => p.clave === 'grosor_mm' || p.clave === 'anillo1_h1')
-        const alturaParam = grp.parametros.find(p => p.clave === 'altura_mm' || p.clave === 'anillo1_a1')
-
-        return {
-          ...grp,
-          tipo_vista: 'tabla',
-          tabla_config: resolvedTablaConfig,
-          parametros: [
-            {
-              id: diamParam?.id || 'p_anil_1',
-              clave: 'diametro_cilindro_mm',
-              etiqueta: 'Diámetro de cilindro',
-              etiqueta_corta: 'Diámetro',
-              unidad: 'mm',
-              tipo_dato: 'numero',
-              requerido: true,
-              filtrable: true,
-              descripcion: 'Calibre o diámetro del cilindro'
-            },
-            {
-              id: grosorParam?.id || 'p_anil_2',
-              clave: 'grosor_mm',
-              etiqueta: 'Grosor',
-              etiqueta_corta: 'Grosor',
-              unidad: 'mm',
-              tipo_dato: 'numero',
-              requerido: true,
-              filtrable: true,
-              descripcion: 'Espesor axial de cada fila o ranura'
-            },
-            {
-              id: alturaParam?.id || 'p_anil_3',
-              clave: 'altura_mm',
-              etiqueta: 'Altura',
-              etiqueta_corta: 'Altura',
-              unidad: 'mm',
-              tipo_dato: 'numero',
-              requerido: true,
-              filtrable: true,
-              descripcion: 'Altura o ancho radial de cada fila o ranura'
-            }
-          ]
-        }
-      }
+      const isAnillosCategory = grp.codigo === 'anillos_motor' || (grp.categoria || '').toLowerCase().includes('anillo')
+      const hadSubfilasActivas = Boolean(resolvedTablaConfig.subfilas_activas)
 
       // Reparar grupos en tabla ya creados (ej. con `subfilas` guardadas bajo modo_filas incremental/cojinetes/libre o restos de 'Anillo de aceite')
-      const isAnillosCategory = (grp.categoria || '').toLowerCase().includes('anillo')
       if (!isAnillosCategory && resolvedTablaConfig.etiqueta_ultima_fila === 'Anillo de aceite') {
         resolvedTablaConfig.etiqueta_ultima_fila = ''
       }
@@ -2592,7 +2526,7 @@ export const catalogService = {
         'altura_anillo1_mm', 'altura_anillo2_mm', 'altura_anillo3_mm', 'altura_aceite_mm'
       ])
       const hasLegacyRingParams = grp.parametros.some(p => legacyPerRingKeys.has(p.clave))
-      let normalizedParams = grp.parametros
+      let normalizedParams = [...(grp.parametros || [])]
 
       if (hasLegacyRingParams) {
         const diamOld = grp.parametros.find(p => p.clave === 'diametro_cilindro_mm')
@@ -2636,6 +2570,35 @@ export const catalogService = {
           },
           ...extraCustom
         ]
+      }
+
+      // Migrar automáticamente registros legados de anillos_motor al formato unificado de familia
+      // sin sobrescribir cambios ya guardados desde Modificar Familia.
+      if (grp.codigo === 'anillos_motor' && !hadSubfilasActivas) {
+        if (!resolvedTablaConfig.titulo_primera_columna || resolvedTablaConfig.titulo_primera_columna === 'Anillo') {
+          resolvedTablaConfig.titulo_primera_columna = 'Componente'
+        }
+        const hasDesignCol = normalizedParams.some(p =>
+          p.clave === 'tipo_diseno' ||
+          (p.etiqueta || '').toLowerCase().includes('dise') ||
+          (p.etiqueta || '').toLowerCase().includes('perfil') ||
+          (p.etiqueta || '').toLowerCase().includes('cónic') ||
+          (p.etiqueta || '').toLowerCase().includes('conic')
+        )
+        if (!hasDesignCol) {
+          normalizedParams.push({
+            id: 'p_anil_4',
+            clave: 'tipo_diseno',
+            etiqueta: 'Diseño / Perfil',
+            etiqueta_corta: 'Diseño',
+            unidad: '',
+            tipo_dato: 'seleccion',
+            opciones: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral', 'Plano'],
+            requerido: false,
+            filtrable: true,
+            descripcion: 'Perfil o tipo de diseño del anillo'
+          })
+        }
       }
 
       return {

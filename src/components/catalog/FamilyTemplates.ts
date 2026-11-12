@@ -58,7 +58,7 @@ export const BLANK_FAMILY_TEMPLATE: FamilyTemplate = {
   badge: 'En Blanco',
   colorTag: 'cyan',
   tabla_config: {
-    titulo_primera_columna: 'Posición / Componente',
+    titulo_primera_columna: 'Componente',
     modo_filas: 'subfilas',
     tiene_cabecera_marca: false,
     subfilas: ['Fila 1']
@@ -115,19 +115,17 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
     badge: 'Dinámica',
     colorTag: 'emerald',
     tabla_config: {
-      titulo_primera_columna: 'Anillo',
-      modo_filas: 'incremental',
-      usar_prefijo_titulo: true,
-      etiqueta_ultima_fila: 'Anillo de aceite',
-      habilitar_identificador: true,
-      etiqueta_identificador: 'Cónico',
-      opciones_identificador: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral']
+      titulo_primera_columna: 'Componente',
+      modo_filas: 'subfilas',
+      subfilas_activas: true,
+      subfilas: ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de aceite'],
+      tiene_cabecera_marca: false
     },
     columnas: [
       { etiqueta: 'Diámetro de cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro estándar del cilindro' },
       { etiqueta: 'Grosor', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor axial de cada ranura' },
       { etiqueta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Ancho radial de cada ranura' },
-      { etiqueta: 'Cónico', tipo_dato: 'booleano', requerido: false, filtrable: true, descripcion: 'Perfil cónico de ranura' }
+      { etiqueta: 'Diseño / Perfil', tipo_dato: 'seleccion', opciones: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral', 'Plano'], requerido: false, filtrable: true, descripcion: 'Perfil o diseño del anillo (Cónico, Espiral, etc.)' }
     ]
   },
   {
@@ -363,7 +361,7 @@ export function convertTemplateToGrupoInsert(
     const hasAnyGroup = finalPadres.some(p => p.length > 0)
     const modo = template.tabla_config?.modo_filas || 'subfilas'
     tablaConfig = {
-      titulo_primera_columna: template.tabla_config?.titulo_primera_columna?.trim() || 'Posición / Componente',
+      titulo_primera_columna: template.tabla_config?.titulo_primera_columna?.trim() || 'Componente',
       titulo_grupo_filas: hasAnyGroup ? (template.tabla_config?.titulo_grupo_filas?.trim() || 'Grupo') : undefined,
       modo_filas: modo,
       subfilas: finalFilas,

@@ -78,7 +78,7 @@ const normalizeTemplateForDesigner = (rawTpl: FamilyTemplate, keepLegacyNormal: 
   }
   if (!tpl.tabla_config) {
     tpl.tabla_config = {
-      titulo_primera_columna: 'Posición / Componente',
+      titulo_primera_columna: 'Componente',
       modo_filas: 'subfilas',
       tiene_cabecera_marca: false,
       subfilas: ['Fila 1']
@@ -300,7 +300,7 @@ const ensureTablaSubfilas = (): string[] => {
   }
   if (!currentTemplate.value.tabla_config) {
     currentTemplate.value.tabla_config = {
-      titulo_primera_columna: 'Posición / Componente',
+      titulo_primera_columna: 'Componente',
       modo_filas: 'subfilas',
       subfilas: ['Fila 1'],
       tiene_cabecera_marca: false
@@ -328,7 +328,7 @@ const ensureTablaSubfilaPadres = (): string[] => {
 
 const firstColumnTitle = computed({
   get(): string {
-    return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Posición / Componente'
+    return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Componente'
   },
   set(val: string) {
     ensureTablaSubfilas()
@@ -939,7 +939,7 @@ const handleSave = () => {
             <input
               v-model="firstColumnTitle"
               type="text"
-              placeholder="Ej. Posición, Sección, Paso, Anillo..."
+              placeholder="Ej. Componente, Posición, Sección, Anillo..."
               class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
             />
           </div>
@@ -1375,10 +1375,10 @@ const handleSave = () => {
                     {{ rowGroupColumnTitle }}
                   </th>
                   <th class="py-1.5 px-3 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200">
-                    {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Posición / Componente' }}
+                    {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Componente' }}
                   </th>
                   <th class="py-1.5 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center">
-                    CÓDIGO
+                    Código OEM
                   </th>
                   <th
                     v-for="(grp, gIdx) in previewHeaderGroups"
@@ -1409,7 +1409,7 @@ const handleSave = () => {
                     />
                   </th>
                   <th class="py-2 px-2 font-black text-slate-900 border-r border-slate-200 text-center">
-                    CÓDIGO
+                    Código OEM
                   </th>
                   <th
                     v-for="(col, cIdx) in currentTemplate.columnas"
