@@ -54,7 +54,7 @@ export const BLANK_FAMILY_TEMPLATE: FamilyTemplate = {
   subsistema: 'Block',
   descripcion: 'Plantilla en blanco: personaliza columnas, sub-columnas, estados (Sí/No) y medidas libremente',
   icono: 'Table',
-  tipo_vista: 'tabla',
+  tipo_vista: 'normal',
   badge: 'En Blanco',
   colorTag: 'cyan',
   tabla_config: {

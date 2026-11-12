@@ -69,13 +69,10 @@ const editDescripcion = ref<string>('')
 // Selector de grupo existente para clonar
 const selectedCloneGroupId = ref<string>('')
 
-// Normaliza una plantilla al diseñador unificado de filas
-const normalizeTemplateForDesigner = (rawTpl: FamilyTemplate, keepLegacyNormal: boolean): FamilyTemplate => {
+// Normaliza una plantilla al diseñador preservando su tipo_vista ('normal' vs 'tabla')
+const normalizeTemplateForDesigner = (rawTpl: FamilyTemplate): FamilyTemplate => {
   const tpl: FamilyTemplate = JSON.parse(JSON.stringify(rawTpl))
-  if (tpl.tipo_vista !== 'tabla') {
-    if (keepLegacyNormal) return tpl
-    tpl.tipo_vista = 'tabla'
-  }
+  tpl.tipo_vista = tpl.tipo_vista === 'tabla' ? 'tabla' : 'normal'
   if (!tpl.tabla_config) {
     tpl.tabla_config = {
       titulo_primera_columna: 'Componente',
@@ -101,7 +98,7 @@ const normalizeTemplateForDesigner = (rawTpl: FamilyTemplate, keepLegacyNormal: 
 // Inicializar desde props si se está editando una familia existente
 const initializeFromGroup = (grp: GrupoRepuesto) => {
   const tpl = cloneExistingGrupoToTemplate(grp)
-  currentTemplate.value = normalizeTemplateForDesigner(tpl, grp.tipo_vista === 'normal')
+  currentTemplate.value = normalizeTemplateForDesigner(tpl)
   editNombre.value = grp.nombre
   editCategoria.value = grp.categoria
   editSubsistema.value = grp.subsistema || 'Block'
@@ -111,7 +108,7 @@ const initializeFromGroup = (grp: GrupoRepuesto) => {
 
 // Cargar plantilla en blanco limpia
 const loadBlankTemplate = () => {
-  currentTemplate.value = normalizeTemplateForDesigner(BLANK_FAMILY_TEMPLATE, false)
+  currentTemplate.value = normalizeTemplateForDesigner(BLANK_FAMILY_TEMPLATE)
   editNombre.value = ''
   editCategoria.value = ''
   editSubsistema.value = 'Block'
@@ -121,7 +118,7 @@ const loadBlankTemplate = () => {
 
 // Cargar una plantilla de taller
 const loadTemplate = (tpl: FamilyTemplate) => {
-  currentTemplate.value = normalizeTemplateForDesigner(tpl, false)
+  currentTemplate.value = normalizeTemplateForDesigner(tpl)
   editNombre.value = tpl.nombre
   editCategoria.value = tpl.categoria
   editSubsistema.value = tpl.subsistema
@@ -295,9 +292,6 @@ const setColumnType = (col: TemplateColumnDef, newType: 'numero' | 'texto' | 'se
 
 // --- GESTIÓN UNIFICADA DE FILAS Y PRIMERA COLUMNA ---
 const ensureTablaSubfilas = (): string[] => {
-  if (currentTemplate.value.tipo_vista !== 'tabla') {
-    currentTemplate.value.tipo_vista = 'tabla'
-  }
   if (!currentTemplate.value.tabla_config) {
     currentTemplate.value.tabla_config = {
       titulo_primera_columna: 'Componente',
@@ -885,30 +879,33 @@ const handleSave = () => {
           <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               type="button"
-              @click="currentTemplate.tipo_vista = 'tabla'"
-              :class="[
-                'flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
-                currentTemplate.tipo_vista === 'tabla' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              ]"
-            >
-              Tabla / Matriz
-            </button>
-            <button
-              type="button"
               @click="currentTemplate.tipo_vista = 'normal'"
               :class="[
                 'flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
-                currentTemplate.tipo_vista === 'normal' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                currentTemplate.tipo_vista === 'normal' ? 'bg-white text-slate-900 shadow-2xs ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'
               ]"
             >
-              Lista Simple
+              Vista Normal
+            </button>
+            <button
+              type="button"
+              @click="currentTemplate.tipo_vista = 'tabla'; ensureTablaSubfilas()"
+              :class="[
+                'flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
+                currentTemplate.tipo_vista === 'tabla' ? 'bg-white text-[#004B97] shadow-2xs ring-1 ring-cyan-200' : 'text-slate-500 hover:text-slate-800'
+              ]"
+            >
+              Vista en Tabla
             </button>
           </div>
         </div>
       </div>
 
-      <!-- 2. DISEÑADOR UNIFICADO DE FILAS (1 FILA, MÚLTIPLES COMPONENTES O TABLA LIBRE ILIMITADA) -->
-      <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
+      <!-- 2. DISEÑADOR UNIFICADO DE FILAS (SOLO EN VISTA EN TABLA) -->
+      <div
+        v-if="currentTemplate.tipo_vista === 'tabla'"
+        class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3"
+      >
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h5 class="text-xs font-black text-slate-900 flex items-center gap-1.5">
@@ -1349,154 +1346,326 @@ const handleSave = () => {
         </div>
       </div>
 
-      <!-- 4. VISTA PREVIA INTERACTIVA EN VIVO (TABLA TAL CUAL SE VERÁ EN CATÁLOGO) -->
+      <!-- 4. VISTA PREVIA INTERACTIVA EN VIVO (TAL CUAL SE VERÁ EN EL CATÁLOGO) -->
       <div class="space-y-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wider">
             <Eye class="w-4 h-4 text-[#04C4D9]" />
-            <span>Vista Previa: Así se verá la tabla en el catálogo</span>
+            <span>
+              Vista Previa ({{ currentTemplate.tipo_vista === 'tabla' ? 'Vista en Tabla' : 'Vista Normal' }}): Así se verá en el catálogo
+            </span>
           </div>
           <span class="text-[11px] text-slate-400">
             {{ currentTemplate.columnas.length }} columnas configuradas
           </span>
         </div>
 
-        <!-- TABLA RENDERIZADA CON SOPORTE DE SUB-COLUMNAS Y ESTADOS SÍ/NO -->
-        <div class="border border-slate-300 rounded-2xl overflow-hidden shadow-2xs bg-white">
+        <div class="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">
+          <div class="bg-[#0a192f] text-white px-4 py-2 text-xs font-bold flex items-center justify-between">
+            <div>
+              <span>{{ editNombre || 'Nueva Familia' }}</span>
+              <span class="text-slate-400 font-mono text-[11px] font-normal ml-1.5">(1 registro)</span>
+            </div>
+            <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400">
+              TODOS LOS MOTORES
+            </span>
+          </div>
+
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse">
-              <thead>
-                <!-- Tier 1: Grupos Superiores si existen (ej. STD, 0.25...) -->
-                <tr v-if="hasGroupedHeaders" class="bg-slate-100/90 text-slate-700 border-b border-slate-200">
-                  <th
-                    v-if="hasGroupedRows"
-                    rowspan="2"
-                    class="py-1.5 px-2.5 font-black text-[10px] text-[#004B97] uppercase tracking-wider border-r border-slate-200 bg-cyan-50/70 align-middle"
-                  >
-                    {{ rowGroupColumnTitle }}
-                  </th>
-                  <th rowspan="2" class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px] align-middle">
-                    <input
-                      v-model="firstColumnTitle"
-                      type="text"
-                      class="w-full px-1.5 py-0.5 font-black text-xs text-slate-900 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                      placeholder="Nombre 1ra columna..."
-                      title="Haz clic para cambiar el nombre de la primera columna"
-                    />
-                  </th>
-                  <th rowspan="2" class="py-1.5 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center align-middle">
-                    Código OEM
-                  </th>
-                  <th
-                    v-for="(grp, gIdx) in previewHeaderGroups"
-                    :key="gIdx"
-                    :colspan="grp.colspan"
-                    class="py-1.5 px-2 font-black text-[10px] text-center uppercase tracking-wider border-r border-slate-200 bg-slate-200/50"
-                  >
-                    {{ grp.name || '-' }}
-                  </th>
-                </tr>
-
-                <!-- Tier 2: Columnas individuales -->
-                <tr class="bg-slate-50 text-slate-700 border-b border-slate-300">
-                  <template v-if="!hasGroupedHeaders">
+              <!-- Cabecera 2 niveles solo cuando es Vista Normal con sub-columnas agrupadas -->
+              <thead
+                v-if="currentTemplate.tipo_vista === 'normal' && hasGroupedHeaders"
+                class="bg-slate-100/95 text-slate-600 font-bold uppercase tracking-wider text-[10px]"
+              >
+                <tr>
+                  <th rowspan="2" class="py-1.5 px-3 border-b border-r border-slate-200 whitespace-nowrap w-44">Componente</th>
+                  <th rowspan="2" class="py-1.5 px-2.5 border-b border-r border-slate-200 whitespace-nowrap w-28">Código OEM</th>
+                  <th rowspan="2" class="py-1.5 px-2.5 border-b border-r border-slate-200 whitespace-nowrap w-32">Catálogos Alternos</th>
+                  <template v-for="(grp, gIdx) in previewHeaderGroups" :key="`n-t1-${gIdx}`">
                     <th
-                      v-if="hasGroupedRows"
-                      class="py-2 px-2.5 font-black text-xs text-[#004B97] border-r border-slate-200 bg-cyan-50/70 min-w-[110px]"
+                      v-if="grp.name !== ''"
+                      :colspan="grp.colspan"
+                      class="py-1 px-2 text-center font-black text-[#004B97] bg-blue-50/90 border-b border-r border-slate-200 text-[10px]"
                     >
-                      {{ rowGroupColumnTitle }}
+                      {{ grp.name }}
                     </th>
-                    <th class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px]">
-                      <input
-                        v-model="firstColumnTitle"
-                        type="text"
-                        class="w-full px-1.5 py-0.5 font-black text-xs text-slate-900 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                        placeholder="Nombre 1ra columna..."
-                        title="Haz clic para cambiar el nombre de la primera columna"
-                      />
-                    </th>
-                    <th class="py-2 px-2 font-black text-slate-900 border-r border-slate-200 text-center">
-                      Código OEM
+                    <th
+                      v-else
+                      rowspan="2"
+                      class="py-1.5 px-2 text-center border-b border-r border-slate-200 text-slate-700 whitespace-nowrap"
+                    >
+                      {{ grp.cols[0]?.etiqueta || 'Medida' }}
                     </th>
                   </template>
-                  <th
-                    v-for="(col, cIdx) in currentTemplate.columnas"
-                    :key="cIdx"
-                    class="py-2 px-2.5 font-bold text-slate-800 border-r border-slate-200 text-center min-w-[95px]"
-                  >
-                    <div class="font-black text-xs text-slate-900">
-                      {{ col.etiqueta || `Columna ${cIdx + 1}` }}
-                    </div>
-                    <div class="text-[9px] font-mono text-slate-400 mt-0.5">
-                      <span v-if="col.tipo_dato === 'booleano'" class="text-emerald-700 font-bold bg-emerald-50 px-1 rounded">Sí/No</span>
-                      <span v-else-if="col.tipo_dato === 'seleccion'" class="text-purple-700 font-bold bg-purple-50 px-1 rounded">Opciones</span>
-                      <span v-else-if="col.unidad">({{ col.unidad }})</span>
-                      <span v-else>texto</span>
-                    </div>
-                  </th>
+                  <th rowspan="2" class="py-1.5 px-3 text-right border-b border-slate-200 whitespace-nowrap w-28">Acciones</th>
+                </tr>
+                <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase">
+                  <template v-for="(grp, gIdx) in previewHeaderGroups" :key="`n-t2-${gIdx}`">
+                    <template v-if="grp.name !== ''">
+                      <th
+                        v-for="(subCol, sIdx) in grp.cols"
+                        :key="`n-sub-${gIdx}-${sIdx}`"
+                        class="py-1 px-2 text-center border-b border-r border-slate-200 whitespace-nowrap font-mono"
+                      >
+                        {{ subCol.etiqueta || `Col ${sIdx + 1}` }}
+                      </th>
+                    </template>
+                  </template>
                 </tr>
               </thead>
 
-              <!-- CUERPO DE EJEMPLO DE LA TABLA -->
-              <tbody class="divide-y divide-slate-100 text-slate-600">
-                <tr
-                  v-for="(rowLabel, rIdx) in previewSampleRows"
-                  :key="rIdx"
-                  class="hover:bg-slate-50/70"
-                >
-                  <td
-                    v-if="hasGroupedRows && previewRowSpans[rIdx]?.show"
-                    :rowspan="previewRowSpans[rIdx]?.rowspan || 1"
-                    class="py-2 px-2.5 font-black text-[11px] text-center align-middle border-r border-slate-200"
-                    :class="previewRowSpans[rIdx]?.label ? 'bg-cyan-50/70 text-[#004B97]' : 'bg-slate-50/40 text-slate-400'"
-                  >
-                    {{ previewRowSpans[rIdx]?.label || '—' }}
-                  </td>
-                  <td class="py-2 px-3 font-black text-slate-800 border-r border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <span
-                        class="w-2 h-2 rounded-full shrink-0"
-                        :class="rIdx === 0 ? 'bg-[#004B97]' : (rIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
-                      ></span>
-                      <span>{{ rowLabel }}</span>
+              <!-- Cabecera estándar de 5 columnas (Vista Normal plana o Vista en Tabla) -->
+              <thead v-else class="bg-slate-100/95 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th class="py-1.5 px-3 border-b border-r border-slate-200 whitespace-nowrap w-48">Componente</th>
+                  <th class="py-1.5 px-2.5 border-b border-r border-slate-200 whitespace-nowrap w-28">Código OEM</th>
+                  <th class="py-1.5 px-2.5 border-b border-r border-slate-200 whitespace-nowrap w-32">Catálogos Alternos</th>
+                  <th class="py-1.5 px-3 border-b border-r border-slate-200 whitespace-nowrap">
+                    {{ (editNombre || 'MEDIDAS').toUpperCase() }}:
+                    {{ currentTemplate.columnas.map(c => c.etiqueta || 'Medida').join(currentTemplate.tipo_vista === 'tabla' ? ' / ' : ' × ') }}
+                  </th>
+                  <th class="py-1.5 px-3 text-right border-b border-slate-200 whitespace-nowrap w-28">Acciones</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr class="hover:bg-slate-50/70 transition">
+                  <!-- 1. COMPONENTE (siempre primero con imagen + marca + motor) -->
+                  <td class="py-2.5 px-3 align-middle border-b border-slate-100">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-11 h-11 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0 text-slate-400">
+                        <Layers class="w-4 h-4" />
+                      </div>
+                      <div class="min-w-0">
+                        <span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 mb-0.5">
+                          OEM
+                        </span>
+                        <div class="font-bold text-slate-900 text-xs leading-tight truncate max-w-[140px]">
+                          {{ editNombre ? `${editNombre} de muestra` : 'Repuesto de Muestra' }}
+                        </div>
+                        <div class="text-[10px] font-semibold text-slate-400 uppercase mt-0.5 leading-snug">
+                          <span class="text-slate-600 font-bold">TOYOTA •</span>
+                          {{ editSubsistema.toUpperCase() }} • MOTOR 2L • CATÁLOGO OEM
+                        </div>
+                      </div>
                     </div>
                   </td>
-                  <td class="py-2 px-2 text-center font-mono text-[11px] text-slate-400 border-r border-slate-100">
-                    {{ 770 + rIdx }}
+
+                  <!-- 2. CÓDIGO OEM -->
+                  <td class="py-2.5 px-2.5 align-middle border-b border-slate-100">
+                    <div class="inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-900">
+                      <span>12345678</span>
+                      <Copy class="w-3 h-3 text-slate-400" />
+                    </div>
                   </td>
+
+                  <!-- 3. CATÁLOGOS ALTERNOS -->
+                  <td class="py-2.5 px-2.5 align-middle border-b border-slate-100 text-[10px] text-slate-400 italic">
+                    Sin cruces
+                  </td>
+
+                  <!-- 4A. VISTA NORMAL CON SUB-COLUMNAS -->
+                  <template v-if="currentTemplate.tipo_vista === 'normal' && hasGroupedHeaders">
+                    <td
+                      v-for="(col, colIdx) in currentTemplate.columnas"
+                      :key="`pv-n-sub-${colIdx}`"
+                      class="py-2 px-2 text-center align-middle border-b border-r border-slate-100 font-mono font-bold text-[11px]"
+                    >
+                      <span
+                        v-if="col.tipo_dato === 'booleano'"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800"
+                      >
+                        <Check class="w-3 h-3 text-emerald-600" />
+                        <span>Sí</span>
+                      </span>
+                      <span
+                        v-else-if="col.tipo_dato === 'seleccion'"
+                        class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] border"
+                        :class="getOptionBadgeClassByIndex(0)"
+                      >
+                        {{ getParsedOptionsList(col)[0] || 'Opción' }}
+                      </span>
+                      <span v-else-if="(col.tipo_dato || 'numero') === 'numero'" class="text-slate-700">
+                        45.00
+                      </span>
+                      <span v-else class="text-slate-400 italic">—</span>
+                    </td>
+                  </template>
+
+                  <!-- 4B. VISTA NORMAL PLANA (chips/cotas en línea) -->
                   <td
-                    v-for="(col, colIdx) in currentTemplate.columnas"
-                    :key="colIdx"
-                    class="py-2 px-2 text-center border-r border-slate-100 text-[11px]"
+                    v-else-if="currentTemplate.tipo_vista === 'normal'"
+                    class="py-2.5 px-3 align-middle border-b border-slate-100"
                   >
-                    <!-- Muestra de Estado Sí/No -->
-                    <span
-                      v-if="col.tipo_dato === 'booleano'"
-                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black"
-                      :class="rIdx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
-                    >
-                      <Check v-if="rIdx === 0" class="w-3 h-3 text-emerald-600" />
-                      <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
-                    </span>
+                    <div class="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+                      <template v-for="(col, colIdx) in currentTemplate.columnas" :key="`pv-n-chip-${colIdx}`">
+                        <span
+                          v-if="col.tipo_dato === 'seleccion'"
+                          class="px-2 py-0.5 rounded border text-[11px]"
+                          :class="getOptionBadgeClassByIndex(0)"
+                        >
+                          {{ getParsedOptionsList(col)[0] || col.etiqueta || 'Opción' }}
+                        </span>
+                        <span
+                          v-else-if="col.tipo_dato === 'booleano'"
+                          class="px-2 py-0.5 rounded border text-[11px] bg-emerald-50 text-emerald-800 border-emerald-200 font-bold"
+                        >
+                          {{ col.etiqueta || 'Estado' }}: Sí
+                        </span>
+                        <span
+                          v-else-if="(col.tipo_dato || 'numero') === 'numero'"
+                          class="px-2 py-0.5 rounded border bg-slate-100 text-slate-800 border-slate-200 text-[11px] inline-flex items-center gap-1"
+                        >
+                          <span class="text-slate-500 text-[10px] uppercase font-sans">{{ col.etiqueta || `Col ${colIdx + 1}` }}:</span>
+                          <strong>45.00 {{ col.unidad || '' }}</strong>
+                        </span>
+                        <span
+                          v-else
+                          class="px-2 py-0.5 rounded border bg-slate-100 text-slate-800 border-slate-200 text-[11px] inline-flex items-center gap-1"
+                        >
+                          <span class="text-slate-500 text-[10px] uppercase font-sans">{{ col.etiqueta || `Col ${colIdx + 1}` }}:</span>
+                          <strong>—</strong>
+                        </span>
+                      </template>
+                    </div>
+                  </td>
 
-                    <!-- Muestra de Selección con color diferente según posición (1° amarillo, 2° verde...) -->
-                    <span
-                      v-else-if="col.tipo_dato === 'seleccion'"
-                      class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] border"
-                      :class="getOptionBadgeClassByIndex(getParsedOptionsList(col).length > 0 ? rIdx % getParsedOptionsList(col).length : 0)"
-                    >
-                      {{ getParsedOptionsList(col).length > 0 ? getParsedOptionsList(col)[rIdx % getParsedOptionsList(col).length] : 'Opción' }}
-                    </span>
+                  <!-- 4C. VISTA EN TABLA (MINI-TABLA INCRUSTADA COMO EN LA IMAGEN 2) -->
+                  <td v-else class="py-2 px-3 align-middle border-b border-slate-100">
+                    <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text">
+                      <table class="border-collapse text-center text-xs">
+                        <thead>
+                          <!-- Tier 1 cuando hay sub-columnas agrupadas dentro de la mini-tabla -->
+                          <tr v-if="hasGroupedHeaders" class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                            <th
+                              v-if="hasGroupedRows"
+                              rowspan="2"
+                              class="px-2.5 py-1 border-r border-slate-200 bg-cyan-50/70 text-[#004B97] font-black text-center align-middle"
+                            >
+                              {{ rowGroupColumnTitle }}
+                            </th>
+                            <th rowspan="2" class="px-2 py-1 border-r border-slate-200 text-left align-middle">
+                              <input
+                                v-model="firstColumnTitle"
+                                type="text"
+                                class="w-28 px-1.5 py-0.5 font-black text-[10px] uppercase text-slate-800 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
+                                placeholder="Componente"
+                                title="Haz clic para cambiar el nombre de la primera columna"
+                              />
+                            </th>
+                            <template v-for="(grp, gIdx) in previewHeaderGroups" :key="`mt-t1-${gIdx}`">
+                              <th
+                                v-if="grp.name !== ''"
+                                :colspan="grp.colspan"
+                                class="py-1 px-2 border-r border-b border-slate-200 bg-blue-50/80 text-[#004B97] font-black text-center text-[10px]"
+                              >
+                                {{ grp.name }}
+                              </th>
+                              <th
+                                v-else
+                                rowspan="2"
+                                class="py-1 px-2 border-r border-slate-200 text-slate-700 font-bold text-center align-middle whitespace-nowrap"
+                              >
+                                {{ grp.cols[0]?.etiqueta || 'Col' }}
+                              </th>
+                            </template>
+                          </tr>
 
-                    <!-- Muestra de Número -->
-                    <span v-else-if="(col.tipo_dato || 'numero') === 'numero'" class="font-mono text-slate-500 font-bold">
-                      {{ (45.00 + rIdx * 0.25).toFixed(2) }}
-                    </span>
+                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                            <template v-if="!hasGroupedHeaders">
+                              <th
+                                v-if="hasGroupedRows"
+                                class="px-2.5 py-1 border-r border-slate-200 bg-cyan-50/70 text-[#004B97] font-black"
+                              >
+                                {{ rowGroupColumnTitle }}
+                              </th>
+                              <th class="px-2 py-1 border-r border-slate-200 text-left">
+                                <input
+                                  v-model="firstColumnTitle"
+                                  type="text"
+                                  class="w-28 px-1.5 py-0.5 font-black text-[10px] uppercase text-slate-800 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
+                                  placeholder="Componente"
+                                  title="Haz clic para cambiar el nombre de la primera columna"
+                                />
+                              </th>
+                            </template>
+                            <template v-for="(col, cIdx) in currentTemplate.columnas" :key="`mt-col-${cIdx}`">
+                              <th
+                                v-if="!hasGroupedHeaders || (col.columna_padre && col.columna_padre.trim())"
+                                class="px-2.5 py-1 whitespace-nowrap"
+                                :class="cIdx < currentTemplate.columnas.length - 1 ? 'border-r border-slate-200' : ''"
+                              >
+                                {{ col.etiqueta || `Col ${cIdx + 1}` }}
+                                <span v-if="col.unidad && col.tipo_dato !== 'booleano' && col.tipo_dato !== 'seleccion'" class="text-[8px] font-normal text-slate-500 lowercase">({{ col.unidad }})</span>
+                              </th>
+                            </template>
+                          </tr>
+                        </thead>
 
-                    <!-- Muestra de Texto -->
-                    <span v-else class="text-slate-400 italic">
-                      —
-                    </span>
+                        <tbody class="divide-y divide-slate-100 text-[11px]">
+                          <tr
+                            v-for="(rowLabel, rIdx) in previewSampleRows"
+                            :key="`mt-row-${rIdx}`"
+                            class="hover:bg-slate-50/70 transition"
+                          >
+                            <td
+                              v-if="hasGroupedRows && previewRowSpans[rIdx]?.show"
+                              :rowspan="previewRowSpans[rIdx]?.rowspan || 1"
+                              class="px-2.5 py-1 font-black text-[10px] text-center align-middle border-r border-slate-200 uppercase"
+                              :class="previewRowSpans[rIdx]?.label ? 'bg-cyan-50/70 text-[#004B97]' : 'bg-slate-50/40 text-slate-400'"
+                            >
+                              {{ previewRowSpans[rIdx]?.label || '—' }}
+                            </td>
+                            <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
+                              {{ rowLabel }}
+                            </td>
+                            <td
+                              v-for="(col, colIdx) in currentTemplate.columnas"
+                              :key="`mt-val-${rIdx}-${colIdx}`"
+                              class="px-2.5 py-1 font-mono font-bold text-slate-800 whitespace-nowrap"
+                              :class="colIdx < currentTemplate.columnas.length - 1 ? 'border-r border-slate-200' : ''"
+                            >
+                              <span
+                                v-if="col.tipo_dato === 'booleano'"
+                                class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black"
+                                :class="rIdx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                              >
+                                <Check v-if="rIdx === 0" class="w-2.5 h-2.5 text-emerald-600" />
+                                <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
+                              </span>
+                              <span
+                                v-else-if="col.tipo_dato === 'seleccion'"
+                                class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                :class="getOptionBadgeClassByIndex(getParsedOptionsList(col).length > 0 ? rIdx % getParsedOptionsList(col).length : 0)"
+                              >
+                                {{ getParsedOptionsList(col).length > 0 ? getParsedOptionsList(col)[rIdx % getParsedOptionsList(col).length] : 'Opción' }}
+                              </span>
+                              <span v-else-if="(col.tipo_dato || 'numero') === 'numero'">
+                                {{ (45.00 + rIdx * 0.25).toFixed(2) }}
+                              </span>
+                              <span v-else class="text-slate-400 italic">—</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+
+                  <!-- 5. ACCIONES -->
+                  <td class="py-2.5 px-3 align-middle text-right border-b border-slate-100 whitespace-nowrap">
+                    <div class="inline-flex items-center gap-1">
+                      <span class="px-2 py-1 rounded-md border border-slate-200 text-slate-600 text-[10px] font-semibold inline-flex items-center gap-1">
+                        <Eye class="w-3 h-3 text-slate-400" />
+                        Ficha
+                      </span>
+                      <span class="px-2 py-1 rounded-md border border-slate-200 text-slate-600 text-[10px] font-semibold">
+                        Editar
+                      </span>
+                      <span class="px-2 py-1 rounded-md bg-[#04C4D9] text-white text-[10px] font-bold">
+                        + A Orden
+                      </span>
+                    </div>
                   </td>
                 </tr>
               </tbody>
