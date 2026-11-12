@@ -33,7 +33,6 @@ import {
   GripVertical,
   Link2,
   Unlink2,
-  Lightbulb,
   Ruler
 } from 'lucide-vue-next'
 
@@ -64,10 +63,39 @@ const editDescripcion = ref<string>('')
 // Selector de grupo existente para clonar
 const selectedCloneGroupId = ref<string>('')
 
+// Normaliza una plantilla al diseñador unificado de filas
+const normalizeTemplateForDesigner = (rawTpl: FamilyTemplate, keepLegacyNormal: boolean): FamilyTemplate => {
+  const tpl: FamilyTemplate = JSON.parse(JSON.stringify(rawTpl))
+  if (tpl.tipo_vista !== 'tabla') {
+    if (keepLegacyNormal) return tpl
+    tpl.tipo_vista = 'tabla'
+  }
+  if (!tpl.tabla_config) {
+    tpl.tabla_config = {
+      titulo_primera_columna: 'Posición / Componente',
+      modo_filas: 'subfilas',
+      tiene_cabecera_marca: false,
+      subfilas: ['Fila 1']
+    }
+  }
+  const hasRows = Array.isArray(tpl.tabla_config.subfilas) && tpl.tabla_config.subfilas.length > 0
+  if (!hasRows) {
+    if (tpl.tabla_config.modo_filas === 'incremental') {
+      tpl.tabla_config.subfilas = ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de aceite']
+    } else {
+      tpl.tabla_config.subfilas = ['Fila 1']
+    }
+  }
+  if (!tpl.tabla_config.modo_filas || tpl.tabla_config.modo_filas === 'libre' || tpl.tabla_config.modo_filas === 'cojinetes') {
+    tpl.tabla_config.modo_filas = 'subfilas'
+  }
+  return tpl
+}
+
 // Inicializar desde props si se está editando una familia existente
 const initializeFromGroup = (grp: GrupoRepuesto) => {
   const tpl = cloneExistingGrupoToTemplate(grp)
-  currentTemplate.value = JSON.parse(JSON.stringify(tpl))
+  currentTemplate.value = normalizeTemplateForDesigner(tpl, grp.tipo_vista === 'normal')
   editNombre.value = grp.nombre
   editCategoria.value = grp.categoria
   editSubsistema.value = grp.subsistema || 'Block'
@@ -77,7 +105,7 @@ const initializeFromGroup = (grp: GrupoRepuesto) => {
 
 // Cargar plantilla en blanco limpia
 const loadBlankTemplate = () => {
-  currentTemplate.value = JSON.parse(JSON.stringify(BLANK_FAMILY_TEMPLATE))
+  currentTemplate.value = normalizeTemplateForDesigner(BLANK_FAMILY_TEMPLATE, false)
   editNombre.value = ''
   editCategoria.value = ''
   editSubsistema.value = 'Block'
@@ -87,7 +115,7 @@ const loadBlankTemplate = () => {
 
 // Cargar una plantilla de taller
 const loadTemplate = (tpl: FamilyTemplate) => {
-  currentTemplate.value = JSON.parse(JSON.stringify(tpl))
+  currentTemplate.value = normalizeTemplateForDesigner(tpl, false)
   editNombre.value = tpl.nombre
   editCategoria.value = tpl.categoria
   editSubsistema.value = tpl.subsistema
@@ -200,35 +228,6 @@ const onColDragEnd = () => {
   dragOverColIdx.value = null
 }
 
-// Ejemplo contextual dinámico según el modo de filas seleccionado
-const rowModeApplicationExample = computed(() => {
-  if (rowOrganizationMode.value === 'subfilas') {
-    return {
-      titulo: 'Ejemplo de aplicación: Cojinetes (Biela + Bancada) o Torques por sección',
-      resumen: 'Une dos o más piezas relacionadas dentro de un mismo juego o motor para verlas juntas en bloques.',
-      filas: (currentTemplate.value.tabla_config?.subfilas?.length
-        ? currentTemplate.value.tabla_config.subfilas
-        : ['Biela', 'Bancada']
-      ).slice(0, 3)
-    }
-  }
-  if (rowOrganizationMode.value === 'incremental') {
-    const sampleFilas = Array.isArray(currentTemplate.value.tabla_config?.subfilas) && currentTemplate.value.tabla_config!.subfilas.length > 0
-      ? currentTemplate.value.tabla_config!.subfilas.slice(0, 3)
-      : ['Fila 1', 'Fila 2', 'Fila 3']
-    return {
-      titulo: 'Ejemplo de aplicación: Tabla libre (pasos, medidas, ranuras o anillos)',
-      resumen: 'Permite editar la 1ra columna y agregar filas ilimitadas una debajo de otra según lo necesites.',
-      filas: sampleFilas
-    }
-  }
-  return {
-    titulo: 'Ejemplo de aplicación: Retenes, Válvulas o Medidas de Culata',
-    resumen: 'Cada repuesto ocupa 1 sola fila limpia con sus medidas exactas en columnas.',
-    filas: ['Pieza Única (ej. Altura Estándar 138.0 mm | Altura Mín. 137.5 mm)']
-  }
-})
-
 // --- GESTIÓN INGENIOSA DE COLUMNAS ---
 const addColumn = () => {
   currentTemplate.value.columnas.push({
@@ -285,128 +284,57 @@ const setColumnType = (col: TemplateColumnDef, newType: 'numero' | 'texto' | 'se
   }
 }
 
-// --- GESTIÓN GENERAL DE FILAS Y COMPONENTES ---
-// Título editable de la primera columna (siempre personalizable en cualquier modo)
-const firstColumnTitle = computed({
-  get(): string {
-    return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Componente'
-  },
-  set(val: string) {
-    if (!currentTemplate.value.tabla_config) {
-      currentTemplate.value.tabla_config = {
-        titulo_primera_columna: val,
-        modo_filas: rowOrganizationMode.value === 'incremental' ? 'incremental' : (rowOrganizationMode.value === 'subfilas' ? 'subfilas' : 'libre'),
-        tiene_cabecera_marca: false
-      }
-    } else {
-      currentTemplate.value.tabla_config.titulo_primera_columna = val
-    }
+// --- GESTIÓN UNIFICADA DE FILAS Y PRIMERA COLUMNA ---
+const ensureTablaSubfilas = (): string[] => {
+  if (currentTemplate.value.tipo_vista !== 'tabla') {
+    currentTemplate.value.tipo_vista = 'tabla'
   }
-})
-
-// Tipo de organización de filas: 'simple' (1 fila) | 'subfilas' (varios componentes) | 'incremental' (tabla de filas ilimitadas)
-const rowOrganizationMode = computed({
-  get(): 'simple' | 'subfilas' | 'incremental' {
-    if (currentTemplate.value.tipo_vista === 'normal') return 'simple'
-    const modo = currentTemplate.value.tabla_config?.modo_filas
-    if (modo === 'incremental') return 'incremental'
-    if (modo === 'subfilas' || modo === 'cojinetes') return 'subfilas'
-    if (Array.isArray(currentTemplate.value.tabla_config?.subfilas) && currentTemplate.value.tabla_config.subfilas.length > 1) {
-      return 'subfilas'
-    }
-    return 'simple'
-  },
-  set(val: 'simple' | 'subfilas' | 'incremental') {
-    if (!currentTemplate.value.tabla_config) {
-      currentTemplate.value.tabla_config = {
-        titulo_primera_columna: 'Componente',
-        modo_filas: 'libre'
-      }
-    }
-
-    const prevTitle = currentTemplate.value.tabla_config.titulo_primera_columna?.trim() || ''
-    const isGenericTitle =
-      !prevTitle ||
-      prevTitle === 'Componente / Medida' ||
-      prevTitle === 'Componente' ||
-      prevTitle === 'Anillo / Ranura' ||
-      prevTitle === 'Posición / Fila'
-
-    if (val === 'simple') {
-      currentTemplate.value.tabla_config.modo_filas = 'libre'
-      if (isGenericTitle) {
-        currentTemplate.value.tabla_config.titulo_primera_columna = 'Componente'
-      }
-      currentTemplate.value.tabla_config.subfilas = ['Medida']
-      currentTemplate.value.tabla_config.tiene_cabecera_marca = false
-    } else if (val === 'subfilas') {
-      currentTemplate.value.tabla_config.modo_filas = 'subfilas'
-      if (isGenericTitle) {
-        currentTemplate.value.tabla_config.titulo_primera_columna = 'Componente'
-      }
-      if (!currentTemplate.value.tabla_config.subfilas || currentTemplate.value.tabla_config.subfilas.length <= 1) {
-        currentTemplate.value.tabla_config.subfilas = ['Biela', 'Bancada']
-      }
-      currentTemplate.value.tabla_config.tiene_cabecera_marca = true
-    } else if (val === 'incremental') {
-      currentTemplate.value.tabla_config.modo_filas = 'incremental'
-      if (isGenericTitle) {
-        currentTemplate.value.tabla_config.titulo_primera_columna = 'Posición / Fila'
-      }
-      currentTemplate.value.tabla_config.usar_prefijo_titulo = false
-      currentTemplate.value.tabla_config.etiqueta_ultima_fila = currentTemplate.value.tabla_config.etiqueta_ultima_fila || ''
-      if (
-        !Array.isArray(currentTemplate.value.tabla_config.subfilas) ||
-        currentTemplate.value.tabla_config.subfilas.length === 0 ||
-        (currentTemplate.value.tabla_config.subfilas.length === 1 && currentTemplate.value.tabla_config.subfilas[0] === 'Medida')
-      ) {
-        currentTemplate.value.tabla_config.subfilas = ['Fila 1', 'Fila 2', 'Fila 3']
-      }
-      currentTemplate.value.tabla_config.tiene_cabecera_marca = false
-    }
-  }
-})
-
-const addIncrementalRow = () => {
   if (!currentTemplate.value.tabla_config) {
     currentTemplate.value.tabla_config = {
-      titulo_primera_columna: 'Posición / Fila',
-      modo_filas: 'incremental',
-      subfilas: ['Fila 1']
+      titulo_primera_columna: 'Posición / Componente',
+      modo_filas: 'subfilas',
+      subfilas: ['Fila 1'],
+      tiene_cabecera_marca: false
     }
+  } else if (!currentTemplate.value.tabla_config.modo_filas || currentTemplate.value.tabla_config.modo_filas === 'libre' || currentTemplate.value.tabla_config.modo_filas === 'cojinetes') {
+    currentTemplate.value.tabla_config.modo_filas = 'subfilas'
   }
-  if (!Array.isArray(currentTemplate.value.tabla_config.subfilas)) {
+  if (!Array.isArray(currentTemplate.value.tabla_config.subfilas) || currentTemplate.value.tabla_config.subfilas.length === 0) {
     currentTemplate.value.tabla_config.subfilas = ['Fila 1']
   }
-  const n = currentTemplate.value.tabla_config.subfilas.length + 1
-  currentTemplate.value.tabla_config.subfilas.push(`Fila ${n}`)
+  return currentTemplate.value.tabla_config.subfilas
 }
 
-const removeIncrementalRow = (idx: number) => {
+const firstColumnTitle = computed({
+  get(): string {
+    return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Posición / Componente'
+  },
+  set(val: string) {
+    ensureTablaSubfilas()
+    currentTemplate.value.tabla_config!.titulo_primera_columna = val
+  }
+})
+
+const unifiedRows = computed<string[]>(() => {
+  const arr = currentTemplate.value.tabla_config?.subfilas
+  return Array.isArray(arr) && arr.length > 0 ? arr : ['Fila 1']
+})
+
+const updateUnifiedRowName = (idx: number, val: string) => {
+  const arr = ensureTablaSubfilas()
+  arr[idx] = val
+}
+
+const addUnifiedRow = () => {
+  const arr = ensureTablaSubfilas()
+  const count = arr.length + 1
+  arr.push(`Fila ${count}`)
+}
+
+const removeUnifiedRow = (index: number) => {
   const arr = currentTemplate.value.tabla_config?.subfilas
   if (!arr || arr.length <= 1) return
-  arr.splice(idx, 1)
-}
-
-const addSubfilaComponent = () => {
-  if (!currentTemplate.value.tabla_config) {
-    currentTemplate.value.tabla_config = {
-      titulo_primera_columna: 'Componente',
-      modo_filas: 'subfilas',
-      subfilas: ['Componente 1'],
-      tiene_cabecera_marca: true
-    }
-  }
-  if (!Array.isArray(currentTemplate.value.tabla_config.subfilas)) {
-    currentTemplate.value.tabla_config.subfilas = ['Componente 1']
-  }
-  const count = currentTemplate.value.tabla_config.subfilas.length + 1
-  currentTemplate.value.tabla_config.subfilas.push(`Componente ${count}`)
-}
-
-const removeSubfilaComponent = (index: number) => {
-  if (!currentTemplate.value.tabla_config?.subfilas || currentTemplate.value.tabla_config.subfilas.length <= 1) return
-  currentTemplate.value.tabla_config.subfilas.splice(index, 1)
+  arr.splice(index, 1)
 }
 
 // Agrupación visual para la cabecera en vivo (Tier 1 y Tier 2 con sub-columnas)
@@ -612,16 +540,14 @@ const ungroupCluster = (startIdx: number, endIdx: number) => {
 
 // Muestra de filas en la vista previa
 const previewSampleRows = computed<string[]>(() => {
+  if (currentTemplate.value.tipo_vista === 'normal') {
+    return ['Pieza STD']
+  }
   const customRows = currentTemplate.value.tabla_config?.subfilas
-  if (Array.isArray(customRows) && customRows.length > 0 && rowOrganizationMode.value !== 'simple') {
+  if (Array.isArray(customRows) && customRows.length > 0) {
     return customRows.map((r, i) => r?.trim() || `Fila ${i + 1}`)
   }
-  if (rowOrganizationMode.value === 'incremental') {
-    const base = firstColumnTitle.value.trim() || 'Fila'
-    const last = currentTemplate.value.tabla_config?.etiqueta_ultima_fila?.trim()
-    return [`${base} 1`, `${base} 2`, last || `${base} 3`]
-  }
-  return ['Pieza STD']
+  return ['Fila 1']
 })
 
 // Validación y Guardado
@@ -845,94 +771,30 @@ const handleSave = () => {
         </div>
       </div>
 
-      <!-- 2. CONTROL GENERAL INGENIOSO DE FILAS (ABARCA CUALQUIER TIPO DE PIEZA MECÁNICA) -->
-      <div v-if="currentTemplate.tipo_vista === 'tabla'" class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
+      <!-- 2. DISEÑADOR UNIFICADO DE FILAS (1 FILA, MÚLTIPLES COMPONENTES O TABLA LIBRE ILIMITADA) -->
+      <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h5 class="text-xs font-black text-slate-900 flex items-center gap-1.5">
               <Layers class="w-4 h-4 text-[#004B97]" />
-              <span>¿Cómo se componen las filas de este repuesto?</span>
+              <span>Filas de la familia (1 pieza o bloques múltiples conectados)</span>
             </h5>
             <p class="text-[11px] text-slate-500 mt-0.5">
-              Elige si es una pieza individual, un juego con varios componentes (como Biela/Bancada) o una Tabla con filas ilimitadas.
+              Personaliza la primera columna y usa <strong>+ Agregar Fila</strong> para añadir piezas juntas, ranuras o pasos y reordenarlos arrastrando.
             </p>
           </div>
 
-          <!-- Selector de Modo de Filas (3 Casos Universales) -->
-          <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-300 shadow-2xs shrink-0">
-            <button
-              type="button"
-              @click="rowOrganizationMode = 'simple'"
-              :class="[
-                'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
-                rowOrganizationMode === 'simple' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-              ]"
-              title="1 fila por repuesto con sus medidas"
-            >
-              Fila Simple
-            </button>
-            <button
-              type="button"
-              @click="rowOrganizationMode = 'subfilas'"
-              :class="[
-                'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
-                rowOrganizationMode === 'subfilas' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-              ]"
-              title="Varios componentes por repuesto (ej. Biela y Bancada, o Admisión y Escape)"
-            >
-              Componentes Múltiples
-            </button>
-            <button
-              type="button"
-              @click="rowOrganizationMode = 'incremental'"
-              :class="[
-                'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
-                rowOrganizationMode === 'incremental' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-              ]"
-              title="Tabla con filas dinámicas ilimitadas (ej. Anillos 1°, 2°, Aceite o listas por pasos)"
-            >
-              Tabla
-            </button>
-          </div>
+          <button
+            type="button"
+            @click="addUnifiedRow"
+            class="px-3.5 py-1.5 bg-[#004B97] hover:bg-[#003875] text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95 self-start sm:self-auto shrink-0"
+          >
+            <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <span>+ Agregar Fila</span>
+          </button>
         </div>
 
-        <!-- EJEMPLO DE APLICACIÓN DINÁMICO SEGÚN EL MODO SELECCIONADO -->
-        <div class="rounded-2xl border border-slate-200/90 bg-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-          <div class="flex items-start gap-2.5 min-w-0">
-            <div class="w-7 h-7 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0 mt-0.5">
-              <Lightbulb class="w-4 h-4 text-amber-600" />
-            </div>
-            <div class="min-w-0">
-              <div class="text-[11px] font-black text-slate-900">
-                {{ rowModeApplicationExample.titulo }}
-              </div>
-              <p class="text-[10.5px] text-slate-500 leading-snug mt-0.5">
-                {{ rowModeApplicationExample.resumen }}
-              </p>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-1.5 flex-wrap shrink-0">
-            <template v-for="(exFila, exIdx) in rowModeApplicationExample.filas" :key="exIdx">
-              <span
-                class="px-2 py-1 rounded-lg text-[10px] font-black border"
-                :class="rowOrganizationMode === 'subfilas'
-                  ? 'bg-cyan-50/90 text-[#004B97] border-cyan-200'
-                  : (rowOrganizationMode === 'incremental'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-slate-50 text-slate-700 border-slate-200')"
-              >
-                {{ exFila }}
-              </span>
-              <Link2
-                v-if="rowOrganizationMode === 'subfilas' && exIdx < rowModeApplicationExample.filas.length - 1"
-                class="w-3.5 h-3.5 text-[#04C4D9] shrink-0"
-              />
-            </template>
-          </div>
-        </div>
-
-        <!-- Editor editable de la 1ra columna (aplicable a Fila Simple, Componentes Múltiples y Tabla) -->
+        <!-- Editor editable de la 1ra columna -->
         <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200/90">
           <label class="text-[11px] font-black text-slate-700 shrink-0">
             Nombre de la 1ra columna:
@@ -948,137 +810,63 @@ const handleSave = () => {
           </span>
         </div>
 
-        <!-- Si tiene componentes múltiples (bloques unidos visualmente + arrastrables) -->
-        <div v-if="rowOrganizationMode === 'subfilas'" class="pt-2 border-t border-slate-200/80 space-y-2.5">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <span class="text-[11px] font-black text-slate-800 flex items-center gap-1.5">
-                <Link2 class="w-3.5 h-3.5 text-[#04C4D9]" />
-                <span>Bloques unidos del juego (arrastra para reordenar):</span>
-              </span>
-              <span class="text-[10px] text-slate-500">
-                Todos los bloques conectados aquí aparecen juntos dentro del mismo repuesto/motor.
-              </span>
-            </div>
-            <button
-              type="button"
-              @click="addSubfilaComponent"
-              class="px-2.5 py-1 text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white border border-cyan-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+        <!-- Bloques arrastrables de filas (unidos visualmente cuando hay 2 o más filas) -->
+        <div class="p-3 rounded-2xl bg-cyan-50/50 border-2 border-dashed border-[#04C4D9]/50">
+          <div class="flex items-center flex-wrap gap-y-2">
+            <template
+              v-for="(rowName, sfIdx) in unifiedRows"
+              :key="sfIdx"
             >
-              <Plus class="w-3 h-3 text-[#04C4D9]" />
-              <span>+ Agregar Bloque</span>
-            </button>
-          </div>
-
-          <!-- Contenedor unificado que muestra visualmente la unión entre los bloques -->
-          <div class="p-3 rounded-2xl bg-cyan-50/50 border-2 border-dashed border-[#04C4D9]/50">
-            <div class="flex items-center flex-wrap gap-y-2">
-              <template
-                v-for="(_sf, sfIdx) in (currentTemplate.tabla_config?.subfilas || ['Componente 1'])"
-                :key="sfIdx"
-              >
-                <div
-                  draggable="true"
-                  @dragstart="onSubfilaDragStart(sfIdx, $event)"
-                  @dragover.prevent="onSubfilaDragOver(sfIdx)"
-                  @drop.prevent="onSubfilaDrop(sfIdx)"
-                  @dragend="onSubfilaDragEnd"
-                  :class="[
-                    'flex items-center gap-1.5 bg-white border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
-                    draggedSubfilaIdx === sfIdx
-                      ? 'opacity-50 border-[#04C4D9] scale-95'
-                      : (dragOverSubfilaIdx === sfIdx
-                        ? 'border-[#004B97] ring-2 ring-[#04C4D9]/40 bg-cyan-50/40'
-                        : 'border-slate-300 hover:border-[#04C4D9]')
-                  ]"
-                >
-                  <GripVertical class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span class="w-4 h-4 rounded-full bg-[#004B97] text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
-                    {{ sfIdx + 1 }}
-                  </span>
-                  <input
-                    v-model="(currentTemplate.tabla_config!.subfilas as string[])[sfIdx]"
-                    type="text"
-                    class="w-28 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
-                    placeholder="Nombre del bloque"
-                  />
-                  <button
-                    v-if="(currentTemplate.tabla_config?.subfilas || []).length > 1"
-                    type="button"
-                    @click="removeSubfilaComponent(sfIdx)"
-                    class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
-                    title="Quitar componente"
-                  >
-                    <Trash2 class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <!-- Puente de unión visual entre bloques contiguos -->
-                <div
-                  v-if="sfIdx < (currentTemplate.tabla_config?.subfilas || ['Componente 1']).length - 1"
-                  class="flex items-center px-1"
-                  title="Unidos en el mismo conjunto"
-                >
-                  <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
-                  <span class="w-5 h-5 rounded-full bg-white border border-[#04C4D9] flex items-center justify-center shadow-2xs">
-                    <Link2 class="w-3 h-3 text-[#004B97]" />
-                  </span>
-                  <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
-                </div>
-              </template>
-            </div>
-          </div>
-        </div>
-
-        <!-- Si tiene tabla libre con filas ilimitadas -->
-        <div v-else-if="rowOrganizationMode === 'incremental'" class="space-y-2.5 pt-1 border-t border-slate-200/80">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <p class="text-[11px] font-extrabold text-emerald-800 flex items-center gap-1.5">
-                <Table class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>Filas iniciales de la tabla (también podrás agregar más filas al cargar repuestos):</span>
-              </p>
-              <p class="text-[10px] text-slate-500">
-                Edita el nombre de cada fila o agrega tantas filas como necesite esta familia.
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="addIncrementalRow"
-              class="px-2.5 py-1 text-[11px] font-extrabold text-emerald-800 hover:text-emerald-950 bg-white border border-emerald-300 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
-            >
-              <Plus class="w-3 h-3 text-emerald-600" />
-              <span>+ Agregar Fila</span>
-            </button>
-          </div>
-
-          <div class="p-3 rounded-2xl bg-emerald-50/55 border-2 border-dashed border-emerald-300/80">
-            <div class="flex items-center flex-wrap gap-2">
               <div
-                v-for="(_rf, rfIdx) in (currentTemplate.tabla_config?.subfilas || ['Fila 1', 'Fila 2', 'Fila 3'])"
-                :key="rfIdx"
-                class="flex items-center gap-1.5 bg-white border border-emerald-300 px-2.5 py-1.5 rounded-xl shadow-2xs"
+                draggable="true"
+                @dragstart="onSubfilaDragStart(sfIdx, $event)"
+                @dragover.prevent="onSubfilaDragOver(sfIdx)"
+                @drop.prevent="onSubfilaDrop(sfIdx)"
+                @dragend="onSubfilaDragEnd"
+                :class="[
+                  'flex items-center gap-1.5 bg-white border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
+                  draggedSubfilaIdx === sfIdx
+                    ? 'opacity-50 border-[#04C4D9] scale-95'
+                    : (dragOverSubfilaIdx === sfIdx
+                      ? 'border-[#004B97] ring-2 ring-[#04C4D9]/40 bg-cyan-50/40'
+                      : 'border-slate-300 hover:border-[#04C4D9]')
+                ]"
               >
-                <span class="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
-                  {{ rfIdx + 1 }}
+                <GripVertical class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span class="w-4 h-4 rounded-full bg-[#004B97] text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
+                  {{ sfIdx + 1 }}
                 </span>
                 <input
-                  v-model="(currentTemplate.tabla_config!.subfilas as string[])[rfIdx]"
+                  :value="rowName"
+                  @input="updateUnifiedRowName(sfIdx, ($event.target as HTMLInputElement).value)"
                   type="text"
                   class="w-32 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
                   placeholder="Nombre de fila"
                 />
                 <button
-                  v-if="(currentTemplate.tabla_config?.subfilas || []).length > 1"
+                  v-if="unifiedRows.length > 1"
                   type="button"
-                  @click="removeIncrementalRow(rfIdx)"
+                  @click="removeUnifiedRow(sfIdx)"
                   class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
                   title="Quitar fila"
                 >
                   <Trash2 class="w-3.5 h-3.5" />
                 </button>
               </div>
-            </div>
+
+              <!-- Puente de unión visual entre filas contiguas -->
+              <div
+                v-if="sfIdx < unifiedRows.length - 1"
+                class="flex items-center px-1"
+                title="Unidos en el mismo conjunto"
+              >
+                <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
+                <span class="w-5 h-5 rounded-full bg-white border border-[#04C4D9] flex items-center justify-center shadow-2xs">
+                  <Link2 class="w-3 h-3 text-[#004B97]" />
+                </span>
+                <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
+              </div>
+            </template>
           </div>
         </div>
       </div>

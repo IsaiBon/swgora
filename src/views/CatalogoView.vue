@@ -899,9 +899,16 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
     return dims.subfilas
   }
+  const configuredSubfilas = currentGroupDefinition.value?.tabla_config?.subfilas
+  if (Array.isArray(configuredSubfilas) && configuredSubfilas.length > 0) {
+    return configuredSubfilas.map((nombre, idx) => ({
+      nombre,
+      codigo: idx === 0 ? (part.codigo_oem || '') : '',
+      medidas: dims || {}
+    }))
+  }
   return [
-    { nombre: 'Biela', codigo: part.codigo_oem || '', medidas: dims || {} },
-    { nombre: 'Bancada', codigo: '', medidas: dims || {} }
+    { nombre: 'Estándar', codigo: part.codigo_oem || '', medidas: dims || {} }
   ]
 }
 

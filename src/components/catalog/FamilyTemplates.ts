@@ -55,10 +55,10 @@ export const BLANK_FAMILY_TEMPLATE: FamilyTemplate = {
   badge: 'En Blanco',
   colorTag: 'cyan',
   tabla_config: {
-    titulo_primera_columna: 'Componente / Medida',
-    modo_filas: 'libre',
+    titulo_primera_columna: 'Posición / Componente',
+    modo_filas: 'subfilas',
     tiene_cabecera_marca: false,
-    subfilas: ['Componente 1']
+    subfilas: ['Fila 1']
   },
   columnas: [
     { etiqueta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
@@ -341,10 +341,13 @@ export function convertTemplateToGrupoInsert(
 
   let tablaConfig: TablaConfiguracion | undefined
   if (template.tipo_vista === 'tabla') {
+    const cleanSubfilas = Array.isArray(template.tabla_config?.subfilas)
+      ? template.tabla_config!.subfilas.map(s => (s || '').trim()).filter(Boolean)
+      : []
     tablaConfig = {
-      titulo_primera_columna: template.tabla_config?.titulo_primera_columna || 'Componente',
-      modo_filas: template.tabla_config?.modo_filas || 'libre',
-      subfilas: template.tabla_config?.subfilas ? [...template.tabla_config.subfilas] : undefined,
+      titulo_primera_columna: template.tabla_config?.titulo_primera_columna?.trim() || 'Posición / Componente',
+      modo_filas: template.tabla_config?.modo_filas || 'subfilas',
+      subfilas: cleanSubfilas.length > 0 ? cleanSubfilas : ['Fila 1'],
       tiene_cabecera_marca: template.tabla_config?.tiene_cabecera_marca ?? false,
       usar_prefijo_titulo: template.tabla_config?.usar_prefijo_titulo,
       etiqueta_ultima_fila: template.tabla_config?.etiqueta_ultima_fila,
