@@ -2160,9 +2160,46 @@ export const catalogService = {
   async getGrupos(): Promise<GrupoRepuesto[]> {
     const localGrupos = getLocalDynamicGrupos()
 
+    const ensureGroupParamsUnique = (params: ParametroTecnicoDefinicion[]): ParametroTecnicoDefinicion[] => {
+      if (!Array.isArray(params)) return []
+      const seen = new Map<string, number>()
+      return params.map(p => {
+        let key = p.clave
+        if (p.columna_padre && p.columna_padre.trim()) {
+          const parentSlug = p.columna_padre
+            .toLowerCase()
+            .trim()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+          if (parentSlug && !key.startsWith(parentSlug)) {
+            key = `${parentSlug}_${key}`
+          }
+        }
+        const count = seen.get(key) || 0
+        if (count > 0) {
+          let suffix = count + 1
+          let uniqueKey = `${key}_${suffix}`
+          while (seen.has(uniqueKey)) {
+            suffix++
+            uniqueKey = `${key}_${suffix}`
+          }
+          key = uniqueKey
+        }
+        seen.set(key, (seen.get(key) || 0) + 1)
+        return { ...p, clave: key }
+      })
+    }
+
     const normalizeTableGroup = (grp: GrupoRepuesto): GrupoRepuesto => {
       const isTable = grp.tipo_vista === 'tabla' || grp.codigo === 'anillos_motor'
-      if (!isTable) return grp
+      if (!isTable) {
+        return {
+          ...grp,
+          parametros: ensureGroupParamsUnique(grp.parametros)
+        }
+      }
 
       const defaultTablaConfig: TablaConfiguracion = {
         titulo_primera_columna: grp.codigo === 'anillos_motor' ? 'Anillo' : (grp.categoria || 'Posición'),
@@ -2283,7 +2320,7 @@ export const catalogService = {
         ...grp,
         tipo_vista: 'tabla',
         tabla_config: resolvedTablaConfig,
-        parametros: normalizedParams
+        parametros: ensureGroupParamsUnique(normalizedParams)
       }
     }
 

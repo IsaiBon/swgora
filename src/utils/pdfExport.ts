@@ -26,7 +26,7 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
     logging: false,
     backgroundColor: '#ffffff',
     windowWidth: 800,
-    onclone: (clonedDoc) => {
+    onclone: (clonedDoc: Document) => {
       const clonedEl = clonedDoc.getElementById('printable-work-order')
       if (clonedEl) {
         clonedEl.style.boxShadow = 'none'

@@ -29,14 +29,11 @@ import {
   Check,
   AlertCircle,
   Eye,
-  Lock,
   Filter,
   Table,
-  Copy,
   Columns,
   Split,
-  Layers,
-  Sparkles
+  Layers
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -210,12 +207,15 @@ watch(() => props.isOpen, (open) => {
       }
     }
 
-    // Asegurar motores y marcas cargados para el buscador
+    // Asegurar motores, marcas y modelos cargados para el buscador
     if (catalogStore.motores.length === 0) {
       catalogStore.fetchMotores()
     }
     if (catalogStore.fabricantes.length === 0) {
       catalogStore.fetchFabricantes()
+    }
+    if (catalogStore.modelos.length === 0) {
+      catalogStore.fetchModelos()
     }
   } else {
     saveErrorMessage.value = ''
@@ -318,6 +318,9 @@ onUnmounted(() => {
 })
 const partCodigoOem = ref<string>('')
 const partCodigosOemAdicionales = ref<string[]>([])
+const partMarca = ref<string>('')
+const partModelo = ref<string>('')
+const partAno = ref<string>('')
 const partNombre = ref<string>('')
 const partSubsistema = ref<string>('Block')
 const partPrecio = ref<number | null>(null)
@@ -325,6 +328,35 @@ const partStock = ref<number>(12)
 const partEstado = ref<'Disponible' | 'Bajo Stock' | 'Agotado'>('Disponible')
 const partCatalogoOrigen = ref<string>('OEM')
 const partImagenUrl = ref<string>('')
+
+const availableModalModelos = computed(() => {
+  const brandClean = partMarca.value.trim().toLowerCase()
+  if (!brandClean) return catalogStore.modelos
+  const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === brandClean)
+  if (fab) {
+    return catalogStore.modelos.filter(m => m.fabricante_id === fab.id)
+  }
+  return catalogStore.modelos
+})
+
+const commonYearsList = computed(() => {
+  const currentYear = new Date().getFullYear()
+  const years: string[] = []
+  for (let y = currentYear + 1; y >= 1980; y--) {
+    years.push(String(y))
+  }
+  return years
+})
+
+watch(partMarca, async (newBrand) => {
+  if (newBrand) {
+    const brandClean = newBrand.trim().toLowerCase()
+    const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === brandClean)
+    if (fab) {
+      await catalogStore.fetchModelos(fab.id)
+    }
+  }
+})
 
 const addCodigoOemAdicional = () => {
   partCodigosOemAdicionales.value.push('')
@@ -386,9 +418,49 @@ const allOemCodesPreview = computed<string[]>(() => {
   return Array.from(new Set(list))
 })
 
+const sanitizeGroupParams = (params: ParametroTecnicoDefinicion[]): ParametroTecnicoDefinicion[] => {
+  if (!Array.isArray(params)) return []
+  const seen = new Map<string, number>()
+  return params.map(p => {
+    let key = p.clave
+    if (p.columna_padre && p.columna_padre.trim()) {
+      const parentSlug = p.columna_padre
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+      if (parentSlug && !key.startsWith(parentSlug)) {
+        key = `${parentSlug}_${key}`
+      }
+    }
+    const count = seen.get(key) || 0
+    if (count > 0) {
+      let suffix = count + 1
+      let uniqueKey = `${key}_${suffix}`
+      while (seen.has(uniqueKey)) {
+        suffix++
+        uniqueKey = `${key}_${suffix}`
+      }
+      key = uniqueKey
+    }
+    seen.set(key, (seen.get(key) || 0) + 1)
+    return { ...p, clave: key }
+  })
+}
+
 const activeGroup = computed<GrupoRepuesto | null>(() => {
   if (!selectedGroupCode.value) return null
-  return catalogStore.grupos.find(g => g.codigo === selectedGroupCode.value || g.id === selectedGroupCode.value) || null
+  const grp = catalogStore.grupos.find(g => g.codigo === selectedGroupCode.value || g.id === selectedGroupCode.value) || null
+  if (!grp) return null
+  if (grp.parametros && grp.parametros.length > 0) {
+    return {
+      ...grp,
+      parametros: sanitizeGroupParams(grp.parametros)
+    }
+  }
+  return grp
 })
 
 const activeTablaConfig = computed<TablaConfiguracion>(() => {
@@ -533,15 +605,9 @@ const equivalencias = ref<Array<{ marca_alterna: string; codigo_alterno: string;
 ])
 
 const isSubfilasGroup = computed<boolean>(() => {
-  if (!activeGroup.value) return false
+  if (!activeGroup.value || activeGroup.value.tipo_vista !== 'tabla') return false
   const cfg = activeGroup.value.tabla_config
-  if (cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas' || (cfg?.subfilas && cfg.subfilas.length > 0)) {
-    return true
-  }
-  const code = (activeGroup.value.codigo || '').toLowerCase()
-  const cat = (activeGroup.value.categoria || '').toLowerCase()
-  const nom = (activeGroup.value.nombre || '').toLowerCase()
-  return code.includes('cojinete') || cat.includes('cojinete') || nom.includes('cojinete') || code.includes('casquet') || cat.includes('casquet')
+  return Boolean(cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas')
 })
 
 const isRingsGroup = computed<boolean>(() => {
@@ -550,6 +616,13 @@ const isRingsGroup = computed<boolean>(() => {
   const code = (activeGroup.value.codigo || '').toLowerCase()
   const cat = (activeGroup.value.categoria || '').toLowerCase()
   return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
+})
+
+const isGeneralTableGroup = computed<boolean>(() => {
+  if (!activeGroup.value) return false
+  if (isSubfilasGroup.value) return false
+  if (isRingsGroup.value) return true
+  return activeGroup.value.tipo_vista === 'tabla'
 })
 
 const CORE_RING_PARAM_KEYS = new Set([
@@ -586,8 +659,14 @@ const CORE_RING_PARAM_KEYS = new Set([
 ])
 
 const extraRingGroupParams = computed(() => {
-  if (!activeGroup.value || !isRingsGroup.value) return []
-  return activeGroup.value.parametros.filter(p => !CORE_RING_PARAM_KEYS.has(p.clave))
+  if (!activeGroup.value) return []
+  if (isRingsGroup.value) {
+    return activeGroup.value.parametros.filter(p => !CORE_RING_PARAM_KEYS.has(p.clave))
+  }
+  if (isGeneralTableGroup.value) {
+    return activeGroup.value.parametros
+  }
+  return []
 })
 
 const getActiveGroupParamLabel = (clave: string, fallback: string): string => {
@@ -641,12 +720,23 @@ watch(activeGroup, (grp) => {
 }, { immediate: true })
 
 watch(selectedMotor, (mot) => {
-  if (mot && isSubfilasGroup.value) {
-    if (!subfilasMarcaBanner.value) {
-      subfilasMarcaBanner.value = getBrandName(mot.fabricante_id)
+  if (mot) {
+    if (!partMarca.value && mot.fabricante_id) {
+      partMarca.value = getBrandName(mot.fabricante_id)
     }
-    if (!subfilasAplicacionBanner.value) {
-      subfilasAplicacionBanner.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : ''}`
+    if (!partModelo.value && (mot as any).modelo?.nombre) {
+      partModelo.value = (mot as any).modelo.nombre
+    }
+    if (!partAno.value && mot.anios) {
+      partAno.value = mot.anios
+    }
+    if (isSubfilasGroup.value) {
+      if (!subfilasMarcaBanner.value) {
+        subfilasMarcaBanner.value = getBrandName(mot.fabricante_id)
+      }
+      if (!subfilasAplicacionBanner.value) {
+        subfilasAplicacionBanner.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : ''}`
+      }
     }
   }
 })
@@ -661,65 +751,26 @@ const removeEquivalenceRow = (index: number) => {
   }
 }
 
-// Validación reactiva estricta de repuesto y parámetros
+// Validación de repuesto: Los únicos campos obligatorios son Código OEM, Marca, Modelo y Año
 const validatePartForm = (): boolean => {
   const errors: Record<string, string> = {}
 
   if (!partCodigoOem.value.trim()) {
-    errors.partCodigoOem = 'El código OEM de la pieza es obligatorio'
+    errors.partCodigoOem = 'El Código OEM de la pieza es obligatorio'
   }
-  if (!partNombre.value.trim()) {
-    errors.partNombre = 'El nombre o descripción del repuesto es obligatorio'
+  if (!partMarca.value.trim()) {
+    errors.partMarca = 'La Marca del vehículo es obligatoria'
   }
-
-  // Validación específica para Anillos de Motor
-  if (isRingsGroup.value) {
-    const dVal = paramValues.value.diametro_cilindro_mm
-    if (dVal === null || dVal === undefined || dVal === '' || isNaN(Number(dVal)) || Number(dVal) <= 0) {
-      errors.diametro_cilindro_mm = 'El Diámetro de Cilindro (d1 en mm) es obligatorio'
-    }
-
-    ringRows.value.forEach((row, idx) => {
-      if (row.h1 === null || row.h1 === undefined || String(row.h1) === '' || isNaN(Number(row.h1)) || Number(row.h1) <= 0) {
-        errors[`ring_h1_${idx}`] = `El grosor h1 de ${getRingRowTitle(row, idx)} es obligatorio`
-      }
-    })
-
-    for (const param of extraRingGroupParams.value) {
-      if (param.requerido) {
-        const val = paramValues.value[param.clave]
-        if (param.tipo_dato === 'numero') {
-          if (val === null || val === undefined || val === '' || isNaN(Number(val)) || Number(val) <= 0) {
-            errors[param.clave] = `La medida ${param.etiqueta} (${param.unidad || 'mm'}) es obligatoria`
-          }
-        } else if (param.tipo_dato === 'texto' || param.tipo_dato === 'seleccion') {
-          if (!val || String(val).trim() === '') {
-            errors[param.clave] = `El parámetro ${param.etiqueta} es obligatorio`
-          }
-        }
-      }
-    }
-  } else if (activeGroup.value && activeGroup.value.parametros) {
-    // Validar parámetros requeridos del grupo seleccionado
-    for (const param of activeGroup.value.parametros) {
-      if (param.requerido) {
-        const val = paramValues.value[param.clave]
-        if (param.tipo_dato === 'numero') {
-          if (val === null || val === undefined || val === '' || isNaN(Number(val)) || Number(val) <= 0) {
-            errors[param.clave] = `La medida ${param.etiqueta} (${param.unidad || 'mm'}) es obligatoria para este grupo`
-          }
-        } else if (param.tipo_dato === 'texto' || param.tipo_dato === 'seleccion') {
-          if (!val || String(val).trim() === '') {
-            errors[param.clave] = `El parámetro ${param.etiqueta} es obligatorio`
-          }
-        }
-      }
-    }
+  if (!partModelo.value.trim()) {
+    errors.partModelo = 'El Modelo del vehículo es obligatorio'
+  }
+  if (!partAno.value.trim()) {
+    errors.partAno = 'El Año del vehículo es obligatorio'
   }
 
   formErrors.value = errors
   if (Object.keys(errors).length > 0) {
-    saveErrorMessage.value = 'Por favor complete todos los campos obligatorios marcados en rojo.'
+    saveErrorMessage.value = 'Por favor complete los campos obligatorios: Código OEM, Marca, Modelo y Año.'
   } else {
     saveErrorMessage.value = ''
   }
@@ -760,6 +811,11 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   )
 
   partNombre.value = part.nombre || ''
+  const spec = (part.especificaciones_tecnicas as any) || {}
+  const dims = (part.dimensiones as any) || {}
+  partMarca.value = spec.marca || spec.fabricantes?.[0] || dims.marca || (part.motor?.fabricante?.nombre) || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : '') || ''
+  partModelo.value = spec.modelo || spec.vehiculo || dims.modelo || (part.motor?.modelo?.nombre) || ''
+  partAno.value = spec.ano || spec.anios || dims.ano || (part.motor?.anios) || ''
   partSubsistema.value = part.subsistema || 'Block'
   partPrecio.value = part.precio != null ? part.precio : null
   partStock.value = part.stock != null ? part.stock : 12
@@ -988,6 +1044,19 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   }
 
+  // Si algún parámetro del grupo activo tiene clave con prefijo pero existía un valor bajo clave simple previa:
+  if (activeGroup.value?.parametros) {
+    for (const p of activeGroup.value.parametros) {
+      if (loadedParams[p.clave] === undefined) {
+        const rawSlug = p.etiqueta.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+        const rawWithUnit = p.unidad === 'mm' ? (rawSlug.endsWith('_mm') ? rawSlug : `${rawSlug}_mm`) : rawSlug
+        if (loadedParams[rawWithUnit] !== undefined) {
+          loadedParams[p.clave] = loadedParams[rawWithUnit]
+        }
+      }
+    }
+  }
+
   paramValues.value = loadedParams
 
   // Equivalencias
@@ -1048,7 +1117,7 @@ const handleSavePart = async () => {
     }
 
     // Sincronizar cotas radiales y array `anillos` para familias en tabla / anillos
-    if (isRingsGroup.value) {
+    if (isGeneralTableGroup.value) {
       const d = dimensionesPayload.diametro_cilindro_mm != null 
         ? Number(dimensionesPayload.diametro_cilindro_mm) 
         : (paramValues.value.diametro_cilindro_mm != null ? Number(paramValues.value.diametro_cilindro_mm) : (props.editPart?.diametro_cilindro_mm != null ? Number(props.editPart.diametro_cilindro_mm) : null))
@@ -1059,7 +1128,7 @@ const handleSavePart = async () => {
           ? r.posicion.trim()
           : getDefaultRowPosition(idx, ringRows.value.length)
         const finalIdent = r.tiene_identificador
-          ? (r.identificador_texto?.trim() || activeTablaConfig.value.etiqueta_identificador || 'Cónico')
+          ? (r.identificador_texto?.trim() || activeTablaConfig.value.etiqueta_identificador || 'Especial')
           : ''
         const finalPerfil = finalIdent || r.perfil || (isOil ? 'Estándar' : 'Plano')
         return {
@@ -1075,7 +1144,7 @@ const handleSavePart = async () => {
         }
       })
 
-      // También sincronizar las columnas extra de la 1ra fila en dimensionesPayload para filtros dimensionales
+      // Sincronizar las columnas extra de la 1ra fila en dimensionesPayload para filtros dimensionales
       for (const extParam of extraRingGroupParams.value) {
         const rowVal = ringRows.value[0]?.extra?.[extParam.clave]
         if (rowVal !== undefined && rowVal !== null && rowVal !== '' && dimensionesPayload[extParam.clave] === undefined) {
@@ -1083,63 +1152,66 @@ const handleSavePart = async () => {
         }
       }
 
-      const r1 = serializedRings[0]
-      const rOil = serializedRings[serializedRings.length - 1]
-      const r2 = serializedRings.length >= 3 ? serializedRings[1] : null
-      const r3 = serializedRings.length >= 4 ? serializedRings[2] : null
-
-      dimensionesPayload.diametro_cilindro_mm = d
-      dimensionesPayload.espesor_anillo1_mm = r1?.h1 ?? null
-      dimensionesPayload.espesor_anillo2_mm = r2?.h1 ?? null
-      dimensionesPayload.espesor_aceite_mm = rOil?.h1 ?? null
       dimensionesPayload.anillos = serializedRings
 
-      if (r3?.h1 != null) {
-        dimensionesPayload.espesor_anillo3_mm = r3.h1
-        if (r3.a1 != null) {
-          dimensionesPayload.espesor_radial3_mm = r3.a1
-          dimensionesPayload.altura_radial3_mm = r3.a1
+      if (isRingsGroup.value) {
+        const r1 = serializedRings[0]
+        const rOil = serializedRings[serializedRings.length - 1]
+        const r2 = serializedRings.length >= 3 ? serializedRings[1] : null
+        const r3 = serializedRings.length >= 4 ? serializedRings[2] : null
+
+        dimensionesPayload.diametro_cilindro_mm = d
+        dimensionesPayload.espesor_anillo1_mm = r1?.h1 ?? null
+        dimensionesPayload.espesor_anillo2_mm = r2?.h1 ?? null
+        dimensionesPayload.espesor_aceite_mm = rOil?.h1 ?? null
+
+        if (r3?.h1 != null) {
+          dimensionesPayload.espesor_anillo3_mm = r3.h1
+          if (r3.a1 != null) {
+            dimensionesPayload.espesor_radial3_mm = r3.a1
+            dimensionesPayload.altura_radial3_mm = r3.a1
+          }
+        } else {
+          delete dimensionesPayload.espesor_anillo3_mm
+          delete dimensionesPayload.espesor_radial3_mm
+          delete dimensionesPayload.altura_radial3_mm
         }
-      } else {
-        delete dimensionesPayload.espesor_anillo3_mm
-        delete dimensionesPayload.espesor_radial3_mm
-        delete dimensionesPayload.altura_radial3_mm
-      }
 
-      if (r1?.a1 != null) {
-        dimensionesPayload.espesor_radial1_mm = r1.a1
-        dimensionesPayload.altura_radial1_mm = r1.a1
-      }
-      if (r2?.a1 != null) {
-        dimensionesPayload.espesor_radial2_mm = r2.a1
-        dimensionesPayload.altura_radial2_mm = r2.a1
-      }
-      if (rOil?.a1 != null) {
-        dimensionesPayload.espesor_radial_aceite_mm = rOil.a1
-        dimensionesPayload.altura_radial_aceite_mm = rOil.a1
-      }
+        if (r1?.a1 != null) {
+          dimensionesPayload.espesor_radial1_mm = r1.a1
+          dimensionesPayload.altura_radial1_mm = r1.a1
+        }
+        if (r2?.a1 != null) {
+          dimensionesPayload.espesor_radial2_mm = r2.a1
+          dimensionesPayload.altura_radial2_mm = r2.a1
+        }
+        if (rOil?.a1 != null) {
+          dimensionesPayload.espesor_radial_aceite_mm = rOil.a1
+          dimensionesPayload.altura_radial_aceite_mm = rOil.a1
+        }
 
-      const anyConico = serializedRings.some(r =>
-        (r.perfil || '').toLowerCase().includes('cónico') ||
-        (r.perfil || '').toLowerCase().includes('conico') ||
-        (r.perfil || '').toLowerCase().includes('keystone')
-      )
+        const anyConico = serializedRings.some(r =>
+          (r.perfil || '').toLowerCase().includes('cónico') ||
+          (r.perfil || '').toLowerCase().includes('conico') ||
+          (r.perfil || '').toLowerCase().includes('keystone')
+        )
 
-      if (anyConico || paramValues.value.diseno_conico) {
-        dimensionesPayload.diseno_conico = true
-        const conicoLabels = serializedRings
-          .map((r, i) => ((r.perfil || '').toLowerCase().includes('cónico') || (r.perfil || '').toLowerCase().includes('keystone')) ? `${i + 1}°=${r.perfil}` : null)
-          .filter(Boolean)
-        dimensionesPayload.keystone = conicoLabels.length > 0 ? conicoLabels.join(', ') : (paramValues.value.keystone || 'KEYSTONE')
-      } else {
-        delete dimensionesPayload.diseno_conico
-        delete dimensionesPayload.keystone
-      }
+        if (anyConico || paramValues.value.diseno_conico) {
+          dimensionesPayload.diseno_conico = true
+          const conicoLabels = serializedRings
+            .map((r, i) => ((r.perfil || '').toLowerCase().includes('cónico') || (r.perfil || '').toLowerCase().includes('keystone')) ? `${i + 1}°=${r.perfil}` : null)
+            .filter(Boolean)
+          dimensionesPayload.keystone = conicoLabels.length > 0 ? conicoLabels.join(', ') : (paramValues.value.keystone || 'KEYSTONE')
+        } else {
+          delete dimensionesPayload.diseno_conico
+          delete dimensionesPayload.keystone
+        }
 
-      if (paramValues.value.cilindros && Number(paramValues.value.cilindros) > 0) {
-        dimensionesPayload.cilindros = Number(paramValues.value.cilindros)
-      } else {
-        delete dimensionesPayload.cilindros
+        if (paramValues.value.cilindros && Number(paramValues.value.cilindros) > 0) {
+          dimensionesPayload.cilindros = Number(paramValues.value.cilindros)
+        } else {
+          delete dimensionesPayload.cilindros
+        }
       }
     }
 
@@ -1159,20 +1231,33 @@ const handleSavePart = async () => {
       new Set([...extraFromMain, ...extraFlat].filter(c => c && c !== primaryOemClean))
     )
     dimensionesPayload.codigos_oem_adicionales = codigosOemAdicionalesClean
+    dimensionesPayload.marca = partMarca.value.trim().toUpperCase()
+    dimensionesPayload.modelo = partModelo.value.trim().toUpperCase()
+    dimensionesPayload.vehiculo = `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()}`
+    dimensionesPayload.ano = partAno.value.trim()
 
     const prevSpec = (editingPartId.value && props.editPart?.especificaciones_tecnicas)
       ? { ...(props.editPart.especificaciones_tecnicas as Record<string, unknown>) }
       : {}
     const especificacionesPayload: Record<string, unknown> = {
       ...prevSpec,
-      codigos_oem_adicionales: codigosOemAdicionalesClean
+      codigos_oem_adicionales: codigosOemAdicionalesClean,
+      marca: partMarca.value.trim().toUpperCase(),
+      fabricantes: [partMarca.value.trim().toUpperCase()],
+      modelo: partModelo.value.trim().toUpperCase(),
+      vehiculo: `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()}`,
+      ano: partAno.value.trim(),
+      anios: partAno.value.trim()
     }
+
+    const finalNombre = partNombre.value.trim() || 
+      `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()} - ${activeGroup.value?.nombre || 'Repuesto'} (${primaryOemClean})`
 
     const partPayload = {
       motor_id: partMotorId.value || undefined,
       codigo_oem: primaryOemClean,
       codigos_oem_adicionales: codigosOemAdicionalesClean,
-      nombre: partNombre.value.trim(),
+      nombre: finalNombre,
       subsistema: partSubsistema.value,
       categoria: activeGroup.value?.categoria || 'General',
       precio: Number(partPrecio.value || 0),
@@ -1230,6 +1315,9 @@ const resetPartForm = () => {
   editingPartId.value = null
   partCodigoOem.value = ''
   partCodigosOemAdicionales.value = []
+  partMarca.value = ''
+  partModelo.value = ''
+  partAno.value = ''
   partNombre.value = ''
   partSubsistema.value = activeGroup.value?.subsistema || 'Block'
   partMotorId.value = ''
@@ -1275,6 +1363,11 @@ const selectedEditGroupId = ref<string>('')
 
 const groupNombre = ref<string>('')
 const groupCategoria = ref<string>('')
+const onGroupNombreInput = () => {
+  if (!isEditMode.value) {
+    groupCategoria.value = groupNombre.value
+  }
+}
 const groupSubsistema = ref<string>('') // Opcional
 const groupDescripcion = ref<string>('')
 const groupIcono = ref<string>('Layers')
@@ -1282,47 +1375,43 @@ const groupTipoVista = ref<'normal' | 'tabla'>('normal')
 const soloFiltrosEnTabla = ref<boolean>(false)
 
 const getDefaultTablaConfig = (): TablaConfiguracion => ({
-  titulo_primera_columna: 'Cojinete',
-  modo_filas: 'cojinetes',
+  titulo_primera_columna: 'Posición',
+  modo_filas: 'incremental',
   usar_prefijo_titulo: true,
-  etiqueta_ultima_fila: 'Anillo de aceite',
+  etiqueta_ultima_fila: '',
   habilitar_identificador: false,
-  etiqueta_identificador: 'Cónico',
-  subfilas_activas: true,
-  tiene_cabecera_marca: true,
+  etiqueta_identificador: 'Especial',
+  subfilas_activas: false,
+  tiene_cabecera_marca: false,
   etiqueta_marca: 'Marca',
-  subfilas: ['Biela', 'Bancada']
+  subfilas: ['Fila 1', 'Fila 2']
 })
 
 const groupTablaConfig = ref<TablaConfiguracion>(getDefaultTablaConfig())
 
-const selectModoFilas = (modo: 'cojinetes' | 'incremental' | 'libre') => {
+const selectModoFilas = (modo: 'cojinetes' | 'subfilas' | 'incremental' | 'libre') => {
   groupTablaConfig.value.modo_filas = modo
-  if (modo === 'cojinetes') {
+  if (modo === 'cojinetes' || modo === 'subfilas') {
     groupTablaConfig.value.subfilas_activas = true
-    groupTablaConfig.value.tiene_cabecera_marca = true
-    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna && groupTablaConfig.value.titulo_primera_columna !== 'Anillo'
-      ? groupTablaConfig.value.titulo_primera_columna
-      : 'Cojinete'
+    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna || 'Posición'
     if (!groupTablaConfig.value.subfilas || groupTablaConfig.value.subfilas.length === 0) {
-      groupTablaConfig.value.subfilas = ['Biela', 'Bancada']
+      groupTablaConfig.value.subfilas = ['Fila 1', 'Fila 2']
     }
   } else if (modo === 'incremental') {
     groupTablaConfig.value.subfilas_activas = false
-    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna && groupTablaConfig.value.titulo_primera_columna !== 'Cojinete'
-      ? groupTablaConfig.value.titulo_primera_columna
-      : 'Anillo'
+    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna || 'Posición'
   } else {
     groupTablaConfig.value.subfilas_activas = false
+    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna || 'Posición'
   }
 }
 
 const addConfigSubfila = () => {
   if (!groupTablaConfig.value.subfilas) {
-    groupTablaConfig.value.subfilas = ['Biela', 'Bancada']
+    groupTablaConfig.value.subfilas = ['Fila 1', 'Fila 2']
   }
   const count = groupTablaConfig.value.subfilas.length + 1
-  groupTablaConfig.value.subfilas.push(`Sub-fila ${count}`)
+  groupTablaConfig.value.subfilas.push(`Fila ${count}`)
 }
 
 const removeConfigSubfila = (idx: number) => {
@@ -1330,17 +1419,12 @@ const removeConfigSubfila = (idx: number) => {
   groupTablaConfig.value.subfilas.splice(idx, 1)
 }
 
-const activarMatrizSubfilasCojinetes = () => {
-  groupTipoVista.value = 'tabla'
-  selectModoFilas('cojinetes')
-}
-
 const addFormSubfila = () => {
   const count = subfilasRows.value.length + 1
   subfilasRows.value.push({
     id: `sf-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-    tipo: `subfila_${count}`,
-    nombre: `Sub-fila ${count}`,
+    tipo: `fila_${count}`,
+    nombre: `Fila ${count}`,
     codigo: '',
     medidas: {}
   })
@@ -1349,47 +1433,6 @@ const addFormSubfila = () => {
 const removeFormSubfila = (idx: number) => {
   if (subfilasRows.value.length <= 1) return
   subfilasRows.value.splice(idx, 1)
-}
-
-const cargarColumnasFederalMogul = () => {
-  activarMatrizSubfilasCojinetes()
-  const etapas = [
-    { etapa: 'STD', sufijo: 'std' },
-    { etapa: '1er', sufijo: '1er' },
-    { etapa: '2da', sufijo: '2da' },
-    { etapa: '3er', sufijo: '3er' },
-    { etapa: '4ta', sufijo: '4ta' }
-  ]
-  const newParams: DynamicParamRow[] = []
-  etapas.forEach((item) => {
-    newParams.push({
-      id: `param-${item.sufijo}-min-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      clave: `diametro_${item.sufijo}_min_mm`,
-      etiqueta: `Diámetro Mínimo`,
-      etiqueta_corta: `Mínimo mm`,
-      columna_padre: item.etapa,
-      tipo_dato: 'numero',
-      unidad: 'mm',
-      requerido: true,
-      descripcion: `Diámetro mínimo de rectificación ${item.etapa}`,
-      opcionesStr: '',
-      valor_muestra: '48.970'
-    })
-    newParams.push({
-      id: `param-${item.sufijo}-max-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      clave: `diametro_${item.sufijo}_max_mm`,
-      etiqueta: `Diámetro Máximo`,
-      etiqueta_corta: `Máximo mm`,
-      columna_padre: item.etapa,
-      tipo_dato: 'numero',
-      unidad: 'mm',
-      requerido: true,
-      descripcion: `Diámetro máximo de rectificación ${item.etapa}`,
-      opcionesStr: '',
-      valor_muestra: '48.990'
-    })
-  })
-  dynamicParams.value = newParams
 }
 
 const setGroupTipoVista = (tipo: 'normal' | 'tabla') => {
@@ -1449,34 +1492,89 @@ const handleCreateAndSelectSubsistema = () => {
 }
 
 // --- Generador de Clave Técnica Inmutable (ReadOnly) ---
-const generateTechnicalKey = (label: string, unit: string): string => {
-  const slug = label
+const generateTechnicalKey = (label: string, unit: string, parent?: string): string => {
+  let parentSlug = ''
+  if (parent && parent.trim()) {
+    parentSlug = parent
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+  }
+  const labelSlug = label
     .toLowerCase()
     .trim()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-  if (!slug) return 'cota_param'
+
+  let fullSlug = parentSlug ? `${parentSlug}_${labelSlug || 'param'}` : (labelSlug || 'cota_param')
+  fullSlug = fullSlug.replace(/__+/g, '_').replace(/^_+|_+$/g, '')
+  if (!fullSlug) fullSlug = 'cota_param'
   if (unit === 'mm') {
-    return slug.endsWith('_mm') ? slug : `${slug}_mm`
+    return fullSlug.endsWith('_mm') ? fullSlug : `${fullSlug}_mm`
   }
-  return slug
+  return fullSlug
+}
+
+const ensureUniqueParamKeys = (params: DynamicParamRow[]) => {
+  const seenKeys = new Map<string, number>()
+  for (const p of params) {
+    let key = p.clave?.trim()
+    if (p.columna_padre && p.columna_padre.trim()) {
+      const parentSlug = p.columna_padre
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+      if (parentSlug && (!key || !key.startsWith(parentSlug))) {
+        key = generateTechnicalKey(p.etiqueta, p.unidad, p.columna_padre)
+      }
+    }
+    if (!key) {
+      key = generateTechnicalKey(p.etiqueta || 'cota', p.unidad, p.columna_padre)
+    }
+
+    const count = seenKeys.get(key) || 0
+    if (count > 0) {
+      let suffix = count + 1
+      let uniqueKey = `${key}_${suffix}`
+      while (seenKeys.has(uniqueKey)) {
+        suffix++
+        uniqueKey = `${key}_${suffix}`
+      }
+      key = uniqueKey
+    }
+    seenKeys.set(key, (seenKeys.get(key) || 0) + 1)
+    p.clave = key
+  }
 }
 
 const handleParamLabelChange = (param: DynamicParamRow) => {
-  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('param_')) {
-    param.clave = generateTechnicalKey(param.etiqueta, param.unidad)
+  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('campo_') || param.clave.startsWith('param_')) {
+    param.clave = generateTechnicalKey(param.etiqueta, param.unidad, param.columna_padre)
   }
   if (!param.etiqueta_corta || param.etiqueta_corta === param.etiqueta) {
     param.etiqueta_corta = param.etiqueta
   }
+  ensureUniqueParamKeys(dynamicParams.value)
 }
 
 const handleParamUnitChange = (param: DynamicParamRow) => {
-  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('param_')) {
-    param.clave = generateTechnicalKey(param.etiqueta, param.unidad)
+  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('campo_') || param.clave.startsWith('param_')) {
+    param.clave = generateTechnicalKey(param.etiqueta, param.unidad, param.columna_padre)
   }
+  ensureUniqueParamKeys(dynamicParams.value)
+}
+
+const handleParamParentChange = (param: DynamicParamRow) => {
+  param.clave = generateTechnicalKey(param.etiqueta, param.unidad, param.columna_padre)
+  ensureUniqueParamKeys(dynamicParams.value)
 }
 
 // Lista dinámica de parámetros (inicialmente vacía para familias nuevas)
@@ -1527,6 +1625,7 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
     valor_muestra: p.valor_minimo || (50 + idx * 5),
     columna_padre: p.columna_padre || ''
   }))
+  ensureUniqueParamKeys(dynamicParams.value)
   groupErrors.value = {}
 }
 
@@ -1599,6 +1698,7 @@ const addParamRow = () => {
     valor_muestra: 50.00,
     columna_padre: ''
   })
+  ensureUniqueParamKeys(dynamicParams.value)
 }
 
 // Reordenar parámetro hacia arriba
@@ -1628,7 +1728,7 @@ const addSiblingSubcolumn = (param: DynamicParamRow, idx: number) => {
     id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     etiqueta: '',
     etiqueta_corta: '',
-    clave: generateTechnicalKey(`${parent}_sub_${count}`, unit),
+    clave: generateTechnicalKey(`sub_${count}`, unit, parent),
     unidad: unit,
     tipo_dato: param.tipo_dato || 'numero',
     requerido: true,
@@ -1641,24 +1741,11 @@ const addSiblingSubcolumn = (param: DynamicParamRow, idx: number) => {
   }
 
   dynamicParams.value.splice(idx + 1, 0, newRow)
+  ensureUniqueParamKeys(dynamicParams.value)
 }
 
 const removeParamRow = (index: number) => {
   dynamicParams.value.splice(index, 1)
-}
-
-const handleSoloFiltrosChange = () => {
-  if (soloFiltrosEnTabla.value) {
-    dynamicParams.value.forEach(p => {
-      if (!p.requerido) {
-        p.filtrable = false
-      }
-    })
-  } else {
-    dynamicParams.value.forEach(p => {
-      p.filtrable = true
-    })
-  }
 }
 
 const toggleParamRequerido = (param: DynamicParamRow) => {
@@ -1726,16 +1813,6 @@ const getPreviewTableCellValue = (param: DynamicParamRow, partIdx: number, ringI
   return String(Number((baseVal + ringIdx * 0.5).toFixed(2)))
 }
 
-const cycleDecimals = (param: DynamicParamRow) => {
-  if (param.decimales === undefined || param.decimales === 2) {
-    param.decimales = 1
-  } else if (param.decimales === 1) {
-    param.decimales = 0
-  } else {
-    param.decimales = 2
-  }
-}
-
 const formatSampleValue = (param: DynamicParamRow, rowIdx: number = 0): string => {
   if (param.tipo_dato === 'booleano') {
     return rowIdx === 0 ? 'Sí (STD)' : 'No (Cónico)'
@@ -1782,12 +1859,12 @@ const formatSubcolumnSample = (param: DynamicParamRow, rowIdx: number = 0): stri
   return formatSampleValue(param, rowIdx)
 }
 
-// Control de sub-filas para el Live Preview (Imagen 1: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
+// Control de sub-filas para el Live Preview
 const isSubfilasActiveInPreview = computed<boolean>(() => {
   return groupTipoVista.value === 'tabla' && Boolean(
     groupTablaConfig.value.modo_filas === 'cojinetes' ||
-    groupTablaConfig.value.subfilas_activas === true ||
-    (groupTablaConfig.value.subfilas && groupTablaConfig.value.subfilas.length > 0)
+    groupTablaConfig.value.modo_filas === 'subfilas' ||
+    groupTablaConfig.value.subfilas_activas === true
   )
 })
 
@@ -1795,28 +1872,22 @@ const previewSubfilas = computed<string[]>(() => {
   if (groupTablaConfig.value.subfilas && groupTablaConfig.value.subfilas.length > 0) {
     return groupTablaConfig.value.subfilas
   }
-  return ['Biela', 'Bancada']
+  return ['Fila 1', 'Fila 2']
 })
 
-const getPreviewSubfilaValue = (param: DynamicParamRow, subfila: string, recordIdx: number = 0): string => {
+const getPreviewSubfilaValue = (param: DynamicParamRow, _subfila: string, recordIdx: number = 0): string => {
   const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
   const key = (param.clave || '').toLowerCase()
   const isMin = lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')
-  const isBiela = (subfila || '').toLowerCase().includes('biela')
-  
-  if (recordIdx === 0) {
-    if (isBiela) {
-      return isMin ? '48.970' : '48.990'
-    } else {
-      return isMin ? '53.970' : '53.990'
-    }
-  } else {
-    if (isBiela) {
-      return isMin ? '48.971' : '48.987'
-    } else {
-      return isMin ? '57.974' : '57.995'
-    }
+  if (param.tipo_dato === 'texto') return recordIdx === 0 ? 'STD' : '0.25'
+  if (param.tipo_dato === 'booleano') return 'Sí'
+  if (param.tipo_dato === 'seleccion') {
+    const opts = param.opcionesStr ? param.opcionesStr.split(',').map(s => s.trim()).filter(Boolean) : (param.opciones || [])
+    return opts[0] || 'STD'
   }
+  const base = param.valor_muestra != null && param.valor_muestra !== '' ? Number(param.valor_muestra) : 48.0
+  const val = base + (recordIdx * 2) + (isMin ? 0 : 0.02)
+  return val.toFixed(2)
 }
 
 // Agrupación de parámetros para el formulario de captura de repuesto
@@ -1858,9 +1929,10 @@ const validateGroupForm = (): boolean => {
         p.etiqueta = `Campo ${idx + 1}`
       }
       if (!p.clave || !p.clave.trim()) {
-        p.clave = generateTechnicalKey(p.etiqueta, p.unidad || 'mm')
+        p.clave = generateTechnicalKey(p.etiqueta, p.unidad || 'mm', p.columna_padre)
       }
     })
+    ensureUniqueParamKeys(dynamicParams.value)
   }
   groupErrors.value = errors
   return Object.keys(errors).length === 0
@@ -2140,21 +2212,21 @@ onUnmounted(() => {
                   </button>
                 </div>
 
-                <!-- Código OEM Principal + Adicionales y Nombre -->
+                <!-- Código OEM Principal + Adicionales y Vehículo (Marca, Modelo, Año) -->
                 <div class="space-y-2.5">
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <label class="text-[11px] font-bold text-slate-700">
-                        Código OEM Principal <span class="text-rose-600 font-black">*</span>
+                        Código OEM <span class="text-rose-600 font-black">*</span>
                       </label>
-                      <span class="text-[9px] text-[#004B97] bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-mono font-bold">OEM #1</span>
+                      <span class="text-[9px] text-[#004B97] bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-mono font-bold">Principal</span>
                     </div>
                     <input
                       v-model="partCodigoOem"
                       @input="onPrimaryOemInput"
                       @blur="normalizeOemInputs"
                       type="text"
-                      placeholder="Código OEM"
+                      placeholder="Ej. 13011-13040, 11044-AA000..."
                       class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -2203,20 +2275,83 @@ onUnmounted(() => {
                     </span>
                   </div>
 
+                  <!-- Vehículo: Marca, Modelo y Año (Obligatorios) -->
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                    <!-- Marca (Obligatoria) -->
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                        Marca <span class="text-rose-600 font-black">*</span>
+                      </label>
+                      <input
+                        v-model="partMarca"
+                        list="modal-fabricantes-list"
+                        type="text"
+                        placeholder="Ej. TOYOTA, NISSAN..."
+                        class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                        :class="formErrors.partMarca ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                      />
+                      <datalist id="modal-fabricantes-list">
+                        <option v-for="fab in catalogStore.fabricantes" :key="fab.id" :value="fab.nombre" />
+                      </datalist>
+                      <span v-if="formErrors.partMarca" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                        {{ formErrors.partMarca }}
+                      </span>
+                    </div>
+
+                    <!-- Modelo (Obligatorio) -->
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                        Modelo <span class="text-rose-600 font-black">*</span>
+                      </label>
+                      <input
+                        v-model="partModelo"
+                        list="modal-modelos-list"
+                        type="text"
+                        placeholder="Ej. HILUX, COROLLA..."
+                        class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                        :class="formErrors.partModelo ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                      />
+                      <datalist id="modal-modelos-list">
+                        <option v-for="mod in availableModalModelos" :key="mod.id" :value="mod.nombre" />
+                      </datalist>
+                      <span v-if="formErrors.partModelo" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                        {{ formErrors.partModelo }}
+                      </span>
+                    </div>
+
+                    <!-- Año (Obligatorio) -->
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                        Año <span class="text-rose-600 font-black">*</span>
+                      </label>
+                      <input
+                        v-model="partAno"
+                        list="modal-anos-list"
+                        type="text"
+                        placeholder="Ej. 2015, 2005-2012..."
+                        class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                        :class="formErrors.partAno ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                      />
+                      <datalist id="modal-anos-list">
+                        <option v-for="yr in commonYearsList" :key="yr" :value="yr" />
+                      </datalist>
+                      <span v-if="formErrors.partAno" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
+                        {{ formErrors.partAno }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Nombre o Descripción Técnica (Opcional) -->
                   <div>
                     <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nombre o Descripción Técnica <span class="text-rose-600 font-black">*</span>
+                      Nombre o Descripción Técnica <span class="text-[10px] font-normal text-slate-400">(Opcional)</span>
                     </label>
                     <input
                       v-model="partNombre"
                       type="text"
-                      placeholder="Nombre o descripción"
-                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
-                      :class="formErrors.partNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
+                      :placeholder="partMarca && partModelo ? `${partMarca} ${partModelo} - ${activeGroup?.nombre || 'Repuesto'}` : 'Nombre o descripción técnica (opcional)'"
+                      class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                     />
-                    <span v-if="formErrors.partNombre" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                      {{ formErrors.partNombre }}
-                    </span>
                   </div>
                 </div>
 
@@ -2387,22 +2522,24 @@ onUnmounted(() => {
                   </div>
 
                   <span v-if="activeGroup" class="text-[10px] font-extrabold text-[#004B97] bg-white border border-cyan-200 px-2 py-0.5 rounded-full">
-                    {{ isRingsGroup ? `${ringRows.length} Aros Configurados` : `${activeGroup.parametros.filter(p => p.requerido).length} Obligatorios` }}
+                    {{ isGeneralTableGroup ? `${ringRows.length} Filas` : (isSubfilasGroup ? `${subfilasRows.length} Filas` : `${activeGroup.parametros.filter(p => p.requerido).length} Medidas`) }}
                   </span>
                 </div>
 
-                <!-- A. MATRIZ TABULAR DINÁMICA GENERAL PARA FAMILIAS EN TABLA (ANILLOS, ETC.) -->
-                <div v-if="isRingsGroup" class="space-y-3">
+                <!-- A. MATRIZ TABULAR DINÁMICA GENERAL PARA FAMILIAS EN TABLA (ANILLOS Y CUALQUIER FAMILIA TABULAR) -->
+                <div v-if="isGeneralTableGroup" class="space-y-3">
                   
                   <!-- Tabla de medidas compacta y 100% configurable -->
                   <div class="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs font-mono select-text">
                     <table class="border-collapse text-center text-xs w-full">
                       <thead>
                         <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
-                          <th class="px-3 py-2 text-left border-r border-slate-200">{{ activeTablaConfig.titulo_primera_columna || 'Anillo' }}</th>
-                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro') }}</th>
-                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('grosor_mm', getActiveGroupParamLabel('anillo1_h1', 'Grosor')) }}</th>
-                          <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('altura_mm', getActiveGroupParamLabel('anillo1_a1', 'Altura')) }}</th>
+                          <th class="px-3 py-2 text-left border-r border-slate-200">{{ activeTablaConfig.titulo_primera_columna || (isRingsGroup ? 'Anillo' : 'Posición') }}</th>
+                          <template v-if="isRingsGroup">
+                            <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('diametro_cilindro_mm', 'Diámetro') }}</th>
+                            <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('grosor_mm', getActiveGroupParamLabel('anillo1_h1', 'Grosor')) }}</th>
+                            <th class="px-2 py-2 border-r border-slate-200">{{ getActiveGroupParamLabel('altura_mm', getActiveGroupParamLabel('anillo1_a1', 'Altura')) }}</th>
+                          </template>
                           <th
                             v-for="extParam in extraRingGroupParams"
                             :key="`th-ext-${extParam.id}`"
@@ -2411,7 +2548,7 @@ onUnmounted(() => {
                             {{ extParam.etiqueta_corta || extParam.etiqueta }}{{ extParam.unidad ? ` (${extParam.unidad})` : '' }}
                           </th>
                           <th v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2.5 py-2">
-                            {{ activeTablaConfig.etiqueta_identificador || 'Cónico' }}
+                            {{ activeTablaConfig.etiqueta_identificador || (isRingsGroup ? 'Cónico' : 'Especial') }}
                           </th>
                         </tr>
                       </thead>
@@ -2452,47 +2589,49 @@ onUnmounted(() => {
                             </div>
                           </td>
 
-                          <!-- Diámetro común STD (Editable en 1ra fila, heredado en las demás) -->
-                          <td v-if="rIdx === 0" class="px-2 py-1.5 border-r border-slate-200">
-                            <div class="relative flex items-center justify-center">
+                          <template v-if="isRingsGroup">
+                            <!-- Diámetro común STD (Editable en 1ra fila, heredado en las demás) -->
+                            <td v-if="rIdx === 0" class="px-2 py-1.5 border-r border-slate-200">
+                              <div class="relative flex items-center justify-center">
+                                <input
+                                  v-model.number="paramValues.diametro_cilindro_mm"
+                                  type="number"
+                                  step="0.001"
+                                  placeholder="86.000"
+                                  class="w-20 px-1.5 py-1 text-center font-mono font-black text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                                  :class="formErrors.diametro_cilindro_mm ? 'border-rose-400 bg-rose-50' : 'border-slate-300'"
+                                />
+                              </div>
+                            </td>
+                            <td v-else class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
+                              <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
+                            </td>
+
+                            <!-- Grosor h1 -->
+                            <td class="px-2 py-1.5 border-r border-slate-200">
                               <input
-                                v-model.number="paramValues.diametro_cilindro_mm"
+                                v-model.number="ring.h1"
                                 type="number"
                                 step="0.001"
-                                placeholder="86.000"
-                                class="w-20 px-1.5 py-1 text-center font-mono font-black text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                                :class="formErrors.diametro_cilindro_mm ? 'border-rose-400 bg-rose-50' : 'border-slate-300'"
+                                :placeholder="rIdx === ringRows.length - 1 ? '3.000' : '1.500'"
+                                class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                                :class="formErrors[`ring_h1_${rIdx}`] ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
                               />
-                            </div>
-                          </td>
-                          <td v-else class="px-2 py-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500 bg-slate-50/30">
-                            <span>{{ formatRingVal(paramValues.diametro_cilindro_mm) }}</span>
-                          </td>
+                            </td>
 
-                          <!-- Grosor h1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="ring.h1"
-                              type="number"
-                              step="0.001"
-                              :placeholder="rIdx === ringRows.length - 1 ? '3.000' : '1.500'"
-                              class="w-18 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                              :class="formErrors[`ring_h1_${rIdx}`] ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : 'border-slate-300'"
-                            />
-                          </td>
+                            <!-- Altura a1 -->
+                            <td class="px-2 py-1.5 border-r border-slate-200">
+                              <input
+                                v-model.number="ring.a1"
+                                type="number"
+                                step="0.01"
+                                :placeholder="rIdx === ringRows.length - 1 ? '2.80' : '3.40'"
+                                class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              />
+                            </td>
+                          </template>
 
-                          <!-- Altura a1 -->
-                          <td class="px-2 py-1.5 border-r border-slate-200">
-                            <input
-                              v-model.number="ring.a1"
-                              type="number"
-                              step="0.01"
-                              :placeholder="rIdx === ringRows.length - 1 ? '2.80' : '3.40'"
-                              class="w-16 px-1.5 py-1 text-center font-mono font-medium text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                            />
-                          </td>
-
-                          <!-- Columnas personalizadas adicionales por fila -->
+                          <!-- Columnas personalizadas por fila -->
                           <td
                             v-for="extParam in extraRingGroupParams"
                             :key="`td-ext-${ring.id}-${extParam.id}`"
@@ -2515,7 +2654,7 @@ onUnmounted(() => {
                             />
                           </td>
 
-                          <!-- Identificador aparte por fila (ej. poner X anillo en Cónico o libre) -->
+                          <!-- Identificador aparte por fila -->
                           <td v-if="activeTablaConfig.habilitar_identificador !== false" class="px-2 py-1.5 whitespace-nowrap">
                             <div class="flex items-center justify-center gap-1">
                               <button
@@ -2525,19 +2664,18 @@ onUnmounted(() => {
                                 :class="ring.tiene_identificador
                                   ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
                                   : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'"
-                                :title="`Marcar o desmarcar ${activeTablaConfig.etiqueta_identificador || 'Cónico'} en esta fila`"
+                                :title="`Marcar o desmarcar ${activeTablaConfig.etiqueta_identificador || 'Especial'} en esta fila`"
                               >
                                 <Check v-if="ring.tiene_identificador" class="w-3 h-3 text-amber-700" />
-                                <span>{{ activeTablaConfig.etiqueta_identificador || 'Cónico' }}</span>
+                                <span>{{ activeTablaConfig.etiqueta_identificador || (isRingsGroup ? 'Cónico' : 'Especial') }}</span>
                               </button>
                               <input
                                 v-if="ring.tiene_identificador"
                                 v-model="ring.identificador_texto"
                                 @input="onRowIdentificadorTextInput(ring)"
                                 type="text"
-                                :placeholder="activeTablaConfig.etiqueta_identificador || 'Cónico'"
+                                :placeholder="activeTablaConfig.etiqueta_identificador || 'Especial'"
                                 class="w-20 px-1.5 py-1 text-[10px] font-sans font-bold bg-amber-50/60 border border-amber-300 text-amber-950 rounded-lg focus:bg-white focus:outline-none focus:border-amber-500"
-                                title="Puedes personalizar el texto del identificador para esta fila"
                               />
                             </div>
                           </td>
@@ -2554,10 +2692,10 @@ onUnmounted(() => {
                       class="px-3 py-1 rounded-lg text-[11px] font-extrabold text-[#004B97] bg-white border border-cyan-300 hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs"
                     >
                       <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>+ Agregar {{ activeTablaConfig.titulo_primera_columna || 'Anillo' }}</span>
+                      <span>+ Agregar {{ activeTablaConfig.titulo_primera_columna || 'Fila' }}</span>
                     </button>
 
-                    <div class="flex items-center gap-3">
+                    <div v-if="isRingsGroup" class="flex items-center gap-3">
                       <div class="flex items-center gap-1.5">
                         <span class="text-[10px] font-bold text-slate-600">Cilindros:</span>
                         <input
@@ -2572,56 +2710,50 @@ onUnmounted(() => {
 
                 </div>
 
-                <!-- A2. MATRIZ MULTI-FILA CON MARCA Y SUB-FILAS (EJ. COJINETES: MARCA, BIELA, BANCADA) -->
+                <!-- A2. TABLA DE FILAS FIJAS (PLANTILLA GENERAL PARA CUALQUIER GRUPO) -->
                 <div v-else-if="isSubfilasGroup" class="space-y-3.5">
-                  <!-- Fila 1: Cabecera con Marca Centrada y Aplicación del Motor (Banner Rosa / Corporativo) -->
-                  <div class="p-3 bg-rose-50/70 border border-rose-200/90 rounded-2xl space-y-2">
-                    <div class="flex items-center justify-between border-b border-rose-200/70 pb-1.5">
-                      <div class="flex items-center gap-2">
-                        <span class="px-1.5 py-0.5 rounded bg-rose-200 text-rose-800 text-[10px] font-black uppercase font-mono">Fila 1</span>
-                        <span class="text-xs font-black uppercase text-rose-950 tracking-wider">
-                          Marca Centrada y Aplicación (Cabecera de Registro)
-                        </span>
-                      </div>
-                      <span class="text-[10px] text-rose-700 font-medium">Estilo Federal Mogul</span>
+                  <!-- Encabezado opcional del juego -->
+                  <div v-if="activeTablaConfig.tiene_cabecera_marca" class="p-3 bg-cyan-50/60 border border-cyan-200 rounded-2xl space-y-2">
+                    <div class="flex items-center justify-between border-b border-cyan-200/70 pb-1.5">
+                      <span class="text-xs font-black uppercase text-[#004B97] tracking-wider">
+                        Barra de Título / Aplicación del Juego
+                      </span>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
-                      <!-- Marca Centrada -->
                       <div>
-                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-rose-900 mb-1 text-center">
-                          Marca (Centrada) *
+                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-slate-700 mb-1">
+                          Marca / Título Corto
                         </label>
                         <input
                           v-model="subfilasMarcaBanner"
                           type="text"
-                          placeholder="Ej. FORD, GM, TOYOTA, NISSAN..."
-                          class="w-full px-3 py-1.5 text-center text-xs font-black tracking-wider uppercase bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-400 text-rose-950 shadow-2xs"
+                          placeholder="Ej. TOYOTA, NISSAN, UNIVERSAL..."
+                          class="w-full px-3 py-1.5 text-center text-xs font-black tracking-wider uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-900 shadow-2xs"
                         />
                       </div>
 
-                      <!-- Denominación de Venta / Aplicación de Motor -->
                       <div>
-                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-rose-900 mb-1">
-                          Aplicación / Modelos / Serie *
+                        <label class="block text-[10px] font-extrabold uppercase tracking-wide text-slate-700 mb-1">
+                          Aplicación / Modelos
                         </label>
                         <input
                           v-model="subfilasAplicacionBanner"
                           type="text"
-                          placeholder="Ej. Fiesta, Escort, Courier, Focus D1.8 - 1.8 TD"
-                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-400 text-slate-800 shadow-2xs"
+                          placeholder="Ej. Hilux 2.4 / 2.8, Motor 2L / 3L..."
+                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-800 shadow-2xs"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <!-- Filas 2 y 3: Biela, Bancada y Sub-filas de Maquinado -->
+                  <!-- Tabla de Filas Fijas -->
                   <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
                     <div class="p-2.5 bg-slate-100/90 border-b border-slate-200 flex items-center justify-between">
                       <div class="flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
                         <span class="text-xs font-black uppercase tracking-wider text-slate-800">
-                          Sub-filas de Maquinado (Fila 2: Biela, Fila 3: Bancada...)
+                          Filas de Medidas de la Tabla
                         </span>
                       </div>
                       <button
@@ -2630,7 +2762,7 @@ onUnmounted(() => {
                         class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2 py-0.5 rounded-lg border border-cyan-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
                       >
                         <Plus class="w-3 h-3 text-[#04C4D9]" />
-                        <span>+ Agregar Sub-fila</span>
+                        <span>+ Agregar Fila</span>
                       </button>
                     </div>
 
@@ -2640,7 +2772,7 @@ onUnmounted(() => {
                         <thead v-if="subfilasActiveHeaders.hasSubcolumns">
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
                             <th rowspan="2" class="px-3 py-2 text-left border-r border-slate-200 w-28 whitespace-nowrap">
-                              {{ activeTablaConfig.titulo_primera_columna || 'Cojinete' }}
+                              {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
                             </th>
                             <th rowspan="2" class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
                               Código
@@ -2679,7 +2811,7 @@ onUnmounted(() => {
                         <thead v-else>
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
                             <th class="px-3 py-2 text-left border-r border-slate-200 w-28 whitespace-nowrap">
-                              {{ activeTablaConfig.titulo_primera_columna || 'Cojinete' }}
+                              {{ activeTablaConfig.titulo_primera_columna || 'Posición' }}
                             </th>
                             <th class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
                               Código
@@ -2701,7 +2833,6 @@ onUnmounted(() => {
                             :key="sf.id"
                             class="hover:bg-slate-50/70 transition"
                           >
-                            <!-- Col 1: Nombre de la Sub-fila (Biela, Bancada, etc.) -->
                             <td class="px-2.5 py-1.5 border-r border-slate-200 text-left bg-slate-50/50">
                               <div class="flex items-center gap-1.5">
                                 <span
@@ -2711,23 +2842,21 @@ onUnmounted(() => {
                                 <input
                                   v-model="sf.nombre"
                                   type="text"
-                                  :placeholder="sfIdx === 0 ? 'Biela' : (sfIdx === 1 ? 'Bancada' : 'Sub-fila')"
+                                  :placeholder="`Fila ${sfIdx + 1}`"
                                   class="w-full px-1.5 py-0.5 text-xs font-black text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-[#04C4D9] rounded focus:outline-none transition"
                                 />
                               </div>
                             </td>
 
-                            <!-- Col 2: Código de la Sub-fila (ej. 4-4160 RA /CP, 7367 M) -->
                             <td class="px-2 py-1.5 border-r border-slate-200">
                               <input
                                 v-model="sf.codigo"
                                 type="text"
-                                :placeholder="sfIdx === 0 ? 'Ej. 4-4160 RA' : 'Ej. 7367 M'"
+                                placeholder="Código..."
                                 class="w-28 px-1.5 py-1 text-center font-mono font-black text-xs uppercase bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                               />
                             </td>
 
-                            <!-- Columnas de Parámetros Dinámicos (ej. Diámetros Mín/Máx por etapa STD, 1er, 2da...) -->
                             <td
                               v-for="param in (activeGroup?.parametros || [])"
                               :key="`td-sf-${sf.id}-${param.id}`"
@@ -2738,7 +2867,7 @@ onUnmounted(() => {
                                 v-model.number="sf.medidas[param.clave]"
                                 type="number"
                                 step="0.001"
-                                placeholder="0.000"
+                                placeholder="0.00"
                                 class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                               />
                               <input
@@ -2750,7 +2879,6 @@ onUnmounted(() => {
                               />
                             </td>
 
-                            <!-- Quitar fila -->
                             <td class="px-2 py-1.5 text-center">
                               <button
                                 v-if="subfilasRows.length > 1"
@@ -3049,41 +3177,41 @@ onUnmounted(() => {
             <!-- ================================================================= -->
             <div class="lg:col-span-5 space-y-4">
               
-              <!-- 1. IDENTIDAD DE LA FAMILIA -->
+              <!-- 1. DATOS DE LA FAMILIA -->
               <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
                 <div class="flex items-center justify-between border-b pb-2 border-slate-100">
                   <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                     <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-                    <span>Identidad de la Familia</span>
+                    <span>1. Formato y Nombre de la Familia</span>
                   </h3>
                 </div>
 
                 <div class="space-y-3">
-                  <!-- Selector de Tipo de Familia: Normal vs En Tabla (como Anillos) -->
+                  <!-- Selector de Tipo de Familia: Lista Simple vs Tabla / Matriz -->
                   <div>
                     <label class="block text-xs font-bold text-slate-800 mb-1.5">
-                      Tipo de Familia / Formato en Catálogo <span class="text-rose-500">*</span>
+                      ¿Cómo se verán las medidas en el catálogo? <span class="text-rose-500">*</span>
                     </label>
                     <div class="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         @click="setGroupTipoVista('normal')"
-                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2"
+                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2 cursor-pointer"
                         :class="groupTipoVista === 'normal'
                           ? 'bg-cyan-50/90 border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
                           : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'"
                       >
                         <Columns class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'normal' ? 'text-[#038391]' : 'text-slate-400'" />
                         <div>
-                          <div class="text-xs font-black">Normal</div>
-                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Etiquetas horizontales (Válvulas, Camisas, Sellos...)</div>
+                          <div class="text-xs font-black">Lista Simple</div>
+                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Una línea por repuesto con sus medidas directas</div>
                         </div>
                       </button>
 
                       <button
                         type="button"
                         @click="setGroupTipoVista('tabla')"
-                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2"
+                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2 cursor-pointer"
                         :class="groupTipoVista === 'tabla'
                           ? 'bg-cyan-50/90 border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
                           : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'"
@@ -3091,7 +3219,7 @@ onUnmounted(() => {
                         <Table class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'tabla' ? 'text-[#038391]' : 'text-slate-400'" />
                         <div>
                           <div class="text-xs font-black">En Tabla / Matriz</div>
-                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Vista tabular estructurada (columnas y sub-columnas de cotas)</div>
+                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Cuadrícula con varias filas y columnas de medidas</div>
                         </div>
                       </button>
                     </div>
@@ -3100,12 +3228,13 @@ onUnmounted(() => {
                   <!-- Nombre de Grupo (Obligatorio) -->
                   <div>
                     <label class="block text-xs font-bold text-slate-800 mb-1">
-                      Nombre de Grupo / Familia <span class="text-rose-500">*</span>
+                      Nombre de la Familia <span class="text-rose-500">*</span>
                     </label>
                     <input
                       v-model="groupNombre"
+                      @input="onGroupNombreInput"
                       type="text"
-                      placeholder="Nombre de la familia"
+                      placeholder="Ej. Anillos de motor, Cojinetes, Guías, Camisas..."
                       class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
                       :class="groupErrors.groupNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -3114,23 +3243,10 @@ onUnmounted(() => {
                     </span>
                   </div>
 
-                  <!-- Categoría Técnica (Obligatorio) -->
-                  <div>
-                    <label class="block text-xs font-bold text-slate-800 mb-1">
-                      Categoría Técnica <span class="text-rose-500">*</span>
-                    </label>
-                    <input
-                      v-model="groupCategoria"
-                      type="text"
-                      placeholder="Categoría técnica"
-                      class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
-                    />
-                  </div>
-
-                  <!-- Subsistema Mecánico (Creatable Combobox / Opcional) -->
+                  <!-- Parte del Motor (Opcional) -->
                   <div class="relative">
                     <label class="block text-xs font-bold text-slate-800 mb-1">
-                      Subsistema Mecánico
+                      Parte del Motor <span class="text-[10px] font-normal text-slate-400">(Opcional)</span>
                     </label>
 
                     <div class="relative flex items-center">
@@ -3140,7 +3256,7 @@ onUnmounted(() => {
                         @input="isSubsistemaOpen = true"
                         @keydown.enter.prevent="isCustomSubsistemaCandidate ? handleCreateAndSelectSubsistema() : (filteredSubsistemas[0] ? handleSelectSubsistema(filteredSubsistemas[0]) : null)"
                         type="text"
-                        placeholder="Subsistema (Block, Culata...)"
+                        placeholder="Ej. Block, Culata, Cigüeñal, General..."
                         class="w-full pl-3 pr-16 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
                       />
                       <div class="absolute right-2 flex items-center gap-1">
@@ -3149,7 +3265,7 @@ onUnmounted(() => {
                           type="button"
                           @click="handleClearSubsistema"
                           class="p-1 text-slate-400 hover:text-slate-600 rounded"
-                          title="Limpiar subsistema"
+                          title="Limpiar"
                         >
                           <X class="w-3.5 h-3.5" />
                         </button>
@@ -3172,17 +3288,15 @@ onUnmounted(() => {
                       v-if="isSubsistemaOpen"
                       class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto divide-y divide-slate-100"
                     >
-                      <!-- Opción Crear Nuevo Inline si no coincide -->
                       <div
                         v-if="isCustomSubsistemaCandidate"
                         @click="handleCreateAndSelectSubsistema"
                         class="p-2.5 bg-cyan-50/80 hover:bg-cyan-100 cursor-pointer text-xs font-bold text-[#038391] flex items-center gap-1.5 transition"
                       >
                         <Plus class="w-3.5 h-3.5" />
-                        <span>+ Crear nuevo subsistema: <strong>"{{ subsistemaSearch.trim() }}"</strong></span>
+                        <span>+ Usar: <strong>"{{ subsistemaSearch.trim() }}"</strong></span>
                       </div>
 
-                      <!-- Lista de existentes -->
                       <div
                         v-for="sub in filteredSubsistemas"
                         :key="sub"
@@ -3195,29 +3309,12 @@ onUnmounted(() => {
                         <span>{{ sub }}</span>
                         <Check v-if="groupSubsistema === sub" class="w-3.5 h-3.5 text-[#04C4D9]" />
                       </div>
-
-                      <div v-if="filteredSubsistemas.length === 0 && !isCustomSubsistemaCandidate" class="p-3 text-center text-xs text-slate-400">
-                        Presiona Enter para crear
-                      </div>
                     </div>
-                  </div>
-
-                  <!-- Descripción (Textarea compacto) -->
-                  <div>
-                    <label class="block text-xs font-bold text-slate-800 mb-1">
-                      Descripción Técnica
-                    </label>
-                    <textarea
-                      v-model="groupDescripcion"
-                      rows="2"
-                      placeholder="Descripción técnica..."
-                      class="w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition resize-none"
-                    ></textarea>
                   </div>
                 </div>
               </div>
 
-              <!-- 1.B CONFIGURACIÓN DE PRIMERA COLUMNA (SOLO PARA FAMILIAS EN TABLA) -->
+              <!-- 2. CONFIGURACIÓN DE FILAS (SOLO PARA TABLA / MATRIZ) -->
               <div
                 v-if="groupTipoVista === 'tabla'"
                 class="bg-cyan-50/50 border border-cyan-200 rounded-2xl p-4 shadow-2xs space-y-3.5"
@@ -3225,132 +3322,122 @@ onUnmounted(() => {
                 <div class="flex items-center justify-between border-b pb-2 border-cyan-200/80">
                   <h3 class="text-xs font-black uppercase tracking-wider text-[#004B97] flex items-center gap-1.5">
                     <Table class="w-4 h-4 text-[#04C4D9]" />
-                    <span>Primera Columna de la Tabla (Filas)</span>
+                    <span>2. Filas de la Tabla (Primera Columna)</span>
                   </h3>
-                  <span class="text-[10px] font-bold text-[#038391] bg-white px-2 py-0.5 rounded-full border border-cyan-200">
-                    Columna #1
-                  </span>
                 </div>
 
                 <!-- Título de la Primera Columna -->
                 <div>
                   <label class="block text-xs font-bold text-slate-800 mb-1">
-                    Título de la Primera Columna <span class="text-rose-500">*</span>
+                    Nombre de la primera columna <span class="text-rose-500">*</span>
                   </label>
                   <input
                     v-model="groupTablaConfig.titulo_primera_columna"
                     type="text"
-                    placeholder="Ej. Anillo, Posición, Ranura, Etapa..."
+                    placeholder="Ej. Posición, Anillo, Pieza, Medida..."
                     class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
 
-                <!-- Modo de las Filas: Cojinetes (Matriz Marca + Sub-filas) vs Incremental vs Libre -->
+                <!-- ¿Cómo se nombran las filas? (3 opciones claras y generales) -->
                 <div>
                   <label class="block text-xs font-bold text-slate-800 mb-1.5">
-                    Comportamiento de las Filas
+                    ¿Cómo se crean las filas de cada repuesto?
                   </label>
                   <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
-                      @click="selectModoFilas('cojinetes')"
-                      class="p-2 rounded-xl border text-left transition cursor-pointer"
-                      :class="groupTablaConfig.modo_filas === 'cojinetes'
-                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
-                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
-                    >
-                      <div class="text-xs font-black flex items-center gap-1 text-[#004B97]">
-                        <Layers class="w-3.5 h-3.5 text-[#04C4D9]" />
-                        <span>Matriz Cojinetes</span>
-                      </div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">
-                        Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
                       @click="selectModoFilas('incremental')"
-                      class="p-2 rounded-xl border text-left transition cursor-pointer"
+                      class="p-2.5 rounded-xl border text-left transition cursor-pointer"
                       :class="groupTablaConfig.modo_filas === 'incremental'
                         ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
                         : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
                     >
-                      <div class="text-xs font-black">Incremental (1, 2, 3...)</div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Numera automáticamente cada fila al agregar (Anillos)</div>
+                      <div class="text-xs font-black text-[#004B97]">Numeradas (1, 2, 3...)</div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Se numeran solas al agregar filas</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      @click="selectModoFilas('cojinetes')"
+                      class="p-2.5 rounded-xl border text-left transition cursor-pointer"
+                      :class="(groupTablaConfig.modo_filas === 'cojinetes' || groupTablaConfig.modo_filas === 'subfilas')
+                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
+                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
+                    >
+                      <div class="text-xs font-black text-[#004B97]">Filas Fijas (Plantilla)</div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Defines las filas fijas que tendrá cada registro / set</div>
                     </button>
 
                     <button
                       type="button"
                       @click="selectModoFilas('libre')"
-                      class="p-2 rounded-xl border text-left transition cursor-pointer"
+                      class="p-2.5 rounded-xl border text-left transition cursor-pointer"
                       :class="groupTablaConfig.modo_filas === 'libre'
                         ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
                         : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
                     >
-                      <div class="text-xs font-black">Libre (Texto abierto)</div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Permite escribir cualquier nombre por fila</div>
+                      <div class="text-xs font-black text-[#004B97]">Texto Libre</div>
+                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Escribes el nombre al registrar la pieza</div>
                     </button>
                   </div>
 
-                  <!-- Panel de configuración de Sub-filas para Cojinetes -->
-                  <div v-if="groupTablaConfig.modo_filas === 'cojinetes'" class="mt-2.5 space-y-2.5 bg-white/90 p-3 rounded-xl border border-cyan-200">
+                  <!-- Opciones para Filas Fijas (Plantilla general para cualquier grupo) -->
+                  <div v-if="groupTablaConfig.modo_filas === 'cojinetes' || groupTablaConfig.modo_filas === 'subfilas'" class="mt-2.5 space-y-2.5 bg-white/90 p-3 rounded-xl border border-cyan-200">
                     <div class="flex items-center justify-between">
-                      <div class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                        <span>Estructura de 3 Filas por Registro (Federal Mogul)</span>
+                      <div class="text-xs font-extrabold text-slate-800">
+                        Nombres de las filas fijas:
                       </div>
                       <button
                         type="button"
                         @click="addConfigSubfila"
-                        class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200 transition flex items-center gap-1 cursor-pointer"
+                        class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] bg-cyan-50 px-2 py-1 rounded-lg border border-cyan-200 transition flex items-center gap-1 cursor-pointer"
                       >
                         <Plus class="w-3 h-3 text-[#04C4D9]" />
-                        <span>+ Agregar Sub-fila</span>
+                        <span>+ Agregar Fila</span>
                       </button>
                     </div>
 
                     <div class="space-y-1.5 text-xs">
-                      <!-- Fila 1: Marca Centrada -->
-                      <div class="p-2 rounded-lg bg-rose-50/70 border border-rose-200 text-rose-950 flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                          <span class="px-1.5 py-0.5 rounded bg-rose-200/80 text-rose-800 text-[10px] font-black uppercase font-mono">Fila 1</span>
-                          <span class="font-bold">Marca del Motor (Centrada) + Aplicación vehicular</span>
-                        </div>
-                        <span class="text-[10px] font-semibold text-rose-700 bg-white/80 px-2 py-0.5 rounded">Fija en cabecera de registro</span>
-                      </div>
-
-                      <!-- Sub-filas dinámicas (Fila 2 Biela, Fila 3 Bancada, etc.) -->
                       <div
-                        v-for="(_sfName, sfIdx) in (groupTablaConfig.subfilas || ['Biela', 'Bancada'])"
+                        v-for="(_sfName, sfIdx) in (groupTablaConfig.subfilas || ['Fila 1', 'Fila 2'])"
                         :key="sfIdx"
                         class="p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
                       >
                         <div class="flex items-center gap-2 flex-1">
                           <span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-black uppercase font-mono">
-                            Fila {{ sfIdx + 2 }}
+                            #{{ sfIdx + 1 }}
                           </span>
                           <input
-                            v-model="(groupTablaConfig.subfilas || ['Biela', 'Bancada'])[sfIdx]"
+                            v-model="(groupTablaConfig.subfilas || ['Fila 1', 'Fila 2'])[sfIdx]"
                             type="text"
-                            class="px-2 py-0.5 text-xs font-bold bg-white border border-slate-300 rounded focus:outline-none focus:border-[#04C4D9] flex-1 max-w-[200px]"
+                            :placeholder="`Nombre de fila ${sfIdx + 1}`"
+                            class="px-2.5 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] flex-1"
                           />
-                          <span class="text-[10px] text-slate-500">Tendrá Código + todas las columnas de maquinado</span>
                         </div>
                         <button
                           v-if="(groupTablaConfig.subfilas || []).length > 1"
                           type="button"
                           @click="removeConfigSubfila(sfIdx)"
                           class="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
-                          title="Eliminar esta sub-fila"
+                          title="Quitar fila"
                         >
                           <Trash2 class="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
+
+                    <label class="flex items-center gap-2 pt-1 cursor-pointer select-none text-xs font-bold text-slate-700">
+                      <input
+                        type="checkbox"
+                        v-model="groupTablaConfig.tiene_cabecera_marca"
+                        class="rounded text-[#04C4D9] focus:ring-[#04C4D9]"
+                      />
+                      <span>Mostrar barra de título (Marca / Aplicación) arriba de cada registro</span>
+                    </label>
                   </div>
 
-                  <!-- Opciones extra para modo incremental -->
+                  <!-- Opciones para Numeradas (1, 2, 3...) -->
                   <div v-if="groupTablaConfig.modo_filas === 'incremental'" class="mt-2.5 space-y-2 bg-white/80 p-2.5 rounded-xl border border-cyan-200/70">
                     <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
                       <input
@@ -3358,31 +3445,31 @@ onUnmounted(() => {
                         v-model="groupTablaConfig.usar_prefijo_titulo"
                         class="rounded text-[#04C4D9] focus:ring-[#04C4D9]"
                       />
-                      <span>Mostrar título junto al número (ej. "{{ groupTablaConfig.titulo_primera_columna || 'Anillo' }} 1, 2..." en vez de solo "1, 2, 3")</span>
+                      <span>Repetir "{{ groupTablaConfig.titulo_primera_columna || 'Posición' }}" antes del número (ej. {{ groupTablaConfig.titulo_primera_columna || 'Posición' }} 1, 2...)</span>
                     </label>
                     <div>
                       <label class="block text-[10px] font-bold text-slate-600 mb-1">
-                        Nombre especial para última fila (opcional, dejar vacío para seguir numerando 1, 2, 3, 4):
+                        Nombre especial para la última fila (opcional):
                       </label>
                       <input
                         v-model="groupTablaConfig.etiqueta_ultima_fila"
                         type="text"
-                        placeholder="Ej. Anillo de aceite (o vacío para continuar 1, 2, 3, 4)"
+                        placeholder="Dejar vacío para numerar normal (1, 2, 3...)"
                         class="w-full px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                       />
                     </div>
                   </div>
                 </div>
 
-                <!-- Identificador aparte por fila (ej. poner X anillo en Cónico) -->
-                <div class="bg-white/90 p-3 rounded-xl border border-cyan-200/80 space-y-2.5">
+                <!-- Etiqueta extra opcional por fila -->
+                <div v-if="groupTablaConfig.modo_filas !== 'cojinetes' && groupTablaConfig.modo_filas !== 'subfilas'" class="bg-white/90 p-3 rounded-xl border border-cyan-200/80 space-y-2">
                   <div class="flex items-center justify-between gap-2">
                     <div>
                       <div class="text-xs font-black text-slate-800">
-                        Identificador aparte por fila (ej. Cónico)
+                        Botón de etiqueta extra por fila (opcional)
                       </div>
                       <div class="text-[10px] text-slate-500">
-                        Permite marcar cualquier fila X con una etiqueta especial (ej. poner X anillo en Cónico)
+                        Permite resaltar filas específicas con una nota (ej. Cónico, STD, Especial)
                       </div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer select-none shrink-0">
@@ -3396,67 +3483,36 @@ onUnmounted(() => {
                   </div>
 
                   <div v-if="groupTablaConfig.habilitar_identificador" class="pt-1">
-                    <label class="block text-[10px] font-bold text-slate-700 mb-1">
-                      Nombre del Identificador por defecto
-                    </label>
                     <input
                       v-model="groupTablaConfig.etiqueta_identificador"
                       type="text"
-                      placeholder="Ej. Cónico, Keystone, Espiral..."
+                      placeholder="Texto de la etiqueta (ej. Cónico, Especial...)"
                       class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                     />
                   </div>
                 </div>
               </div>
 
-              <!-- 2. GESTOR DE PARÁMETROS -->
+              <!-- 3. COLUMNAS / MEDIDAS DE LA FAMILIA -->
               <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
                 <div class="flex items-center justify-between border-b pb-2.5 border-slate-100">
-                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-                    <span>{{ groupTipoVista === 'tabla' ? 'Columnas / Parámetros de la Tabla' : 'Gestor de Parámetros' }}</span>
-                  </h3>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      v-if="groupTipoVista === 'tabla'"
-                      type="button"
-                      @click="cargarColumnasFederalMogul"
-                      class="px-2.5 py-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-[#004B97] rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
-                      title="Carga la plantilla de columnas de rectificación de cigüeñales (STD, 1er, 2da, 3er, 4ta)"
-                    >
-                      <Sparkles class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>+ Plantilla Cojinetes</span>
-                    </button>
-                    <button
-                      type="button"
-                      @click="addParamRow"
-                      class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
-                    >
-                      <Plus class="w-3.5 h-3.5" />
-                      <span>+ Agregar Campo</span>
-                    </button>
+                  <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
+                      <span>{{ groupTipoVista === 'tabla' ? '3. Columnas de Medidas' : '2. Medidas de la Familia' }}</span>
+                    </h3>
+                    <p class="text-[10px] text-slate-500 mt-0.5">
+                      Agrega las medidas o datos que quieres ver y buscar en esta familia.
+                    </p>
                   </div>
-                </div>
-
-                <!-- Opción Global: Ocultar en filtros los que no se muestren en la tabla -->
-                <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl transition-all">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center text-[#038391] shrink-0">
-                      <Filter class="w-3.5 h-3.5" />
-                    </div>
-                    <div class="text-xs font-black text-slate-800">
-                      Ocultar en filtros los que no se muestren en la tabla
-                    </div>
-                  </div>
-                  <label class="relative inline-flex items-center cursor-pointer select-none shrink-0 ml-3">
-                    <input 
-                      type="checkbox" 
-                      v-model="soloFiltrosEnTabla" 
-                      @change="handleSoloFiltrosChange"
-                      class="sr-only peer" 
-                    />
-                    <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#04C4D9]"></div>
-                  </label>
+                  <button
+                    type="button"
+                    @click="addParamRow"
+                    class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
+                  >
+                    <Plus class="w-3.5 h-3.5" />
+                    <span>+ Agregar Columna</span>
+                  </button>
                 </div>
 
                 <!-- Lista de Parámetros Dinámicos -->
@@ -3464,15 +3520,15 @@ onUnmounted(() => {
                   <!-- Empty State cuando no hay parámetros definidos -->
                   <div
                     v-if="dynamicParams.length === 0"
-                    class="p-7 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-2.5"
+                    class="p-6 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-2"
                   >
                     <div class="w-9 h-9 rounded-xl bg-cyan-50 border border-cyan-200 text-[#038391] flex items-center justify-center mx-auto shadow-2xs">
                       <SlidersHorizontal class="w-4 h-4" />
                     </div>
                     <div>
-                      <p class="text-xs font-black text-slate-800">Familia técnica vacía</p>
+                      <p class="text-xs font-black text-slate-800">Aún no hay columnas de medidas</p>
                       <p class="text-[11px] text-slate-500 mt-0.5 max-w-xs mx-auto">
-                        Comienza agregando los campos o columnas de medidas técnicas que componen esta familia.
+                        Haz clic abajo para agregar la primera medida (ej. Diámetro, Grosor, Altura, Largo...).
                       </p>
                     </div>
                     <button
@@ -3481,26 +3537,25 @@ onUnmounted(() => {
                       class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold transition shadow-2xs cursor-pointer active:scale-95"
                     >
                       <Plus class="w-3.5 h-3.5" />
-                      <span>+ Agregar Primer Campo</span>
+                      <span>+ Agregar Primera Medida</span>
                     </button>
                   </div>
 
                   <div
                     v-for="(param, idx) in dynamicParams"
                     :key="param.id"
-                    class="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3.5 space-y-3 relative transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
+                    class="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3 space-y-2.5 relative transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
                   >
-                    <!-- Barra superior del parámetro -->
+                    <!-- Barra superior de la columna -->
                     <div class="flex items-center justify-between gap-2">
-                      <div class="flex items-center gap-2">
-                        <!-- Botones de Reordenar Subir / Bajar -->
-                        <div class="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <div class="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden shrink-0">
                           <button
                             type="button"
                             @click="moveParamUp(idx)"
                             :disabled="idx === 0"
-                            class="p-1 hover:bg-slate-100 disabled:opacity-25 disabled:hover:bg-transparent text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
-                            title="Subir parámetro en el orden"
+                            class="p-1 hover:bg-slate-100 disabled:opacity-25 text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
+                            title="Mover arriba"
                           >
                             <ChevronUp class="w-3.5 h-3.5" />
                           </button>
@@ -3509,199 +3564,144 @@ onUnmounted(() => {
                             type="button"
                             @click="moveParamDown(idx)"
                             :disabled="idx === dynamicParams.length - 1"
-                            class="p-1 hover:bg-slate-100 disabled:opacity-25 disabled:hover:bg-transparent text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
-                            title="Bajar parámetro en el orden"
+                            class="p-1 hover:bg-slate-100 disabled:opacity-25 text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
+                            title="Mover abajo"
                           >
                             <ChevronDown class="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center">
+                        <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
                           {{ idx + 1 }}
                         </span>
                         <span class="text-xs font-black text-slate-900 truncate">
-                          {{ param.etiqueta || `Campo ${idx + 1}` }}
+                          {{ param.etiqueta || `Columna ${idx + 1}` }}
                         </span>
                       </div>
 
-                      <div class="flex items-center gap-1.5">
-                        <!-- Switch En Tabla -->
+                      <div class="flex items-center gap-1.5 shrink-0">
+                        <!-- Botón Visible en Tabla -->
                         <button
                           type="button"
                           @click="toggleParamRequerido(param)"
-                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[11px] font-bold"
+                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[10px] font-bold cursor-pointer"
                           :class="param.requerido 
                             ? 'bg-cyan-50 border-cyan-300 text-[#038391] shadow-2xs' 
                             : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'"
-                          :title="param.requerido ? 'Visible como columna fija en la tabla' : 'No se proyecta como columna fija en la tabla'"
+                          title="Mostrar u ocultar esta columna en la tabla"
                         >
                           <Columns class="w-3 h-3" />
                           <span>En Tabla</span>
                         </button>
 
-                        <!-- Switch En Filtro -->
+                        <!-- Botón Buscador -->
                         <button
                           type="button"
                           @click="toggleParamFiltrable(param)"
-                          :disabled="soloFiltrosEnTabla && !param.requerido"
-                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[11px] font-bold"
-                          :class="[
-                            isParamFilterVisible(param)
-                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs'
-                              : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300',
-                            (soloFiltrosEnTabla && !param.requerido) ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-                          ]"
-                          :title="(soloFiltrosEnTabla && !param.requerido) ? 'Excluido de filtros porque no se muestra en la tabla' : (isParamFilterVisible(param) ? 'Visible en la barra de filtros de portada' : 'Oculto de los filtros de portada')"
+                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[10px] font-bold cursor-pointer"
+                          :class="isParamFilterVisible(param)
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs'
+                            : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'"
+                          title="Permitir buscar repuestos por esta medida"
                         >
                           <Filter class="w-3 h-3" />
-                          <span>En Filtro</span>
+                          <span>Buscador</span>
                         </button>
 
                         <button
                           type="button"
                           @click="removeParamRow(idx)"
-                          class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="Eliminar parámetro"
+                          class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          title="Borrar esta medida"
                         >
                           <Trash2 class="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    <!-- Fila de Campos del Parámetro (General: Nombre/Etiqueta, Abreviatura(Tabla), Tipo de Entrada, Unidad sin opciones, Clave Técnica, Descripción) -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <!-- Nombre / Etiqueta y Abreviatura en Tabla -->
-                      <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre / Etiqueta *</label>
+                    <!-- Campos simples y directos -->
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                      <!-- Nombre de la medida -->
+                      <div class="sm:col-span-6">
+                        <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre de la columna *</label>
                         <input
                           v-model="param.etiqueta"
-                          @input="handleParamLabelChange(param)"
+                          @input="param.etiqueta_corta = param.etiqueta; handleParamLabelChange(param)"
                           type="text"
-                          :placeholder="`Campo ${idx + 1}`"
-                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-
-                      <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Abreviatura (Tabla)</label>
-                        <input
-                          v-model="param.etiqueta_corta"
-                          type="text"
-                          :placeholder="param.etiqueta || `Columna ${idx + 1}`"
-                          class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-
-                      <!-- Tipo de Entrada -->
-                      <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Tipo de Entrada</label>
-                        <select
-                          v-model="param.tipo_dato"
+                          placeholder="Ej. Diámetro, Grosor, Altura..."
                           class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        >
-                          <option value="numero">Número Decimal (mm)</option>
-                          <option value="seleccion">Menú Desplegable</option>
-                          <option value="booleano">Booleano (Sí/No)</option>
-                          <option value="texto">Texto Libre</option>
-                        </select>
+                        />
                       </div>
 
-                      <!-- Unidad de Medida (Texto libre directo, sin opciones desplegables) -->
-                      <div>
-                        <label class="block text-[11px] font-bold text-slate-700 mb-1">Unidad</label>
+                      <!-- Unidad -->
+                      <div class="sm:col-span-3">
+                        <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Unidad</label>
                         <input
                           v-model="param.unidad"
                           @input="handleParamUnitChange(param)"
                           type="text"
-                          placeholder="mm"
+                          placeholder="mm, pulg..."
                           class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                         />
                       </div>
 
-                      <!-- Clave Técnica Inmutable (ReadOnly + Candado) -->
-                      <div class="sm:col-span-2">
-                        <div class="flex items-center justify-between mb-1">
-                          <label class="block text-[11px] font-bold text-slate-700">Clave del Parámetro</label>
-                          <span class="inline-flex items-center gap-1 text-[9px] font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.2 rounded border border-slate-200">
-                            <Lock class="w-2.5 h-2.5 text-slate-600" />
-                            Inmutable
-                          </span>
-                        </div>
-                        <div class="relative flex items-center">
-                          <input
-                            :value="param.clave"
-                            readonly
-                            tabindex="-1"
-                            class="w-full pl-7 pr-3 py-1.5 text-xs font-mono font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-all focus:outline-none shadow-inner"
-                            title="Identificador interno autogenerado del parámetro"
-                          />
-                          <Lock class="w-3.5 h-3.5 text-slate-600 absolute left-2 pointer-events-none" />
-                        </div>
+                      <!-- Tipo de valor -->
+                      <div class="sm:col-span-3">
+                        <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Tipo de dato</label>
+                        <select
+                          v-model="param.tipo_dato"
+                          class="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                        >
+                          <option value="numero">Número</option>
+                          <option value="texto">Texto</option>
+                          <option value="seleccion">Opciones</option>
+                          <option value="booleano">Sí / No</option>
+                        </select>
                       </div>
 
-                      <!-- Opciones para Desplegable si aplica -->
-                      <div v-if="param.tipo_dato === 'seleccion'" class="sm:col-span-2 bg-cyan-50/80 p-2.5 rounded-xl border border-cyan-200">
-                        <label class="block text-[10px] font-bold text-[#038391] mb-1">Opciones (separadas por coma):</label>
+                      <!-- Opciones si elige "Opciones" -->
+                      <div v-if="param.tipo_dato === 'seleccion'" class="sm:col-span-12 bg-cyan-50/80 p-2 rounded-xl border border-cyan-200">
+                        <label class="block text-[10px] font-bold text-[#038391] mb-1">Opciones separadas por coma:</label>
                         <input
                           v-model="param.opcionesStr"
                           type="text"
-                          placeholder="Opciones (separadas por coma)"
-                          class="w-full px-2.5 py-1.5 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
+                          placeholder="Ej. Admisión, Escape, Estándar"
+                          class="w-full px-2.5 py-1 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
                         />
                       </div>
 
-                      <!-- Descripción -->
-                      <div class="sm:col-span-2">
-                        <label class="block text-[10px] font-bold text-slate-600 mb-1">Descripción</label>
-                        <input
-                          v-model="param.descripcion"
-                          type="text"
-                          :placeholder="`Descripción de ${param.etiqueta || ('Campo ' + (idx + 1))} (opcional)`"
-                          class="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-
-                      <!-- Sub-columna / Columna Superior Agrupadora -->
-                      <div class="sm:col-span-2 pt-2 border-t border-slate-200/80">
-                        <div class="flex items-center justify-between gap-1 mb-1.5">
-                          <label class="text-[11px] font-extrabold text-slate-800 flex items-center gap-1.5">
-                            <Split class="w-3.5 h-3.5 text-[#004B97]" />
-                            <span>Columna Superior / Padre</span>
-                            <span class="text-[10px] font-normal text-slate-500">(Para agrupar como sub-columna)</span>
-                          </label>
-                        </div>
-                        <div class="flex items-center gap-2">
-                          <div class="relative flex-1">
+                      <!-- Agrupar bajo un título superior (Sub-columna opcional) -->
+                      <div class="sm:col-span-12 pt-1.5 border-t border-slate-200/70">
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <div class="flex-1 flex items-center gap-1.5">
+                            <Split class="w-3.5 h-3.5 text-[#004B97] shrink-0" />
                             <input
                               v-model="param.columna_padre"
+                              @input="handleParamParentChange(param)"
                               type="text"
-                              :placeholder="`Columna ${idx + 1} (opcional)`"
-                              class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                              placeholder="Título superior para agrupar varias columnas (opcional, ej. STD, 1ra medida...)"
+                              class="w-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                             />
                             <button
                               v-if="param.columna_padre"
                               type="button"
-                              @click="param.columna_padre = ''"
-                              class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                              title="Quitar columna padre"
+                              @click="param.columna_padre = ''; handleParamParentChange(param)"
+                              class="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                              title="Quitar grupo superior"
                             >
                               <X class="w-3 h-3" />
                             </button>
                           </div>
                           <button
+                            v-if="param.columna_padre"
                             type="button"
                             @click="addSiblingSubcolumn(param, idx)"
-                            class="px-2.5 py-1.5 rounded-lg bg-cyan-50 border border-cyan-300 text-[#038391] hover:bg-cyan-100 text-xs font-bold transition flex items-center gap-1 shadow-2xs whitespace-nowrap active:scale-95 cursor-pointer"
-                            title="Crea otra sub-columna dentro de este mismo encabezado"
+                            class="px-2.5 py-1 rounded-lg bg-cyan-50 border border-cyan-300 text-[#038391] hover:bg-cyan-100 text-[11px] font-bold transition flex items-center gap-1 shadow-2xs whitespace-nowrap cursor-pointer shrink-0"
                           >
                             <Plus class="w-3 h-3" />
-                            <span>+ Sub-columna</span>
+                            <span>+ Otra columna en "{{ param.columna_padre }}"</span>
                           </button>
                         </div>
-                        <p v-if="param.columna_padre" class="text-[10px] text-cyan-800 font-semibold mt-1 flex items-center gap-1">
-                          <span>↳ Se agrupa como sub-columna debajo de</span>
-                          <strong class="bg-cyan-100 px-1.5 py-0.2 rounded text-cyan-900 font-mono">{{ param.columna_padre }}</strong>
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -3710,7 +3710,7 @@ onUnmounted(() => {
             </div>
 
             <!-- ================================================================= -->
-            <!-- PANEL DERECHO (7 COLUMNAS): LIVE PREVIEW ("ESPEJO DE PORTADA")    -->
+            <!-- PANEL DERECHO (7 COLUMNAS): VISTA PREVIA EN VIVO                  -->
             <!-- ================================================================= -->
             <div class="lg:col-span-7 lg:sticky lg:top-0 space-y-4">
               <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl text-white space-y-4">
@@ -3724,13 +3724,16 @@ onUnmounted(() => {
                     <div>
                       <div class="flex items-center gap-2">
                         <h4 class="text-xs font-black uppercase tracking-wider text-white">
-                          Espejo de Portada
+                          Vista Previa de la Familia
                         </h4>
                         <span class="inline-flex items-center gap-1 px-2 py-0.2 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-bold">
                           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                           En Vivo
                         </span>
                       </div>
+                      <p class="text-[10px] text-slate-400 mt-0.5">
+                        Así se verá "{{ groupNombre || 'Nueva Familia' }}" en el catálogo
+                      </p>
                     </div>
                   </div>
 
@@ -3739,41 +3742,21 @@ onUnmounted(() => {
                       {{ visibleTableColumns.length }}
                     </span>
                     <span class="text-[10px] text-slate-400 block font-sans">
-                      cols obligatorias
+                      columnas
                     </span>
                   </div>
                 </div>
 
-                <!-- 1. PREVIEW DE FILTROS DE PORTADA -->
+                <!-- 1. PREVIEW DE BUSCADOR POR MEDIDAS -->
                 <div class="space-y-2 bg-slate-850/90 rounded-xl p-3 border border-slate-800">
                   <div class="flex items-center justify-between">
                     <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                       <Filter class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>Filtros Reactivos de Portada</span>
+                      <span>Buscador por Medidas</span>
                     </span>
                   </div>
 
-                  <!-- Buscador universal simulado -->
-                  <div class="relative">
-                    <Search class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
-                    <input
-                      readonly
-                      type="text"
-                      :placeholder="`Buscar repuesto o cota en ${groupNombre || 'esta familia'}...`"
-                      class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700/80 rounded-lg text-slate-300 placeholder:text-slate-500 cursor-default"
-                    />
-                  </div>
-
-                  <!-- Chips / Inputs de filtros por parámetro dinámico (Agrupados por Padre / Sub-columna) -->
-                  <div class="pt-1.5 space-y-2">
-                    <div class="flex items-center gap-2">
-                      <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Filtros:</span>
-                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-200">
-                        <strong class="text-cyan-300">Código:</strong> <span>4-4160</span>
-                      </span>
-                    </div>
-
-                    <!-- Si hay grupos/sub-columnas (STD, 1er, 2da...) -->
+                  <div class="pt-1 space-y-2">
                     <div v-if="hasSubcolumnsInPreview" class="flex flex-wrap gap-2 items-center">
                       <div
                         v-for="item in nestedPreviewHeaders.tier1.filter(t => t.isGroup)"
@@ -3781,47 +3764,31 @@ onUnmounted(() => {
                         class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-800/80 text-xs font-mono"
                       >
                         <span class="text-[10px] font-black uppercase text-[#04C4D9]">{{ item.label }}:</span>
-                        <span class="text-[10px] text-slate-300">Dmin: <strong class="text-[#04C4D9]">48.97</strong></span>
-                        <span class="text-slate-600">·</span>
-                        <span class="text-[10px] text-slate-300">Dmax: <strong class="text-emerald-400">48.99</strong></span>
-                        <span class="text-[9px] font-mono font-bold px-1 rounded bg-slate-800 text-slate-400">±0.2</span>
+                        <span
+                          v-for="(subP, sIdx) in (item.subParams || [])"
+                          :key="`subp-${sIdx}`"
+                          class="text-[10px] text-slate-300"
+                        >
+                          {{ subP.etiqueta_corta || subP.etiqueta || `Sub ${sIdx + 1}` }}
+                        </span>
                       </div>
                     </div>
 
-                    <!-- Si es plano estándar -->
                     <div v-else class="flex flex-wrap gap-2 items-center">
                       <div
                         v-for="param in dynamicParams.filter(p => isParamFilterVisible(p))"
                         :key="`preview-filter-${param.id}`"
                         class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs"
                       >
-                        <span class="text-[10px] font-bold text-slate-300">{{ param.etiqueta_corta || param.etiqueta }}:</span>
-                        
-                        <template v-if="param.tipo_dato === 'numero'">
-                          <span class="font-mono font-bold text-[#04C4D9] text-[11px]">
-                            {{ param.valor_muestra || '50.00' }}
-                          </span>
-                          <span v-if="param.unidad" class="text-[9px] text-slate-400">{{ param.unidad }}</span>
-                          <span class="text-[9px] font-mono font-bold px-1 rounded bg-slate-700 text-slate-300" title="Tolerancia universal">
-                            ±1.0
-                          </span>
-                        </template>
-
-                        <template v-else-if="param.tipo_dato === 'seleccion'">
-                          <span class="text-[10px] font-bold text-cyan-300">Todas</span>
-                        </template>
-
-                        <template v-else-if="param.tipo_dato === 'booleano'">
-                          <span class="text-[10px] font-bold text-amber-300">STD</span>
-                        </template>
-
-                        <template v-else>
-                          <span class="text-[10px] text-slate-400 italic">libre</span>
-                        </template>
+                        <span class="text-[10px] font-bold text-slate-300">{{ param.etiqueta_corta || param.etiqueta || 'Medida' }}:</span>
+                        <span class="font-mono font-bold text-[#04C4D9] text-[11px]">
+                          {{ param.tipo_dato === 'numero' ? (param.valor_muestra || '50.00') : 'Todos' }}
+                        </span>
+                        <span v-if="param.unidad && param.tipo_dato === 'numero'" class="text-[9px] text-slate-400">{{ param.unidad }}</span>
                       </div>
 
                       <span v-if="dynamicParams.filter(p => isParamFilterVisible(p)).length === 0" class="text-[11px] text-slate-500 italic">
-                        Sin filtros dimensionales activos (todos ocultos o fuera de tabla).
+                        Agrega columnas a la izquierda para activar el buscador por medidas.
                       </span>
                     </div>
                   </div>
@@ -3832,24 +3799,23 @@ onUnmounted(() => {
                   <div class="flex items-center justify-between">
                     <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                       <Table class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>Tabla de Catálogo (Solo Obligatorios)</span>
+                      <span>Vista en Tabla del Catálogo</span>
                     </span>
                   </div>
 
-                  <!-- Contenedor con scroll horizontal de tabla -->
                   <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-x-auto shadow-inner">
                     <table class="w-full text-left text-xs border-collapse">
                       <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
                       <thead v-if="hasSubcolumnsInPreview">
                         <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
                           <th rowspan="2" class="py-2 px-3 border-r border-slate-800 whitespace-nowrap" :class="isSubfilasActiveInPreview ? 'w-28' : 'w-44'">
-                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Posición') : 'Componente' }}
                           </th>
                           <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">
-                            {{ isSubfilasActiveInPreview ? 'Código' : 'Código OEM' }}
+                            Código
                           </th>
                           <th v-if="!isSubfilasActiveInPreview" rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">
-                            Catálogos Alternos
+                            Alternos
                           </th>
                           <template v-for="item in nestedPreviewHeaders.tier1" :key="item.id">
                             <th 
@@ -3869,7 +3835,6 @@ onUnmounted(() => {
                           </template>
                           <th rowspan="2" class="py-2 px-3 text-right w-24 whitespace-nowrap">Acciones</th>
                         </tr>
-                        <!-- Fila 2 de Cabecera: Sub-columnas -->
                         <tr class="bg-slate-900 text-[9px] text-slate-300 font-bold uppercase tracking-tight border-b border-slate-800">
                           <th 
                             v-for="sub in nestedPreviewHeaders.tier2"
@@ -3885,166 +3850,72 @@ onUnmounted(() => {
                       <!-- Caso B: Cabecera Estándar de 1 Nivel -->
                       <thead v-else>
                         <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
-                          <!-- 1. COMPONENTE / COJINETE -->
                           <th class="py-2 px-3 border-r border-slate-800 whitespace-nowrap" :class="isSubfilasActiveInPreview ? 'w-28' : 'w-44'">
-                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Cojinete') : 'Componente' }}
+                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Posición') : 'Componente' }}
                           </th>
-                          <!-- 2. CÓDIGO OEM -->
                           <th class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">
-                            {{ isSubfilasActiveInPreview ? 'Código' : 'Código OEM' }}
+                            Código
                           </th>
-                          <!-- 3. CATÁLOGOS ALTERNOS -->
                           <th v-if="!isSubfilasActiveInPreview" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">
-                            Catálogos Alternos
+                            Alternos
                           </th>
-                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (HEADER DINÁMICO) -->
                           <template v-if="isSubfilasActiveInPreview">
                             <th
                               v-for="colParam in visibleTableColumns"
                               :key="`prev-th-flat-${colParam.id}`"
                               class="py-2 px-2.5 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px] text-center whitespace-nowrap"
                             >
-                              {{ colParam.etiqueta_corta || colParam.etiqueta }}{{ colParam.unidad ? ` (${colParam.unidad})` : '' }}
+                              {{ colParam.etiqueta_corta || colParam.etiqueta || 'Medida' }}{{ colParam.unidad ? ` (${colParam.unidad})` : '' }}
                             </th>
                           </template>
                           <th v-else class="py-2 px-3 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px]">
                             <div class="flex items-center justify-between gap-2">
                               <span class="truncate">
-                                {{ (groupNombre ? groupNombre.toUpperCase() : 'COTAS') }}: 
-                                {{ visibleTableColumns.map((p, pIdx) => p.etiqueta_corta || p.etiqueta || `Campo ${pIdx + 1}`).join(' × ') || 'ESPECIFICACIONES TÉCNICAS' }}
+                                {{ (groupNombre ? groupNombre.toUpperCase() : 'MEDIDAS') }}: 
+                                {{ visibleTableColumns.map((p, pIdx) => p.etiqueta_corta || p.etiqueta || `Columna ${pIdx + 1}`).join(' / ') || 'COLUMNAS DE MEDIDAS' }}
                               </span>
                             </div>
                           </th>
-                          <!-- 5. ACCIONES -->
                           <th class="py-2 px-3 text-right w-24 whitespace-nowrap">Acciones</th>
                         </tr>
                       </thead>
 
-                      <!-- Caso A: Matriz Federal Mogul de 3 Filas (Fila 1 Marca Centrada, Fila 2 Biela, Fila 3 Bancada) -->
+                      <!-- Caso A: Vista Previa para Filas Fijas (Plantilla General) -->
                       <tbody v-if="isSubfilasActiveInPreview" class="divide-y divide-slate-800/70 font-mono text-[11px]">
-                        <!-- REGISTRO 1: FORD (Fiesta, Escort D1.8) -->
-                        <!-- Fila 1: Cinta de Marca Centrada + Aplicación -->
-                        <tr class="bg-rose-950/40 border-t-2 border-rose-800/60 text-rose-200">
-                          <td class="py-1.5 px-3 border-r border-slate-800/80 text-center font-black uppercase text-rose-300 bg-rose-950/70 tracking-wider">
-                            <span>{{ subfilasMarcaBanner || (groupNombre?.toUpperCase() || 'FORD') }}</span>
+                        <tr v-if="groupTablaConfig.tiene_cabecera_marca" class="bg-cyan-950/40 border-t-2 border-cyan-800/60 text-cyan-200">
+                          <td class="py-1.5 px-3 border-r border-slate-800/80 text-center font-black uppercase text-cyan-300 bg-cyan-950/70 tracking-wider">
+                            <span>TOYOTA</span>
                           </td>
                           <td :colspan="visibleTableColumns.length + 1" class="py-1.5 px-3 border-r border-slate-800/80 font-sans text-xs">
                             <div class="flex items-center justify-between gap-2">
-                              <div class="flex items-center gap-2">
-                                <span class="font-bold text-white">{{ subfilasAplicacionBanner || 'Fiesta, Escort, Courier, Focus D1.8 - 1.8 TD' }}</span>
-                              </div>
-                              <span class="text-[10px] font-mono font-bold text-rose-300 bg-rose-900/40 px-2 py-0.5 rounded border border-rose-800/50">
-                                STD-0,25-0,50
+                              <span class="font-bold text-white">{{ groupNombre || 'Detalle Técnico' }} - Motor 2L / 3L</span>
+                              <span class="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-900/40 px-2 py-0.5 rounded border border-cyan-800/50">
+                                STD
                               </span>
                             </div>
                           </td>
                           <td class="py-1.5 px-3 text-right">
-                            <span class="text-[9px] font-bold text-slate-400 uppercase">Juego</span>
+                            <span class="text-[9px] font-bold text-cyan-300 uppercase">Editar</span>
                           </td>
                         </tr>
 
-                        <!-- Fila 2: Biela -->
-                        <tr class="hover:bg-slate-900/60 transition">
+                        <tr
+                          v-for="(sfName, sfIdx) in previewSubfilas"
+                          :key="`prev-sf-row-${sfIdx}`"
+                          class="hover:bg-slate-900/60 transition"
+                        >
                           <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
-                            {{ previewSubfilas[0] || 'Biela' }}
+                            {{ sfName || `Fila ${sfIdx + 1}` }}
                           </td>
                           <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
-                            4-4160 RA /CP
+                            COD-0{{ sfIdx + 1 }}
                           </td>
                           <td
                             v-for="colParam in visibleTableColumns"
-                            :key="`prev-sf0-${colParam.id}`"
-                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
-                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                            :key="`prev-sf-${sfIdx}-${colParam.id}`"
+                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold text-emerald-400"
                           >
-                            {{ getPreviewSubfilaValue(colParam, 'Biela', 0) }}
-                          </td>
-                          <td class="py-2 px-3 text-right">
-                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
-                              + Orden
-                            </button>
-                          </td>
-                        </tr>
-
-                        <!-- Fila 3: Bancada -->
-                        <tr class="hover:bg-slate-900/60 transition">
-                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
-                            {{ previewSubfilas[1] || 'Bancada' }}
-                          </td>
-                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
-                            7367 M
-                          </td>
-                          <td
-                            v-for="colParam in visibleTableColumns"
-                            :key="`prev-sf1-${colParam.id}`"
-                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
-                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
-                          >
-                            {{ getPreviewSubfilaValue(colParam, 'Bancada', 0) }}
-                          </td>
-                          <td class="py-2 px-3 text-right">
-                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
-                              + Orden
-                            </button>
-                          </td>
-                        </tr>
-
-                        <!-- REGISTRO 2: G.M (Astra, Vectra) -->
-                        <tr class="bg-rose-950/40 border-t-2 border-rose-800/60 text-rose-200">
-                          <td class="py-1.5 px-3 border-r border-slate-800/80 text-center font-black uppercase text-rose-300 bg-rose-950/70 tracking-wider">
-                            G.M
-                          </td>
-                          <td :colspan="visibleTableColumns.length + 1" class="py-1.5 px-3 border-r border-slate-800/80 font-sans text-xs">
-                            <div class="flex items-center justify-between gap-2">
-                              <span class="font-bold text-white">Astra, Vectra 1.7 D, TD (X17)</span>
-                              <span class="text-[10px] font-mono font-bold text-rose-300 bg-rose-900/40 px-2 py-0.5 rounded border border-rose-800/50">
-                                STD-0,25
-                              </span>
-                            </div>
-                          </td>
-                          <td class="py-1.5 px-3 text-right">
-                            <span class="text-[9px] font-bold text-slate-400 uppercase">Juego</span>
-                          </td>
-                        </tr>
-
-                        <!-- Fila 2: Biela G.M -->
-                        <tr class="hover:bg-slate-900/60 transition">
-                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
-                            {{ previewSubfilas[0] || 'Biela' }}
-                          </td>
-                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
-                            71-3821/4
-                          </td>
-                          <td
-                            v-for="colParam in visibleTableColumns"
-                            :key="`prev2-sf0-${colParam.id}`"
-                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
-                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
-                          >
-                            {{ getPreviewSubfilaValue(colParam, 'Biela', 1) }}
-                          </td>
-                          <td class="py-2 px-3 text-right">
-                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
-                              + Orden
-                            </button>
-                          </td>
-                        </tr>
-
-                        <!-- Fila 3: Bancada G.M -->
-                        <tr class="hover:bg-slate-900/60 transition">
-                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
-                            {{ previewSubfilas[1] || 'Bancada' }}
-                          </td>
-                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
-                            H-059/5
-                          </td>
-                          <td
-                            v-for="colParam in visibleTableColumns"
-                            :key="`prev2-sf1-${colParam.id}`"
-                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold"
-                            :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
-                          >
-                            {{ getPreviewSubfilaValue(colParam, 'Bancada', 1) }}
+                            {{ getPreviewSubfilaValue(colParam, sfName, sfIdx) }}
                           </td>
                           <td class="py-2 px-3 text-right">
                             <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
@@ -4054,11 +3925,9 @@ onUnmounted(() => {
                         </tr>
                       </tbody>
 
-                      <!-- Caso B: Filas de muestra interactivas estándar (5 Columnas Estandarizadas) -->
+                      <!-- Caso B: Vista Previa para Tabla Interna o Lista Simple -->
                       <tbody v-else class="divide-y divide-slate-800/70 font-mono text-[11px]">
-                        <!-- Fila de Prueba 1 -->
                         <tr class="hover:bg-slate-900/60 transition group">
-                          <!-- 1. COMPONENTE -->
                           <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
                             <div class="flex items-center gap-2">
                               <div class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[#04C4D9] shrink-0">
@@ -4067,41 +3936,30 @@ onUnmounted(() => {
                               <div class="min-w-0">
                                 <div class="flex items-center gap-1.5">
                                   <span class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">OEM</span>
-                                  <span class="text-xs font-black text-white truncate font-sans">{{ groupNombre || 'Pieza Rectificada' }} STD</span>
+                                  <span class="text-xs font-black text-white truncate font-sans">{{ groupNombre || 'Repuesto Ejemplo' }} STD</span>
                                 </div>
                                 <p class="text-[10px] text-slate-400 font-sans truncate">
-                                  TOYOTA • {{ (groupSubsistema || 'BLOCK').toUpperCase() }} • MOTOR 2L • CATÁLOGO OEM
+                                  TOYOTA • {{ (groupSubsistema || 'MOTOR').toUpperCase() }}
                                 </p>
                               </div>
                             </div>
                           </td>
 
-                          <!-- 2. CÓDIGO OEM -->
                           <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle">
-                            <div class="flex items-center gap-1.5 flex-wrap">
-                              <div
-                                v-for="(codePreview, cIdx) in (allOemCodesPreview.length > 0 ? allOemCodesPreview : ['13011-54020', '13011-54030'])"
-                                :key="cIdx"
-                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-200 text-[10px]"
-                              >
-                                <span>{{ codePreview }}</span>
-                                <Copy class="w-2.5 h-2.5 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
-                              </div>
-                            </div>
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-200 text-[10px]">
+                              13011-54020
+                            </span>
                           </td>
 
-                          <!-- 3. CATÁLOGOS ALTERNOS -->
                           <td class="py-2.5 px-2.5 border-r border-slate-800/70 align-middle whitespace-nowrap font-sans">
-                            <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
+                            <span class="text-[10px] text-slate-400">RIK / NPR</span>
                           </td>
 
-                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Con Sub-columnas o Formato Estándar) -->
                           <template v-if="hasSubcolumnsInPreview">
                             <td 
                               v-for="colParam in visibleTableColumns" 
                               :key="`prev1-subcol-${colParam.id}`"
-                              class="py-2.5 px-2 border-r border-slate-800/70 text-center font-mono font-bold text-xs"
-                              :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
+                              class="py-2.5 px-2 border-r border-slate-800/70 text-center font-mono font-bold text-xs text-emerald-400"
                             >
                               {{ formatSubcolumnSample(colParam, 0) }}
                             </td>
@@ -4112,11 +3970,11 @@ onUnmounted(() => {
                                 <table class="border-collapse text-center">
                                   <thead>
                                     <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
-                                      <th class="px-2 py-1 border-r border-slate-700 text-left">{{ groupTablaConfig.titulo_primera_columna || 'Anillo' }}</th>
+                                      <th class="px-2.5 py-1 border-r border-slate-700 text-left">{{ groupTablaConfig.titulo_primera_columna || 'Posición' }}</th>
                                       <th
                                         v-for="(colParam, colIdx) in visibleTableColumns"
                                         :key="`prev1-th-${colParam.id}`"
-                                        class="px-2 py-1 text-cyan-300"
+                                        class="px-2.5 py-1 text-cyan-300"
                                         :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
                                       >
                                         {{ colParam.etiqueta_corta || colParam.etiqueta || `Columna ${colIdx + 1}` }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
@@ -4125,19 +3983,19 @@ onUnmounted(() => {
                                   </thead>
                                   <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
                                     <tr v-for="rIdx in [0, 1, 2]" :key="`prev1-tr-${rIdx}`">
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
+                                      <td class="px-2.5 py-1 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
                                         <span>{{ getPreviewRowLabel(rIdx) }}</span>
                                         <span
-                                          v-if="rIdx === 0 && groupTablaConfig.habilitar_identificador !== false"
+                                          v-if="rIdx === 0 && groupTablaConfig.habilitar_identificador"
                                           class="ml-1 text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold uppercase"
                                         >
-                                          {{ groupTablaConfig.etiqueta_identificador || 'CÓNICO' }}
+                                          {{ groupTablaConfig.etiqueta_identificador || 'ESPECIAL' }}
                                         </span>
                                       </td>
                                       <td
                                         v-for="(colParam, colIdx) in visibleTableColumns"
                                         :key="`prev1-td-${rIdx}-${colParam.id}`"
-                                        class="px-2 py-0.5 font-bold"
+                                        class="px-2.5 py-1 font-bold"
                                         :class="[
                                           colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : '',
                                           colIdx <= 1 ? 'text-emerald-400' : 'text-slate-200'
@@ -4154,147 +4012,21 @@ onUnmounted(() => {
                               <div
                                 v-for="(param, paramIdx) in visibleTableColumns"
                                 :key="`row1-${param.id}`"
-                                @click="cycleDecimals(param)"
-                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}`)"
-                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400 hover:border-slate-500 cursor-pointer transition select-none group/badge"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400"
                               >
-                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}` }}:</span>
+                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta || `Columna ${paramIdx + 1}` }}:</span>
                                 <span class="tabular-nums">{{ formatSampleValue(param, 0) }}</span>
                               </div>
-                              <span v-if="visibleTableColumns.length === 0" class="text-amber-400 text-[10px] italic font-sans">
-                                ⚠️ Sin medidas marcadas "En Tabla" (Obligatorio)
+                              <span v-if="visibleTableColumns.length === 0" class="text-slate-400 text-[10px] italic font-sans">
+                                Agrega columnas de medidas para ver la vista previa
                               </span>
                             </div>
                           </td>
 
-                          <!-- 5. ACCIONES -->
                           <td class="py-2.5 px-3 text-right align-middle whitespace-nowrap font-sans">
-                            <div class="flex items-center justify-end gap-1.5">
-                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
-                                Ficha
-                              </button>
-                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
-                                Editar
-                              </button>
-                              <span class="px-2 py-0.5 rounded bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-900 font-extrabold text-[10px] shadow-2xs cursor-pointer">
-                                + A Orden
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <!-- Fila de Prueba 2 -->
-                        <tr class="hover:bg-slate-900/60 transition group bg-slate-950/40">
-                          <!-- 1. COMPONENTE -->
-                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
-                            <div class="flex items-center gap-2">
-                              <div class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[#04C4D9] shrink-0">
-                                <Layers class="w-3.5 h-3.5" />
-                              </div>
-                              <div class="min-w-0">
-                                <div class="flex items-center gap-1.5">
-                                  <span class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">OEM</span>
-                                  <span class="text-xs font-black text-white truncate font-sans">{{ groupNombre || 'Pieza Rectificada' }} 0.50</span>
-                                </div>
-                                <p class="text-[10px] text-slate-400 font-sans truncate">
-                                  HONDA • {{ (groupSubsistema || 'BLOCK').toUpperCase() }} • MOTOR D17A • CATÁLOGO OEM
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <!-- 2. CÓDIGO OEM -->
-                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle whitespace-nowrap">
-                            <div class="flex items-center gap-1.5">
-                              <span>13011-58010</span>
-                              <Copy class="w-3 h-3 text-slate-500 cursor-pointer hover:text-slate-300" title="Copiar código" />
-                            </div>
-                          </td>
-
-                          <!-- 3. CATÁLOGOS ALTERNOS -->
-                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 align-middle whitespace-nowrap font-sans">
-                            <span class="text-[10px] text-slate-500 italic">Sin cruces</span>
-                          </td>
-
-                          <!-- 4. COTAS / MEDIDAS AGRUPADAS (Con Sub-columnas o Formato Estándar) -->
-                          <template v-if="hasSubcolumnsInPreview">
-                            <td 
-                              v-for="colParam in visibleTableColumns" 
-                              :key="`prev2-subcol-${colParam.id}`"
-                              class="py-2.5 px-2 border-r border-slate-800/70 text-center font-mono font-bold text-xs"
-                              :class="colParam.etiqueta_corta?.toLowerCase().includes('mín') || colParam.etiqueta?.toLowerCase().includes('mín') ? 'text-cyan-300' : 'text-emerald-400'"
-                            >
-                              {{ formatSubcolumnSample(colParam, 1) }}
-                            </td>
-                          </template>
-                          <td v-else class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
-                            <template v-if="groupTipoVista === 'tabla'">
-                              <div class="inline-block border border-slate-700 rounded-lg overflow-hidden bg-slate-900 font-mono text-[11px]">
-                                <table class="border-collapse text-center">
-                                  <thead>
-                                    <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
-                                      <th class="px-2 py-1 border-r border-slate-700 text-left">{{ groupTablaConfig.titulo_primera_columna || 'Anillo' }}</th>
-                                      <th
-                                        v-for="(colParam, colIdx) in visibleTableColumns"
-                                        :key="`prev2-th-${colParam.id}`"
-                                        class="px-2 py-1 text-cyan-300"
-                                        :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
-                                      >
-                                        {{ colParam.etiqueta_corta || colParam.etiqueta || `Columna ${colIdx + 1}` }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
-                                    <tr v-for="rIdx in [0, 1, 2]" :key="`prev2-tr-${rIdx}`">
-                                      <td class="px-2 py-0.5 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
-                                        <span>{{ getPreviewRowLabel(rIdx) }}</span>
-                                      </td>
-                                      <td
-                                        v-for="(colParam, colIdx) in visibleTableColumns"
-                                        :key="`prev2-td-${rIdx}-${colParam.id}`"
-                                        class="px-2 py-0.5 font-bold"
-                                        :class="[
-                                          colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : '',
-                                          colIdx === 0 ? 'text-amber-300' : (colIdx === 1 ? 'text-emerald-400' : 'text-slate-200')
-                                        ]"
-                                      >
-                                        {{ getPreviewTableCellValue(colParam, 1, rIdx) }}
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                            </template>
-                            <div v-else class="flex flex-wrap items-center gap-1.5">
-                              <div
-                                v-for="(param, paramIdx) in visibleTableColumns"
-                                :key="`row2-${param.id}`"
-                                @click="cycleDecimals(param)"
-                                :title="'Clic para alternar decimales (.2 -> .1 -> .0) de ' + (param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}`)"
-                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400 hover:border-slate-500 cursor-pointer transition select-none group/badge"
-                              >
-                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta || `Campo ${paramIdx + 1}` }}:</span>
-                                <span class="tabular-nums">{{ formatSampleValue(param, 1) }}</span>
-                              </div>
-                              <span v-if="visibleTableColumns.length === 0" class="text-amber-400 text-[10px] italic font-sans">
-                                ⚠️ Sin medidas marcadas "En Tabla" (Obligatorio)
-                              </span>
-                            </div>
-                          </td>
-
-                          <!-- 5. ACCIONES -->
-                          <td class="py-2.5 px-3 text-right align-middle whitespace-nowrap font-sans">
-                            <div class="flex items-center justify-end gap-1.5">
-                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
-                                Ficha
-                              </button>
-                              <button type="button" class="px-2 py-0.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200 text-[10px] font-semibold">
-                                Editar
-                              </button>
-                              <span class="px-2 py-0.5 rounded bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-900 font-extrabold text-[10px] shadow-2xs cursor-pointer">
-                                + A Orden
-                              </span>
-                            </div>
+                            <span class="px-2 py-0.5 rounded bg-[#04C4D9] text-slate-900 font-extrabold text-[10px]">
+                              + A Orden
+                            </span>
                           </td>
                         </tr>
                       </tbody>

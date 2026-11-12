@@ -715,22 +715,60 @@ const customTolerancesCount = computed(() => {
 const dynamicParamFilters = ref<Record<string, any>>({})
 const filterCodigoPart = ref<string>('')
 
+const sanitizeGroupParams = (params: ParametroTecnicoDefinicion[]): ParametroTecnicoDefinicion[] => {
+  if (!Array.isArray(params)) return []
+  const seen = new Map<string, number>()
+  return params.map(p => {
+    let key = p.clave
+    if (p.columna_padre && p.columna_padre.trim()) {
+      const parentSlug = p.columna_padre
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+      if (parentSlug && !key.startsWith(parentSlug)) {
+        key = `${parentSlug}_${key}`
+      }
+    }
+    const count = seen.get(key) || 0
+    if (count > 0) {
+      let suffix = count + 1
+      let uniqueKey = `${key}_${suffix}`
+      while (seen.has(uniqueKey)) {
+        suffix++
+        uniqueKey = `${key}_${suffix}`
+      }
+      key = uniqueKey
+    }
+    seen.set(key, (seen.get(key) || 0) + 1)
+    return { ...p, clave: key }
+  })
+}
+
 const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
   if (!selectedComponent.value) return null
-  return catalogStore.grupos.find(g => g.codigo === selectedComponent.value?.id || g.id === selectedComponent.value?.id) || null
+  const grp = catalogStore.grupos.find(g => g.codigo === selectedComponent.value?.id || g.id === selectedComponent.value?.id) || null
+  if (!grp) return null
+  if (grp.parametros && grp.parametros.length > 0) {
+    return {
+      ...grp,
+      parametros: sanitizeGroupParams(grp.parametros)
+    }
+  }
+  return grp
 })
 
-// Determina si la familia activa es una matriz con sub-filas (ej. Cojinetes: Fila 1 Marca centrada, Fila 2 Biela, Fila 3 Bancada)
+// Determina si la familia activa es una matriz con sub-filas (ej. Plantilla fija con filas específicas)
 const isCurrentGroupSubfilas = computed<boolean>(() => {
   if (!currentGroupDefinition.value) return false
+  if (currentGroupDefinition.value.tipo_vista !== 'tabla') return false
   const cfg = currentGroupDefinition.value.tabla_config
   if (cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas' || (cfg?.subfilas && cfg.subfilas.length > 0)) {
     return true
   }
-  const code = (currentGroupDefinition.value.codigo || '').toLowerCase()
-  const cat = (currentGroupDefinition.value.categoria || '').toLowerCase()
-  const nom = (currentGroupDefinition.value.nombre || '').toLowerCase()
-  return code.includes('cojinete') || cat.includes('cojinete') || nom.includes('cojinete') || code.includes('casquet') || cat.includes('casquet')
+  return false
 })
 
 const isCurrentGroupRingsTable = computed<boolean>(() => {
@@ -741,8 +779,16 @@ const isCurrentGroupRingsTable = computed<boolean>(() => {
   return code === 'anillos_motor' || code.includes('anillo') || cat === 'anillos' || cat.includes('anillo')
 })
 
+const isCurrentGroupGeneralTable = computed<boolean>(() => {
+  if (!selectedComponent.value) return false
+  if (isCurrentGroupSubfilas.value) return false
+  return currentGroupDefinition.value?.tipo_vista === 'tabla' || isCurrentGroupRingsTable.value
+})
+
 const isPartTableFormat = (part: RepuestoTecnico): boolean => {
+  if (isCurrentGroupSubfilas.value) return false
   if (isCurrentGroupRingsTable.value) return true
+  if (currentGroupDefinition.value?.tipo_vista === 'tabla') return true
   if (part.categoria === 'Anillos') return true
   const catLower = (part.categoria || '').toLowerCase()
   if (catLower.includes('anillo')) return true
@@ -786,7 +832,7 @@ const groupSubcolumnsHeaders = computed(() => {
 
 // Determina si la familia actual activa el modo de sub-columnas
 const hasGroupSubcolumns = computed<boolean>(() => {
-  if (isCurrentGroupRingsTable.value) return false // Anillos mantiene su matriz especializada
+  if (isCurrentGroupGeneralTable.value && !isCurrentGroupSubfilas.value) return false
   return groupSubcolumnsHeaders.value.hasSubcolumns
 })
 
@@ -915,7 +961,7 @@ const isTableParamInFilter = (clave: string): boolean => {
 }
 
 const tableColFirstHeader = computed<string>(() => {
-  return currentGroupDefinition.value?.tabla_config?.titulo_primera_columna || 'Anillo'
+  return currentGroupDefinition.value?.tabla_config?.titulo_primera_columna || (isCurrentGroupRingsTable.value ? 'Anillo' : 'Posición')
 })
 
 const tableShowIdentifier = computed<boolean>(() => {
@@ -1637,6 +1683,9 @@ interface PartRingItem {
   h1: number | null
   a1: number | null
   perfil?: string
+  identificador?: string
+  extra?: Record<string, any>
+  [key: string]: any
 }
 
 const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
@@ -1650,7 +1699,7 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
     const total = rings.length
     result = rings.map((r, idx) => {
       const isLast = idx === total - 1
-      const isOil = String(r.posicion || '').toLowerCase().includes('oil') || String(r.posicion || '').toLowerCase().includes('aceite') || isLast
+      const isOil = isCurrentGroupRingsTable.value && (String(r.posicion || '').toLowerCase().includes('oil') || String(r.posicion || '').toLowerCase().includes('aceite') || isLast)
       const rawPerfil = r.identificador || r.perfil || (r.forma && (
         String(r.forma).toUpperCase().includes('KEYSTONE') ||
         String(r.forma).toUpperCase().includes('CÓNIC') ||
@@ -1658,17 +1707,19 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
         String(r.forma).toUpperCase().includes('ESPIRAL') ||
         String(r.forma).toUpperCase().includes('ESCALON') ||
         String(r.forma).toUpperCase().includes('RASPADOR')
-      ) ? String(r.forma) : undefined) || (idx === 0 && isPartConical(part) ? 'Cónico / Keystone' : undefined)
+      ) ? String(r.forma) : undefined) || (isCurrentGroupRingsTable.value && idx === 0 && isPartConical(part) ? 'Cónico / Keystone' : undefined)
       return {
         ...r,
-        posicion: (r.posicion && String(r.posicion).trim()) ? String(r.posicion).trim() : (isOil ? 'Anillo de aceite' : `Anillo ${idx + 1}`),
+        posicion: (r.posicion && String(r.posicion).trim()) ? String(r.posicion).trim() : (isOil ? 'Anillo de aceite' : (isCurrentGroupRingsTable.value ? `Anillo ${idx + 1}` : `Fila ${idx + 1}`)),
         d1: r.d1 != null ? Number(r.d1) : (part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null),
         h1: r.h1 != null ? Number(r.h1) : null,
         a1: r.a1 != null ? Number(r.a1) : null,
-        perfil: rawPerfil
+        perfil: rawPerfil,
+        identificador: r.identificador || rawPerfil,
+        extra: r.extra || {}
       }
     })
-  } else {
+  } else if (isCurrentGroupRingsTable.value || part.categoria === 'Anillos') {
     const d = part.diametro_cilindro_mm ? Number(part.diametro_cilindro_mm) : null
     const dims = part.dimensiones as any
     const fallback: PartRingItem[] = [
@@ -1701,10 +1752,46 @@ const getPartRingsList = (part: RepuestoTecnico): PartRingItem[] => {
       a1: dims?.altura_radial_aceite_mm ? Number(dims.altura_radial_aceite_mm) : (dims?.espesor_radial_aceite_mm ? Number(dims.espesor_radial_aceite_mm) : null)
     })
     result = fallback
+  } else {
+    // Para otra familia en tabla sin filas explícitas aún, creamos una fila por defecto
+    const dims = (part.dimensiones as any) || {}
+    result = [
+      {
+        posicion: currentGroupDefinition.value?.tabla_config?.subfilas?.[0] || '1',
+        d1: null,
+        h1: null,
+        a1: null,
+        extra: { ...dims }
+      }
+    ]
   }
 
   ringsCache.set(part, result)
   return result
+}
+
+const getGeneralTableRowValue = (ring: PartRingItem, clave: string): unknown => {
+  if (!ring) return undefined
+  if (ring.extra && ring.extra[clave] !== undefined) {
+    return ring.extra[clave]
+  }
+  if ((ring as any)[clave] !== undefined) {
+    return (ring as any)[clave]
+  }
+  if (clave === 'd1' || clave.includes('diametro')) return ring.d1
+  if (clave === 'h1' || clave.includes('grosor')) return ring.h1
+  if (clave === 'a1' || clave.includes('altura')) return ring.a1
+  return undefined
+}
+
+const formatGeneralTableRowValue = (ring: PartRingItem, col: ParametroTecnicoDefinicion): string => {
+  const val = getGeneralTableRowValue(ring, col.clave)
+  if (val == null || val === '') return '—'
+  if (col.tipo_dato === 'booleano') return val ? 'Sí' : 'No'
+  if (typeof val === 'number') {
+    return col.unidad === '°' ? `${val}°` : val.toFixed(2)
+  }
+  return String(val)
 }
 
 const getRingDiametroCellClass = (d1: number | null | undefined): string => {
@@ -2023,6 +2110,27 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
                 return strSf.includes(strFlt) || strFlt.includes(strSf)
               })
               if (matchedInSubfila) return true
+            }
+
+            // Si la pieza tiene filas en tabla (anillos o matriz general), comprobar si alguna fila coincide con esta cota
+            if (Array.isArray(dims.anillos) && dims.anillos.length > 0) {
+              const matchedInRow = dims.anillos.some((ring: any) => {
+                const ringVal = ring.extra?.[key] !== undefined ? ring.extra[key] : (ring[key] !== undefined ? ring[key] : (
+                  key === 'diametro_cilindro_mm' ? ring.d1 : (
+                    key === 'grosor_mm' ? ring.h1 : (
+                      key === 'altura_mm' ? ring.a1 : undefined
+                    )
+                  )
+                ))
+                if (ringVal === undefined || ringVal === null || ringVal === '') return false
+                if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(ringVal)))) {
+                  return Math.abs(Number(ringVal) - Number(filterVal)) <= tolParam
+                }
+                const strR = String(ringVal).toLowerCase().trim()
+                const strFlt = String(filterVal).toLowerCase().trim()
+                return strR.includes(strFlt) || strFlt.includes(strR)
+              })
+              if (matchedInRow) return true
             }
 
             const partVal = getPartParamValue(r, key)
@@ -4422,6 +4530,9 @@ onUnmounted(() => {
                 <th v-if="isCurrentGroupRingsTable" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ [showTableColDiametro ? tableColDiametroHeader : null, showTableColGrosor ? tableColGrosorHeader : null, showTableColAltura ? tableColAlturaHeader : null].filter(Boolean).join(' / ') || 'Especificaciones' }}
                 </th>
+                <th v-else-if="currentGroupDefinition?.tipo_vista === 'tabla'" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                  {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ activeTableGroupColumns.map(c => c.etiqueta_corta || c.etiqueta).join(' / ') || 'Especificaciones' }}
+                </th>
                 <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || selectedComponent?.category || 'COTAS').toUpperCase() }}: {{ currentGroupDefinition.parametros.filter(p => p.requerido).map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || currentGroupDefinition.parametros.map(p => p.etiqueta_corta || p.etiqueta).slice(0, 4).join(' × ') }}
                 </th>
@@ -4468,22 +4579,30 @@ onUnmounted(() => {
                           <span v-if="(part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner" class="text-[10px] font-mono font-bold text-rose-800 bg-rose-200/60 px-2 py-0.5 rounded border border-rose-300">
                             {{ (part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner }}
                           </span>
-                          <span class="text-[10px] text-slate-500 font-bold">
-                            Juego Completo
-                          </span>
                         </div>
                       </div>
                     </td>
                     <td class="py-1.5 px-3 text-right border-b border-rose-200">
-                      <button
-                        type="button"
-                        @click="addToWorkOrder(part)"
-                        class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs cursor-pointer"
-                        :class="addedPartId === part.id ? 'bg-emerald-600 text-white' : 'bg-[#004B97] text-white hover:bg-blue-900'"
-                        title="Agregar todo el juego a la Orden"
-                      >
-                        {{ addedPartId === part.id ? '✓ Agregado' : '+ Juego' }}
-                      </button>
+                      <div class="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          @click="openTechnicalSheet(part)"
+                          class="px-2 py-0.5 rounded border border-rose-300 bg-white hover:bg-rose-100 text-rose-900 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                          title="Ver ficha técnica"
+                        >
+                          <Eye class="w-3 h-3 text-rose-700" />
+                          <span>Ficha</span>
+                        </button>
+                        <button
+                          type="button"
+                          @click="handleEditPart(part)"
+                          class="px-2 py-0.5 rounded border border-rose-400 bg-white hover:bg-rose-100 text-rose-900 text-[10px] font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                          title="Modificar especificaciones de este repuesto"
+                        >
+                          <Edit3 class="w-3 h-3 text-rose-700" />
+                          <span>Editar</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
 
@@ -4528,19 +4647,29 @@ onUnmounted(() => {
                       {{ getPartSubfilaValue(sf, col) }}
                     </td>
 
-                    <!-- Botón específico + A Orden por sub-fila -->
+                    <!-- Botón específico + A Orden por sub-fila y edición rápida -->
                     <td class="py-2 px-3 text-right">
-                      <button
-                        type="button"
-                        @click="addSubfilaToWorkOrder(part, sf)"
-                        class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs border cursor-pointer"
-                        :class="addedPartId === `${part.id}-${sf.nombre}`
-                          ? 'bg-emerald-600 border-emerald-600 text-white'
-                          : 'bg-cyan-50 border-cyan-300 text-[#038391] hover:bg-cyan-100'"
-                        :title="`Agregar solo ${sf.nombre} a la Orden`"
-                      >
-                        {{ addedPartId === `${part.id}-${sf.nombre}` ? '✓ OK' : `+ ${sf.nombre}` }}
-                      </button>
+                      <div class="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          @click="handleEditPart(part)"
+                          class="p-1 rounded text-slate-400 hover:text-[#004B97] hover:bg-slate-100 transition cursor-pointer"
+                          title="Editar especificaciones de esta pieza"
+                        >
+                          <Edit3 class="w-3.5 h-3.5 text-slate-500 hover:text-[#04C4D9]" />
+                        </button>
+                        <button
+                          type="button"
+                          @click="addSubfilaToWorkOrder(part, sf)"
+                          class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs border cursor-pointer"
+                          :class="addedPartId === `${part.id}-${sf.nombre}`
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                            : 'bg-cyan-50 border-cyan-300 text-[#038391] hover:bg-cyan-100'"
+                          :title="`Agregar solo ${sf.nombre} a la Orden`"
+                        >
+                          {{ addedPartId === `${part.id}-${sf.nombre}` ? '✓ OK' : `+ ${sf.nombre}` }}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 </template>
@@ -4759,9 +4888,26 @@ onUnmounted(() => {
                         <thead>
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
                             <th class="px-2.5 py-1 border-r border-slate-200 text-left">{{ tableColFirstHeader }}</th>
-                            <th v-if="showTableColDiametro" class="px-2.5 py-1 border-r border-slate-200">{{ tableColDiametroHeader }}</th>
-                            <th v-if="showTableColGrosor" class="px-2.5 py-1 border-r border-slate-200">{{ tableColGrosorHeader }}</th>
-                            <th v-if="showTableColAltura" class="px-2.5 py-1">{{ tableColAlturaHeader }}</th>
+
+                            <!-- Si es la familia clásica de anillos de motor -->
+                            <template v-if="isCurrentGroupRingsTable">
+                              <th v-if="showTableColDiametro" class="px-2.5 py-1 border-r border-slate-200">{{ tableColDiametroHeader }}</th>
+                              <th v-if="showTableColGrosor" class="px-2.5 py-1 border-r border-slate-200">{{ tableColGrosorHeader }}</th>
+                              <th v-if="showTableColAltura" class="px-2.5 py-1">{{ tableColAlturaHeader }}</th>
+                            </template>
+
+                            <!-- Si es cualquier otra familia general en tabla / matriz -->
+                            <template v-else>
+                              <th
+                                v-for="(col, cIdx) in activeTableGroupColumns"
+                                :key="`gen-col-${cIdx}`"
+                                class="px-2.5 py-1"
+                                :class="cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : ''"
+                              >
+                                {{ col.etiqueta_corta || col.etiqueta }}
+                                <span v-if="col.unidad" class="text-[8px] font-normal text-slate-500 lowercase">({{ col.unidad }})</span>
+                              </th>
+                            </template>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-[11px]">
@@ -4773,37 +4919,56 @@ onUnmounted(() => {
                             <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
                               <span>{{ ring.posicion }}</span>
                               <span
-                                v-if="tableShowIdentifier && ((ring.perfil && ring.perfil !== 'Plano' && ring.perfil !== 'Estándar') || (rIdx === 0 && isPartConical(part)))"
+                                v-if="tableShowIdentifier && (ring.identificador || (ring.perfil && ring.perfil !== 'Plano' && ring.perfil !== 'Estándar') || (isCurrentGroupRingsTable && rIdx === 0 && isPartConical(part)))"
                                 class="ml-1 text-[9px] px-1 py-0.2 rounded font-extrabold border uppercase tracking-tight"
-                                :class="(ring.perfil && (ring.perfil.toLowerCase().includes('cónico') || ring.perfil.toLowerCase().includes('conico') || ring.perfil.toLowerCase().includes('keystone'))) || (rIdx === 0 && isPartConical(part))
+                                :class="(ring.perfil && (ring.perfil.toLowerCase().includes('cónico') || ring.perfil.toLowerCase().includes('conico') || ring.perfil.toLowerCase().includes('keystone'))) || (isCurrentGroupRingsTable && rIdx === 0 && isPartConical(part))
                                   ? 'bg-amber-100 text-amber-900 border-amber-300'
                                   : 'bg-cyan-50 text-[#038391] border-cyan-300'"
-                                :title="ring.perfil || getKeystoneLabel(part) || 'Identificador de fila'"
+                                :title="ring.identificador || ring.perfil || (isCurrentGroupRingsTable ? getKeystoneLabel(part) : undefined) || 'Identificador de fila'"
                               >
-                                {{ ring.perfil ? (ring.perfil.includes('Keystone') ? (currentGroupDefinition?.tabla_config?.etiqueta_identificador || 'Cónico') : ring.perfil) : (currentGroupDefinition?.tabla_config?.etiqueta_identificador || 'Cónico') }}
+                                {{ ring.identificador || (ring.perfil ? (ring.perfil.includes('Keystone') ? (currentGroupDefinition?.tabla_config?.etiqueta_identificador || 'Cónico') : ring.perfil) : (currentGroupDefinition?.tabla_config?.etiqueta_identificador || 'Cónico')) }}
                               </span>
                             </td>
-                            <td 
-                              v-if="showTableColDiametro"
-                              class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
-                              :class="getRingDiametroCellClass(ring.d1)"
-                            >
-                              {{ formatRingVal(ring.d1) }}
-                            </td>
-                            <td 
-                              v-if="showTableColGrosor"
-                              class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
-                              :class="getRingGrosorCellClass(ring, rIdx, getPartRingsList(part).length)"
-                            >
-                              {{ formatRingVal(ring.h1) }}
-                            </td>
-                            <td 
-                              v-if="showTableColAltura"
-                              class="px-2.5 py-1 font-mono font-bold transition"
-                              :class="getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length)"
-                            >
-                              {{ formatRingVal(ring.a1) }}
-                            </td>
+
+                            <!-- Columnas para Anillos -->
+                            <template v-if="isCurrentGroupRingsTable">
+                              <td 
+                                v-if="showTableColDiametro"
+                                class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
+                                :class="getRingDiametroCellClass(ring.d1)"
+                              >
+                                {{ formatRingVal(ring.d1) }}
+                              </td>
+                              <td 
+                                v-if="showTableColGrosor"
+                                class="px-2.5 py-1 border-r border-slate-200 font-mono font-bold transition"
+                                :class="getRingGrosorCellClass(ring, rIdx, getPartRingsList(part).length)"
+                              >
+                                {{ formatRingVal(ring.h1) }}
+                              </td>
+                              <td 
+                                v-if="showTableColAltura"
+                                class="px-2.5 py-1 font-mono font-bold transition"
+                                :class="getRingAlturaCellClass(ring, rIdx, getPartRingsList(part).length)"
+                              >
+                                {{ formatRingVal(ring.a1) }}
+                              </td>
+                            </template>
+
+                            <!-- Columnas para cualquier otra familia en tabla general -->
+                            <template v-else>
+                              <td
+                                v-for="(col, cIdx) in activeTableGroupColumns"
+                                :key="`gen-val-${cIdx}`"
+                                class="px-2.5 py-1 font-mono font-bold transition text-slate-900"
+                                :class="[
+                                  cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : '',
+                                  getMeasurementMatchClass(getGeneralTableRowValue(ring, col.clave) as any, dynamicParamFilters[col.clave], getTol(col.clave))
+                                ]"
+                              >
+                                {{ formatGeneralTableRowValue(ring, col) }}
+                              </td>
+                            </template>
                           </tr>
                         </tbody>
                       </table>
@@ -5305,7 +5470,7 @@ onUnmounted(() => {
             </div>
 
             <!-- CASO ANILLOS: CUADRO TÉCNICO OFICIAL RIK / TALLER (DISEÑO SWGORA) -->
-            <div v-if="modalPart.categoria === 'Anillos' || (modalPart.dimensiones as any)?.anillos">
+            <div v-if="(modalPart.categoria === 'Anillos' || (modalPart.categoria || '').toLowerCase().includes('anillo')) && ((modalPart.dimensiones as any)?.anillos || modalPart.diametro_cilindro_mm)">
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
                   <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
@@ -5383,6 +5548,57 @@ onUnmounted(() => {
                 <span v-if="(modalPart.dimensiones as any)?.anos">
                   <strong>Años:</strong> {{ (modalPart.dimensiones as any).anos }}
                 </span>
+              </div>
+            </div>
+
+            <!-- CASO FAMILIAS EN TABLA GENERALES: MATRIZ DE FILAS Y COLUMNAS TÉCNICAS -->
+            <div v-else-if="Array.isArray((modalPart.dimensiones as any)?.anillos) && (modalPart.dimensiones as any).anillos.length > 0">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+                  Matriz Técnica - {{ modalPart.nombre }}
+                </h4>
+              </div>
+              <div class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-xs font-mono text-xs">
+                <table class="w-full border-collapse text-center">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-800 border-b border-slate-200">
+                      <th class="px-3 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider text-left">{{ tableColFirstHeader }}</th>
+                      <th
+                        v-for="col in activeTableGroupColumns"
+                        :key="`m-col-${col.id}`"
+                        class="px-2.5 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider"
+                      >
+                        {{ col.etiqueta_corta || col.etiqueta }}
+                        <span v-if="col.unidad" class="text-[9px] text-slate-400 font-normal">({{ col.unidad }})</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 text-xs">
+                    <tr
+                      v-for="(ring, rIdx) in getPartRingsList(modalPart)"
+                      :key="rIdx"
+                      class="hover:bg-slate-50/70 transition"
+                    >
+                      <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200 text-left">
+                        <span>{{ ring.posicion }}</span>
+                        <span
+                          v-if="ring.identificador || (ring.perfil && ring.perfil !== 'Plano')"
+                          class="ml-1 text-[9px] px-1 py-0.2 rounded font-extrabold border uppercase tracking-tight bg-cyan-50 text-[#038391] border-cyan-300"
+                        >
+                          {{ ring.identificador || ring.perfil }}
+                        </span>
+                      </td>
+                      <td
+                        v-for="col in activeTableGroupColumns"
+                        :key="`m-val-${col.id}`"
+                        class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900"
+                      >
+                        {{ formatGeneralTableRowValue(ring, col) }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
