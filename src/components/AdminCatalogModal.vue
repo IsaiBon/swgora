@@ -2158,6 +2158,31 @@ onUnmounted(() => {
                               placeholder="0.00"
                               class="w-16 px-1.5 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                             />
+                            <!-- Booleano (Sí / No) -->
+                            <button
+                              v-else-if="extParam.tipo_dato === 'booleano'"
+                              type="button"
+                              @click="ring.extra[extParam.clave] = !ring.extra[extParam.clave]"
+                              :class="[
+                                'px-2 py-0.5 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
+                                ring.extra[extParam.clave]
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                                  : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                              ]"
+                            >
+                              <Check v-if="ring.extra[extParam.clave]" class="w-3 h-3 text-emerald-600" />
+                              <X v-else class="w-3 h-3 text-slate-400" />
+                              <span>{{ ring.extra[extParam.clave] ? 'Sí' : 'No' }}</span>
+                            </button>
+                            <!-- Selección (Opciones) -->
+                            <select
+                              v-else-if="extParam.tipo_dato === 'seleccion'"
+                              v-model="ring.extra[extParam.clave]"
+                              class="w-20 px-1 py-1 text-center font-sans font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            >
+                              <option value="">—</option>
+                              <option v-for="opt in (extParam.opciones || [])" :key="opt" :value="opt">{{ opt }}</option>
+                            </select>
                             <input
                               v-else
                               v-model="ring.extra[extParam.clave]"
@@ -2384,6 +2409,31 @@ onUnmounted(() => {
                                 placeholder="0.00"
                                 class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                               />
+                              <!-- Booleano (Sí / No) -->
+                              <button
+                                v-else-if="param.tipo_dato === 'booleano'"
+                                type="button"
+                                @click="sf.medidas[param.clave] = !sf.medidas[param.clave]"
+                                :class="[
+                                  'px-2 py-1 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
+                                  sf.medidas[param.clave]
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                                    : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                                ]"
+                              >
+                                <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-emerald-600" />
+                                <X v-else class="w-3 h-3 text-slate-400" />
+                                <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
+                              </button>
+                              <!-- Selección (Opciones) -->
+                              <select
+                                v-else-if="param.tipo_dato === 'seleccion'"
+                                v-model="sf.medidas[param.clave]"
+                                class="w-24 px-1 py-1 text-center font-sans font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                              >
+                                <option value="">—</option>
+                                <option v-for="opt in (param.opciones || [])" :key="opt" :value="opt">{{ opt }}</option>
+                              </select>
                               <input
                                 v-else
                                 v-model="sf.medidas[param.clave]"

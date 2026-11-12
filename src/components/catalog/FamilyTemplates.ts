@@ -14,6 +14,7 @@ export interface TemplateColumnDef {
   filtrable?: boolean
   descripcion?: string
   opciones?: string[]
+  opcionesStr?: string
 }
 
 export interface FamilyTemplate {
@@ -38,6 +39,31 @@ export interface FamilyTemplate {
     opciones_identificador?: string[]
   }
   columnas: TemplateColumnDef[]
+}
+
+/**
+ * Plantilla en Blanco por defecto para máxima libertad
+ */
+export const BLANK_FAMILY_TEMPLATE: FamilyTemplate = {
+  id: 'plantilla_en_blanco',
+  nombre: '',
+  categoria: '',
+  subsistema: 'Block',
+  descripcion: 'Plantilla en blanco: personaliza columnas, sub-columnas, estados (Sí/No) y medidas libremente',
+  icono: 'Table',
+  tipo_vista: 'tabla',
+  badge: 'En Blanco',
+  colorTag: 'cyan',
+  tabla_config: {
+    titulo_primera_columna: 'Componente / Medida',
+    modo_filas: 'libre',
+    tiene_cabecera_marca: false,
+    subfilas: ['Componente 1']
+  },
+  columnas: [
+    { etiqueta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
+    { etiqueta: 'Longitud', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true }
+  ]
 }
 
 /**
@@ -97,7 +123,8 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
     columnas: [
       { etiqueta: 'Diámetro de cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro estándar del cilindro' },
       { etiqueta: 'Grosor', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor axial de cada ranura' },
-      { etiqueta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Ancho radial de cada ranura' }
+      { etiqueta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Ancho radial de cada ranura' },
+      { etiqueta: 'Cónico', tipo_dato: 'booleano', requerido: false, filtrable: true, descripcion: 'Perfil cónico de ranura' }
     ]
   },
   {
@@ -105,7 +132,7 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
     nombre: 'Válvulas (Admisión / Escape)',
     categoria: 'Válvulas',
     subsistema: 'Culata',
-    descripcion: 'Diámetro de Cabeza (hongo), Diámetro Vástago, Longitud Total y Asiento',
+    descripcion: 'Diámetro de Cabeza (hongo), Diámetro Vástago, Longitud Total, Ángulo y Nitrurado (Sí/No)',
     icono: 'SlidersHorizontal',
     tipo_vista: 'normal',
     badge: 'Culata',
@@ -115,7 +142,8 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
       { etiqueta: 'Diámetro Cabeza', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
       { etiqueta: 'Diámetro Vástago', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
       { etiqueta: 'Longitud Total', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
-      { etiqueta: 'Ángulo Asiento', unidad: '°', tipo_dato: 'numero', requerido: false, filtrable: false }
+      { etiqueta: 'Ángulo Asiento', unidad: '°', tipo_dato: 'numero', requerido: false, filtrable: false },
+      { etiqueta: 'Nitrurada', tipo_dato: 'booleano', requerido: false, filtrable: true, descripcion: 'Tratamiento térmico nitrurado' }
     ]
   },
   {
@@ -151,26 +179,6 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
       { etiqueta: 'Largo Total', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
       { etiqueta: 'Diámetro Bulón', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true }
     ]
-  },
-  {
-    id: 'tabla_libre_excel',
-    nombre: 'Personalizada (Modo Libre / Excel)',
-    categoria: 'Personalizada',
-    subsistema: 'General',
-    descripcion: 'Diseña tu tabla desde cero agregando columnas o pegando directo desde Excel',
-    icono: 'Table',
-    tipo_vista: 'tabla',
-    badge: 'Libre',
-    colorTag: 'cyan',
-    tabla_config: {
-      titulo_primera_columna: 'Posición / Fila',
-      modo_filas: 'libre',
-      tiene_cabecera_marca: false
-    },
-    columnas: [
-      { etiqueta: 'Medida 1', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
-      { etiqueta: 'Medida 2', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true }
-    ]
   }
 ]
 
@@ -204,12 +212,13 @@ export function cloneExistingGrupoToTemplate(grupo: GrupoRepuesto): FamilyTempla
     columnas: (grupo.parametros || []).map(p => ({
       etiqueta: p.etiqueta,
       columna_padre: (p as any).columna_padre || undefined,
-      unidad: p.unidad || 'mm',
+      unidad: p.unidad || (p.tipo_dato === 'numero' ? 'mm' : ''),
       tipo_dato: p.tipo_dato || 'numero',
       requerido: p.requerido !== false,
       filtrable: p.filtrable !== false,
       descripcion: p.descripcion,
-      opciones: p.opciones
+      opciones: p.opciones,
+      opcionesStr: (p.opciones || []).join(', ')
     }))
   }
 }
@@ -223,7 +232,7 @@ export function convertTemplateToGrupoInsert(
   customCategoria?: string,
   customSubsistema?: string
 ): GrupoRepuestoInsert {
-  const nombreFinal = (customNombre || template.nombre).trim()
+  const nombreFinal = (customNombre || template.nombre || 'Nueva Familia').trim()
   const categoriaFinal = (customCategoria || template.categoria || nombreFinal).trim()
   const subsistemaFinal = customSubsistema || template.subsistema || 'General'
 
@@ -233,7 +242,7 @@ export function convertTemplateToGrupoInsert(
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(/^_+|_+$/g, '') || `familia_${Date.now()}`
 
   // Generar parámetros técnicos con claves únicas y limpias sin intervención del usuario
   const seenKeys = new Map<string, number>()
@@ -264,20 +273,26 @@ export function convertTemplateToGrupoInsert(
     }
     seenKeys.set(rawSlug, count + 1)
 
+    // Opciones parseadas si es tipo selección
+    let parsedOpciones = col.opciones
+    if (col.tipo_dato === 'seleccion' && col.opcionesStr) {
+      parsedOpciones = col.opcionesStr.split(',').map(s => s.trim()).filter(Boolean)
+    }
+
     const paramObj: ParametroTecnicoDefinicion = {
       id: `p_${idx + 1}_${Date.now().toString(36)}`,
       clave: key,
       etiqueta: col.etiqueta.trim(),
       etiqueta_corta: col.etiqueta.trim(),
-      unidad: col.unidad ?? 'mm',
+      unidad: col.tipo_dato === 'booleano' ? '' : (col.unidad ?? 'mm'),
       tipo_dato: col.tipo_dato || 'numero',
       requerido: col.requerido !== false,
       filtrable: col.filtrable !== false,
       descripcion: col.descripcion || `Medida de ${col.etiqueta}`,
-      opciones: col.opciones
+      opciones: parsedOpciones
     }
 
-    if (col.columna_padre) {
+    if (col.columna_padre && col.columna_padre.trim()) {
       ;(paramObj as any).columna_padre = col.columna_padre.trim()
     }
 
@@ -290,7 +305,7 @@ export function convertTemplateToGrupoInsert(
       titulo_primera_columna: template.tabla_config?.titulo_primera_columna || 'Componente',
       modo_filas: template.tabla_config?.modo_filas || 'libre',
       subfilas: template.tabla_config?.subfilas ? [...template.tabla_config.subfilas] : undefined,
-      tiene_cabecera_marca: template.tabla_config?.tiene_cabecera_marca ?? true,
+      tiene_cabecera_marca: template.tabla_config?.tiene_cabecera_marca ?? false,
       usar_prefijo_titulo: template.tabla_config?.usar_prefijo_titulo,
       etiqueta_ultima_fila: template.tabla_config?.etiqueta_ultima_fila,
       habilitar_identificador: Boolean(template.tabla_config?.habilitar_identificador),

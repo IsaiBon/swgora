@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import {
+  BLANK_FAMILY_TEMPLATE,
   WORKSHOP_FAMILY_TEMPLATES,
   cloneExistingGrupoToTemplate,
   convertTemplateToGrupoInsert,
@@ -23,7 +24,13 @@ import {
   ChevronRight,
   Eye,
   RefreshCw,
-  FolderPlus
+  FilePlus,
+  Split,
+  Binary,
+  Hash,
+  Type,
+  ListFilter,
+  X
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -37,22 +44,23 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 
-// Modo de selección: 'templates' | 'clone' | 'free'
-const selectedSourceMode = ref<'templates' | 'clone' | 'free'>('templates')
+// Modo de selección: 'blank' | 'templates' | 'clone'
+// Por defecto inicia en 'blank' (plantilla en blanco lista para personalizar)
+const selectedSourceMode = ref<'blank' | 'templates' | 'clone'>('blank')
 
-// Plantilla seleccionada en edición
-const currentTemplate = ref<FamilyTemplate>(JSON.parse(JSON.stringify(WORKSHOP_FAMILY_TEMPLATES[0])))
+// Plantilla activa en el diseñador
+const currentTemplate = ref<FamilyTemplate>(JSON.parse(JSON.stringify(BLANK_FAMILY_TEMPLATE)))
 
-// Identidad editable
+// Identidad editable de la familia
 const editNombre = ref<string>('')
 const editCategoria = ref<string>('')
-const editSubsistema = ref<string>('Cigüeñal')
+const editSubsistema = ref<string>('Block')
 const editDescripcion = ref<string>('')
 
-// Selector de grupo existente a clonar
+// Selector de grupo existente para clonar
 const selectedCloneGroupId = ref<string>('')
 
-// Inicializar desde props si se está editando
+// Inicializar desde props si se está editando una familia existente
 const initializeFromGroup = (grp: GrupoRepuesto) => {
   const tpl = cloneExistingGrupoToTemplate(grp)
   currentTemplate.value = JSON.parse(JSON.stringify(tpl))
@@ -63,7 +71,17 @@ const initializeFromGroup = (grp: GrupoRepuesto) => {
   selectedSourceMode.value = 'clone'
 }
 
-// Cargar plantilla predeterminada
+// Cargar plantilla en blanco limpia
+const loadBlankTemplate = () => {
+  currentTemplate.value = JSON.parse(JSON.stringify(BLANK_FAMILY_TEMPLATE))
+  editNombre.value = ''
+  editCategoria.value = ''
+  editSubsistema.value = 'Block'
+  editDescripcion.value = ''
+  selectedSourceMode.value = 'blank'
+}
+
+// Cargar una plantilla de taller
 const loadTemplate = (tpl: FamilyTemplate) => {
   currentTemplate.value = JSON.parse(JSON.stringify(tpl))
   editNombre.value = tpl.nombre
@@ -79,8 +97,7 @@ watch(
     if (grp) {
       initializeFromGroup(grp)
     } else {
-      loadTemplate(WORKSHOP_FAMILY_TEMPLATES[0])
-      selectedSourceMode.value = 'templates'
+      loadBlankTemplate()
     }
   },
   { immediate: true }
@@ -96,14 +113,6 @@ const handleCloneExisting = () => {
   }
 }
 
-// Cargar plantilla libre
-const handleSelectFree = () => {
-  const freeTpl = WORKSHOP_FAMILY_TEMPLATES.find(t => t.id === 'tabla_libre_excel') || WORKSHOP_FAMILY_TEMPLATES[WORKSHOP_FAMILY_TEMPLATES.length - 1]
-  selectedSourceMode.value = 'free'
-  loadTemplate(freeTpl)
-  editNombre.value = 'Nueva Familia'
-}
-
 // Icono según string
 const getIconComponent = (iconName: string) => {
   switch (iconName) {
@@ -117,7 +126,7 @@ const getIconComponent = (iconName: string) => {
   }
 }
 
-// Gestión de columnas
+// --- GESTIÓN INGENIOSA DE COLUMNAS ---
 const addColumn = () => {
   currentTemplate.value.columnas.push({
     etiqueta: `Medida ${currentTemplate.value.columnas.length + 1}`,
@@ -128,33 +137,114 @@ const addColumn = () => {
   })
 }
 
+// Agregar sub-columna hermana agrupada
+const addSubcolumn = (targetIdx: number) => {
+  const targetCol = currentTemplate.value.columnas[targetIdx]
+  if (!targetCol) return
+
+  // Si la columna actual no tiene grupo padre, asignarle uno derivado de su nombre o 'Grupo'
+  if (!targetCol.columna_padre) {
+    const parentName = targetCol.etiqueta.trim() || `Grupo ${targetIdx + 1}`
+    targetCol.columna_padre = parentName
+    targetCol.etiqueta = 'Mín'
+  }
+
+  // Insertar la nueva sub-columna inmediatamente después
+  const newSubCol: TemplateColumnDef = {
+    etiqueta: targetCol.etiqueta === 'Mín' ? 'Máx' : `Sub-medida`,
+    columna_padre: targetCol.columna_padre,
+    unidad: targetCol.unidad || 'mm',
+    tipo_dato: targetCol.tipo_dato || 'numero',
+    requerido: true,
+    filtrable: true
+  }
+
+  currentTemplate.value.columnas.splice(targetIdx + 1, 0, newSubCol)
+}
+
 const removeColumn = (index: number) => {
   if (currentTemplate.value.columnas.length <= 1) return
   currentTemplate.value.columnas.splice(index, 1)
 }
 
-// Gestión de subfilas (Cojinetes)
-const addSubfila = () => {
+// Cambiar tipo de dato de una columna con valores predeterminados sensatos
+const setColumnType = (col: TemplateColumnDef, newType: 'numero' | 'texto' | 'seleccion' | 'booleano') => {
+  col.tipo_dato = newType
+  if (newType === 'booleano') {
+    col.unidad = ''
+    if (!col.descripcion) col.descripcion = `Estado de ${col.etiqueta}`
+  } else if (newType === 'numero') {
+    if (!col.unidad) col.unidad = 'mm'
+  } else if (newType === 'seleccion') {
+    if (!col.opcionesStr && (!col.opciones || col.opciones.length === 0)) {
+      col.opcionesStr = 'Opción A, Opción B'
+    }
+  }
+}
+
+// --- GESTIÓN GENERAL DE FILAS Y COMPONENTES ---
+// Tipo de organización de filas: 'simple' (1 fila) | 'subfilas' (varios componentes) | 'incremental' (ranuras dinámicas)
+const rowOrganizationMode = computed({
+  get(): 'simple' | 'subfilas' | 'incremental' {
+    if (currentTemplate.value.tipo_vista === 'normal') return 'simple'
+    const modo = currentTemplate.value.tabla_config?.modo_filas
+    if (modo === 'incremental') return 'incremental'
+    if (modo === 'subfilas' || modo === 'cojinetes') return 'subfilas'
+    if (Array.isArray(currentTemplate.value.tabla_config?.subfilas) && currentTemplate.value.tabla_config.subfilas.length > 1) {
+      return 'subfilas'
+    }
+    return 'simple'
+  },
+  set(val: 'simple' | 'subfilas' | 'incremental') {
+    if (!currentTemplate.value.tabla_config) {
+      currentTemplate.value.tabla_config = {
+        titulo_primera_columna: 'Componente / Medida',
+        modo_filas: 'libre'
+      }
+    }
+
+    if (val === 'simple') {
+      currentTemplate.value.tabla_config.modo_filas = 'libre'
+      currentTemplate.value.tabla_config.subfilas = ['Medida']
+      currentTemplate.value.tabla_config.tiene_cabecera_marca = false
+    } else if (val === 'subfilas') {
+      currentTemplate.value.tabla_config.modo_filas = 'subfilas'
+      if (!currentTemplate.value.tabla_config.subfilas || currentTemplate.value.tabla_config.subfilas.length <= 1) {
+        currentTemplate.value.tabla_config.subfilas = ['Biela', 'Bancada']
+      }
+      currentTemplate.value.tabla_config.tiene_cabecera_marca = true
+    } else if (val === 'incremental') {
+      currentTemplate.value.tabla_config.modo_filas = 'incremental'
+      currentTemplate.value.tabla_config.titulo_primera_columna = 'Anillo / Ranura'
+      currentTemplate.value.tabla_config.usar_prefijo_titulo = true
+      currentTemplate.value.tabla_config.etiqueta_ultima_fila = 'Anillo de aceite'
+      currentTemplate.value.tabla_config.tiene_cabecera_marca = false
+    }
+  }
+})
+
+const addSubfilaComponent = () => {
   if (!currentTemplate.value.tabla_config) {
     currentTemplate.value.tabla_config = {
       titulo_primera_columna: 'Componente',
       modo_filas: 'subfilas',
-      subfilas: ['Biela', 'Bancada'],
+      subfilas: ['Componente 1'],
       tiene_cabecera_marca: true
     }
   }
   if (!Array.isArray(currentTemplate.value.tabla_config.subfilas)) {
-    currentTemplate.value.tabla_config.subfilas = ['Biela', 'Bancada']
+    currentTemplate.value.tabla_config.subfilas = ['Componente 1']
   }
-  currentTemplate.value.tabla_config.subfilas.push(`Fila ${currentTemplate.value.tabla_config.subfilas.length + 1}`)
+  const count = currentTemplate.value.tabla_config.subfilas.length + 1
+  currentTemplate.value.tabla_config.subfilas.push(`Componente ${count}`)
 }
 
-const removeSubfila = (index: number) => {
+const removeSubfilaComponent = (index: number) => {
   if (!currentTemplate.value.tabla_config?.subfilas || currentTemplate.value.tabla_config.subfilas.length <= 1) return
   currentTemplate.value.tabla_config.subfilas.splice(index, 1)
 }
 
-// Columnas únicas agrupadas para previsualizar cabeceras dobles (como STD -> Mín, Máx)
+// Agrupación visual para la cabecera en vivo (Tier 1 y Tier 2 con sub-columnas)
 const previewHeaderGroups = computed(() => {
   const cols = currentTemplate.value.columnas
   const groups: Array<{ name: string; colspan: number; cols: TemplateColumnDef[] }> = []
@@ -211,6 +301,17 @@ const hasGroupedHeaders = computed(() => {
   return previewHeaderGroups.value.some(g => g.name !== '')
 })
 
+// Muestra de filas en la vista previa
+const previewSampleRows = computed<string[]>(() => {
+  if (rowOrganizationMode.value === 'incremental') {
+    return ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de Aceite']
+  }
+  if (rowOrganizationMode.value === 'subfilas' && currentTemplate.value.tabla_config?.subfilas) {
+    return currentTemplate.value.tabla_config.subfilas
+  }
+  return ['Pieza STD']
+})
+
 // Validación y Guardado
 const validationError = ref<string>('')
 
@@ -241,9 +342,26 @@ const handleSave = () => {
 
 <template>
   <div class="space-y-6">
-    <!-- BARRA SUPERIOR: ELECCIÓN DE MODO DE INICIO -->
-    <div class="bg-slate-100 p-2.5 rounded-2xl border border-slate-200/90 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-2xs">
+    <!-- BARRA SUPERIOR: MODO DE TRABAJO (PLANTILLA EN BLANCO ACTIVA POR DEFECTO) -->
+    <div class="bg-slate-100 p-2.5 rounded-2xl border border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-2xs">
       <div class="flex items-center gap-1.5 flex-wrap">
+        <!-- BOTÓN 1: PLANTILLA EN BLANCO (DEFAULT) -->
+        <button
+          type="button"
+          @click="loadBlankTemplate"
+          :class="[
+            'px-3.5 py-2 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer',
+            selectedSourceMode === 'blank'
+              ? 'bg-white text-slate-900 shadow-2xs ring-1 ring-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+          ]"
+        >
+          <FilePlus class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <span>Plantilla en Blanco</span>
+          <span v-if="selectedSourceMode === 'blank'" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+        </button>
+
+        <!-- BOTÓN 2: PLANTILLAS DE TALLER PRECONFIGURADAS -->
         <button
           type="button"
           @click="selectedSourceMode = 'templates'"
@@ -254,10 +372,11 @@ const handleSave = () => {
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           ]"
         >
-          <Sparkles class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <Sparkles class="w-3.5 h-3.5 text-amber-500" />
           <span>Plantillas de Taller</span>
         </button>
 
+        <!-- BOTÓN 3: COPIAR DE EXISTENTE -->
         <button
           type="button"
           @click="selectedSourceMode = 'clone'"
@@ -271,23 +390,9 @@ const handleSave = () => {
           <Copy class="w-3.5 h-3.5 text-[#004B97]" />
           <span>Copiar de una Existente</span>
         </button>
-
-        <button
-          type="button"
-          @click="handleSelectFree"
-          :class="[
-            'px-3.5 py-2 rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer',
-            selectedSourceMode === 'free'
-              ? 'bg-white text-slate-900 shadow-2xs ring-1 ring-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          ]"
-        >
-          <Table class="w-3.5 h-3.5 text-emerald-600" />
-          <span>Modo Libre / Excel</span>
-        </button>
       </div>
 
-      <!-- Si está en modo copiar de existente, selector desplegable -->
+      <!-- Selector desplegable si está en modo copiar de existente -->
       <div v-if="selectedSourceMode === 'clone'" class="flex items-center gap-2">
         <select
           v-model="selectedCloneGroupId"
@@ -302,14 +407,13 @@ const handleSave = () => {
       </div>
     </div>
 
-    <!-- TARJETAS DE PLANTILLAS RÁPIDAS (SOLO EN MODO PLANTILLAS) -->
-    <div v-if="selectedSourceMode === 'templates'" class="space-y-2">
+    <!-- TARJETAS DE PLANTILLAS RÁPIDAS (SÓLO SI EL USUARIO HACE CLIC EN 'PLANTILLAS DE TALLER') -->
+    <div v-if="selectedSourceMode === 'templates'" class="space-y-2 animate-in fade-in duration-200">
       <div class="flex items-center justify-between">
         <label class="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-          <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-          <span>1. Elige una plantilla base para comenzar</span>
+          <Sparkles class="w-4 h-4 text-amber-500" />
+          <span>Plantillas Rápidas del Taller (Haz clic en una para cargar su estructura)</span>
         </label>
-        <span class="text-[11px] text-slate-500">Haz clic en la pieza que vas a registrar</span>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -319,7 +423,7 @@ const handleSave = () => {
           @click="loadTemplate(tpl)"
           :class="[
             'p-3.5 rounded-2xl border transition-all text-left cursor-pointer relative group flex flex-col justify-between shadow-2xs',
-            currentTemplate.id === tpl.id || currentTemplate.categoria === tpl.categoria
+            currentTemplate.id === tpl.id
               ? 'bg-cyan-50/90 border-[#04C4D9] ring-2 ring-[#04C4D9]/40'
               : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/80'
           ]"
@@ -354,11 +458,8 @@ const handleSave = () => {
             <span class="text-slate-600 font-mono text-[10px]">
               {{ tpl.columnas.length }} columnas
             </span>
-            <span
-              class="flex items-center gap-1 transition"
-              :class="currentTemplate.id === tpl.id ? 'text-[#038391] font-black' : 'text-slate-400 group-hover:text-slate-700'"
-            >
-              <span>{{ currentTemplate.id === tpl.id ? 'Seleccionada' : 'Elegir' }}</span>
+            <span class="flex items-center gap-1 text-[#038391] font-black">
+              <span>Usar plantilla</span>
               <ChevronRight class="w-3.5 h-3.5" />
             </span>
           </div>
@@ -366,11 +467,11 @@ const handleSave = () => {
       </div>
     </div>
 
-    <!-- SECCIÓN DE PERSONALIZACIÓN Y VISTA PREVIA RÁPIDA -->
-    <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-2xs space-y-5">
+    <!-- WORKBENCH PRINCIPAL: IDENTIDAD + OPCIONES INGENIOSAS + VISTA PREVIA INTERACTIVA -->
+    <div class="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-2xs space-y-6">
       
-      <!-- IDENTIDAD BÁSICA (SÓLO 3 CAMPOS DIRECTOS) -->
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+      <!-- 1. IDENTIDAD BÁSICA DE LA FAMILIA -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
         <div class="md:col-span-5">
           <label class="block text-xs font-black text-slate-800 mb-1">
             Nombre de la Familia <span class="text-rose-500">*</span>
@@ -378,8 +479,8 @@ const handleSave = () => {
           <input
             v-model="editNombre"
             type="text"
-            placeholder="Ej. Cojinetes, Anillos de motor, Camisas..."
-            class="w-full px-3.5 py-2 text-xs font-black bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#04C4D9] transition"
+            placeholder="Ej. Retenes de válvulas, Camisas de cilindro, Cojinetes..."
+            class="w-full px-3.5 py-2.5 text-xs font-black bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#04C4D9] transition shadow-2xs"
           />
         </div>
 
@@ -389,12 +490,12 @@ const handleSave = () => {
           </label>
           <select
             v-model="editSubsistema"
-            class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#04C4D9] transition"
+            class="w-full px-3 py-2.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#04C4D9] transition shadow-2xs"
           >
             <option value="Block">Block de Cilindros</option>
-            <option value="Culata">Culata / Tapa</option>
-            <option value="Cigüeñal">Cigüeñal / Bancada</option>
-            <option value="General">General / Accesorios</option>
+            <option value="Culata">Culata / Tapa de Cilindros</option>
+            <option value="Cigüeñal">Cigüeñal / Bancada / Bielas</option>
+            <option value="General">General / Accesorios / Sellos</option>
           </select>
         </div>
 
@@ -407,17 +508,17 @@ const handleSave = () => {
               type="button"
               @click="currentTemplate.tipo_vista = 'tabla'"
               :class="[
-                'flex-1 py-1 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
+                'flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
                 currentTemplate.tipo_vista === 'tabla' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
               ]"
             >
-              Matriz / Tabla
+              Tabla / Matriz
             </button>
             <button
               type="button"
               @click="currentTemplate.tipo_vista = 'normal'"
               :class="[
-                'flex-1 py-1 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
+                'flex-1 py-1.5 px-2 rounded-lg text-[11px] font-black transition cursor-pointer',
                 currentTemplate.tipo_vista === 'normal' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
               ]"
             >
@@ -427,111 +528,316 @@ const handleSave = () => {
         </div>
       </div>
 
-      <!-- OPCIÓN DE SUBFILAS / COMPONENTES MÚLTIPLES (EJ. BIELA / BANCADA) -->
-      <div
-        v-if="currentTemplate.tipo_vista === 'tabla' && currentTemplate.tabla_config"
-        class="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3"
-      >
-        <div class="flex items-center justify-between">
+      <!-- 2. CONTROL GENERAL INGENIOSO DE FILAS (ABARCA CUALQUIER TIPO DE PIEZA MECÁNICA) -->
+      <div v-if="currentTemplate.tipo_vista === 'tabla'" class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h5 class="text-xs font-black text-slate-900 flex items-center gap-2">
+            <h5 class="text-xs font-black text-slate-900 flex items-center gap-1.5">
               <Layers class="w-4 h-4 text-[#004B97]" />
-              <span>Filas que tendrá cada registro (ej. Biela y Bancada, o Anillos)</span>
+              <span>¿Cómo se componen las filas de este repuesto?</span>
             </h5>
             <p class="text-[11px] text-slate-500 mt-0.5">
-              Define los componentes que componen cada juego o conjunto de este repuesto.
+              Elige si es una pieza individual, un juego con varios componentes (como Biela/Bancada) o ranuras dinámicas.
             </p>
           </div>
 
-          <button
-            v-if="currentTemplate.tabla_config.modo_filas === 'subfilas'"
-            type="button"
-            @click="addSubfila"
-            class="px-2.5 py-1 text-xs font-bold text-[#038391] hover:text-[#004B97] bg-white border border-cyan-200 rounded-xl transition flex items-center gap-1 shadow-2xs cursor-pointer"
-          >
-            <Plus class="w-3.5 h-3.5" />
-            <span>+ Agregar Fila</span>
-          </button>
-        </div>
-
-        <!-- Si tiene subfilas definidas (como Biela / Bancada) -->
-        <div
-          v-if="currentTemplate.tabla_config.modo_filas === 'subfilas' && currentTemplate.tabla_config.subfilas"
-          class="flex items-center gap-2 flex-wrap pt-1"
-        >
-          <div
-            v-for="(_sf, sfIdx) in currentTemplate.tabla_config.subfilas"
-            :key="sfIdx"
-            class="flex items-center gap-1.5 bg-white border border-slate-300 px-2.5 py-1 rounded-xl shadow-2xs"
-          >
-            <span class="w-4 h-4 rounded-full bg-slate-900 text-white text-[9px] font-mono font-bold flex items-center justify-center">
-              {{ sfIdx + 1 }}
-            </span>
-            <input
-              v-model="currentTemplate.tabla_config.subfilas[sfIdx]"
-              type="text"
-              class="w-24 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
-              placeholder="Nombre"
-            />
+          <!-- Selector de Modo de Filas (3 Casos Universales) -->
+          <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-300 shadow-2xs shrink-0">
             <button
-              v-if="currentTemplate.tabla_config.subfilas.length > 1"
               type="button"
-              @click="removeSubfila(sfIdx)"
-              class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+              @click="rowOrganizationMode = 'simple'"
+              :class="[
+                'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
+                rowOrganizationMode === 'simple' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              ]"
+              title="1 fila por repuesto con sus medidas"
             >
-              <Trash2 class="w-3.5 h-3.5" />
+              Fila Simple
+            </button>
+            <button
+              type="button"
+              @click="rowOrganizationMode = 'subfilas'"
+              :class="[
+                'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
+                rowOrganizationMode === 'subfilas' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              ]"
+              title="Varios componentes por repuesto (ej. Biela y Bancada, o Admisión y Escape)"
+            >
+              Componentes Múltiples
+            </button>
+            <button
+              type="button"
+              @click="rowOrganizationMode = 'incremental'"
+              :class="[
+                'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
+                rowOrganizationMode === 'incremental' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              ]"
+              title="Matriz de ranuras dinámicas para aros de motor (hasta 10+)"
+            >
+              Ranuras (Aros)
             </button>
           </div>
         </div>
 
-        <div v-else-if="currentTemplate.tabla_config.modo_filas === 'incremental'" class="text-xs font-bold text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl flex items-center gap-2">
+        <!-- Si tiene componentes múltiples (como Biela, Bancada, etc.) -->
+        <div v-if="rowOrganizationMode === 'subfilas'" class="pt-2 border-t border-slate-200/80 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-black text-slate-700">
+              Nombres de los componentes incluidos en cada juego:
+            </span>
+            <button
+              type="button"
+              @click="addSubfilaComponent"
+              class="px-2.5 py-1 text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white border border-cyan-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+            >
+              <Plus class="w-3 h-3 text-[#04C4D9]" />
+              <span>+ Agregar Componente</span>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <div
+              v-for="(_sf, sfIdx) in (currentTemplate.tabla_config?.subfilas || ['Componente 1'])"
+              :key="sfIdx"
+              class="flex items-center gap-1.5 bg-white border border-slate-300 px-2.5 py-1 rounded-xl shadow-2xs"
+            >
+              <span class="w-4 h-4 rounded-full bg-slate-900 text-white text-[9px] font-mono font-bold flex items-center justify-center">
+                {{ sfIdx + 1 }}
+              </span>
+              <input
+                v-model="(currentTemplate.tabla_config!.subfilas as string[])[sfIdx]"
+                type="text"
+                class="w-24 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
+                placeholder="Nombre"
+              />
+              <button
+                v-if="(currentTemplate.tabla_config?.subfilas || []).length > 1"
+                type="button"
+                @click="removeSubfilaComponent(sfIdx)"
+                class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+                title="Quitar componente"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Si tiene ranuras de aros -->
+        <div v-else-if="rowOrganizationMode === 'incremental'" class="text-xs font-bold text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl flex items-center gap-2">
           <CircleDot class="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Matriz de ranuras dinámicas: Inicializa con 3 anillos (1°, 2°, Aceite) y permite agregar hasta 10+ ranuras en cualquier motor.</span>
+          <span>Matriz de ranuras dinámicas: Los operarios podrán capturar 1°, 2°, Aceite y ranuras adicionales indefinidamente (hasta 10+).</span>
         </div>
       </div>
 
-      <!-- VISTA PREVIA INTERACTIVA DE LA TABLA (ESTILO EXACTO AL CATÁLOGO) -->
-      <div class="space-y-2">
+      <!-- 3. CONFIGURADOR VISUAL DE COLUMNAS CON ESTADOS (SÍ/NO, NÚMEROS, SUB-COLUMNAS) -->
+      <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <div class="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wider">
-            <Eye class="w-4 h-4 text-[#04C4D9]" />
-            <span>Vista Previa: Así se verá la tabla en el catálogo</span>
+          <div>
+            <h4 class="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
+              <span>Columnas de Medidas y Estados</span>
+            </h4>
+            <p class="text-[11px] text-slate-500 mt-0.5">
+              Personaliza el tipo de dato: Número, Estado Sí/No (ej. Cónico), Selección o Texto. Usa "+ Sub-columna" para agrupar bajo títulos como STD, 0.25, etc.
+            </p>
           </div>
 
           <button
             type="button"
             @click="addColumn"
-            class="px-3 py-1.5 bg-[#004B97] hover:bg-[#003875] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95"
+            class="px-3.5 py-1.5 bg-[#004B97] hover:bg-[#003875] text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95 shrink-0"
           >
             <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
             <span>+ Agregar Columna</span>
           </button>
         </div>
 
-        <!-- TABLA RENDERIZADA EN VIVO -->
+        <!-- TARJETAS HORIZONTALES EDITABLES PARA CADA COLUMNA -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div
+            v-for="(col, cIdx) in currentTemplate.columnas"
+            :key="cIdx"
+            class="p-3.5 rounded-2xl border bg-slate-50/80 border-slate-200 space-y-2.5 relative group hover:border-slate-300 transition"
+          >
+            <!-- Cabecera de Columna -->
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
+                  {{ cIdx + 1 }}
+                </span>
+                <input
+                  v-model="col.etiqueta"
+                  type="text"
+                  placeholder="Nombre de la medida..."
+                  class="font-black text-xs text-slate-900 bg-transparent border-b border-dashed border-slate-300 focus:border-[#04C4D9] focus:outline-none w-32 truncate"
+                />
+              </div>
+
+              <div class="flex items-center gap-1">
+                <!-- Botón de Agregar Sub-columna agrupada -->
+                <button
+                  type="button"
+                  @click="addSubcolumn(cIdx)"
+                  class="px-2 py-0.5 rounded-lg text-[10px] font-black bg-white border border-cyan-300 text-[#038391] hover:bg-cyan-50 transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                  title="Crear una sub-columna hermana agrupada bajo un mismo título superior (ej. STD -> Mín y Máx)"
+                >
+                  <Split class="w-3 h-3 text-[#04C4D9]" />
+                  <span>+ Sub-col</span>
+                </button>
+
+                <button
+                  v-if="currentTemplate.columnas.length > 1"
+                  type="button"
+                  @click="removeColumn(cIdx)"
+                  class="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                  title="Eliminar columna"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <!-- Selector de Tipo de Dato con Badges -->
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[10px] font-bold">
+                <button
+                  type="button"
+                  @click="setColumnType(col, 'numero')"
+                  :class="[
+                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
+                    (col.tipo_dato || 'numero') === 'numero' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                  ]"
+                >
+                  <Hash class="w-3 h-3" />
+                  <span>Número</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="setColumnType(col, 'booleano')"
+                  :class="[
+                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
+                    col.tipo_dato === 'booleano' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                  ]"
+                  title="Estado Sí / No (ej. Cónico, Nitrurado, Ranurado)"
+                >
+                  <Binary class="w-3 h-3" />
+                  <span>Sí / No</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="setColumnType(col, 'seleccion')"
+                  :class="[
+                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
+                    col.tipo_dato === 'seleccion' ? 'bg-purple-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                  ]"
+                  title="Opciones desplegables"
+                >
+                  <ListFilter class="w-3 h-3" />
+                  <span>Opciones</span>
+                </button>
+
+                <button
+                  type="button"
+                  @click="setColumnType(col, 'texto')"
+                  :class="[
+                    'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-1 cursor-pointer',
+                    col.tipo_dato === 'texto' ? 'bg-slate-700 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                  ]"
+                >
+                  <Type class="w-3 h-3" />
+                  <span>Texto</span>
+                </button>
+              </div>
+
+              <!-- Parámetros específicos según el tipo -->
+              <div v-if="(col.tipo_dato || 'numero') === 'numero'" class="flex items-center gap-2">
+                <span class="text-[10px] font-bold text-slate-500">Unidad:</span>
+                <input
+                  v-model="col.unidad"
+                  type="text"
+                  placeholder="mm, pulg, °..."
+                  class="w-20 px-2 py-0.5 text-[11px] font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+
+              <div v-else-if="col.tipo_dato === 'booleano'" class="bg-emerald-50 text-emerald-900 border border-emerald-200 px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5">
+                <Check class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Estado binario Sí / No (ej. Cónico, Nitrurado, Ranurado)</span>
+              </div>
+
+              <div v-else-if="col.tipo_dato === 'seleccion'" class="space-y-1">
+                <label class="block text-[9px] font-bold text-slate-500">Opciones separadas por coma:</label>
+                <input
+                  v-model="col.opcionesStr"
+                  type="text"
+                  placeholder="Ej. Admisión, Escape, Especial"
+                  class="w-full px-2 py-1 text-[11px] font-bold bg-white border border-purple-200 rounded-lg focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <!-- Título superior / Padre para sub-columna agrupada -->
+              <div class="pt-1 flex items-center gap-1.5">
+                <Split class="w-3 h-3 text-[#004B97] shrink-0" />
+                <input
+                  v-model="col.columna_padre"
+                  type="text"
+                  placeholder="Grupo superior (ej. STD, 0.25...)"
+                  class="flex-1 px-2 py-0.5 text-[10px] font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+                <button
+                  v-if="col.columna_padre"
+                  type="button"
+                  @click="col.columna_padre = ''"
+                  class="text-slate-400 hover:text-slate-600 p-0.5"
+                  title="Quitar grupo padre"
+                >
+                  <X class="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. VISTA PREVIA INTERACTIVA EN VIVO (TABLA TAL CUAL SE VERÁ EN CATÁLOGO) -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wider">
+            <Eye class="w-4 h-4 text-[#04C4D9]" />
+            <span>Vista Previa: Así se verá la tabla en el catálogo</span>
+          </div>
+          <span class="text-[11px] text-slate-400">
+            {{ currentTemplate.columnas.length }} columnas configuradas
+          </span>
+        </div>
+
+        <!-- TABLA RENDERIZADA CON SOPORTE DE SUB-COLUMNAS Y ESTADOS SÍ/NO -->
         <div class="border border-slate-300 rounded-2xl overflow-hidden shadow-2xs bg-white">
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse">
               <thead>
-                <!-- Nivel 1: Títulos de Grupo Superior (ej. STD, 1ERT, 2DA...) -->
+                <!-- Tier 1: Grupos Superiores si existen (ej. STD, 0.25...) -->
                 <tr v-if="hasGroupedHeaders" class="bg-slate-100/90 text-slate-700 border-b border-slate-200">
-                  <th class="py-1 px-3 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200">
+                  <th class="py-1.5 px-3 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200">
                     {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Componente' }}
                   </th>
-                  <th class="py-1 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center">
+                  <th class="py-1.5 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center">
                     CÓDIGO
                   </th>
                   <th
                     v-for="(grp, gIdx) in previewHeaderGroups"
                     :key="gIdx"
                     :colspan="grp.colspan"
-                    class="py-1 px-2 font-black text-[10px] text-center uppercase tracking-wider border-r border-slate-200 bg-slate-200/50"
+                    class="py-1.5 px-2 font-black text-[10px] text-center uppercase tracking-wider border-r border-slate-200 bg-slate-200/50"
                   >
                     {{ grp.name || '-' }}
                   </th>
                 </tr>
 
-                <!-- Nivel 2: Nombres individuales de columnas -->
+                <!-- Tier 2: Columnas individuales -->
                 <tr class="bg-slate-50 text-slate-700 border-b border-slate-300">
                   <th class="py-2 px-3 font-black text-slate-900 border-r border-slate-200">
                     {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Componente' }}
@@ -542,68 +848,76 @@ const handleSave = () => {
                   <th
                     v-for="(col, cIdx) in currentTemplate.columnas"
                     :key="cIdx"
-                    class="py-2 px-2.5 font-bold text-slate-800 border-r border-slate-200 text-center group min-w-[90px]"
+                    class="py-2 px-2.5 font-bold text-slate-800 border-r border-slate-200 text-center min-w-[95px]"
                   >
-                    <div class="flex items-center justify-center gap-1">
-                      <input
-                        v-model="col.etiqueta"
-                        class="text-center font-black text-xs text-slate-900 bg-transparent hover:bg-white focus:bg-white rounded px-1 border border-transparent hover:border-slate-300 focus:border-[#04C4D9] w-20"
-                        title="Haz clic para renombrar esta columna"
-                      />
-                      <button
-                        v-if="currentTemplate.columnas.length > 1"
-                        type="button"
-                        @click="removeColumn(cIdx)"
-                        class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 p-0.5 rounded transition cursor-pointer"
-                        title="Eliminar columna"
-                      >
-                        <Trash2 class="w-3 h-3" />
-                      </button>
+                    <div class="font-black text-xs text-slate-900">
+                      {{ col.etiqueta || `Columna ${cIdx + 1}` }}
                     </div>
-                    <span v-if="col.unidad" class="text-[9px] text-slate-400 font-mono">({{ col.unidad }})</span>
+                    <div class="text-[9px] font-mono text-slate-400 mt-0.5">
+                      <span v-if="col.tipo_dato === 'booleano'" class="text-emerald-700 font-bold bg-emerald-50 px-1 rounded">Sí/No</span>
+                      <span v-else-if="col.tipo_dato === 'seleccion'" class="text-purple-700 font-bold bg-purple-50 px-1 rounded">Opciones</span>
+                      <span v-else-if="col.unidad">({{ col.unidad }})</span>
+                      <span v-else>texto</span>
+                    </div>
                   </th>
                 </tr>
               </thead>
 
               <!-- CUERPO DE EJEMPLO DE LA TABLA -->
               <tbody class="divide-y divide-slate-100 text-slate-600">
-                <!-- Fila cabecera de motor ejemplo si aplica -->
-                <tr v-if="currentTemplate.tabla_config?.tiene_cabecera_marca" class="bg-rose-50/40">
-                  <td :colspan="currentTemplate.columnas.length + 2" class="py-1.5 px-3 text-[11px] font-bold text-slate-800">
-                    <span class="text-rose-700 font-black mr-2">MOTOR EJEMPLO</span>
-                    <span class="text-slate-500">1.8 D / 2.0 TDI</span>
-                  </td>
-                </tr>
-
-                <!-- Filas representativas -->
                 <tr
-                  v-for="(rowLabel, rIdx) in (currentTemplate.tabla_config?.subfilas || ['Fila 1', 'Fila 2'])"
+                  v-for="(rowLabel, rIdx) in previewSampleRows"
                   :key="rIdx"
                   class="hover:bg-slate-50/70"
                 >
                   <td class="py-2 px-3 font-black text-slate-800 flex items-center gap-2 border-r border-slate-100">
-                    <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+                    <span
+                      class="w-2 h-2 rounded-full"
+                      :class="rIdx === 0 ? 'bg-[#004B97]' : (rIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                    ></span>
                     <span>{{ rowLabel }}</span>
                   </td>
                   <td class="py-2 px-2 text-center font-mono text-[11px] text-slate-400 border-r border-slate-100">
-                    77{{ rIdx + 1 }}
+                    {{ 770 + rIdx }}
                   </td>
                   <td
-                    v-for="(_col, colIdx) in currentTemplate.columnas"
+                    v-for="(col, colIdx) in currentTemplate.columnas"
                     :key="colIdx"
-                    class="py-2 px-2 text-center font-mono text-slate-400 border-r border-slate-100 text-[11px]"
+                    class="py-2 px-2 text-center border-r border-slate-100 text-[11px]"
                   >
-                    0.00
+                    <!-- Muestra de Estado Sí/No -->
+                    <span
+                      v-if="col.tipo_dato === 'booleano'"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black"
+                      :class="rIdx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                    >
+                      <Check v-if="rIdx === 0" class="w-3 h-3 text-emerald-600" />
+                      <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
+                    </span>
+
+                    <!-- Muestra de Selección -->
+                    <span
+                      v-else-if="col.tipo_dato === 'seleccion'"
+                      class="inline-flex items-center px-2 py-0.5 rounded-lg bg-purple-50 text-purple-800 text-[10px] font-bold border border-purple-200"
+                    >
+                      {{ (col.opcionesStr ? col.opcionesStr.split(',')[0]?.trim() : col.opciones?.[0]) || 'Opción' }}
+                    </span>
+
+                    <!-- Muestra de Número -->
+                    <span v-else-if="(col.tipo_dato || 'numero') === 'numero'" class="font-mono text-slate-500 font-bold">
+                      {{ (45.00 + rIdx * 0.25).toFixed(2) }}
+                    </span>
+
+                    <!-- Muestra de Texto -->
+                    <span v-else class="text-slate-400 italic">
+                      —
+                    </span>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-
-        <p class="text-[11px] text-slate-400 italic">
-          💡 Consejo: Puedes hacer clic directamente sobre el nombre de cualquier columna para cambiarlo.
-        </p>
       </div>
 
       <!-- MENSAJE DE ERROR DE VALIDACIÓN -->
