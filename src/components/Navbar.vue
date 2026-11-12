@@ -125,30 +125,11 @@ const handleNewOrder = () => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 w-full flex justify-center pointer-events-none px-2 sm:px-4">
-    <!-- Notch Container Amplio Estilo Supaste / Dynamic Island -->
+  <header class="sticky top-0 z-40 w-full bg-[#0a0a0a]/95 backdrop-blur-md border-b border-neutral-800 shadow-md">
     <div
-      class="pointer-events-auto relative w-full sm:w-auto max-w-6xl xl:max-w-7xl h-14 bg-[#0a0a0a] text-white rounded-b-[22px] border-b border-x border-neutral-800/90 px-4 sm:px-6 lg:px-7 flex items-center justify-between sm:justify-center gap-3 sm:gap-6 lg:gap-8 xl:gap-10 transition-all shadow-xl shadow-black/40"
+      class="w-full max-w-7xl mx-auto h-14 px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-3 sm:gap-6 transition-all"
     >
-      <!-- Oreja Izquierda Curva Cóncava (Inverted Fillet Ear) -->
-      <svg
-        class="absolute top-0 -left-[22px] w-[22px] h-[22px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
-        viewBox="0 0 22 22"
-      >
-        <path d="M22 0 H0 C12.15 0 22 9.85 22 22 V0 Z" />
-        <path d="M0 0 C12.15 0 22 9.85 22 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-      </svg>
-
-      <!-- Oreja Derecha Curva Cóncava (Inverted Fillet Ear) -->
-      <svg
-        class="absolute top-0 -right-[22px] w-[22px] h-[22px] text-[#0a0a0a] fill-current pointer-events-none hidden md:block"
-        viewBox="0 0 22 22"
-      >
-        <path d="M0 0 H22 C9.85 0 0 12.15 0 22 Z" />
-        <path d="M22 0 C9.85 0 0 12.15 0 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-      </svg>
-
-      <!-- 1. Left: Brand / Logo con efecto Glossy Glass (Estilo Supaste) -->
+      <!-- 1. Left: Brand / Logo con efecto Glossy Glass -->
       <router-link
         :to="authStore.defaultRoute"
         class="flex items-center gap-2.5 group select-none shrink-0"
@@ -176,7 +157,7 @@ const handleNewOrder = () => {
       </router-link>
 
       <!-- 2. Center: Enlaces de Navegación (Desktop) -->
-      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-1 bg-neutral-900/60 rounded-full border border-neutral-800/70 shadow-inner">
+      <nav class="hidden lg:flex items-center gap-1 shrink-0 p-1 bg-neutral-900/70 rounded-full border border-neutral-800/80 shadow-inner">
         <router-link
           v-for="item in visibleNavItems"
           :key="item.path"
@@ -393,7 +374,7 @@ const handleNewOrder = () => {
     >
       <div
         v-if="mobileMenuOpen"
-        class="pointer-events-auto absolute top-16 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 space-y-3 z-50 lg:hidden"
+        class="pointer-events-auto absolute top-14 mt-1 inset-x-3 sm:inset-x-6 max-w-lg mx-auto bg-[#0a0a0a] border border-neutral-700/90 rounded-2xl p-4 space-y-3 z-50 lg:hidden shadow-2xl"
       >
         <div class="text-[10px] uppercase font-bold tracking-wider text-neutral-400 px-2">
           Navegación

@@ -4596,10 +4596,10 @@ onUnmounted(() => {
                         <button
                           type="button"
                           @click="handleEditPart(part)"
-                          class="px-2 py-0.5 rounded border border-rose-400 bg-white hover:bg-rose-100 text-rose-900 text-[10px] font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                          class="px-2.5 py-0.5 rounded bg-[#004B97] hover:bg-blue-900 text-white text-[10px] font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer"
                           title="Modificar especificaciones de este repuesto"
                         >
-                          <Edit3 class="w-3 h-3 text-rose-700" />
+                          <Edit3 class="w-3 h-3 text-cyan-300" />
                           <span>Editar</span>
                         </button>
                       </div>
@@ -4653,10 +4653,11 @@ onUnmounted(() => {
                         <button
                           type="button"
                           @click="handleEditPart(part)"
-                          class="p-1 rounded text-slate-400 hover:text-[#004B97] hover:bg-slate-100 transition cursor-pointer"
+                          class="px-2 py-0.5 rounded text-[10px] font-bold border border-slate-300 hover:border-[#04C4D9] bg-white text-slate-700 hover:text-[#004B97] transition flex items-center gap-1 cursor-pointer shadow-2xs"
                           title="Editar especificaciones de esta pieza"
                         >
-                          <Edit3 class="w-3.5 h-3.5 text-slate-500 hover:text-[#04C4D9]" />
+                          <Edit3 class="w-3 h-3 text-[#04C4D9]" />
+                          <span>Editar</span>
                         </button>
                         <button
                           type="button"
