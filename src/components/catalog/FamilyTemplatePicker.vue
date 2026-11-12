@@ -213,10 +213,13 @@ const rowModeApplicationExample = computed(() => {
     }
   }
   if (rowOrganizationMode.value === 'incremental') {
+    const sampleFilas = Array.isArray(currentTemplate.value.tabla_config?.subfilas) && currentTemplate.value.tabla_config!.subfilas.length > 0
+      ? currentTemplate.value.tabla_config!.subfilas.slice(0, 3)
+      : ['Fila 1', 'Fila 2', 'Fila 3']
     return {
-      titulo: 'Ejemplo de aplicación: Tabla libre o Aros de Pistón (1°, 2°, Aceite...)',
-      resumen: 'Permite agregar filas una debajo de otra de forma ilimitada según las ranuras o pasos del repuesto.',
-      filas: ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de Aceite']
+      titulo: 'Ejemplo de aplicación: Tabla libre (pasos, medidas, ranuras o anillos)',
+      resumen: 'Permite editar la 1ra columna y agregar filas ilimitadas una debajo de otra según lo necesites.',
+      filas: sampleFilas
     }
   }
   return {
@@ -283,7 +286,25 @@ const setColumnType = (col: TemplateColumnDef, newType: 'numero' | 'texto' | 'se
 }
 
 // --- GESTIÓN GENERAL DE FILAS Y COMPONENTES ---
-// Tipo de organización de filas: 'simple' (1 fila) | 'subfilas' (varios componentes) | 'incremental' (ranuras dinámicas)
+// Título editable de la primera columna (siempre personalizable en cualquier modo)
+const firstColumnTitle = computed({
+  get(): string {
+    return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Componente'
+  },
+  set(val: string) {
+    if (!currentTemplate.value.tabla_config) {
+      currentTemplate.value.tabla_config = {
+        titulo_primera_columna: val,
+        modo_filas: rowOrganizationMode.value === 'incremental' ? 'incremental' : (rowOrganizationMode.value === 'subfilas' ? 'subfilas' : 'libre'),
+        tiene_cabecera_marca: false
+      }
+    } else {
+      currentTemplate.value.tabla_config.titulo_primera_columna = val
+    }
+  }
+})
+
+// Tipo de organización de filas: 'simple' (1 fila) | 'subfilas' (varios componentes) | 'incremental' (tabla de filas ilimitadas)
 const rowOrganizationMode = computed({
   get(): 'simple' | 'subfilas' | 'incremental' {
     if (currentTemplate.value.tipo_vista === 'normal') return 'simple'
@@ -298,30 +319,74 @@ const rowOrganizationMode = computed({
   set(val: 'simple' | 'subfilas' | 'incremental') {
     if (!currentTemplate.value.tabla_config) {
       currentTemplate.value.tabla_config = {
-        titulo_primera_columna: 'Componente / Medida',
+        titulo_primera_columna: 'Componente',
         modo_filas: 'libre'
       }
     }
 
+    const prevTitle = currentTemplate.value.tabla_config.titulo_primera_columna?.trim() || ''
+    const isGenericTitle =
+      !prevTitle ||
+      prevTitle === 'Componente / Medida' ||
+      prevTitle === 'Componente' ||
+      prevTitle === 'Anillo / Ranura' ||
+      prevTitle === 'Posición / Fila'
+
     if (val === 'simple') {
       currentTemplate.value.tabla_config.modo_filas = 'libre'
+      if (isGenericTitle) {
+        currentTemplate.value.tabla_config.titulo_primera_columna = 'Componente'
+      }
       currentTemplate.value.tabla_config.subfilas = ['Medida']
       currentTemplate.value.tabla_config.tiene_cabecera_marca = false
     } else if (val === 'subfilas') {
       currentTemplate.value.tabla_config.modo_filas = 'subfilas'
+      if (isGenericTitle) {
+        currentTemplate.value.tabla_config.titulo_primera_columna = 'Componente'
+      }
       if (!currentTemplate.value.tabla_config.subfilas || currentTemplate.value.tabla_config.subfilas.length <= 1) {
         currentTemplate.value.tabla_config.subfilas = ['Biela', 'Bancada']
       }
       currentTemplate.value.tabla_config.tiene_cabecera_marca = true
     } else if (val === 'incremental') {
       currentTemplate.value.tabla_config.modo_filas = 'incremental'
-      currentTemplate.value.tabla_config.titulo_primera_columna = 'Anillo / Ranura'
-      currentTemplate.value.tabla_config.usar_prefijo_titulo = true
-      currentTemplate.value.tabla_config.etiqueta_ultima_fila = 'Anillo de aceite'
+      if (isGenericTitle) {
+        currentTemplate.value.tabla_config.titulo_primera_columna = 'Posición / Fila'
+      }
+      currentTemplate.value.tabla_config.usar_prefijo_titulo = false
+      currentTemplate.value.tabla_config.etiqueta_ultima_fila = currentTemplate.value.tabla_config.etiqueta_ultima_fila || ''
+      if (
+        !Array.isArray(currentTemplate.value.tabla_config.subfilas) ||
+        currentTemplate.value.tabla_config.subfilas.length === 0 ||
+        (currentTemplate.value.tabla_config.subfilas.length === 1 && currentTemplate.value.tabla_config.subfilas[0] === 'Medida')
+      ) {
+        currentTemplate.value.tabla_config.subfilas = ['Fila 1', 'Fila 2', 'Fila 3']
+      }
       currentTemplate.value.tabla_config.tiene_cabecera_marca = false
     }
   }
 })
+
+const addIncrementalRow = () => {
+  if (!currentTemplate.value.tabla_config) {
+    currentTemplate.value.tabla_config = {
+      titulo_primera_columna: 'Posición / Fila',
+      modo_filas: 'incremental',
+      subfilas: ['Fila 1']
+    }
+  }
+  if (!Array.isArray(currentTemplate.value.tabla_config.subfilas)) {
+    currentTemplate.value.tabla_config.subfilas = ['Fila 1']
+  }
+  const n = currentTemplate.value.tabla_config.subfilas.length + 1
+  currentTemplate.value.tabla_config.subfilas.push(`Fila ${n}`)
+}
+
+const removeIncrementalRow = (idx: number) => {
+  const arr = currentTemplate.value.tabla_config?.subfilas
+  if (!arr || arr.length <= 1) return
+  arr.splice(idx, 1)
+}
 
 const addSubfilaComponent = () => {
   if (!currentTemplate.value.tabla_config) {
@@ -547,11 +612,14 @@ const ungroupCluster = (startIdx: number, endIdx: number) => {
 
 // Muestra de filas en la vista previa
 const previewSampleRows = computed<string[]>(() => {
-  if (rowOrganizationMode.value === 'incremental') {
-    return ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de Aceite']
+  const customRows = currentTemplate.value.tabla_config?.subfilas
+  if (Array.isArray(customRows) && customRows.length > 0 && rowOrganizationMode.value !== 'simple') {
+    return customRows.map((r, i) => r?.trim() || `Fila ${i + 1}`)
   }
-  if (rowOrganizationMode.value === 'subfilas' && currentTemplate.value.tabla_config?.subfilas) {
-    return currentTemplate.value.tabla_config.subfilas
+  if (rowOrganizationMode.value === 'incremental') {
+    const base = firstColumnTitle.value.trim() || 'Fila'
+    const last = currentTemplate.value.tabla_config?.etiqueta_ultima_fila?.trim()
+    return [`${base} 1`, `${base} 2`, last || `${base} 3`]
   }
   return ['Pieza STD']
 })
@@ -570,10 +638,15 @@ const handleSave = () => {
   }
 
   validationError.value = ''
+  // Al crear una nueva familia, usar siempre el nombre propio como categoría para no heredar repuestos de una plantilla base
+  const categoriaAUsar = props.editingGroup
+    ? (editCategoria.value || editNombre.value.trim())
+    : editNombre.value.trim()
+
   const payload = convertTemplateToGrupoInsert(
     currentTemplate.value,
     editNombre.value,
-    editCategoria.value,
+    categoriaAUsar,
     editSubsistema.value
   )
 
@@ -859,6 +932,22 @@ const handleSave = () => {
           </div>
         </div>
 
+        <!-- Editor editable de la 1ra columna (aplicable a Fila Simple, Componentes Múltiples y Tabla) -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200/90">
+          <label class="text-[11px] font-black text-slate-700 shrink-0">
+            Nombre de la 1ra columna:
+          </label>
+          <input
+            v-model="firstColumnTitle"
+            type="text"
+            placeholder="Ej. Posición, Sección, Paso, Anillo, Cojinete..."
+            class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+          />
+          <span class="text-[10px] text-slate-400">
+            Aparecerá al inicio de la tabla
+          </span>
+        </div>
+
         <!-- Si tiene componentes múltiples (bloques unidos visualmente + arrastrables) -->
         <div v-if="rowOrganizationMode === 'subfilas'" class="pt-2 border-t border-slate-200/80 space-y-2.5">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -941,10 +1030,56 @@ const handleSave = () => {
           </div>
         </div>
 
-        <!-- Si tiene tabla libre / ranuras dinámicas -->
-        <div v-else-if="rowOrganizationMode === 'incremental'" class="text-xs font-bold text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl flex items-center gap-2">
-          <Table class="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Tabla de filas ilimitadas: Permite capturar múltiples filas secuenciales (1°, 2°, Aceite y filas adicionales hasta 10+).</span>
+        <!-- Si tiene tabla libre con filas ilimitadas -->
+        <div v-else-if="rowOrganizationMode === 'incremental'" class="space-y-2.5 pt-1 border-t border-slate-200/80">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <p class="text-[11px] font-extrabold text-emerald-800 flex items-center gap-1.5">
+                <Table class="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Filas iniciales de la tabla (también podrás agregar más filas al cargar repuestos):</span>
+              </p>
+              <p class="text-[10px] text-slate-500">
+                Edita el nombre de cada fila o agrega tantas filas como necesite esta familia.
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="addIncrementalRow"
+              class="px-2.5 py-1 text-[11px] font-extrabold text-emerald-800 hover:text-emerald-950 bg-white border border-emerald-300 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+            >
+              <Plus class="w-3 h-3 text-emerald-600" />
+              <span>+ Agregar Fila</span>
+            </button>
+          </div>
+
+          <div class="p-3 rounded-2xl bg-emerald-50/55 border-2 border-dashed border-emerald-300/80">
+            <div class="flex items-center flex-wrap gap-2">
+              <div
+                v-for="(_rf, rfIdx) in (currentTemplate.tabla_config?.subfilas || ['Fila 1', 'Fila 2', 'Fila 3'])"
+                :key="rfIdx"
+                class="flex items-center gap-1.5 bg-white border border-emerald-300 px-2.5 py-1.5 rounded-xl shadow-2xs"
+              >
+                <span class="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
+                  {{ rfIdx + 1 }}
+                </span>
+                <input
+                  v-model="(currentTemplate.tabla_config!.subfilas as string[])[rfIdx]"
+                  type="text"
+                  class="w-32 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
+                  placeholder="Nombre de fila"
+                />
+                <button
+                  v-if="(currentTemplate.tabla_config?.subfilas || []).length > 1"
+                  type="button"
+                  @click="removeIncrementalRow(rfIdx)"
+                  class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+                  title="Quitar fila"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1240,8 +1375,14 @@ const handleSave = () => {
 
                 <!-- Tier 2: Columnas individuales -->
                 <tr class="bg-slate-50 text-slate-700 border-b border-slate-300">
-                  <th class="py-2 px-3 font-black text-slate-900 border-r border-slate-200">
-                    {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Componente' }}
+                  <th class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px]">
+                    <input
+                      v-model="firstColumnTitle"
+                      type="text"
+                      class="w-full px-1.5 py-0.5 font-black text-xs text-slate-900 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
+                      placeholder="Nombre 1ra columna..."
+                      title="Haz clic para cambiar el nombre de la primera columna"
+                    />
                   </th>
                   <th class="py-2 px-2 font-black text-slate-900 border-r border-slate-200 text-center">
                     CÓDIGO

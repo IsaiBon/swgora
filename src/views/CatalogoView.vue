@@ -848,6 +848,9 @@ const isCurrentGroupSubfilas = computed<boolean>(() => {
   if (!currentGroupDefinition.value) return false
   if (currentGroupDefinition.value.tipo_vista !== 'tabla') return false
   const cfg = currentGroupDefinition.value.tabla_config
+  if (cfg?.modo_filas === 'incremental' || cfg?.modo_filas === 'libre') {
+    return false
+  }
   if (cfg?.subfilas_activas || cfg?.modo_filas === 'cojinetes' || cfg?.modo_filas === 'subfilas' || (cfg?.subfilas && cfg.subfilas.length > 0)) {
     return true
   }
@@ -2079,14 +2082,17 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     } else if (compId === 'empaques_juntas' || cat === 'empaques') {
       list = list.filter(r => r.categoria === 'Empaques' || r.nombre.toLowerCase().includes('empaque') || r.nombre.toLowerCase().includes('junta'))
     } else {
-      // Grupos personalizados dinámicos (ej. Camisas, etc.)
-      list = list.filter(r =>
-        (r.categoria && r.categoria.toLowerCase() === cat) ||
-        (r.categoria && r.categoria.toLowerCase().includes(cat)) ||
-        (r.subsistema && r.subsistema.toLowerCase().includes(title)) ||
-        (r.nombre && r.nombre.toLowerCase().includes(cat)) ||
-        (r.nombre && r.nombre.toLowerCase().includes(title))
-      )
+      // Grupos personalizados dinámicos: coincidencia exacta de familia/categoría para no mezclar repuestos ajenos
+      const famCodigo = compId.toLowerCase()
+      const cleanCat = cat.trim()
+      const cleanTitle = title.trim()
+      list = list.filter(r => {
+        const specGrupo = String((r.especificaciones_tecnicas as any)?.grupo_codigo || '').toLowerCase().trim()
+        if (specGrupo && specGrupo === famCodigo) return true
+        const partCat = (r.categoria || '').toLowerCase().trim()
+        if (!partCat) return false
+        return partCat === cleanCat || (cleanTitle !== '' && partCat === cleanTitle)
+      })
     }
 
     // 2. Filtros de medidas dimensionales específicas
@@ -2772,7 +2778,13 @@ const onGroupCreated = async (newGroup: GrupoRepuesto) => {
   const found = componentGroups.value.find(g => g.id === newGroup.codigo || g.id === newGroup.id)
   if (found) {
     selectedComponent.value = found
-    await catalogStore.fetchRepuestosByGrupo(found.category, undefined, selectedBrand.value?.id)
+    componentInput.value = found.title
+    activeViewTab.value = 'repuestos'
+    if (selectedMotor.value) {
+      await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+    } else {
+      await catalogStore.fetchRepuestosByGrupo(found.category, undefined, selectedBrand.value?.id, selectedModel.value?.id)
+    }
   }
 }
 

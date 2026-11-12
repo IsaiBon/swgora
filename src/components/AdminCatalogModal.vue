@@ -66,11 +66,25 @@ export interface RingFormRow {
   extra: Record<string, any>
 }
 
-const createDefaultRingRows = (cfg?: TablaConfiguracion): RingFormRow[] => {
-  const titulo = cfg?.titulo_primera_columna || 'Anillo'
+const createDefaultRingRows = (cfg?: TablaConfiguracion, isRings: boolean = false): RingFormRow[] => {
+  if (Array.isArray(cfg?.subfilas) && cfg.subfilas.length > 0 && cfg.modo_filas !== 'subfilas' && cfg.modo_filas !== 'cojinetes') {
+    return cfg.subfilas.map((label, idx) => ({
+      id: `ring-${idx + 1}`,
+      posicion: label?.trim() || `Fila ${idx + 1}`,
+      tipo_aro: idx === 0 ? 'fuego' : (idx === cfg.subfilas!.length - 1 ? 'aceite' : 'compresion'),
+      h1: null,
+      a1: null,
+      perfil: 'Plano',
+      tiene_identificador: false,
+      identificador_texto: '',
+      extra: {}
+    }))
+  }
+
+  const titulo = cfg?.titulo_primera_columna || (isRings ? 'Anillo' : 'Fila')
   const usarPref = cfg?.usar_prefijo_titulo !== false
   const modo = cfg?.modo_filas || 'incremental'
-  const ult = cfg?.etiqueta_ultima_fila !== undefined ? cfg.etiqueta_ultima_fila : 'Anillo de aceite'
+  const ult = cfg?.etiqueta_ultima_fila !== undefined ? cfg.etiqueta_ultima_fila : (isRings ? 'Anillo de aceite' : '')
   const row1Pos = modo === 'incremental' ? (usarPref ? `${titulo} 1` : '1') : `${titulo} 1`
   const row2Pos = modo === 'incremental' ? (usarPref ? `${titulo} 2` : '2') : `${titulo} 2`
   const row3Pos = modo === 'incremental' ? (ult ? ult : (usarPref ? `${titulo} 3` : '3')) : (ult || `${titulo} 3`)
@@ -460,22 +474,25 @@ const activeGroup = computed<GrupoRepuesto | null>(() => {
 
 const activeTablaConfig = computed<TablaConfiguracion>(() => {
   return activeGroup.value?.tabla_config || {
-    titulo_primera_columna: 'Anillo',
+    titulo_primera_columna: isRingsGroup.value ? 'Anillo' : 'Posición / Fila',
     modo_filas: 'incremental',
     usar_prefijo_titulo: true,
-    etiqueta_ultima_fila: 'Anillo de aceite',
-    habilitar_identificador: true,
-    etiqueta_identificador: 'Cónico'
+    etiqueta_ultima_fila: isRingsGroup.value ? 'Anillo de aceite' : '',
+    habilitar_identificador: isRingsGroup.value,
+    etiqueta_identificador: isRingsGroup.value ? 'Cónico' : 'Especial'
   }
 })
 
 const getDefaultRowPosition = (idx: number, totalRows: number, cfg?: TablaConfiguracion): string => {
   const conf = cfg || activeTablaConfig.value
-  const titulo = conf.titulo_primera_columna || 'Anillo'
+  const titulo = conf.titulo_primera_columna || (isRingsGroup.value ? 'Anillo' : 'Fila')
   const usarPref = conf.usar_prefijo_titulo !== false
   const isLast = idx === totalRows - 1 && totalRows >= 2
   if (isLast && conf.etiqueta_ultima_fila && conf.etiqueta_ultima_fila.trim()) {
     return conf.etiqueta_ultima_fila.trim()
+  }
+  if (Array.isArray(conf.subfilas) && conf.subfilas[idx]?.trim()) {
+    return conf.subfilas[idx]!.trim()
   }
   if (conf.modo_filas === 'incremental') {
     return usarPref ? `${titulo} ${idx + 1}` : `${idx + 1}`
@@ -487,7 +504,9 @@ const syncIncrementalRowPositions = () => {
   if (activeTablaConfig.value.modo_filas !== 'incremental') return
   const total = ringRows.value.length
   ringRows.value.forEach((row, idx) => {
-    row.posicion = getDefaultRowPosition(idx, total)
+    if (!row.posicion || !row.posicion.trim() || isRingsGroup.value) {
+      row.posicion = getDefaultRowPosition(idx, total)
+    }
   })
 }
 
@@ -679,7 +698,7 @@ watch(activeGroup, (grp) => {
     if (!isEditPartMode.value) {
       paramValues.value = {}
       hasThirdRing.value = false
-      ringRows.value = createDefaultRingRows(grp.tabla_config)
+      ringRows.value = createDefaultRingRows(grp.tabla_config, isRingsGroup.value)
       if (isSubfilasGroup.value) {
         if (grp.tabla_config?.subfilas && grp.tabla_config.subfilas.length > 0) {
           subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => ({
@@ -1326,7 +1345,7 @@ const resetPartForm = () => {
   paramValues.value = {}
   formErrors.value = {}
   hasThirdRing.value = false
-  ringRows.value = createDefaultRingRows()
+  ringRows.value = createDefaultRingRows(activeGroup.value?.tabla_config, isRingsGroup.value)
   saveErrorMessage.value = ''
   equivalencias.value = [{ marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }]
 }
