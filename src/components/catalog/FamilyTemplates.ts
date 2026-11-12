@@ -179,6 +179,46 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
       { etiqueta: 'Largo Total', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
       { etiqueta: 'Diámetro Bulón', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true }
     ]
+  },
+  {
+    id: 'medidas_culata',
+    nombre: 'Medidas de Culata',
+    categoria: 'Medidas de Culata',
+    subsistema: 'Culata',
+    descripcion: 'Altura estándar, altura mínima de rectificación, tolerancia de planitud y referencia',
+    icono: 'Ruler',
+    tipo_vista: 'normal',
+    badge: 'Culata',
+    colorTag: 'cyan',
+    columnas: [
+      { etiqueta: 'Altura Estándar', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Altura original de fábrica' },
+      { etiqueta: 'Altura Mínima', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Límite mínimo permitido al cepillar' },
+      { etiqueta: 'Alabeo Máximo', unidad: 'mm', tipo_dato: 'numero', requerido: false, filtrable: false, descripcion: 'Tolerancia máxima de deformación' },
+      { etiqueta: 'Aluminio', tipo_dato: 'booleano', requerido: false, filtrable: true, descripcion: 'Indica si la culata es de aluminio' }
+    ]
+  },
+  {
+    id: 'torques_motor',
+    nombre: 'Torques de Motor',
+    categoria: 'Torques de Motor',
+    subsistema: 'General',
+    descripcion: 'Pares de apriete agrupados por Culata, Bancada y Biela con pasos y ángulos',
+    icono: 'Wrench',
+    tipo_vista: 'tabla',
+    badge: 'Especificaciones',
+    colorTag: 'blue',
+    tabla_config: {
+      titulo_primera_columna: 'Sección',
+      modo_filas: 'subfilas',
+      subfilas: ['Culata', 'Bancada', 'Biela'],
+      tiene_cabecera_marca: false
+    },
+    columnas: [
+      { etiqueta: '1er Paso', columna_padre: 'Torque', unidad: 'lb-ft', tipo_dato: 'texto', requerido: true, filtrable: false },
+      { etiqueta: '2do Paso / Final', columna_padre: 'Torque', unidad: 'lb-ft', tipo_dato: 'texto', requerido: true, filtrable: false },
+      { etiqueta: 'Giro Angular', unidad: '°', tipo_dato: 'texto', requerido: false, filtrable: false },
+      { etiqueta: 'Reapriete', tipo_dato: 'booleano', requerido: false, filtrable: false }
+    ]
   }
 ]
 

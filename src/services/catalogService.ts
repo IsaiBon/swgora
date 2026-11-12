@@ -1368,6 +1368,56 @@ export const catalogService = {
   },
 
   /**
+   * Actualiza un fabricante/marca existente en Supabase y caché local
+   */
+  async updateFabricante(id: string, fabData: { nombre: string; pais_origen?: string }): Promise<Fabricante> {
+    const cleanName = fabData.nombre.trim().toUpperCase()
+    const cleanCountry = fabData.pais_origen?.trim() || 'Internacional'
+
+    let updated: Fabricante = {
+      id,
+      nombre: cleanName,
+      pais_origen: cleanCountry,
+      tipo: 'OEM',
+      activo: true,
+      orden_visual: 50
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('fabricantes')
+        .update({ nombre: cleanName, pais_origen: cleanCountry })
+        .eq('id', id)
+        .select('*')
+        .maybeSingle()
+
+      if (!error && data) {
+        updated = {
+          ...updated,
+          id: String(data.id),
+          nombre: String(data.nombre),
+          pais_origen: data.pais_origen ? String(data.pais_origen) : cleanCountry
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error actualizando fabricante en Supabase:', err)
+    }
+
+    const localList = getLocalCustomFabricantes()
+    const localIdx = localList.findIndex(f => f.id === id)
+    if (localIdx >= 0) {
+      localList[localIdx] = { ...localList[localIdx], ...updated }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LOCAL_BRANDS_STORAGE_KEY, JSON.stringify(localList))
+      }
+    }
+    const mockIdx = mockFabricantes.findIndex(f => f.id === id)
+    if (mockIdx >= 0) mockFabricantes[mockIdx] = { ...mockFabricantes[mockIdx], ...updated }
+
+    return updated
+  },
+
+  /**
    * Obtiene modelos de vehículos desde Supabase, opcionalmente filtrados por fabricante
    */
   async getModelos(fabricanteId?: string): Promise<Modelo[]> {
@@ -1471,6 +1521,66 @@ export const catalogService = {
       mockModelos.push(fallbackMod)
     }
     return fallbackMod
+  },
+
+  /**
+   * Actualiza un modelo de vehículo (nombre, marca y años) en Supabase y caché local
+   */
+  async updateModelo(
+    id: string,
+    modData: { nombre: string; fabricante_id?: string; anio_inicio?: number | null; anio_fin?: number | null }
+  ): Promise<Modelo> {
+    const limpio = modData.nombre.replace(/\s+/g, ' ').trim().toUpperCase()
+    let updated: Modelo = {
+      id,
+      fabricante_id: modData.fabricante_id || '',
+      nombre: limpio,
+      anio_inicio: modData.anio_inicio ?? undefined,
+      anio_fin: modData.anio_fin ?? undefined,
+      activo: true
+    }
+
+    try {
+      const payload: Record<string, unknown> = {
+        nombre: limpio,
+        anio_inicio: modData.anio_inicio ?? null,
+        anio_fin: modData.anio_fin ?? null
+      }
+      if (modData.fabricante_id) payload.fabricante_id = modData.fabricante_id
+
+      const { data, error } = await supabase
+        .from('modelos')
+        .update(payload)
+        .eq('id', id)
+        .select('*')
+        .maybeSingle()
+
+      if (!error && data) {
+        updated = {
+          id: String(data.id),
+          fabricante_id: String(data.fabricante_id),
+          nombre: String(data.nombre),
+          anio_inicio: data.anio_inicio ? Number(data.anio_inicio) : undefined,
+          anio_fin: data.anio_fin ? Number(data.anio_fin) : undefined,
+          activo: Boolean(data.activo)
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error actualizando modelo en Supabase:', err)
+    }
+
+    const localList = getLocalCustomModelos()
+    const localIdx = localList.findIndex(m => m.id === id)
+    if (localIdx >= 0) {
+      localList[localIdx] = { ...localList[localIdx], ...updated }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LOCAL_MODELS_STORAGE_KEY, JSON.stringify(localList))
+      }
+    }
+    const mockIdx = mockModelos.findIndex(m => m.id === id)
+    if (mockIdx >= 0) mockModelos[mockIdx] = { ...mockModelos[mockIdx], ...updated }
+
+    return updated
   },
 
   /**
@@ -1657,6 +1767,86 @@ export const catalogService = {
       mockMotores.unshift(newMotor)
     }
     return newMotor
+  },
+
+  /**
+   * Actualiza un motor existente en Supabase y caché local
+   */
+  async updateMotor(id: string, motorData: Partial<Motor>): Promise<Motor> {
+    const cleanCodigo = (motorData.codigo || '').trim().toUpperCase()
+    const fabList = await this.getFabricantes()
+    const matchedFab = fabList.find(f => f.id === motorData.fabricante_id)
+    const fabName = matchedFab ? matchedFab.nombre.toUpperCase() : 'MOTOR'
+
+    const espec: Record<string, unknown> = {
+      ...(motorData.especificaciones_tecnicas || {}),
+      denominacion_venta: motorData.denominacion_venta || '',
+      cilindrada_texto: motorData.cilindrada_cc
+        ? `${motorData.cilindrada_cc} cc / ${(Number(motorData.cilindrada_cc) / 1000).toFixed(1)} l`
+        : undefined,
+      anios: motorData.anios || undefined
+    }
+
+    let updated: Motor = {
+      id,
+      fabricante_id: motorData.fabricante_id || matchedFab?.id || '',
+      modelo_id: motorData.modelo_id || undefined,
+      codigo: cleanCodigo,
+      nombre_comercial: motorData.nombre_comercial?.trim() || `${fabName} - ${cleanCodigo}`,
+      denominacion_venta: motorData.denominacion_venta || '',
+      cilindrada_cc: motorData.cilindrada_cc ? Number(motorData.cilindrada_cc) : undefined,
+      cilindrada_texto: espec.cilindrada_texto as string | undefined,
+      combustible: motorData.combustible || 'Diésel',
+      cilindros: motorData.cilindros ? Number(motorData.cilindros) : 4,
+      valvulas: motorData.valvulas ? Number(motorData.valvulas) : 8,
+      anios: motorData.anios || undefined,
+      especificaciones_tecnicas: espec,
+      fabricante: matchedFab
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('motores')
+        .update({
+          fabricante_id: updated.fabricante_id || undefined,
+          modelo_id: updated.modelo_id || null,
+          codigo: updated.codigo,
+          nombre_comercial: updated.nombre_comercial,
+          cilindrada_cc: updated.cilindrada_cc || null,
+          combustible: updated.combustible,
+          cilindros: updated.cilindros || 4,
+          valvulas: updated.valvulas || 8,
+          anios: updated.anios || null,
+          especificaciones_tecnicas: espec
+        })
+        .eq('id', id)
+        .select('*, fabricante:fabricantes(*), modelo:modelos(*)')
+        .maybeSingle()
+
+      if (!error && data) {
+        updated = {
+          ...updated,
+          id: String(data.id),
+          fabricante: (data.fabricante as Fabricante) || updated.fabricante,
+          modelo: (data.modelo as Modelo) || updated.modelo
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error actualizando motor en Supabase:', err)
+    }
+
+    const localList = getLocalCustomMotores()
+    const localIdx = localList.findIndex(m => m.id === id)
+    if (localIdx >= 0) {
+      localList[localIdx] = { ...localList[localIdx], ...updated }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LOCAL_MOTORS_STORAGE_KEY, JSON.stringify(localList))
+      }
+    }
+    const mockIdx = mockMotores.findIndex(m => m.id === id)
+    if (mockIdx >= 0) mockMotores[mockIdx] = { ...mockMotores[mockIdx], ...updated }
+
+    return updated
   },
 
   /**

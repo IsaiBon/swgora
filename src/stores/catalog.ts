@@ -152,6 +152,15 @@ export const useCatalogStore = defineStore('catalog', () => {
     return nuevo
   }
 
+  async function updateModelo(
+    id: string,
+    modData: { nombre: string; fabricante_id?: string; anio_inicio?: number | null; anio_fin?: number | null }
+  ): Promise<Modelo> {
+    const updated = await catalogService.updateModelo(id, modData)
+    modelos.value = modelos.value.map(m => (m.id === id ? { ...m, ...updated } : m))
+    return updated
+  }
+
   /**
    * Carga motores desde Supabase filtrados por fabricante o modelo
    */
@@ -566,6 +575,22 @@ export const useCatalogStore = defineStore('catalog', () => {
     }
   }
 
+  async function updateFabricante(id: string, fabData: { nombre: string; pais_origen?: string }) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const updated = await catalogService.updateFabricante(id, fabData)
+      fabricantes.value = fabricantes.value.map(f => (f.id === id ? { ...f, ...updated } : f))
+      return updated
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar el fabricante'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
   /**
    * Registra un nuevo motor y lo incorpora reactivamente al catálogo
    */
@@ -580,6 +605,22 @@ export const useCatalogStore = defineStore('catalog', () => {
       return created
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al registrar el motor'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  async function updateMotor(id: string, motorData: Partial<Motor>) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const updated = await catalogService.updateMotor(id, motorData)
+      motores.value = motores.value.map(m => (m.id === id ? { ...m, ...updated } : m))
+      return updated
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar el motor'
       error.value = msg
       throw err
     } finally {
@@ -643,11 +684,14 @@ export const useCatalogStore = defineStore('catalog', () => {
     loadMoreRepuestos,
     loadAllRepuestos,
     createModelo,
+    updateModelo,
     fetchGrupos,
     createGrupo,
     updateGrupo,
     createFabricante,
+    updateFabricante,
     createMotor,
+    updateMotor,
     searchParts,
     selectFabricante,
     selectModelo,

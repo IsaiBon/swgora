@@ -30,7 +30,11 @@ import {
   Hash,
   Type,
   ListFilter,
-  X
+  X,
+  GripVertical,
+  Link2,
+  Lightbulb,
+  Ruler
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -122,9 +126,105 @@ const getIconComponent = (iconName: string) => {
     case 'Wrench': return Wrench
     case 'Columns': return Columns
     case 'Table': return Table
+    case 'Ruler': return Ruler
     default: return Layers
   }
 }
+
+// --- DRAG AND DROP NATIVO (SIN DEPENDENCIAS) ---
+const draggedSubfilaIdx = ref<number | null>(null)
+const dragOverSubfilaIdx = ref<number | null>(null)
+
+const onSubfilaDragStart = (idx: number, event: DragEvent) => {
+  draggedSubfilaIdx.value = idx
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(idx))
+  }
+}
+
+const onSubfilaDragOver = (idx: number) => {
+  if (draggedSubfilaIdx.value === null || draggedSubfilaIdx.value === idx) return
+  dragOverSubfilaIdx.value = idx
+}
+
+const onSubfilaDrop = (targetIdx: number) => {
+  const fromIdx = draggedSubfilaIdx.value
+  draggedSubfilaIdx.value = null
+  dragOverSubfilaIdx.value = null
+  if (fromIdx === null || fromIdx === targetIdx) return
+  const arr = currentTemplate.value.tabla_config?.subfilas
+  if (!arr || fromIdx < 0 || fromIdx >= arr.length) return
+  const [moved] = arr.splice(fromIdx, 1)
+  if (moved !== undefined) {
+    arr.splice(targetIdx, 0, moved)
+  }
+}
+
+const onSubfilaDragEnd = () => {
+  draggedSubfilaIdx.value = null
+  dragOverSubfilaIdx.value = null
+}
+
+const draggedColIdx = ref<number | null>(null)
+const dragOverColIdx = ref<number | null>(null)
+
+const onColDragStart = (idx: number, event: DragEvent) => {
+  draggedColIdx.value = idx
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(idx))
+  }
+}
+
+const onColDragOver = (idx: number) => {
+  if (draggedColIdx.value === null || draggedColIdx.value === idx) return
+  dragOverColIdx.value = idx
+}
+
+const onColDrop = (targetIdx: number) => {
+  const fromIdx = draggedColIdx.value
+  draggedColIdx.value = null
+  dragOverColIdx.value = null
+  if (fromIdx === null || fromIdx === targetIdx) return
+  const cols = currentTemplate.value.columnas
+  if (fromIdx < 0 || fromIdx >= cols.length) return
+  const [moved] = cols.splice(fromIdx, 1)
+  if (moved) {
+    cols.splice(targetIdx, 0, moved)
+  }
+}
+
+const onColDragEnd = () => {
+  draggedColIdx.value = null
+  dragOverColIdx.value = null
+}
+
+// Ejemplo contextual dinámico según el modo de filas seleccionado
+const rowModeApplicationExample = computed(() => {
+  if (rowOrganizationMode.value === 'subfilas') {
+    return {
+      titulo: 'Ejemplo de aplicación: Cojinetes (Biela + Bancada) o Torques por sección',
+      resumen: 'Une dos o más piezas relacionadas dentro de un mismo juego o motor para verlas juntas en bloques.',
+      filas: (currentTemplate.value.tabla_config?.subfilas?.length
+        ? currentTemplate.value.tabla_config.subfilas
+        : ['Biela', 'Bancada']
+      ).slice(0, 3)
+    }
+  }
+  if (rowOrganizationMode.value === 'incremental') {
+    return {
+      titulo: 'Ejemplo de aplicación: Tabla libre o Aros de Pistón (1°, 2°, Aceite...)',
+      resumen: 'Permite agregar filas una debajo de otra de forma ilimitada según las ranuras o pasos del repuesto.',
+      filas: ['1° Anillo (Fuego)', '2° Anillo (Compresión)', 'Anillo de Aceite']
+    }
+  }
+  return {
+    titulo: 'Ejemplo de aplicación: Retenes, Válvulas o Medidas de Culata',
+    resumen: 'Cada repuesto ocupa 1 sola fila limpia con sus medidas exactas en columnas.',
+    filas: ['Pieza Única (ej. Altura Estándar 138.0 mm | Altura Mín. 137.5 mm)']
+  }
+})
 
 // --- GESTIÓN INGENIOSA DE COLUMNAS ---
 const addColumn = () => {
@@ -537,7 +637,7 @@ const handleSave = () => {
               <span>¿Cómo se componen las filas de este repuesto?</span>
             </h5>
             <p class="text-[11px] text-slate-500 mt-0.5">
-              Elige si es una pieza individual, un juego con varios componentes (como Biela/Bancada) o ranuras dinámicas.
+              Elige si es una pieza individual, un juego con varios componentes (como Biela/Bancada) o una Tabla con filas ilimitadas.
             </p>
           </div>
 
@@ -572,61 +672,135 @@ const handleSave = () => {
                 'px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer',
                 rowOrganizationMode === 'incremental' ? 'bg-[#004B97] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               ]"
-              title="Matriz de ranuras dinámicas para aros de motor (hasta 10+)"
+              title="Tabla con filas dinámicas ilimitadas (ej. Anillos 1°, 2°, Aceite o listas por pasos)"
             >
-              Ranuras (Aros)
+              Tabla
             </button>
           </div>
         </div>
 
-        <!-- Si tiene componentes múltiples (como Biela, Bancada, etc.) -->
-        <div v-if="rowOrganizationMode === 'subfilas'" class="pt-2 border-t border-slate-200/80 space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-[11px] font-black text-slate-700">
-              Nombres de los componentes incluidos en cada juego:
-            </span>
+        <!-- EJEMPLO DE APLICACIÓN DINÁMICO SEGÚN EL MODO SELECCIONADO -->
+        <div class="rounded-2xl border border-slate-200/90 bg-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div class="flex items-start gap-2.5 min-w-0">
+            <div class="w-7 h-7 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0 mt-0.5">
+              <Lightbulb class="w-4 h-4 text-amber-600" />
+            </div>
+            <div class="min-w-0">
+              <div class="text-[11px] font-black text-slate-900">
+                {{ rowModeApplicationExample.titulo }}
+              </div>
+              <p class="text-[10.5px] text-slate-500 leading-snug mt-0.5">
+                {{ rowModeApplicationExample.resumen }}
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-wrap shrink-0">
+            <template v-for="(exFila, exIdx) in rowModeApplicationExample.filas" :key="exIdx">
+              <span
+                class="px-2 py-1 rounded-lg text-[10px] font-black border"
+                :class="rowOrganizationMode === 'subfilas'
+                  ? 'bg-cyan-50/90 text-[#004B97] border-cyan-200'
+                  : (rowOrganizationMode === 'incremental'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-slate-50 text-slate-700 border-slate-200')"
+              >
+                {{ exFila }}
+              </span>
+              <Link2
+                v-if="rowOrganizationMode === 'subfilas' && exIdx < rowModeApplicationExample.filas.length - 1"
+                class="w-3.5 h-3.5 text-[#04C4D9] shrink-0"
+              />
+            </template>
+          </div>
+        </div>
+
+        <!-- Si tiene componentes múltiples (bloques unidos visualmente + arrastrables) -->
+        <div v-if="rowOrganizationMode === 'subfilas'" class="pt-2 border-t border-slate-200/80 space-y-2.5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span class="text-[11px] font-black text-slate-800 flex items-center gap-1.5">
+                <Link2 class="w-3.5 h-3.5 text-[#04C4D9]" />
+                <span>Bloques unidos del juego (arrastra para reordenar):</span>
+              </span>
+              <span class="text-[10px] text-slate-500">
+                Todos los bloques conectados aquí aparecen juntos dentro del mismo repuesto/motor.
+              </span>
+            </div>
             <button
               type="button"
               @click="addSubfilaComponent"
-              class="px-2.5 py-1 text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white border border-cyan-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+              class="px-2.5 py-1 text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white border border-cyan-200 rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
             >
               <Plus class="w-3 h-3 text-[#04C4D9]" />
-              <span>+ Agregar Componente</span>
+              <span>+ Agregar Bloque</span>
             </button>
           </div>
 
-          <div class="flex items-center gap-2 flex-wrap">
-            <div
-              v-for="(_sf, sfIdx) in (currentTemplate.tabla_config?.subfilas || ['Componente 1'])"
-              :key="sfIdx"
-              class="flex items-center gap-1.5 bg-white border border-slate-300 px-2.5 py-1 rounded-xl shadow-2xs"
-            >
-              <span class="w-4 h-4 rounded-full bg-slate-900 text-white text-[9px] font-mono font-bold flex items-center justify-center">
-                {{ sfIdx + 1 }}
-              </span>
-              <input
-                v-model="(currentTemplate.tabla_config!.subfilas as string[])[sfIdx]"
-                type="text"
-                class="w-24 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
-                placeholder="Nombre"
-              />
-              <button
-                v-if="(currentTemplate.tabla_config?.subfilas || []).length > 1"
-                type="button"
-                @click="removeSubfilaComponent(sfIdx)"
-                class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
-                title="Quitar componente"
+          <!-- Contenedor unificado que muestra visualmente la unión entre los bloques -->
+          <div class="p-3 rounded-2xl bg-cyan-50/50 border-2 border-dashed border-[#04C4D9]/50">
+            <div class="flex items-center flex-wrap gap-y-2">
+              <template
+                v-for="(_sf, sfIdx) in (currentTemplate.tabla_config?.subfilas || ['Componente 1'])"
+                :key="sfIdx"
               >
-                <Trash2 class="w-3.5 h-3.5" />
-              </button>
+                <div
+                  draggable="true"
+                  @dragstart="onSubfilaDragStart(sfIdx, $event)"
+                  @dragover.prevent="onSubfilaDragOver(sfIdx)"
+                  @drop.prevent="onSubfilaDrop(sfIdx)"
+                  @dragend="onSubfilaDragEnd"
+                  :class="[
+                    'flex items-center gap-1.5 bg-white border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
+                    draggedSubfilaIdx === sfIdx
+                      ? 'opacity-50 border-[#04C4D9] scale-95'
+                      : (dragOverSubfilaIdx === sfIdx
+                        ? 'border-[#004B97] ring-2 ring-[#04C4D9]/40 bg-cyan-50/40'
+                        : 'border-slate-300 hover:border-[#04C4D9]')
+                  ]"
+                >
+                  <GripVertical class="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span class="w-4 h-4 rounded-full bg-[#004B97] text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
+                    {{ sfIdx + 1 }}
+                  </span>
+                  <input
+                    v-model="(currentTemplate.tabla_config!.subfilas as string[])[sfIdx]"
+                    type="text"
+                    class="w-28 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
+                    placeholder="Nombre del bloque"
+                  />
+                  <button
+                    v-if="(currentTemplate.tabla_config?.subfilas || []).length > 1"
+                    type="button"
+                    @click="removeSubfilaComponent(sfIdx)"
+                    class="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+                    title="Quitar componente"
+                  >
+                    <Trash2 class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <!-- Puente de unión visual entre bloques contiguos -->
+                <div
+                  v-if="sfIdx < (currentTemplate.tabla_config?.subfilas || ['Componente 1']).length - 1"
+                  class="flex items-center px-1"
+                  title="Unidos en el mismo conjunto"
+                >
+                  <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
+                  <span class="w-5 h-5 rounded-full bg-white border border-[#04C4D9] flex items-center justify-center shadow-2xs">
+                    <Link2 class="w-3 h-3 text-[#004B97]" />
+                  </span>
+                  <span class="w-3 h-0.5 bg-[#04C4D9]"></span>
+                </div>
+              </template>
             </div>
           </div>
         </div>
 
-        <!-- Si tiene ranuras de aros -->
+        <!-- Si tiene tabla libre / ranuras dinámicas -->
         <div v-else-if="rowOrganizationMode === 'incremental'" class="text-xs font-bold text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl flex items-center gap-2">
-          <CircleDot class="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Matriz de ranuras dinámicas: Los operarios podrán capturar 1°, 2°, Aceite y ranuras adicionales indefinidamente (hasta 10+).</span>
+          <Table class="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Tabla de filas ilimitadas: Permite capturar múltiples filas secuenciales (1°, 2°, Aceite y filas adicionales hasta 10+).</span>
         </div>
       </div>
 
@@ -653,16 +827,34 @@ const handleSave = () => {
           </button>
         </div>
 
-        <!-- TARJETAS HORIZONTALES EDITABLES PARA CADA COLUMNA -->
+        <!-- TARJETAS HORIZONTALES EDITABLES Y ARRASTRABLES PARA CADA COLUMNA -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           <div
             v-for="(col, cIdx) in currentTemplate.columnas"
             :key="cIdx"
-            class="p-3.5 rounded-2xl border bg-slate-50/80 border-slate-200 space-y-2.5 relative group hover:border-slate-300 transition"
+            draggable="true"
+            @dragstart="onColDragStart(cIdx, $event)"
+            @dragover.prevent="onColDragOver(cIdx)"
+            @drop.prevent="onColDrop(cIdx)"
+            @dragend="onColDragEnd"
+            :class="[
+              'p-3.5 rounded-2xl border space-y-2.5 relative group transition',
+              draggedColIdx === cIdx
+                ? 'opacity-50 bg-cyan-50/40 border-[#04C4D9]'
+                : (dragOverColIdx === cIdx
+                  ? 'bg-cyan-50/50 border-[#004B97] ring-2 ring-[#04C4D9]/40'
+                  : 'bg-slate-50/80 border-slate-200 hover:border-slate-300')
+            ]"
           >
             <!-- Cabecera de Columna -->
             <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2 min-w-0">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span
+                  class="text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing shrink-0"
+                  title="Arrastra para reordenar columna"
+                >
+                  <GripVertical class="w-3.5 h-3.5" />
+                </span>
                 <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
                   {{ cIdx + 1 }}
                 </span>
