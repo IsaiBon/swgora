@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   MapPin,
   Plus,
   Search,
-  UserPlus,
   ShieldCheck,
   ShoppingCart,
   Eye,
@@ -24,17 +23,20 @@ import {
   AlertCircle,
 } from 'lucide-vue-next'
 import {
+  normalizarNombreRuta,
   rutasService,
   type RutaSucursal,
 } from '@/services/rutasService'
 import { ordersService, type Order } from '@/services/ordersService'
 import { perfilesService, type Perfil } from '@/services/perfilesService'
+import { useAuthStore, normalizeRole } from '@/stores/auth'
 import {
   obtenerCredencialUsuario,
   registrarCredencialUsuario,
 } from '@/services/usuariosService'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const rutas = ref<RutaSucursal[]>([])
 const orders = ref<Order[]>([])
@@ -63,18 +65,71 @@ const rutaEditandoId = ref<string | null>(null)
 const guardando = ref(false)
 const errorFormulario = ref('')
 const mostrarPasswordForm = ref(true)
+const inputNombreRuta = ref<HTMLInputElement | null>(null)
 
 const form = reactive({
   codigo: '',
   nombre: '',
   zona: '',
   descripcion: '',
-  estado: 'Activa' as 'Activa' | 'Inactiva',
   modoSubAdmin: 'nuevo' as 'nuevo' | 'existente' | 'sin_asignar',
   subAdminNombre: '',
   subAdminEmail: '',
   subAdminPassword: '',
   existingUserId: '',
+})
+
+const usuariosDisponiblesParaRuta = computed(() => {
+  return perfiles.value.filter(
+    (u) =>
+      u.estado !== 'Inactivo' &&
+      u.id !== authStore.user?.id &&
+      normalizeRole(u.rol) !== 'Administrador'
+  )
+})
+
+const rutaNombreDuplicado = computed<RutaSucursal | null>(() => {
+  const nombreNorm = normalizarNombreRuta(form.nombre)
+  if (!nombreNorm) return null
+  const excluirId = modoEdicion.value ? rutaEditandoId.value : null
+  return (
+    rutas.value.find(
+      (r) => r.id !== excluirId && normalizarNombreRuta(r.nombre) === nombreNorm
+    ) ?? null
+  )
+})
+
+const rutaCodigoDuplicado = computed<RutaSucursal | null>(() => {
+  const codigoNorm = form.codigo.trim().toUpperCase()
+  if (!codigoNorm) return null
+  const excluirId = modoEdicion.value ? rutaEditandoId.value : null
+  return (
+    rutas.value.find(
+      (r) => r.id !== excluirId && r.codigo.trim().toUpperCase() === codigoNorm
+    ) ?? null
+  )
+})
+
+const emailDuplicadoSubAdmin = computed<string | null>(() => {
+  if (form.modoSubAdmin !== 'nuevo') return null
+  const emailNorm = form.subAdminEmail.trim().toLowerCase()
+  if (!emailNorm) return null
+
+  const perfilExistente = perfiles.value.find(
+    (u) => (u.email || '').trim().toLowerCase() === emailNorm
+  )
+  if (perfilExistente) {
+    return `usuario ${perfilExistente.nombre || perfilExistente.email}`
+  }
+
+  const rutaExistente = rutas.value.find(
+    (r) => (r.subAdminEmail || '').trim().toLowerCase() === emailNorm
+  )
+  if (rutaExistente) {
+    return `encargado de "${rutaExistente.nombre}"`
+  }
+
+  return null
 })
 
 // Modal de confirmación de eliminación
@@ -102,8 +157,19 @@ async function cargarTodo() {
   }
 }
 
+function manejarEscapeModal(e: KeyboardEvent) {
+  if (e.key === 'Escape' && modalAbierto.value) {
+    cerrarModal()
+  }
+}
+
 onMounted(() => {
   void cargarTodo()
+  window.addEventListener('keydown', manejarEscapeModal)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', manejarEscapeModal)
 })
 
 // Filtrado de rutas
@@ -188,7 +254,11 @@ function autocompletarDatosSubAdmin() {
   form.subAdminEmail = `admin.${slug}@jrblanco.com`
   const cap =
     slug.charAt(0).toUpperCase() + slug.slice(1).replace(/\./g, '')
-  form.subAdminPassword = `${cap.slice(0, 10)}2026*`
+  let generatedPwd = `${cap.slice(0, 10)}2026*`
+  if (generatedPwd.length < 8) {
+    generatedPwd = `Ruta${cap}2026*`
+  }
+  form.subAdminPassword = generatedPwd
 }
 
 function abrirModalCrear() {
@@ -199,14 +269,16 @@ function abrirModalCrear() {
   form.nombre = ''
   form.zona = ''
   form.descripcion = ''
-  form.estado = 'Activa'
   form.modoSubAdmin = 'nuevo'
   form.subAdminNombre = ''
   form.subAdminEmail = ''
-  form.subAdminPassword = `Ruta${Math.floor(100 + Math.random() * 900)}*`
+  form.subAdminPassword = `Ruta${Math.floor(1000 + Math.random() * 9000)}*`
   form.existingUserId = ''
   mostrarPasswordForm.value = true
   modalAbierto.value = true
+  void nextTick(() => {
+    inputNombreRuta.value?.focus()
+  })
 }
 
 function abrirModalEditar(ruta: RutaSucursal) {
@@ -217,13 +289,15 @@ function abrirModalEditar(ruta: RutaSucursal) {
   form.nombre = ruta.nombre
   form.zona = ruta.zona || ''
   form.descripcion = ruta.descripcion || ''
-  form.estado = ruta.estado
   form.modoSubAdmin = ruta.subAdminId ? 'existente' : 'sin_asignar'
   form.existingUserId = ruta.subAdminId || ''
   form.subAdminNombre = ruta.subAdminNombre || ''
   form.subAdminEmail = ruta.subAdminEmail || ''
   form.subAdminPassword = ''
   modalAbierto.value = true
+  void nextTick(() => {
+    inputNombreRuta.value?.focus()
+  })
 }
 
 function cerrarModal() {
@@ -238,6 +312,34 @@ async function guardarRuta() {
 
   if (!form.nombre.trim()) {
     errorFormulario.value = 'Escribe el nombre de la ruta o sucursal.'
+    inputNombreRuta.value?.focus()
+    return
+  }
+
+  if (rutaNombreDuplicado.value) {
+    errorFormulario.value = `Ya existe una ruta registrada con ese nombre: "${rutaNombreDuplicado.value.nombre}" (${rutaNombreDuplicado.value.codigo}). Usa otro nombre.`
+    inputNombreRuta.value?.focus()
+    return
+  }
+
+  if (!form.codigo.trim()) {
+    errorFormulario.value = 'Escribe el código de la ruta (ej. RUT-01).'
+    return
+  }
+
+  if (rutaCodigoDuplicado.value) {
+    errorFormulario.value = `El código "${form.codigo.trim().toUpperCase()}" ya pertenece a la ruta "${rutaCodigoDuplicado.value.nombre}".`
+    return
+  }
+
+  if (emailDuplicadoSubAdmin.value) {
+    errorFormulario.value = `El correo "${form.subAdminEmail.trim().toLowerCase()}" ya está registrado (${emailDuplicadoSubAdmin.value}). Usa otro correo o elige "Ya existe".`
+    return
+  }
+
+  if (form.modoSubAdmin === 'existente' && !form.existingUserId) {
+    errorFormulario.value =
+      'Selecciona un usuario de la lista o elige "Crear usuario" / "Más tarde".'
     return
   }
 
@@ -301,35 +403,34 @@ async function guardarRuta() {
           nombre: form.nombre,
           zona: form.zona,
           descripcion: form.descripcion,
-          estado: form.estado,
+          estado: 'Activa',
         })
 
         // Crear usuario con el rol codificado de esta ruta
         const { encodeSubAdminRole } = await import('@/services/rutasService')
         const { crearUsuario } = await import('@/services/usuariosService')
         const roleStr = encodeSubAdminRole(tempRuta)
-        await crearUsuario({
-          nombre: form.subAdminNombre.trim() || `Admin ${tempRuta.nombre}`,
-          email: form.subAdminEmail.trim().toLowerCase(),
+        const subNombre = form.subAdminNombre.trim() || `Admin ${tempRuta.nombre}`
+        const subEmail = form.subAdminEmail.trim().toLowerCase()
+        const creado = await crearUsuario({
+          nombre: subNombre,
+          email: subEmail,
           password: form.subAdminPassword,
           rol: roleStr,
         })
+        await rutasService.updateRuta(rutaEditandoId.value, {
+          assignSubAdmin: {
+            id: creado.id,
+            nombre: subNombre,
+            email: subEmail,
+          },
+        })
         await cargarTodo()
-        const nuevoPerfil = perfiles.value.find(
-          (p) =>
-            p.email?.trim().toLowerCase() ===
-            form.subAdminEmail.trim().toLowerCase()
-        )
-        if (nuevoPerfil) {
-          await rutasService.updateRuta(rutaEditandoId.value, {
-            assignUserId: nuevoPerfil.id,
-          })
-        }
         credencialesRecienCreadas.value = {
           rutaNombre: tempRuta.nombre,
           rutaCodigo: tempRuta.codigo,
-          nombre: form.subAdminNombre.trim() || `Admin ${tempRuta.nombre}`,
-          email: form.subAdminEmail.trim().toLowerCase(),
+          nombre: subNombre,
+          email: subEmail,
           password: form.subAdminPassword,
         }
       } else {
@@ -338,7 +439,7 @@ async function guardarRuta() {
           nombre: form.nombre,
           zona: form.zona,
           descripcion: form.descripcion,
-          estado: form.estado,
+          estado: 'Activa',
           assignUserId:
             form.modoSubAdmin === 'existente'
               ? form.existingUserId || null
@@ -839,277 +940,342 @@ function formatMoney(amount: number): string {
       </div>
     </div>
 
-    <!-- MODAL: CREAR / EDITAR RUTA + SUB-ADMINISTRADOR AUTOMÁTICO -->
-    <div
-      v-if="modalAbierto"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-[#0D0D0D]/70 backdrop-blur-xs p-4 overflow-y-auto"
-      @click.self="cerrarModal"
+    <!-- MODAL: CREAR / EDITAR RUTA + SUB-ADMINISTRADOR -->
+    <Transition
+      enter-active-class="transition duration-150 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-100 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
     >
-      <div class="w-full max-w-xl rounded-2xl bg-white border border-[#0D0D0D]/15 shadow-2xl overflow-hidden my-8">
-        <div class="h-1.5 w-full bg-gradient-to-r from-[#0D0D0D] via-[#05C7F2] to-[#05F2F2]"></div>
+      <div
+        v-if="modalAbierto"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-[#0D0D0D]/65 backdrop-blur-xs p-4 overflow-y-auto"
+        @click.self="cerrarModal"
+      >
+        <div class="w-full max-w-[540px] rounded-2xl bg-white border border-[#0D0D0D]/12 shadow-2xl overflow-hidden my-6">
+          <div class="h-1 w-full bg-gradient-to-r from-[#0D0D0D] via-[#04C4D9] to-[#05F2F2]"></div>
 
-        <form @submit.prevent="guardarRuta" class="p-6 space-y-5">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <span class="inline-flex items-center gap-1.5 rounded-full bg-[#05C7F2]/15 border border-[#04C4D9]/40 px-2.5 py-0.5 text-[11px] font-bold text-[#0D0D0D]">
-                <MapPin class="w-3 h-3 text-[#04C4D9]" />
-                <span>{{ modoEdicion ? 'Configuración de Ruta' : 'Creación Automática de Ruta + Rol' }}</span>
-              </span>
-              <h2 class="mt-1.5 text-xl font-black text-[#0D0D0D]">
-                {{ modoEdicion ? 'Editar Ruta y Sub-Administrador' : 'Nueva Ruta y Sub-Administrador' }}
-              </h2>
-              <p class="text-xs text-[#0D0D0D]/65 mt-0.5">
-                Al guardar la ruta, el sistema configura automáticamente el rol de
-                <strong>Sub-Administrador</strong> restringido únicamente a las órdenes de esta ruta.
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="cerrarModal"
-              class="p-1.5 rounded-lg text-[#0D0D0D]/50 hover:text-[#0D0D0D] hover:bg-[#F2F2F2] transition cursor-pointer"
-            >
-              <X class="w-5 h-5" />
-            </button>
-          </div>
-
-          <div
-            v-if="errorFormulario"
-            class="rounded-xl bg-[#0D0D0D] text-[#05F2F2] border border-[#05C7F2] px-4 py-3 text-xs font-bold flex items-center gap-2"
-          >
-            <AlertCircle class="w-4 h-4 shrink-0 text-[#05C7F2]" />
-            <span>{{ errorFormulario }}</span>
-          </div>
-
-          <!-- 1. Datos de la Ruta / Sucursal -->
-          <div class="space-y-3 rounded-xl bg-[#F2F2F2]/60 border border-[#0D0D0D]/10 p-4">
-            <h3 class="text-xs font-black uppercase tracking-wider text-[#0D0D0D] flex items-center gap-1.5">
-              <MapPin class="w-3.5 h-3.5 text-[#04C4D9]" />
-              <span>1. Datos de la Ruta / Sucursal</span>
-            </h3>
-
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label class="block text-xs font-bold text-[#0D0D0D] mb-1">Código</label>
-                <input
-                  v-model="form.codigo"
-                  type="text"
-                  required
-                  placeholder="RUT-01"
-                  class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2 text-sm font-mono font-bold text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none focus:ring-2 focus:ring-[#05C7F2]/25"
-                />
-              </div>
-
-              <div class="sm:col-span-2">
-                <label class="block text-xs font-bold text-[#0D0D0D] mb-1">
-                  Nombre de la Ruta o Sucursal *
-                </label>
-                <input
-                  v-model="form.nombre"
-                  type="text"
-                  required
-                  placeholder="Ej. Ruta Norte / Sucursal San Miguel"
-                  @blur="!modoEdicion && !form.subAdminEmail ? autocompletarDatosSubAdmin() : null"
-                  class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2 text-sm font-semibold text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none focus:ring-2 focus:ring-[#05C7F2]/25"
-                />
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-bold text-[#0D0D0D] mb-1">
-                  Zona / Cobertura
-                </label>
-                <input
-                  v-model="form.zona"
-                  type="text"
-                  placeholder="Ej. Zona Oriental / Talleres Afiliados"
-                  class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2 text-sm text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none focus:ring-2 focus:ring-[#05C7F2]/25"
-                />
-              </div>
-
-              <div>
-                <label class="block text-xs font-bold text-[#0D0D0D] mb-1">Estado de la Ruta</label>
-                <select
-                  v-model="form.estado"
-                  class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2 text-sm font-bold text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none"
-                >
-                  <option value="Activa">Activa</option>
-                  <option value="Inactiva">Inactiva</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- 2. Sub-Administrador de la Ruta -->
-          <div class="space-y-3 rounded-xl bg-[#05C7F2]/10 border border-[#04C4D9]/40 p-4">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h3 class="text-xs font-black uppercase tracking-wider text-[#0D0D0D] flex items-center gap-1.5">
-                <UserPlus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                <span>2. Sub-Administrador Exclusivo de esta Ruta</span>
-              </h3>
-
-              <button
-                v-if="form.modoSubAdmin === 'nuevo'"
-                type="button"
-                @click="autocompletarDatosSubAdmin"
-                class="inline-flex items-center gap-1 rounded-lg bg-[#0D0D0D] px-2.5 py-1 text-[11px] font-bold text-[#05F2F2] hover:bg-[#05C7F2] hover:text-[#0D0D0D] transition cursor-pointer self-start"
-              >
-                <Sparkles class="w-3 h-3" />
-                <span>Autogenerar usuario y clave</span>
-              </button>
-            </div>
-
-            <!-- Selector de modo de asignación -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-              <button
-                type="button"
-                @click="form.modoSubAdmin = 'nuevo'"
-                class="rounded-xl border px-3 py-2 text-xs font-bold text-left transition cursor-pointer"
-                :class="
-                  form.modoSubAdmin === 'nuevo'
-                    ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D]'
-                    : 'bg-white text-[#0D0D0D] border-[#0D0D0D]/15 hover:border-[#04C4D9]'
-                "
-              >
-                Crear nuevo Sub-Admin
-              </button>
-              <button
-                type="button"
-                @click="form.modoSubAdmin = 'existente'"
-                class="rounded-xl border px-3 py-2 text-xs font-bold text-left transition cursor-pointer"
-                :class="
-                  form.modoSubAdmin === 'existente'
-                    ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D]'
-                    : 'bg-white text-[#0D0D0D] border-[#0D0D0D]/15 hover:border-[#04C4D9]'
-                "
-              >
-                Asignar usuario existente
-              </button>
-              <button
-                type="button"
-                @click="form.modoSubAdmin = 'sin_asignar'"
-                class="rounded-xl border px-3 py-2 text-xs font-bold text-left transition cursor-pointer"
-                :class="
-                  form.modoSubAdmin === 'sin_asignar'
-                    ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D]'
-                    : 'bg-white text-[#0D0D0D] border-[#0D0D0D]/15 hover:border-[#04C4D9]'
-                "
-              >
-                Dejar sin encargar aún
-              </button>
-            </div>
-
-            <!-- Opción A: Crear nuevo Sub-Administrador -->
-            <div v-if="form.modoSubAdmin === 'nuevo'" class="space-y-3 pt-2">
-              <div>
-                <label class="block text-xs font-bold text-[#0D0D0D] mb-1">
-                  Nombre del Sub-Administrador *
-                </label>
-                <input
-                  v-model="form.subAdminNombre"
-                  type="text"
-                  placeholder="Ej. Carlos Encargado Ruta Norte"
-                  class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2 text-sm text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none"
-                />
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form @submit.prevent="guardarRuta">
+            <!-- Cabecera limpia y directa -->
+            <div class="px-6 pt-5 pb-4 border-b border-[#0D0D0D]/8 flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-xl bg-[#05C7F2]/15 border border-[#04C4D9]/35 flex items-center justify-center shrink-0 mt-0.5">
+                  <MapPin class="w-4.5 h-4.5 text-[#04C4D9]" />
+                </div>
                 <div>
-                  <label class="block text-xs font-bold text-[#0D0D0D] mb-1">
-                    Correo de acceso *
-                  </label>
-                  <input
-                    v-model="form.subAdminEmail"
-                    type="email"
-                    required
-                    placeholder="admin.rutanorte@jrblanco.com"
-                    class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2 text-sm font-mono text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none"
-                  />
+                  <h2 class="text-lg font-black tracking-tight text-[#0D0D0D]">
+                    {{ modoEdicion ? 'Editar ruta' : 'Nueva ruta' }}
+                  </h2>
+                  <p class="text-xs text-[#0D0D0D]/60 mt-0.5">
+                    {{
+                      modoEdicion
+                        ? 'Actualiza los datos de la sucursal y su encargado.'
+                        : 'Se crea activa de inmediato y lista para asignar órdenes.'
+                    }}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                @click="cerrarModal"
+                class="p-1.5 rounded-lg text-[#0D0D0D]/45 hover:text-[#0D0D0D] hover:bg-[#F2F2F2] transition cursor-pointer"
+                aria-label="Cerrar"
+              >
+                <X class="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <!-- Cuerpo del formulario -->
+            <div class="p-6 space-y-5">
+              <!-- Alerta de validación -->
+              <div
+                v-if="errorFormulario"
+                class="rounded-xl bg-[#0D0D0D] text-[#05F2F2] border border-[#05C7F2]/60 px-3.5 py-2.5 text-xs font-semibold flex items-center gap-2"
+              >
+                <AlertCircle class="w-4 h-4 shrink-0 text-[#05F2F2]" />
+                <span>{{ errorFormulario }}</span>
+              </div>
+
+              <!-- 1. Datos de la Ruta -->
+              <div class="space-y-3.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D0D0D]/55">
+                    1. Datos de la ruta
+                  </span>
+                  <span class="text-[11px] font-semibold text-[#04C4D9]">
+                    Activa por defecto
+                  </span>
                 </div>
 
-                <div>
-                  <label class="block text-xs font-bold text-[#0D0D0D] mb-1">
-                    Contraseña inicial (mín. 8 caracteres) *
-                  </label>
-                  <div class="relative">
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div class="sm:col-span-8">
+                    <label class="block text-xs font-bold text-[#0D0D0D] mb-1.5">
+                      Nombre de la ruta o sucursal *
+                    </label>
                     <input
-                      v-model="form.subAdminPassword"
-                      :type="mostrarPasswordForm ? 'text' : 'password'"
+                      ref="inputNombreRuta"
+                      v-model="form.nombre"
+                      type="text"
                       required
-                      minlength="8"
-                      placeholder="RutaNorte2026*"
-                      class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white pl-3 pr-9 py-2 text-sm font-mono font-bold text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none"
+                      placeholder="Ej. Ruta Norte / Sucursal Centro"
+                      @blur="!modoEdicion && form.modoSubAdmin === 'nuevo' && !form.subAdminEmail && !rutaNombreDuplicado ? autocompletarDatosSubAdmin() : null"
+                      :aria-invalid="Boolean(rutaNombreDuplicado)"
+                      :class="[
+                        'w-full rounded-xl border px-3.5 py-2.5 text-sm font-medium text-[#0D0D0D] placeholder:text-[#0D0D0D]/35 focus:outline-none focus:ring-3 transition',
+                        rutaNombreDuplicado
+                          ? 'border-[#0D0D0D] bg-[#F2F2F2] focus:border-[#0D0D0D] focus:ring-[#0D0D0D]/15'
+                          : 'border-[#0D0D0D]/15 bg-white focus:border-[#04C4D9] focus:ring-[#05C7F2]/20',
+                      ]"
                     />
-                    <button
-                      type="button"
-                      @click="mostrarPasswordForm = !mostrarPasswordForm"
-                      class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#0D0D0D]/60 hover:text-[#0D0D0D]"
+                    <p
+                      v-if="rutaNombreDuplicado"
+                      class="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-[#0D0D0D] px-2.5 py-1 text-[11px] font-semibold text-[#05F2F2]"
                     >
-                      <EyeOff v-if="mostrarPasswordForm" class="w-4 h-4" />
-                      <Eye v-else class="w-4 h-4" />
-                    </button>
+                      Ya existe "{{ rutaNombreDuplicado.nombre }}" ({{ rutaNombreDuplicado.codigo }}). Elige otro nombre.
+                    </p>
+                  </div>
+
+                  <div class="sm:col-span-4">
+                    <label class="block text-xs font-bold text-[#0D0D0D] mb-1.5">
+                      Código
+                    </label>
+                    <input
+                      v-model="form.codigo"
+                      type="text"
+                      required
+                      placeholder="RUT-01"
+                      :aria-invalid="Boolean(rutaCodigoDuplicado)"
+                      :class="[
+                        'w-full rounded-xl border px-3 py-2.5 text-sm font-mono font-bold uppercase text-[#0D0D0D] focus:outline-none focus:ring-3 transition',
+                        rutaCodigoDuplicado
+                          ? 'border-[#0D0D0D] bg-[#F2F2F2] focus:border-[#0D0D0D] focus:ring-[#0D0D0D]/15'
+                          : 'border-[#0D0D0D]/15 bg-[#F2F2F2]/60 focus:bg-white focus:border-[#04C4D9] focus:ring-[#05C7F2]/20',
+                      ]"
+                    />
+                    <p
+                      v-if="rutaCodigoDuplicado"
+                      class="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-[#0D0D0D] px-2.5 py-1 text-[11px] font-semibold text-[#05F2F2]"
+                    >
+                      Código en uso por "{{ rutaCodigoDuplicado.nombre }}".
+                    </p>
                   </div>
                 </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-[#0D0D0D] mb-1.5">
+                    Zona o cobertura <span class="font-normal text-[#0D0D0D]/45">(opcional)</span>
+                  </label>
+                  <input
+                    v-model="form.zona"
+                    type="text"
+                    placeholder="Ej. Zona Oriental, talleres afiliados"
+                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder:text-[#0D0D0D]/35 focus:border-[#04C4D9] focus:outline-none focus:ring-3 focus:ring-[#05C7F2]/20 transition"
+                  />
+                </div>
               </div>
 
-              <p class="text-[11px] font-semibold text-[#0D0D0D]/75">
-                ✓ Este usuario tendrá el rol <strong>Sub-Administrador ({{ form.nombre || 'Ruta' }})</strong> y únicamente podrá ver, crear, editar e imprimir órdenes de trabajo de esta ruta.
-              </p>
-            </div>
+              <div class="border-t border-[#0D0D0D]/8"></div>
 
-            <!-- Opción B: Seleccionar usuario existente -->
-            <div v-else-if="form.modoSubAdmin === 'existente'" class="space-y-2 pt-2">
-              <label class="block text-xs font-bold text-[#0D0D0D]">
-                Selecciona el usuario que será Sub-Administrador de esta ruta
-              </label>
-              <select
-                v-model="form.existingUserId"
-                class="w-full rounded-xl border border-[#0D0D0D]/20 bg-white px-3 py-2.5 text-sm font-semibold text-[#0D0D0D] focus:border-[#05C7F2] focus:outline-none"
-              >
-                <option value="">-- Seleccionar usuario registrado --</option>
-                <option
-                  v-for="u in perfiles"
-                  :key="u.id"
-                  :value="u.id"
+              <!-- 2. Encargado / Sub-Administrador -->
+              <div class="space-y-3.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D0D0D]/55">
+                    2. Encargado de ruta (Sub-Admin)
+                  </span>
+
+                  <button
+                    v-if="form.modoSubAdmin === 'nuevo'"
+                    type="button"
+                    @click="autocompletarDatosSubAdmin"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-[#04C4D9]/40 bg-[#05C7F2]/10 px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] hover:bg-[#05C7F2]/20 transition cursor-pointer"
+                    title="Genera nombre, correo y contraseña desde el nombre de la ruta"
+                  >
+                    <Sparkles class="w-3 h-3 text-[#04C4D9]" />
+                    <span>Autocompletar accesos</span>
+                  </button>
+                </div>
+
+                <!-- Control segmentado limpio -->
+                <div class="grid grid-cols-3 gap-1 rounded-xl bg-[#F2F2F2] p-1">
+                  <button
+                    type="button"
+                    @click="form.modoSubAdmin = 'nuevo'"
+                    class="rounded-lg px-3 py-2 text-xs transition cursor-pointer text-center"
+                    :class="
+                      form.modoSubAdmin === 'nuevo'
+                        ? 'bg-white text-[#0D0D0D] font-bold shadow-xs ring-1 ring-[#0D0D0D]/8'
+                        : 'text-[#0D0D0D]/60 hover:text-[#0D0D0D] font-semibold'
+                    "
+                  >
+                    Crear usuario
+                  </button>
+                  <button
+                    type="button"
+                    @click="form.modoSubAdmin = 'existente'"
+                    class="rounded-lg px-3 py-2 text-xs transition cursor-pointer text-center"
+                    :class="
+                      form.modoSubAdmin === 'existente'
+                        ? 'bg-white text-[#0D0D0D] font-bold shadow-xs ring-1 ring-[#0D0D0D]/8'
+                        : 'text-[#0D0D0D]/60 hover:text-[#0D0D0D] font-semibold'
+                    "
+                  >
+                    Ya existe
+                  </button>
+                  <button
+                    type="button"
+                    @click="form.modoSubAdmin = 'sin_asignar'"
+                    class="rounded-lg px-3 py-2 text-xs transition cursor-pointer text-center"
+                    :class="
+                      form.modoSubAdmin === 'sin_asignar'
+                        ? 'bg-white text-[#0D0D0D] font-bold shadow-xs ring-1 ring-[#0D0D0D]/8'
+                        : 'text-[#0D0D0D]/60 hover:text-[#0D0D0D] font-semibold'
+                    "
+                  >
+                    Más tarde
+                  </button>
+                </div>
+
+                <!-- Opción A: Crear usuario nuevo -->
+                <div v-if="form.modoSubAdmin === 'nuevo'" class="space-y-3 pt-0.5">
+                  <div>
+                    <label class="block text-xs font-bold text-[#0D0D0D] mb-1.5">
+                      Nombre del encargado
+                    </label>
+                    <input
+                      v-model="form.subAdminNombre"
+                      type="text"
+                      placeholder="Ej. Carlos Méndez"
+                      class="w-full rounded-xl border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder:text-[#0D0D0D]/35 focus:border-[#04C4D9] focus:outline-none focus:ring-3 focus:ring-[#05C7F2]/20 transition"
+                    />
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs font-bold text-[#0D0D0D] mb-1.5">
+                        Correo de acceso *
+                      </label>
+                      <input
+                        v-model="form.subAdminEmail"
+                        type="email"
+                        required
+                        placeholder="admin.ruta@jrblanco.com"
+                        :aria-invalid="Boolean(emailDuplicadoSubAdmin)"
+                        :class="[
+                          'w-full rounded-xl border px-3.5 py-2.5 text-sm font-mono text-[#0D0D0D] placeholder:text-[#0D0D0D]/35 focus:outline-none focus:ring-3 transition',
+                          emailDuplicadoSubAdmin
+                            ? 'border-[#0D0D0D] bg-[#F2F2F2] focus:border-[#0D0D0D] focus:ring-[#0D0D0D]/15'
+                            : 'border-[#0D0D0D]/15 bg-white focus:border-[#04C4D9] focus:ring-[#05C7F2]/20',
+                        ]"
+                      />
+                      <p
+                        v-if="emailDuplicadoSubAdmin"
+                        class="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-[#0D0D0D] px-2.5 py-1 text-[11px] font-semibold text-[#05F2F2]"
+                      >
+                        Correo ya registrado ({{ emailDuplicadoSubAdmin }}). Usa otro o elige "Ya existe".
+                      </p>
+                    </div>
+
+                    <div>
+                      <label class="block text-xs font-bold text-[#0D0D0D] mb-1.5">
+                        Contraseña *
+                      </label>
+                      <div class="relative">
+                        <input
+                          v-model="form.subAdminPassword"
+                          :type="mostrarPasswordForm ? 'text' : 'password'"
+                          required
+                          minlength="8"
+                          placeholder="Mín. 8 caracteres"
+                          class="w-full rounded-xl border border-[#0D0D0D]/15 bg-white pl-3.5 pr-10 py-2.5 text-sm font-mono font-bold text-[#0D0D0D] placeholder:font-sans placeholder:font-normal placeholder:text-[#0D0D0D]/35 focus:border-[#04C4D9] focus:outline-none focus:ring-3 focus:ring-[#05C7F2]/20 transition"
+                        />
+                        <button
+                          type="button"
+                          @click="mostrarPasswordForm = !mostrarPasswordForm"
+                          class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-[#0D0D0D]/50 hover:text-[#0D0D0D] cursor-pointer"
+                          :aria-label="mostrarPasswordForm ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        >
+                          <EyeOff v-if="mostrarPasswordForm" class="w-4 h-4" />
+                          <Eye v-else class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p class="flex items-center gap-1.5 text-[11px] font-medium text-[#0D0D0D]/60">
+                    <ShieldCheck class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                    <span>Este usuario solo verá y gestionará las órdenes de <strong>{{ form.nombre || 'esta ruta' }}</strong>.</span>
+                  </p>
+                </div>
+
+                <!-- Opción B: Asignar usuario existente -->
+                <div v-else-if="form.modoSubAdmin === 'existente'" class="space-y-2 pt-0.5">
+                  <label class="block text-xs font-bold text-[#0D0D0D]">
+                    Selecciona un usuario registrado
+                  </label>
+                  <select
+                    v-model="form.existingUserId"
+                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 text-sm font-medium text-[#0D0D0D] focus:border-[#04C4D9] focus:outline-none focus:ring-3 focus:ring-[#05C7F2]/20 transition"
+                  >
+                    <option value="">-- Elegir usuario --</option>
+                    <option
+                      v-for="u in usuariosDisponiblesParaRuta"
+                      :key="u.id"
+                      :value="u.id"
+                    >
+                      {{ u.nombre }} — {{ u.email }}
+                    </option>
+                  </select>
+                  <p v-if="usuariosDisponiblesParaRuta.length === 0" class="text-[11px] font-medium text-[#0D0D0D]/60">
+                    No hay usuarios disponibles para asignar. Usa la pestaña <strong>Crear usuario</strong>.
+                  </p>
+                  <p v-else class="flex items-center gap-1.5 text-[11px] font-medium text-[#0D0D0D]/60">
+                    <ShieldCheck class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />
+                    <span>Su perfil pasará a ser Sub-Administrador exclusivo de esta ruta.</span>
+                  </p>
+                </div>
+
+                <!-- Opción C: Asignar más tarde -->
+                <div
+                  v-else
+                  class="rounded-xl bg-[#F2F2F2]/75 border border-[#0D0D0D]/8 px-3.5 py-3 text-xs text-[#0D0D0D]/70"
                 >
-                  {{ u.nombre }} ({{ u.email }})
-                </option>
-              </select>
-              <p class="text-[11px] font-semibold text-[#0D0D0D]/75">
-                Al guardar, su rol se actualizará automáticamente a <strong>Sub-Administrador de {{ form.nombre || 'esta ruta' }}</strong>.
-              </p>
+                  La ruta se creará activa desde ya. Podrás crearle o asignarle un encargado cuando quieras editando esta tarjeta.
+                </div>
+              </div>
             </div>
-          </div>
 
-          <!-- Botones de Acción -->
-          <div class="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              @click="cerrarModal"
-              :disabled="guardando"
-              class="rounded-xl border border-[#0D0D0D]/15 bg-white px-4 py-2.5 text-xs font-bold text-[#0D0D0D] hover:bg-[#F2F2F2] transition cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              :disabled="guardando"
-              class="inline-flex items-center gap-2 rounded-xl bg-[#0D0D0D] px-5 py-2.5 text-xs font-bold text-[#05F2F2] hover:bg-[#05C7F2] hover:text-[#0D0D0D] transition cursor-pointer disabled:opacity-50"
-            >
-              <span>
-                {{
-                  guardando
-                    ? 'Guardando y configurando rol...'
-                    : modoEdicion
-                      ? 'Guardar cambios de Ruta'
-                      : 'Crear Ruta y Sub-Administrador'
-                }}
-              </span>
-            </button>
-          </div>
-        </form>
+            <!-- Pie con acciones -->
+            <div class="px-6 py-4 bg-[#F2F2F2]/50 border-t border-[#0D0D0D]/8 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                @click="cerrarModal"
+                :disabled="guardando"
+                class="rounded-xl border border-[#0D0D0D]/15 bg-white px-4 py-2.5 text-xs font-bold text-[#0D0D0D] hover:bg-[#F2F2F2] transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                :disabled="guardando"
+                class="inline-flex items-center gap-2 rounded-xl bg-[#0D0D0D] px-5 py-2.5 text-xs font-bold text-[#05F2F2] hover:bg-[#05C7F2] hover:text-[#0D0D0D] active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
+              >
+                <span>
+                  {{
+                    guardando
+                      ? 'Guardando...'
+                      : modoEdicion
+                        ? 'Guardar cambios'
+                        : 'Crear ruta'
+                  }}
+                </span>
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </Transition>
 
     <!-- MODAL: EDITAR / VER CREDENCIAL DE SUB-ADMIN -->
     <div

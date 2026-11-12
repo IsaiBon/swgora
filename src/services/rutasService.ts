@@ -171,6 +171,49 @@ function saveOrderRoutesMap(map: Record<string, OrderRouteMetadata>): void {
   }
 }
 
+/**
+ * Normaliza un nombre de ruta para comparaciones sin distinción de mayúsculas, acentos ni espacios múltiples
+ */
+export function normalizarNombreRuta(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function validarDuplicadoRuta(
+  rutas: RutaSucursal[],
+  params: { nombre: string; codigo: string; excludeId?: string }
+): void {
+  const nombreKey = normalizarNombreRuta(params.nombre)
+  const codigoKey = params.codigo.trim().toUpperCase()
+
+  if (!nombreKey) {
+    throw new Error('El nombre de la ruta o sucursal es obligatorio.')
+  }
+  if (!codigoKey) {
+    throw new Error('El código de la ruta es obligatorio.')
+  }
+
+  for (const r of rutas) {
+    if (params.excludeId && r.id === params.excludeId) continue
+
+    if (normalizarNombreRuta(r.nombre || '') === nombreKey) {
+      throw new Error(
+        `Ya existe una ruta registrada con el nombre "${r.nombre}" (${r.codigo}). Usa un nombre diferente.`
+      )
+    }
+
+    if ((r.codigo || '').trim().toUpperCase() === codigoKey) {
+      throw new Error(
+        `Ya existe una ruta registrada con el código "${r.codigo}" (${r.nombre}). Usa un código diferente.`
+      )
+    }
+  }
+}
+
 export const rutasService = {
   /**
    * Obtiene todas las rutas locales de forma síncrona
@@ -248,6 +291,18 @@ export const rutasService = {
               createdAt: perfil.created_at || new Date().toISOString(),
             })
           }
+        } else if (perfil.email) {
+          // Vincular UUID faltante si alguna ruta local coincide por correo
+          const emailLower = perfil.email.trim().toLowerCase()
+          for (const ruta of byId.values()) {
+            if (
+              ruta.subAdminEmail?.trim().toLowerCase() === emailLower &&
+              !ruta.subAdminId
+            ) {
+              ruta.subAdminId = perfil.id
+              ruta.subAdminNombre = perfil.nombre || ruta.subAdminNombre
+            }
+          }
         }
       }
     } catch {
@@ -266,17 +321,25 @@ export const rutasService = {
    */
   getNextRutaCode(): string {
     const rutas = loadStoredRutas()
-    let maxNum = 0
+    const existentes = new Set(
+      rutas.map((r) => (r.codigo || '').trim().toUpperCase()).filter(Boolean)
+    )
+    let nextNum = 1
     for (const r of rutas) {
       const match = (r.codigo || '').match(/(\d+)/)
       if (match && match[1]) {
         const num = parseInt(match[1], 10)
-        if (!Number.isNaN(num) && num > maxNum) {
-          maxNum = num
+        if (!Number.isNaN(num) && num >= nextNum) {
+          nextNum = num + 1
         }
       }
     }
-    return `RUT-${String(maxNum + 1).padStart(2, '0')}`
+    let candidate = `RUT-${String(nextNum).padStart(2, '0')}`
+    while (existentes.has(candidate)) {
+      nextNum += 1
+      candidate = `RUT-${String(nextNum).padStart(2, '0')}`
+    }
+    return candidate
   },
 
   /**
@@ -341,13 +404,14 @@ export const rutasService = {
     ruta: RutaSucursal
     credenciales?: { nombre: string; email: string; password: string }
   }> {
-    const rutas = loadStoredRutas()
-    const cleanNombre = params.nombre.trim()
-    if (!cleanNombre) {
-      throw new Error('El nombre de la ruta o sucursal es obligatorio.')
-    }
-
+    const rutas = await this.getRutas().catch(() => loadStoredRutas())
+    const cleanNombre = params.nombre.trim().replace(/\s+/g, ' ')
     const cleanCodigo = (params.codigo?.trim() || this.getNextRutaCode()).toUpperCase()
+    validarDuplicadoRuta(rutas, {
+      nombre: cleanNombre,
+      codigo: cleanCodigo,
+    })
+
     const cleanZona = (params.zona || '').trim()
     const rutaId = `ruta-${Date.now().toString(36)}`
 
@@ -385,33 +449,40 @@ export const rutasService = {
       }
 
       // Crear el usuario en Supabase Auth + tabla perfiles con el rol de Sub-Admin de esta ruta
-      await crearUsuario({
+      const usuarioCreado = await crearUsuario({
         nombre: adminNombre,
         email: adminEmail,
         password: adminPassword,
         rol: encodedRole as any,
       })
 
-      // Buscar el perfil recién creado para vincular su UUID
+      // Buscar el perfil recién creado para verificar o sincronizar rol
       let createdPerfil: Perfil | undefined
       try {
         const perfiles = await perfilesService.getPerfiles()
         createdPerfil = perfiles.find(
-          (p) => p.email?.trim().toLowerCase() === adminEmail
+          (p) =>
+            p.id === usuarioCreado.id ||
+            p.email?.trim().toLowerCase() === adminEmail
         )
         if (createdPerfil && createdPerfil.rol !== encodedRole) {
-          await cambiarRolUsuario(createdPerfil.id, encodedRole as any)
+          await cambiarRolUsuario(
+            createdPerfil.id,
+            encodedRole as any,
+            adminEmail
+          )
         }
-      } catch {
-        // Ignorar si la lectura falla
+      } catch (syncErr) {
+        console.warn('[RutasService] Aviso al sincronizar perfil de ruta:', syncErr)
       }
 
-      nuevaRuta.subAdminId = createdPerfil?.id
+      const resolvedUserId = createdPerfil?.id || usuarioCreado.id
+      nuevaRuta.subAdminId = resolvedUserId
       nuevaRuta.subAdminNombre = adminNombre
       nuevaRuta.subAdminEmail = adminEmail
 
       registrarCredencialUsuario({
-        id: createdPerfil?.id,
+        id: resolvedUserId,
         email: adminEmail,
         password: adminPassword,
       })
@@ -428,7 +499,15 @@ export const rutasService = {
         throw new Error('No se encontró el usuario seleccionado.')
       }
 
-      await cambiarRolUsuario(targetPerfil.id, encodedRole as any)
+      try {
+        await cambiarRolUsuario(
+          targetPerfil.id,
+          encodedRole as any,
+          targetPerfil.email
+        )
+      } catch (err) {
+        console.warn('[RutasService] No se pudo actualizar rol en perfiles:', err)
+      }
       nuevaRuta.subAdminId = targetPerfil.id
       nuevaRuta.subAdminNombre = targetPerfil.nombre
       nuevaRuta.subAdminEmail = targetPerfil.email
@@ -470,6 +549,11 @@ export const rutasService = {
       Pick<RutaSucursal, 'codigo' | 'nombre' | 'zona' | 'descripcion' | 'estado'>
     > & {
       assignUserId?: string | null
+      assignSubAdmin?: {
+        id?: string
+        nombre?: string
+        email?: string
+      } | null
     }
   ): Promise<RutaSucursal> {
     const rutas = loadStoredRutas()
@@ -482,7 +566,10 @@ export const rutasService = {
     const updated: RutaSucursal = {
       ...current,
       codigo: updates.codigo !== undefined ? updates.codigo.trim().toUpperCase() : current.codigo,
-      nombre: updates.nombre !== undefined ? updates.nombre.trim() : current.nombre,
+      nombre:
+        updates.nombre !== undefined
+          ? updates.nombre.trim().replace(/\s+/g, ' ')
+          : current.nombre,
       zona: updates.zona !== undefined ? updates.zona.trim() : current.zona,
       descripcion:
         updates.descripcion !== undefined
@@ -491,18 +578,90 @@ export const rutasService = {
       estado: updates.estado !== undefined ? updates.estado : current.estado,
     }
 
+    if (updates.nombre !== undefined || updates.codigo !== undefined) {
+      validarDuplicadoRuta(rutas, {
+        nombre: updated.nombre,
+        codigo: updated.codigo,
+        excludeId: id,
+      })
+    }
+
     const encodedRole = encodeSubAdminRole(updated)
 
-    if (updates.assignUserId !== undefined) {
-      if (updates.assignUserId === null || updates.assignUserId === '') {
+    if (updates.assignSubAdmin !== undefined) {
+      if (updates.assignSubAdmin === null) {
+        if (current.subAdminId) {
+          try {
+            await cambiarRolUsuario(
+              current.subAdminId,
+              'operador',
+              current.subAdminEmail
+            )
+          } catch {
+            // Ignore
+          }
+        }
         updated.subAdminId = undefined
         updated.subAdminNombre = undefined
         updated.subAdminEmail = undefined
       } else {
-        const perfiles = await perfilesService.getPerfiles()
+        if (
+          current.subAdminId &&
+          updates.assignSubAdmin.id &&
+          current.subAdminId !== updates.assignSubAdmin.id
+        ) {
+          try {
+            await cambiarRolUsuario(
+              current.subAdminId,
+              'operador',
+              current.subAdminEmail
+            )
+          } catch {
+            // Ignore
+          }
+        }
+        updated.subAdminId = updates.assignSubAdmin.id || updated.subAdminId
+        updated.subAdminNombre =
+          updates.assignSubAdmin.nombre || updated.subAdminNombre
+        updated.subAdminEmail =
+          updates.assignSubAdmin.email || updated.subAdminEmail
+        if (updated.subAdminId) {
+          try {
+            await cambiarRolUsuario(
+              updated.subAdminId,
+              encodedRole as any,
+              updated.subAdminEmail
+            )
+          } catch (err) {
+            console.warn('[RutasService] Aviso al asignar rol de ruta:', err)
+          }
+        }
+      }
+    } else if (updates.assignUserId !== undefined) {
+      if (updates.assignUserId === null || updates.assignUserId === '') {
+        if (current.subAdminId) {
+          try {
+            await cambiarRolUsuario(
+              current.subAdminId,
+              'operador',
+              current.subAdminEmail
+            )
+          } catch {
+            // Ignore if offline or RLS
+          }
+        }
+        updated.subAdminId = undefined
+        updated.subAdminNombre = undefined
+        updated.subAdminEmail = undefined
+      } else {
+        const perfiles = await perfilesService.getPerfiles().catch(() => [] as Perfil[])
         const target = perfiles.find((p) => p.id === updates.assignUserId)
         if (target) {
-          await cambiarRolUsuario(target.id, encodedRole as any)
+          try {
+            await cambiarRolUsuario(target.id, encodedRole as any, target.email)
+          } catch (err) {
+            console.warn('[RutasService] Aviso al cambiar rol de ruta:', err)
+          }
           updated.subAdminId = target.id
           updated.subAdminNombre = target.nombre
           updated.subAdminEmail = target.email
@@ -511,7 +670,11 @@ export const rutasService = {
     } else if (updated.subAdminId) {
       // Actualizar el nombre/código de la ruta en el rol del Sub-Administrador actual
       try {
-        await cambiarRolUsuario(updated.subAdminId, encodedRole as any)
+        await cambiarRolUsuario(
+          updated.subAdminId,
+          encodedRole as any,
+          updated.subAdminEmail
+        )
       } catch {
         // Ignore if offline
       }
