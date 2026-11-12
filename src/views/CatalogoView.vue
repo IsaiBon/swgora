@@ -870,7 +870,7 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
     return dims.subfilas.map((sf: any, idx: number) => ({
       ...sf,
-      grupo: sf.grupo ?? configuredPadres[idx] ?? ''
+      grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (configuredPadres[idx] || '')
     }))
   }
   if (Array.isArray(dims?.anillos) && dims.anillos.length > 0) {
@@ -4812,35 +4812,38 @@ onUnmounted(() => {
               <template v-for="part in paginatedParts" :key="part.id">
                 <!-- CASO A: Matriz Unificada con Sub-filas y Uniones Centrales -->
                 <template v-if="isPartSubfilasFormat(part)">
-                  <!-- Fila 1: Marca centrada + Aplicación vehicular -->
-                  <tr class="bg-rose-50/70 border-t-2 border-rose-300 font-sans">
-                    <td class="py-1.5 px-3 border-b border-r border-rose-200 text-center font-black uppercase text-rose-900 bg-rose-100/80 tracking-wider text-xs">
-                      {{ (part.dimensiones as any)?.marca_banner || (selectedMotor?.fabricante_id ? getBrandName(selectedMotor.fabricante_id) : 'MARCA') }}
+                  <!-- Cabecera de repuesto con banner de marca (cuando aplica) -->
+                  <tr
+                    v-if="currentGroupDefinition?.tabla_config?.tiene_cabecera_marca || (part.dimensiones as any)?.marca_banner"
+                    class="bg-sky-50/60 border-t-2 border-slate-300 font-sans"
+                  >
+                    <td class="py-1.5 px-3 border-b border-r border-slate-200 text-center font-black uppercase text-[#004B97] bg-sky-100/70 tracking-wider text-xs whitespace-nowrap">
+                      {{ (part.dimensiones as any)?.marca_banner || (part.especificaciones_tecnicas as any)?.marca || (selectedMotor?.fabricante_id ? getBrandName(selectedMotor.fabricante_id) : 'Pieza') }}
                     </td>
-                    <td :colspan="activeTableGroupColumns.length + (currentGroupHasRowGroups ? 2 : 1)" class="py-1.5 px-3 border-b border-r border-rose-200 font-sans text-xs">
+                    <td :colspan="activeTableGroupColumns.length + (currentGroupHasRowGroups ? 2 : 1)" class="py-1.5 px-3 border-b border-r border-slate-200 font-sans text-xs">
                       <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                           <span class="font-extrabold text-slate-900">{{ (part.dimensiones as any)?.aplicacion_banner || part.nombre }}</span>
-                          <span v-if="part.motor?.codigo" class="px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 text-[10px] font-mono font-bold">
+                          <span v-if="part.motor?.codigo" class="px-1.5 py-0.5 rounded bg-white text-slate-700 text-[10px] font-mono font-bold border border-slate-200">
                             {{ part.motor.codigo }}
                           </span>
                         </div>
                         <div class="flex items-center gap-2">
-                          <span v-if="(part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner" class="text-[10px] font-mono font-bold text-rose-800 bg-rose-200/60 px-2 py-0.5 rounded border border-rose-300">
+                          <span v-if="(part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner" class="text-[10px] font-mono font-bold text-[#004B97] bg-white px-2 py-0.5 rounded border border-cyan-200">
                             {{ (part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner }}
                           </span>
                         </div>
                       </div>
                     </td>
-                    <td class="py-1.5 px-3 text-right border-b border-rose-200">
+                    <td class="py-1.5 px-3 text-right border-b border-slate-200 whitespace-nowrap">
                       <div class="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
                           @click="openTechnicalSheet(part)"
-                          class="px-2 py-0.5 rounded border border-rose-300 bg-white hover:bg-rose-100 text-rose-900 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                          class="px-2 py-0.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
                           title="Ver ficha técnica"
                         >
-                          <Eye class="w-3 h-3 text-rose-700" />
+                          <Eye class="w-3 h-3 text-[#004B97]" />
                           <span>Ficha</span>
                         </button>
                         <button
@@ -4856,7 +4859,61 @@ onUnmounted(() => {
                     </td>
                   </tr>
 
-                  <!-- Filas 2 y 3: Sub-filas y uniones centrales -->
+                  <!-- Cabecera sutil del conjunto (sin banner de marca forzado) -->
+                  <tr v-else class="bg-slate-50/90 border-t-2 border-slate-200 font-sans">
+                    <td
+                      :colspan="activeTableGroupColumns.length + (currentGroupHasRowGroups ? 3 : 2)"
+                      class="py-1.5 px-3 border-b border-r border-slate-200 text-left text-xs"
+                    >
+                      <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="font-extrabold text-slate-900">{{ part.nombre }}</span>
+                          <span
+                            v-if="(part.especificaciones_tecnicas as any)?.marca || (selectedMotor?.fabricante_id ? getBrandName(selectedMotor.fabricante_id) : '')"
+                            class="px-1.5 py-0.5 rounded bg-white text-[#004B97] text-[10px] font-bold border border-slate-200 uppercase"
+                          >
+                            {{ (part.especificaciones_tecnicas as any)?.marca || (selectedMotor?.fabricante_id ? getBrandName(selectedMotor.fabricante_id) : '') }}
+                          </span>
+                          <span
+                            v-if="part.motor?.codigo"
+                            class="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 text-[10px] font-mono font-bold"
+                          >
+                            {{ part.motor.codigo }}
+                          </span>
+                        </div>
+                        <span
+                          v-if="(part.dimensiones as any)?.aplicacion_banner || (part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner"
+                          class="text-[10px] font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200"
+                        >
+                          {{ (part.dimensiones as any)?.aplicacion_banner || (part.dimensiones as any)?.sobremedidas || (part.dimensiones as any)?.notas_banner }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="py-1.5 px-3 text-right border-b border-slate-200 whitespace-nowrap">
+                      <div class="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          @click="openTechnicalSheet(part)"
+                          class="px-2 py-0.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                          title="Ver ficha técnica"
+                        >
+                          <Eye class="w-3 h-3 text-[#004B97]" />
+                          <span>Ficha</span>
+                        </button>
+                        <button
+                          type="button"
+                          @click="handleEditPart(part)"
+                          class="px-2.5 py-0.5 rounded bg-[#004B97] hover:bg-blue-900 text-white text-[10px] font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                          title="Modificar especificaciones de este repuesto"
+                        >
+                          <Edit3 class="w-3 h-3 text-cyan-300" />
+                          <span>Editar</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <!-- Sub-filas del repuesto y uniones centrales -->
                   <tr
                     v-for="(sf, sfIdx) in getPartSubfilas(part)"
                     :key="`sf-${part.id}-${sfIdx}`"
@@ -4915,30 +4972,19 @@ onUnmounted(() => {
                       </template>
                     </td>
 
-                    <!-- Botón específico + A Orden por sub-fila y edición rápida -->
-                    <td class="py-2 px-3 text-right">
-                      <div class="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          @click="handleEditPart(part)"
-                          class="px-2 py-0.5 rounded text-[10px] font-bold border border-slate-300 hover:border-[#04C4D9] bg-white text-slate-700 hover:text-[#004B97] transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                          title="Editar especificaciones de esta pieza"
-                        >
-                          <Edit3 class="w-3 h-3 text-[#04C4D9]" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          type="button"
-                          @click="addSubfilaToWorkOrder(part, sf)"
-                          class="px-2 py-0.5 rounded text-[10px] font-extrabold transition shadow-2xs border cursor-pointer"
-                          :class="addedPartId === `${part.id}-${sf.nombre}`
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'bg-cyan-50 border-cyan-300 text-[#038391] hover:bg-cyan-100'"
-                          :title="`Agregar solo ${sf.nombre} a la Orden`"
-                        >
-                          {{ addedPartId === `${part.id}-${sf.nombre}` ? '✓ OK' : `+ ${sf.nombre}` }}
-                        </button>
-                      </div>
+                    <!-- Botón específico + A Orden por sub-fila -->
+                    <td class="py-2 px-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        @click="addSubfilaToWorkOrder(part, sf)"
+                        class="px-2.5 py-1 rounded text-[10px] font-extrabold transition shadow-2xs border cursor-pointer whitespace-nowrap"
+                        :class="addedPartId === `${part.id}-${sf.nombre}`
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-cyan-50 border-cyan-300 text-[#038391] hover:bg-cyan-100'"
+                        :title="`Agregar solo ${sf.nombre} a la Orden`"
+                      >
+                        {{ addedPartId === `${part.id}-${sf.nombre}` ? '✓ OK' : `+ ${sf.nombre}` }}
+                      </button>
                     </td>
                   </tr>
                 </template>

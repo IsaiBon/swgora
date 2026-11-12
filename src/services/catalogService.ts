@@ -2796,9 +2796,10 @@ export const catalogService = {
       updated_at: new Date().toISOString()
     }
 
-    // Intentar actualización en Supabase
+    // Intentar actualización en Supabase (solo usar id.eq cuando id es UUID válido)
     try {
-      const { data, error } = await supabase
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updated.id)
+      const baseUpdate = supabase
         .from('grupos_repuestos')
         .update({
           nombre: updated.nombre,
@@ -2811,9 +2812,13 @@ export const catalogService = {
           orden_visual: updated.orden_visual,
           updated_at: updated.updated_at
         })
-        .or(`id.eq.${updated.id},codigo.eq.${updated.codigo}`)
+      const { data, error } = await (
+        isUuid
+          ? baseUpdate.or(`id.eq.${updated.id},codigo.eq.${updated.codigo}`)
+          : baseUpdate.eq('codigo', updated.codigo)
+      )
         .select('*')
-        .single()
+        .maybeSingle()
 
       if (!error && data) {
         updated.id = String(data.id)

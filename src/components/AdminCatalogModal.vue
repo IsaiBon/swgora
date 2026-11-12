@@ -30,7 +30,9 @@ import {
   Search, 
   ChevronDown, 
   Check, 
-  AlertCircle 
+  AlertCircle,
+  Link2,
+  Unlink2
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -1018,7 +1020,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
       tipo: sf.tipo || `fila_${idx + 1}`,
       nombre: sf.nombre || `Fila ${idx + 1}`,
       codigo: sf.codigo || '',
-      grupo: sf.grupo ?? padres[idx] ?? '',
+      grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (padres[idx] || ''),
       medidas: sf.medidas ? { ...sf.medidas } : {}
     }))
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
@@ -1417,6 +1419,7 @@ const addFormSubfila = () => {
     tipo: `fila_${count}`,
     nombre: `Fila ${count}`,
     codigo: '',
+    grupo: '',
     medidas: {}
   })
 }
@@ -1424,6 +1427,82 @@ const addFormSubfila = () => {
 const removeFormSubfila = (idx: number) => {
   if (subfilasRows.value.length <= 1) return
   subfilasRows.value.splice(idx, 1)
+}
+
+const getEffectiveSubfilaGroup = (idx: number): string => {
+  const sf = subfilasRows.value[idx]
+  if (!sf) return ''
+  return (sf.grupo && String(sf.grupo).trim())
+    ? String(sf.grupo).trim()
+    : (activeTablaConfig.value.subfila_padres?.[idx] || '')
+}
+
+const syncExplicitSubfilaGroups = () => {
+  subfilasRows.value.forEach((sf, i) => {
+    if (!sf.grupo || !String(sf.grupo).trim()) {
+      const inherited = activeTablaConfig.value.subfila_padres?.[i]
+      if (inherited) sf.grupo = inherited
+    }
+  })
+}
+
+const areAdjacentSubfilasJoined = (idx: number): boolean => {
+  if (idx < 0 || idx >= subfilasRows.value.length - 1) return false
+  const g1 = getEffectiveSubfilaGroup(idx)
+  const g2 = getEffectiveSubfilaGroup(idx + 1)
+  return Boolean(g1 && g1 === g2)
+}
+
+const toggleSubfilaJoinNext = (idx: number) => {
+  if (idx < 0 || idx >= subfilasRows.value.length - 1) return
+  syncExplicitSubfilaGroups()
+  const g1 = getEffectiveSubfilaGroup(idx)
+  const g2 = getEffectiveSubfilaGroup(idx + 1)
+
+  if (g1 && g1 === g2) {
+    // Separar bloque en el corte idx | idx+1
+    let sameLeft = false
+    if (idx > 0 && getEffectiveSubfilaGroup(idx - 1) === g1) sameLeft = true
+    let sameRight = false
+    if (idx + 2 < subfilasRows.value.length && getEffectiveSubfilaGroup(idx + 2) === g2) sameRight = true
+
+    if (!sameLeft) subfilasRows.value[idx].grupo = ''
+    if (!sameRight) {
+      subfilasRows.value[idx + 1].grupo = ''
+    } else if (sameLeft) {
+      const nextLabel = `${g1} (2)`
+      for (let j = idx + 1; j < subfilasRows.value.length; j++) {
+        if (getEffectiveSubfilaGroup(j) === g2) {
+          subfilasRows.value[j].grupo = nextLabel
+        } else {
+          break
+        }
+      }
+    }
+    return
+  }
+
+  // Unir filas idx e idx+1 bajo un nombre central compartido
+  const targetLabel = g1 || g2 || `Grupo ${idx + 1}`
+  if (g2 && g2 !== targetLabel) {
+    for (let j = idx + 1; j < subfilasRows.value.length; j++) {
+      if (getEffectiveSubfilaGroup(j) === g2) {
+        subfilasRows.value[j].grupo = targetLabel
+      } else {
+        break
+      }
+    }
+  }
+  subfilasRows.value[idx].grupo = targetLabel
+  subfilasRows.value[idx + 1].grupo = targetLabel
+}
+
+const renameSubfilaSpanGroup = (startIdx: number, newName: string) => {
+  syncExplicitSubfilaGroups()
+  const span = subfilasRowSpans.value[startIdx]?.rowspan || 1
+  for (let i = startIdx; i < startIdx + span && i < subfilasRows.value.length; i++) {
+    subfilasRows.value[i].grupo = newName
+  }
 }
 
 // Agrupación de parámetros para el formulario de captura de repuesto
@@ -1452,7 +1531,7 @@ const subfilasActiveHeaders = computed(() => {
 const subfilasRowSpans = computed(() => {
   return buildRowSpanMeta(
     subfilasRows.value,
-    (sf, idx) => sf.grupo || activeTablaConfig.value.subfila_padres?.[idx] || ''
+    (sf, idx) => (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (activeTablaConfig.value.subfila_padres?.[idx] || '')
   )
 })
 
@@ -2418,13 +2497,21 @@ onUnmounted(() => {
                         :key="sf.id"
                         class="hover:bg-slate-50/70 transition"
                       >
-                        <!-- Columna central agrupadora de filas (rowspan) -->
+                        <!-- Columna central agrupadora de filas (rowspan editable) -->
                         <td
                           v-if="hasSubfilasRowGroups && subfilasRowSpans[sfIdx]?.show"
                           :rowspan="subfilasRowSpans[sfIdx]?.rowspan"
-                          class="px-2.5 py-2 border-r border-slate-200 bg-cyan-50/35 text-center align-middle font-black text-[#004B97] uppercase text-[10px] tracking-wider"
+                          class="px-2 py-2 border-r border-slate-200 bg-cyan-50/40 text-center align-middle min-w-[96px]"
                         >
-                          {{ subfilasRowSpans[sfIdx]?.label || '—' }}
+                          <input
+                            v-if="(subfilasRowSpans[sfIdx]?.rowspan || 1) > 1 || subfilasRowSpans[sfIdx]?.label"
+                            :value="subfilasRowSpans[sfIdx]?.label || ''"
+                            @input="renameSubfilaSpanGroup(sfIdx, ($event.target as HTMLInputElement).value)"
+                            type="text"
+                            placeholder="Grupo..."
+                            class="w-full px-1.5 py-1 text-center font-black text-[#004B97] uppercase text-[10px] tracking-wider bg-white/80 hover:bg-white border border-cyan-200/80 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                          />
+                          <span v-else class="text-slate-300 font-bold text-[10px]">—</span>
                         </td>
 
                         <td class="px-2.5 py-1.5 border-r border-slate-200 text-left bg-slate-50/50">
@@ -2510,15 +2597,30 @@ onUnmounted(() => {
                         </td>
 
                         <td class="px-2 py-1.5 text-center">
-                          <button
-                            v-if="subfilasRows.length > 1"
-                            type="button"
-                            @click="removeFormSubfila(sfIdx)"
-                            class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                            :title="`Eliminar ${sf.nombre || 'esta fila'}`"
-                          >
-                            <Trash2 class="w-3.5 h-3.5" />
-                          </button>
+                          <div class="flex items-center justify-center gap-1">
+                            <button
+                              v-if="sfIdx < subfilasRows.length - 1"
+                              type="button"
+                              @click="toggleSubfilaJoinNext(sfIdx)"
+                              class="p-1 rounded transition cursor-pointer border"
+                              :class="areAdjacentSubfilasJoined(sfIdx)
+                                ? 'bg-cyan-50 text-[#004B97] border-cyan-300 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200'
+                                : 'bg-white text-slate-400 border-slate-200 hover:text-[#004B97] hover:border-cyan-300 hover:bg-cyan-50'"
+                              :title="areAdjacentSubfilasJoined(sfIdx) ? 'Separar esta fila de la siguiente' : 'Unir esta fila con la siguiente bajo un grupo central'"
+                            >
+                              <Unlink2 v-if="areAdjacentSubfilasJoined(sfIdx)" class="w-3.5 h-3.5" />
+                              <Link2 v-else class="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              v-if="subfilasRows.length > 1"
+                              type="button"
+                              @click="removeFormSubfila(sfIdx)"
+                              class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              :title="`Eliminar ${sf.nombre || 'esta fila'}`"
+                            >
+                              <Trash2 class="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     </tbody>

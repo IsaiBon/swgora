@@ -1370,14 +1370,21 @@ const handleSave = () => {
                 <tr v-if="hasGroupedHeaders" class="bg-slate-100/90 text-slate-700 border-b border-slate-200">
                   <th
                     v-if="hasGroupedRows"
-                    class="py-1.5 px-2.5 font-black text-[10px] text-[#004B97] uppercase tracking-wider border-r border-slate-200 bg-cyan-50/70"
+                    rowspan="2"
+                    class="py-1.5 px-2.5 font-black text-[10px] text-[#004B97] uppercase tracking-wider border-r border-slate-200 bg-cyan-50/70 align-middle"
                   >
                     {{ rowGroupColumnTitle }}
                   </th>
-                  <th class="py-1.5 px-3 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200">
-                    {{ currentTemplate.tabla_config?.titulo_primera_columna || 'Componente' }}
+                  <th rowspan="2" class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px] align-middle">
+                    <input
+                      v-model="firstColumnTitle"
+                      type="text"
+                      class="w-full px-1.5 py-0.5 font-black text-xs text-slate-900 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
+                      placeholder="Nombre 1ra columna..."
+                      title="Haz clic para cambiar el nombre de la primera columna"
+                    />
                   </th>
-                  <th class="py-1.5 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center">
+                  <th rowspan="2" class="py-1.5 px-2 font-bold text-[10px] uppercase tracking-wider border-r border-slate-200 text-center align-middle">
                     Código OEM
                   </th>
                   <th
@@ -1392,25 +1399,26 @@ const handleSave = () => {
 
                 <!-- Tier 2: Columnas individuales -->
                 <tr class="bg-slate-50 text-slate-700 border-b border-slate-300">
-                  <th
-                    v-if="hasGroupedRows && !hasGroupedHeaders"
-                    class="py-2 px-2.5 font-black text-xs text-[#004B97] border-r border-slate-200 bg-cyan-50/70 min-w-[110px]"
-                  >
-                    {{ rowGroupColumnTitle }}
-                  </th>
-                  <th v-else-if="hasGroupedRows" class="py-1.5 px-2.5 border-r border-slate-200 bg-cyan-50/40"></th>
-                  <th class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px]">
-                    <input
-                      v-model="firstColumnTitle"
-                      type="text"
-                      class="w-full px-1.5 py-0.5 font-black text-xs text-slate-900 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
-                      placeholder="Nombre 1ra columna..."
-                      title="Haz clic para cambiar el nombre de la primera columna"
-                    />
-                  </th>
-                  <th class="py-2 px-2 font-black text-slate-900 border-r border-slate-200 text-center">
-                    Código OEM
-                  </th>
+                  <template v-if="!hasGroupedHeaders">
+                    <th
+                      v-if="hasGroupedRows"
+                      class="py-2 px-2.5 font-black text-xs text-[#004B97] border-r border-slate-200 bg-cyan-50/70 min-w-[110px]"
+                    >
+                      {{ rowGroupColumnTitle }}
+                    </th>
+                    <th class="py-1.5 px-2.5 font-black text-slate-900 border-r border-slate-200 min-w-[140px]">
+                      <input
+                        v-model="firstColumnTitle"
+                        type="text"
+                        class="w-full px-1.5 py-0.5 font-black text-xs text-slate-900 bg-white/80 border border-dashed border-slate-300 rounded focus:bg-white focus:border-[#04C4D9] focus:outline-none"
+                        placeholder="Nombre 1ra columna..."
+                        title="Haz clic para cambiar el nombre de la primera columna"
+                      />
+                    </th>
+                    <th class="py-2 px-2 font-black text-slate-900 border-r border-slate-200 text-center">
+                      Código OEM
+                    </th>
+                  </template>
                   <th
                     v-for="(col, cIdx) in currentTemplate.columnas"
                     :key="cIdx"
