@@ -2,8 +2,10 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useCatalogStore } from '@/stores/catalog'
 import PartImageUploader from '@/components/catalog/PartImageUploader.vue'
+import FamilyTemplatePicker from '@/components/catalog/FamilyTemplatePicker.vue'
 import { 
   type GrupoRepuesto, 
+  type GrupoRepuestoInsert,
   type ParametroTecnicoDefinicion,
   type TablaConfiguracion,
   type RepuestoTecnico,
@@ -21,19 +23,12 @@ import {
   Ruler, 
   FolderPlus, 
   PackagePlus, 
-  Loader2,
-  Edit3,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  Check,
-  AlertCircle,
-  Eye,
-  Filter,
-  Table,
-  Columns,
-  Split,
-  Layers
+  Loader2, 
+  Edit3, 
+  Search, 
+  ChevronDown, 
+  Check, 
+  AlertCircle 
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -1337,86 +1332,31 @@ const resetPartForm = () => {
 }
 
 // =============================================================================
-// TAB 2: CONSTRUCTOR DINÁMICO DE FAMILIAS / GRUPOS DE PIEZAS Y PARÁMETROS (WORKBENCH)
+// TAB 2: GESTIÓN DE FAMILIAS VÍA PLANTILLAS AMIGABLES (WORKSHOP PRESETS)
 // =============================================================================
-export interface DynamicParamRow {
-  id: string
-  etiqueta: string
-  etiqueta_corta?: string
-  clave: string
-  unidad: string
-  tipo_dato: 'numero' | 'texto' | 'booleano' | 'seleccion'
-  requerido: boolean
-  filtrable?: boolean
-  descripcion: string
-  opciones?: string[]
-  opcionesStr?: string
-  decimales?: number
-  mostrar_unidad?: boolean
-  valor_muestra?: string | number
-  columna_padre?: string // Columna superior / padre para sub-columnas (ej. "STD", "1er", "2da", "Diámetros")
-}
-
 const isEditMode = ref<boolean>(false)
 const editingGroupId = ref<string | null>(null)
 const selectedEditGroupId = ref<string>('')
+const isSubmittingGroup = ref<boolean>(false)
 
-const groupNombre = ref<string>('')
-const groupCategoria = ref<string>('')
-const onGroupNombreInput = () => {
-  if (!isEditMode.value) {
-    groupCategoria.value = groupNombre.value
-  }
-}
-const groupSubsistema = ref<string>('') // Opcional
-const groupDescripcion = ref<string>('')
-const groupIcono = ref<string>('Layers')
-const groupTipoVista = ref<'normal' | 'tabla'>('normal')
-const soloFiltrosEnTabla = ref<boolean>(false)
-
-const getDefaultTablaConfig = (): TablaConfiguracion => ({
-  titulo_primera_columna: 'Posición',
-  modo_filas: 'incremental',
-  usar_prefijo_titulo: true,
-  etiqueta_ultima_fila: '',
-  habilitar_identificador: false,
-  etiqueta_identificador: 'Especial',
-  subfilas_activas: false,
-  tiene_cabecera_marca: false,
-  etiqueta_marca: 'Marca',
-  subfilas: ['Fila 1', 'Fila 2']
+const currentEditingGroup = computed<GrupoRepuesto | null>(() => {
+  const targetId = editingGroupId.value || props.editGroupId || selectedEditGroupId.value
+  if (!targetId) return null
+  return catalogStore.grupos.find(g => g.id === targetId || g.codigo === targetId) || null
 })
 
-const groupTablaConfig = ref<TablaConfiguracion>(getDefaultTablaConfig())
+const groupNombre = computed(() => currentEditingGroup.value?.nombre || '')
 
-const selectModoFilas = (modo: 'cojinetes' | 'subfilas' | 'incremental' | 'libre') => {
-  groupTablaConfig.value.modo_filas = modo
-  if (modo === 'cojinetes' || modo === 'subfilas') {
-    groupTablaConfig.value.subfilas_activas = true
-    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna || 'Posición'
-    if (!groupTablaConfig.value.subfilas || groupTablaConfig.value.subfilas.length === 0) {
-      groupTablaConfig.value.subfilas = ['Fila 1', 'Fila 2']
-    }
-  } else if (modo === 'incremental') {
-    groupTablaConfig.value.subfilas_activas = false
-    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna || 'Posición'
-  } else {
-    groupTablaConfig.value.subfilas_activas = false
-    groupTablaConfig.value.titulo_primera_columna = groupTablaConfig.value.titulo_primera_columna || 'Posición'
-  }
+const switchToCreateMode = () => {
+  isEditMode.value = false
+  editingGroupId.value = null
+  selectedEditGroupId.value = ''
 }
 
-const addConfigSubfila = () => {
-  if (!groupTablaConfig.value.subfilas) {
-    groupTablaConfig.value.subfilas = ['Fila 1', 'Fila 2']
-  }
-  const count = groupTablaConfig.value.subfilas.length + 1
-  groupTablaConfig.value.subfilas.push(`Fila ${count}`)
-}
-
-const removeConfigSubfila = (idx: number) => {
-  if (!groupTablaConfig.value.subfilas || groupTablaConfig.value.subfilas.length <= 1) return
-  groupTablaConfig.value.subfilas.splice(idx, 1)
+const loadGroupForEditing = (grp: GrupoRepuesto) => {
+  isEditMode.value = true
+  editingGroupId.value = grp.id
+  selectedEditGroupId.value = grp.codigo || grp.id
 }
 
 const addFormSubfila = () => {
@@ -1433,461 +1373,6 @@ const addFormSubfila = () => {
 const removeFormSubfila = (idx: number) => {
   if (subfilasRows.value.length <= 1) return
   subfilasRows.value.splice(idx, 1)
-}
-
-const setGroupTipoVista = (tipo: 'normal' | 'tabla') => {
-  if (groupTipoVista.value === tipo) return
-  groupTipoVista.value = tipo
-}
-
-// --- Creatable Combobox para Subsistema (Opcional, Inline, Cero Modales) ---
-const availableSubsistemas = ref<string[]>([
-  'Block',
-  'Culata',
-  'Cigüeñal',
-  'Bielas',
-  'Sellos y Juntas',
-  'Distribución',
-  'Admisión y Escape',
-  'Lubricación',
-  'Refrigeración',
-  'Inyección y Combustible',
-  'Sobrealimentación'
-])
-const isSubsistemaOpen = ref(false)
-const subsistemaSearch = ref('')
-
-const filteredSubsistemas = computed(() => {
-  const q = subsistemaSearch.value.trim().toLowerCase()
-  if (!q) return availableSubsistemas.value
-  return availableSubsistemas.value.filter(s => s.toLowerCase().includes(q))
-})
-
-const isCustomSubsistemaCandidate = computed(() => {
-  const q = subsistemaSearch.value.trim()
-  if (!q) return false
-  return !availableSubsistemas.value.some(s => s.toLowerCase() === q.toLowerCase())
-})
-
-const handleSelectSubsistema = (sub: string) => {
-  groupSubsistema.value = sub
-  subsistemaSearch.value = sub
-  isSubsistemaOpen.value = false
-}
-
-const handleClearSubsistema = () => {
-  groupSubsistema.value = ''
-  subsistemaSearch.value = ''
-  isSubsistemaOpen.value = false
-}
-
-const handleCreateAndSelectSubsistema = () => {
-  const clean = subsistemaSearch.value.trim()
-  if (!clean) return
-  if (!availableSubsistemas.value.some(s => s.toLowerCase() === clean.toLowerCase())) {
-    availableSubsistemas.value.push(clean)
-  }
-  groupSubsistema.value = clean
-  isSubsistemaOpen.value = false
-}
-
-// --- Generador de Clave Técnica Inmutable (ReadOnly) ---
-const generateTechnicalKey = (label: string, unit: string, parent?: string): string => {
-  let parentSlug = ''
-  if (parent && parent.trim()) {
-    parentSlug = parent
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-  }
-  const labelSlug = label
-    .toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-
-  let fullSlug = parentSlug ? `${parentSlug}_${labelSlug || 'param'}` : (labelSlug || 'cota_param')
-  fullSlug = fullSlug.replace(/__+/g, '_').replace(/^_+|_+$/g, '')
-  if (!fullSlug) fullSlug = 'cota_param'
-  if (unit === 'mm') {
-    return fullSlug.endsWith('_mm') ? fullSlug : `${fullSlug}_mm`
-  }
-  return fullSlug
-}
-
-const ensureUniqueParamKeys = (params: DynamicParamRow[]) => {
-  const seenKeys = new Map<string, number>()
-  for (const p of params) {
-    let key = p.clave?.trim()
-    if (p.columna_padre && p.columna_padre.trim()) {
-      const parentSlug = p.columna_padre
-        .toLowerCase()
-        .trim()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-      if (parentSlug && (!key || !key.startsWith(parentSlug))) {
-        key = generateTechnicalKey(p.etiqueta, p.unidad, p.columna_padre)
-      }
-    }
-    if (!key) {
-      key = generateTechnicalKey(p.etiqueta || 'cota', p.unidad, p.columna_padre)
-    }
-
-    const count = seenKeys.get(key) || 0
-    if (count > 0) {
-      let suffix = count + 1
-      let uniqueKey = `${key}_${suffix}`
-      while (seenKeys.has(uniqueKey)) {
-        suffix++
-        uniqueKey = `${key}_${suffix}`
-      }
-      key = uniqueKey
-    }
-    seenKeys.set(key, (seenKeys.get(key) || 0) + 1)
-    p.clave = key
-  }
-}
-
-const handleParamLabelChange = (param: DynamicParamRow) => {
-  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('campo_') || param.clave.startsWith('param_')) {
-    param.clave = generateTechnicalKey(param.etiqueta, param.unidad, param.columna_padre)
-  }
-  if (!param.etiqueta_corta || param.etiqueta_corta === param.etiqueta) {
-    param.etiqueta_corta = param.etiqueta
-  }
-  ensureUniqueParamKeys(dynamicParams.value)
-}
-
-const handleParamUnitChange = (param: DynamicParamRow) => {
-  if (!isEditMode.value || !param.clave || param.clave.startsWith('medida_') || param.clave.startsWith('campo_') || param.clave.startsWith('param_')) {
-    param.clave = generateTechnicalKey(param.etiqueta, param.unidad, param.columna_padre)
-  }
-  ensureUniqueParamKeys(dynamicParams.value)
-}
-
-const handleParamParentChange = (param: DynamicParamRow) => {
-  param.clave = generateTechnicalKey(param.etiqueta, param.unidad, param.columna_padre)
-  ensureUniqueParamKeys(dynamicParams.value)
-}
-
-// Lista dinámica de parámetros (inicialmente vacía para familias nuevas)
-const dynamicParams = ref<DynamicParamRow[]>([])
-
-const groupErrors = ref<Record<string, string>>({})
-const isSubmittingGroup = ref(false)
-
-const loadGroupForEditing = (grp: GrupoRepuesto) => {
-  isEditMode.value = true
-  editingGroupId.value = grp.codigo || grp.id
-  selectedEditGroupId.value = grp.codigo || grp.id
-  groupNombre.value = grp.nombre
-  groupCategoria.value = grp.categoria
-  groupSubsistema.value = grp.subsistema || ''
-  subsistemaSearch.value = grp.subsistema || ''
-  if (grp.subsistema && !availableSubsistemas.value.includes(grp.subsistema)) {
-    availableSubsistemas.value.push(grp.subsistema)
-  }
-  groupDescripcion.value = grp.descripcion || ''
-  groupIcono.value = grp.icono || 'Layers'
-  groupTipoVista.value = grp.tipo_vista || (grp.codigo === 'anillos_motor' ? 'tabla' : 'normal')
-  groupTablaConfig.value = grp.tabla_config
-    ? { ...getDefaultTablaConfig(), ...grp.tabla_config }
-    : getDefaultTablaConfig()
-
-  const nonReqParams = grp.parametros.filter(p => !p.requerido)
-  if (nonReqParams.length > 0) {
-    soloFiltrosEnTabla.value = nonReqParams.some(p => p.filtrable === false)
-  } else {
-    soloFiltrosEnTabla.value = false
-  }
-
-  dynamicParams.value = grp.parametros.map((p, idx) => ({
-    id: p.id || `param-${Date.now()}-${idx}`,
-    etiqueta: p.etiqueta,
-    etiqueta_corta: p.etiqueta_corta || p.etiqueta,
-    clave: p.clave,
-    unidad: p.unidad,
-    tipo_dato: p.tipo_dato,
-    requerido: p.requerido,
-    filtrable: p.filtrable !== undefined ? p.filtrable : (p.requerido ? true : (soloFiltrosEnTabla.value ? false : true)),
-    descripcion: p.descripcion || '',
-    opciones: p.opciones || [],
-    opcionesStr: (p.opciones || []).join(', '),
-    decimales: p.unidad === '°' ? 0 : 2,
-    mostrar_unidad: true,
-    valor_muestra: p.valor_minimo || (50 + idx * 5),
-    columna_padre: p.columna_padre || ''
-  }))
-  ensureUniqueParamKeys(dynamicParams.value)
-  groupErrors.value = {}
-}
-
-const switchToCreateMode = () => {
-  isEditMode.value = false
-  editingGroupId.value = null
-  selectedEditGroupId.value = ''
-  groupNombre.value = ''
-  groupCategoria.value = ''
-  groupSubsistema.value = ''
-  subsistemaSearch.value = ''
-  groupDescripcion.value = ''
-  groupIcono.value = 'Layers'
-  groupTipoVista.value = 'normal'
-  groupTablaConfig.value = getDefaultTablaConfig()
-  soloFiltrosEnTabla.value = false
-  dynamicParams.value = []
-  groupErrors.value = {}
-}
-
-const switchToEditMode = (groupId?: string) => {
-  isEditMode.value = true
-  const targetId = groupId || selectedGroupCode.value || props.editGroupId || props.preselectedGroupId || selectedEditGroupId.value
-  if (targetId) {
-    const grp = resolveGroupByTarget(targetId)
-    if (grp) {
-      loadGroupForEditing(grp)
-      return
-    }
-  }
-  if (catalogStore.grupos.length > 0) {
-    loadGroupForEditing(catalogStore.grupos[0])
-  }
-}
-
-const openFamilyTabForCurrentContext = () => {
-  const targetGroupCode = selectedGroupCode.value || props.editGroupId || props.preselectedGroupId || selectedEditGroupId.value
-  if (targetGroupCode) {
-    switchToEditMode(targetGroupCode)
-  }
-  activeTab.value = 'grupo'
-}
-
-const onSelectEditGroup = () => {
-  if (!selectedEditGroupId.value) {
-    switchToCreateMode()
-    return
-  }
-  const grp = catalogStore.grupos.find(g => g.codigo === selectedEditGroupId.value || g.id === selectedEditGroupId.value)
-  if (grp) {
-    loadGroupForEditing(grp)
-  }
-}
-
-const addParamRow = () => {
-  const count = dynamicParams.value.length + 1
-  const defaultUnit = 'mm'
-  dynamicParams.value.push({
-    id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    etiqueta: '',
-    etiqueta_corta: '',
-    clave: generateTechnicalKey(`campo_${count}`, defaultUnit),
-    unidad: defaultUnit,
-    tipo_dato: 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: '',
-    decimales: 2,
-    mostrar_unidad: true,
-    valor_muestra: 50.00,
-    columna_padre: ''
-  })
-  ensureUniqueParamKeys(dynamicParams.value)
-}
-
-// Reordenar parámetro hacia arriba
-const moveParamUp = (index: number) => {
-  if (index <= 0) return
-  const item = dynamicParams.value[index]
-  dynamicParams.value.splice(index, 1)
-  dynamicParams.value.splice(index - 1, 0, item)
-}
-
-// Reordenar parámetro hacia abajo
-const moveParamDown = (index: number) => {
-  if (index >= dynamicParams.value.length - 1) return
-  const item = dynamicParams.value[index]
-  dynamicParams.value.splice(index, 1)
-  dynamicParams.value.splice(index + 1, 0, item)
-}
-
-// Agrega una sub-columna hermana bajo la misma columna padre (inicio limpio sin datos pre-llenados)
-const addSiblingSubcolumn = (param: DynamicParamRow, idx: number) => {
-  const parent = param.columna_padre?.trim() || `Columna ${idx + 1}`
-  param.columna_padre = parent
-  const count = dynamicParams.value.filter(p => p.columna_padre === parent).length + 1
-  const unit = param.unidad || 'mm'
-
-  const newRow: DynamicParamRow = {
-    id: `param-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    etiqueta: '',
-    etiqueta_corta: '',
-    clave: generateTechnicalKey(`sub_${count}`, unit, parent),
-    unidad: unit,
-    tipo_dato: param.tipo_dato || 'numero',
-    requerido: true,
-    filtrable: true,
-    descripcion: '',
-    decimales: param.decimales ?? 2,
-    mostrar_unidad: true,
-    valor_muestra: 50.00,
-    columna_padre: parent
-  }
-
-  dynamicParams.value.splice(idx + 1, 0, newRow)
-  ensureUniqueParamKeys(dynamicParams.value)
-}
-
-const removeParamRow = (index: number) => {
-  dynamicParams.value.splice(index, 1)
-}
-
-const toggleParamRequerido = (param: DynamicParamRow) => {
-  param.requerido = !param.requerido
-  if (soloFiltrosEnTabla.value) {
-    param.filtrable = param.requerido
-  }
-}
-
-const toggleParamFiltrable = (param: DynamicParamRow) => {
-  if (soloFiltrosEnTabla.value && !param.requerido) {
-    return
-  }
-  param.filtrable = !(param.filtrable !== false)
-}
-
-const isParamFilterVisible = (param: DynamicParamRow): boolean => {
-  if (soloFiltrosEnTabla.value) {
-    return Boolean(param.requerido && param.filtrable !== false)
-  }
-  return param.filtrable !== false
-}
-
-// --- Live Preview: Visibilidad y Formato de Celdas ---
-const visibleTableColumns = computed(() => {
-  return dynamicParams.value.filter(p => p.requerido)
-})
-
-const getPreviewRowLabel = (rowIdx: number): string => {
-  const cfg = groupTablaConfig.value
-  const titulo = (cfg.titulo_primera_columna || 'Anillo').trim()
-  if (rowIdx === 2 && cfg.etiqueta_ultima_fila && cfg.etiqueta_ultima_fila.trim()) {
-    return cfg.etiqueta_ultima_fila.trim()
-  }
-  if (cfg.modo_filas === 'incremental') {
-    return cfg.usar_prefijo_titulo !== false ? `${titulo} ${rowIdx + 1}` : `${rowIdx + 1}`
-  }
-  const letters = ['A', 'B', 'C']
-  return `${titulo} ${letters[rowIdx] || rowIdx + 1}`
-}
-
-const getPreviewTableCellValue = (param: DynamicParamRow, partIdx: number, ringIdx: number): string => {
-  const key = (param.clave || '').toLowerCase()
-  const label = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
-  if (key.includes('diametro') || label.includes('diámetro') || label.includes('diametro')) {
-    return partIdx === 0 ? '96' : '96.5'
-  }
-  if (key.includes('grosor') || key.includes('espesor') || key.endsWith('_h1') || label.includes('grosor')) {
-    return ringIdx === 2 ? '3' : '2'
-  }
-  if (key.includes('altura') || key.includes('radial') || key.endsWith('_a1') || label.includes('altura')) {
-    return ringIdx === 0 ? '3.8' : (ringIdx === 1 ? '4.1' : '3.4')
-  }
-  if (param.tipo_dato === 'booleano') {
-    return ringIdx === 0 ? 'Sí' : 'No'
-  }
-  if (param.tipo_dato === 'seleccion') {
-    const opts = param.opcionesStr ? param.opcionesStr.split(',').map(s => s.trim()).filter(Boolean) : (param.opciones || [])
-    return opts.length > 0 ? opts[ringIdx % opts.length] : 'STD'
-  }
-  if (param.tipo_dato === 'texto') {
-    return ringIdx === 0 ? 'Cromo' : 'Hierro'
-  }
-  const baseVal = param.valor_muestra != null && param.valor_muestra !== '' ? Number(param.valor_muestra) : 10
-  return String(Number((baseVal + ringIdx * 0.5).toFixed(2)))
-}
-
-const formatSampleValue = (param: DynamicParamRow, rowIdx: number = 0): string => {
-  if (param.tipo_dato === 'booleano') {
-    return rowIdx === 0 ? 'Sí (STD)' : 'No (Cónico)'
-  }
-  if (param.tipo_dato === 'seleccion') {
-    const opts = param.opcionesStr ? param.opcionesStr.split(',').map(s => s.trim()).filter(Boolean) : (param.opciones || [])
-    if (opts.length > 0) {
-      return opts[rowIdx % opts.length]
-    }
-    return rowIdx === 0 ? 'Admisión' : 'Escape'
-  }
-  if (param.tipo_dato === 'texto') {
-    return rowIdx === 0 ? 'M10×1.25' : 'M12×1.50'
-  }
-  let raw = param.valor_muestra != null && param.valor_muestra !== '' ? Number(param.valor_muestra) : (rowIdx === 0 ? 85.50 : 92.25)
-  if (isNaN(raw)) raw = 0
-  if (rowIdx === 1) {
-    raw = raw + 2.5
-  }
-  const dec = param.decimales !== undefined ? param.decimales : 2
-  const numStr = raw.toFixed(dec)
-  const showUnit = param.mostrar_unidad !== false
-  return showUnit && param.unidad ? `${numStr} ${param.unidad}` : numStr
-}
-
-// Organización anidada para el Live Preview ("Espejo de Portada")
-const nestedPreviewHeaders = computed(() => {
-  return buildNestedTableHeaders(visibleTableColumns.value)
-})
-
-const hasSubcolumnsInPreview = computed<boolean>(() => {
-  return nestedPreviewHeaders.value.hasSubcolumns
-})
-
-const formatSubcolumnSample = (param: DynamicParamRow, rowIdx: number = 0): string => {
-  const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
-  const key = (param.clave || '').toLowerCase()
-  if (lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')) {
-    return rowIdx === 0 ? '48.970' : '53.970'
-  }
-  if (lbl.includes('máx') || lbl.includes('max') || key.endsWith('_max') || key.endsWith('_max_mm')) {
-    return rowIdx === 0 ? '48.990' : '53.990'
-  }
-  return formatSampleValue(param, rowIdx)
-}
-
-// Control de sub-filas para el Live Preview
-const isSubfilasActiveInPreview = computed<boolean>(() => {
-  return groupTipoVista.value === 'tabla' && Boolean(
-    groupTablaConfig.value.modo_filas === 'cojinetes' ||
-    groupTablaConfig.value.modo_filas === 'subfilas' ||
-    groupTablaConfig.value.subfilas_activas === true
-  )
-})
-
-const previewSubfilas = computed<string[]>(() => {
-  if (groupTablaConfig.value.subfilas && groupTablaConfig.value.subfilas.length > 0) {
-    return groupTablaConfig.value.subfilas
-  }
-  return ['Fila 1', 'Fila 2']
-})
-
-const getPreviewSubfilaValue = (param: DynamicParamRow, _subfila: string, recordIdx: number = 0): string => {
-  const lbl = (param.etiqueta_corta || param.etiqueta || '').toLowerCase()
-  const key = (param.clave || '').toLowerCase()
-  const isMin = lbl.includes('mín') || lbl.includes('min') || key.endsWith('_min') || key.endsWith('_min_mm')
-  if (param.tipo_dato === 'texto') return recordIdx === 0 ? 'STD' : '0.25'
-  if (param.tipo_dato === 'booleano') return 'Sí'
-  if (param.tipo_dato === 'seleccion') {
-    const opts = param.opcionesStr ? param.opcionesStr.split(',').map(s => s.trim()).filter(Boolean) : (param.opciones || [])
-    return opts[0] || 'STD'
-  }
-  const base = param.valor_muestra != null && param.valor_muestra !== '' ? Number(param.valor_muestra) : 48.0
-  const val = base + (recordIdx * 2) + (isMin ? 0 : 0.02)
-  return val.toFixed(2)
 }
 
 // Agrupación de parámetros para el formulario de captura de repuesto
@@ -1913,96 +1398,123 @@ const subfilasActiveHeaders = computed(() => {
   return buildNestedTableHeaders(activeGroup.value.parametros)
 })
 
-const validateGroupForm = (): boolean => {
-  const errors: Record<string, string> = {}
-  if (!groupNombre.value.trim()) {
-    errors.groupNombre = 'El nombre de la familia o grupo es obligatorio'
-  }
-  if (!groupCategoria.value.trim()) {
-    groupCategoria.value = groupNombre.value.trim()
-  }
-  if (dynamicParams.value.length === 0) {
-    errors.dynamicParams = 'Define al menos un parámetro técnico para la familia'
-  } else {
-    dynamicParams.value.forEach((p, idx) => {
-      if (!p.etiqueta || !p.etiqueta.trim()) {
-        p.etiqueta = `Campo ${idx + 1}`
-      }
-      if (!p.clave || !p.clave.trim()) {
-        p.clave = generateTechnicalKey(p.etiqueta, p.unidad || 'mm', p.columna_padre)
-      }
-    })
-    ensureUniqueParamKeys(dynamicParams.value)
-  }
-  groupErrors.value = errors
-  return Object.keys(errors).length === 0
-}
-
-const handleSaveGroup = async () => {
-  if (!validateGroupForm()) {
-    return
-  }
-
+// Guardado de familia a través de FamilyTemplatePicker
+const handleFamilyTemplateSave = async (payload: { data: GrupoRepuestoInsert; originalId?: string }) => {
   isSubmittingGroup.value = true
+  saveErrorMessage.value = ''
   try {
-    const paramsPayload: ParametroTecnicoDefinicion[] = dynamicParams.value.map(p => {
-      let parsedOpciones: string[] | undefined = undefined
-      if (p.tipo_dato === 'seleccion') {
-        if (p.opcionesStr && p.opcionesStr.trim()) {
-          parsedOpciones = p.opcionesStr.split(',').map(s => s.trim()).filter(Boolean)
-        } else if (p.opciones && p.opciones.length > 0) {
-          parsedOpciones = p.opciones
-        }
-      }
-      return {
-        id: p.id,
-        clave: p.clave.trim(),
-        etiqueta: p.etiqueta.trim(),
-        etiqueta_corta: p.etiqueta_corta ? p.etiqueta_corta.trim() : undefined,
-        unidad: p.unidad.trim(),
-        tipo_dato: p.tipo_dato,
-        requerido: p.requerido,
-        filtrable: soloFiltrosEnTabla.value ? (p.requerido && p.filtrable !== false) : (p.filtrable !== false),
-        descripcion: p.descripcion.trim() || undefined,
-        opciones: parsedOpciones,
-        columna_padre: p.columna_padre?.trim() || undefined
-      }
-    })
-
-    if (isEditMode.value && editingGroupId.value) {
-      const updated = await catalogStore.updateGrupo(editingGroupId.value, {
-        nombre: groupNombre.value.trim(),
-        categoria: groupCategoria.value.trim() || groupNombre.value.trim(),
-        subsistema: groupSubsistema.value,
-        descripcion: groupDescripcion.value.trim() || undefined,
-        icono: groupIcono.value,
-        tipo_vista: groupTipoVista.value,
-        tabla_config: groupTipoVista.value === 'tabla' ? { ...groupTablaConfig.value } : undefined,
-        parametros: paramsPayload
-      })
-
+    if (payload.originalId) {
+      const updated = await catalogStore.updateGrupo(payload.originalId, payload.data)
       emit('group-updated', updated)
-      emit('close')
     } else {
-      const created = await catalogStore.createGrupo({
-        nombre: groupNombre.value.trim(),
-        categoria: groupCategoria.value.trim() || groupNombre.value.trim(),
-        subsistema: groupSubsistema.value,
-        descripcion: groupDescripcion.value.trim() || undefined,
-        icono: groupIcono.value,
-        tipo_vista: groupTipoVista.value,
-        tabla_config: groupTipoVista.value === 'tabla' ? { ...groupTablaConfig.value } : undefined,
-        parametros: paramsPayload
-      })
-
+      const created = await catalogStore.createGrupo(payload.data)
       emit('group-created', created)
-      emit('close')
     }
+    emit('close')
   } catch (err: unknown) {
-    console.error('Error al guardar grupo:', err)
+    console.error('Error al guardar grupo desde plantilla:', err)
+    saveErrorMessage.value = 'Ocurrió un error al guardar la familia en la base de datos.'
   } finally {
     isSubmittingGroup.value = false
   }
+}
+
+// Pegado inteligente desde Excel para Matriz de Anillos (Ctrl+V)
+const handleExcelPasteToRings = (e: ClipboardEvent, targetRowIdx: number = 0) => {
+  const text = e.clipboardData?.getData('text')
+  if (!text || (!text.includes('\t') && !text.includes('\n'))) return
+  e.preventDefault()
+
+  const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  if (lines.length === 0) return
+
+  lines.forEach((line, offset) => {
+    const rowIdx = targetRowIdx + offset
+    while (rowIdx >= ringRows.value.length) {
+      addRingRow()
+    }
+    const row = ringRows.value[rowIdx]
+    if (!row) return
+
+    const cells = line.split('\t').map(c => c.trim())
+    if (cells.length === 0) return
+
+    if (cells.length === 1) {
+      const num = parseFloat(cells[0].replace(',', '.'))
+      if (!isNaN(num)) row.h1 = num
+    } else if (cells.length === 2) {
+      const h1 = parseFloat(cells[0].replace(',', '.'))
+      const a1 = parseFloat(cells[1].replace(',', '.'))
+      if (!isNaN(h1)) row.h1 = h1
+      if (!isNaN(a1)) row.a1 = a1
+    } else if (cells.length >= 3) {
+      const maybeNum0 = parseFloat(cells[0].replace(',', '.'))
+      if (rowIdx === 0 && !isNaN(maybeNum0) && maybeNum0 > 30) {
+        paramValues.value.diametro_cilindro_mm = maybeNum0
+        const h1 = parseFloat(cells[1].replace(',', '.'))
+        const a1 = parseFloat(cells[2].replace(',', '.'))
+        if (!isNaN(h1)) row.h1 = h1
+        if (!isNaN(a1)) row.a1 = a1
+      } else {
+        if (isNaN(maybeNum0) || maybeNum0 < 20) {
+          row.posicion = cells[0]
+        }
+        const h1 = parseFloat(cells[1].replace(',', '.'))
+        const a1 = parseFloat(cells[2].replace(',', '.'))
+        if (!isNaN(h1)) row.h1 = h1
+        if (!isNaN(a1)) row.a1 = a1
+      }
+    }
+  })
+}
+
+// Pegado inteligente desde Excel para Matriz de Cojinetes / Subfilas (Ctrl+V)
+const handleExcelPasteToSubfilas = (e: ClipboardEvent, targetSubfilaIdx: number = 0) => {
+  const text = e.clipboardData?.getData('text')
+  if (!text || (!text.includes('\t') && !text.includes('\n'))) return
+  e.preventDefault()
+
+  const lines = text.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  if (lines.length === 0) return
+
+  const params = activeGroup.value?.parametros || []
+
+  lines.forEach((line, offset) => {
+    const sfIdx = targetSubfilaIdx + offset
+    while (sfIdx >= subfilasRows.value.length) {
+      addFormSubfila()
+    }
+    const sf = subfilasRows.value[sfIdx]
+    if (!sf) return
+
+    const cells = line.split('\t').map(c => c.trim())
+    if (cells.length === 0) return
+
+    let colStart = 0
+    if (cells.length > params.length) {
+      sf.codigo = cells[0]
+      colStart = 1
+    }
+
+    params.forEach((p, pIdx) => {
+      const cellVal = cells[colStart + pIdx]
+      if (cellVal !== undefined && cellVal !== '') {
+        const num = parseFloat(cellVal.replace(',', '.'))
+        sf.medidas[p.clave] = !isNaN(num) ? num : cellVal
+      }
+    })
+  })
+}
+
+const openFamilyTabForCurrentContext = () => {
+  const targetGroupCode = selectedGroupCode.value || props.editGroupId || props.preselectedGroupId || selectedEditGroupId.value
+  if (targetGroupCode) {
+    const grp = resolveGroupByTarget(targetGroupCode)
+    if (grp) {
+      loadGroupForEditing(grp)
+    }
+  }
+  activeTab.value = 'grupo'
 }
 
 // Cerrar con Escape
@@ -2555,6 +2067,7 @@ onUnmounted(() => {
                       <tbody class="divide-y divide-slate-100 text-[11px]">
                         <tr
                           v-for="(ring, rIdx) in ringRows"
+                          @paste.stop="handleExcelPasteToRings($event, rIdx)"
                           :key="ring.id"
                           class="hover:bg-slate-50/70 transition"
                           :class="[
@@ -2830,6 +2343,7 @@ onUnmounted(() => {
                         <tbody class="divide-y divide-slate-100 text-[11px]">
                           <tr
                             v-for="(sf, sfIdx) in subfilasRows"
+                            @paste.stop="handleExcelPasteToSubfilas($event, sfIdx)"
                             :key="sf.id"
                             class="hover:bg-slate-50/70 transition"
                           >
@@ -3102,943 +2616,16 @@ onUnmounted(() => {
 
 
         <!-- ----------------------------------------------------------------- -->
-        <!-- PESTAÑA 2: CONSTRUCTOR DINÁMICO DE NUEVA FAMILIA / GRUPO         -->
+        <!-- PESTAÑA 2: SELECTOR Y DISEÑADOR AMIGABLE DE FAMILIAS (PLANTILLAS) -->
         <!-- ----------------------------------------------------------------- -->
-        <div v-else class="space-y-5">
-
-          <!-- Selector de Modo: Crear Nuevo vs Modificar Existente (Solo cuando NO se especificó un editGroupId directo) -->
-          <div v-if="!props.editGroupId" class="bg-slate-100 p-2 sm:p-2.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border border-slate-200">
-            <div class="flex items-center gap-1.5">
-              <button
-                type="button"
-                @click="switchToCreateMode"
-                :class="[
-                  'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
-                  !isEditMode ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                ]"
-              >
-                <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                <span>+ Nueva Familia</span>
-              </button>
-              <button
-                type="button"
-                @click="switchToEditMode()"
-                :class="[
-                  'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
-                  isEditMode ? 'bg-white text-[#04C4D9] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                ]"
-              >
-                <Edit3 class="w-3.5 h-3.5" />
-                <span>Modificar Existente</span>
-              </button>
-            </div>
-
-            <!-- Si está en modo editar: selector de grupo a modificar -->
-            <div v-if="isEditMode" class="flex items-center gap-2">
-              <label class="text-[11px] font-bold text-slate-600 shrink-0">Familia a editar:</label>
-              <select
-                v-model="selectedEditGroupId"
-                @change="onSelectEditGroup"
-                class="px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
-              >
-                <option value="" disabled>Seleccione una familia...</option>
-                <option v-for="grp in catalogStore.grupos" :key="grp.id" :value="grp.codigo">
-                  {{ grp.nombre }} ({{ grp.parametros.length }} parámetros)
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Banner Informativo si está editando -->
-          <div v-if="isEditMode && editingGroupId" class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xs">
-            <div class="flex items-center gap-2">
-              <Edit3 class="w-4 h-4 text-[#038391]" />
-              <span class="text-xs text-[#038391] font-bold">
-                Editando familia: <strong>{{ groupNombre }}</strong>
-              </span>
-            </div>
-            <button
-              v-if="!props.editGroupId"
-              type="button"
-              @click="switchToCreateMode"
-              class="text-[11px] font-bold text-cyan-800 underline hover:text-cyan-900 shrink-0"
-            >
-              Crear nueva
-            </button>
-          </div>
-
-          <!-- =================================================================== -->
-          <!-- SPLIT-PANE WORKBENCH (12 COLUMNAS EN DESKTOP)                       -->
-          <!-- =================================================================== -->
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            
-            <!-- ================================================================= -->
-            <!-- PANEL IZQUIERDO (5 COLUMNAS): IDENTIDAD Y PARÁMETROS              -->
-            <!-- ================================================================= -->
-            <div class="lg:col-span-5 space-y-4">
-              
-              <!-- 1. DATOS DE LA FAMILIA -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
-                <div class="flex items-center justify-between border-b pb-2 border-slate-100">
-                  <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
-                    <span>1. Formato y Nombre de la Familia</span>
-                  </h3>
-                </div>
-
-                <div class="space-y-3">
-                  <!-- Selector de Tipo de Familia: Lista Simple vs Tabla / Matriz -->
-                  <div>
-                    <label class="block text-xs font-bold text-slate-800 mb-1.5">
-                      ¿Cómo se verán las medidas en el catálogo? <span class="text-rose-500">*</span>
-                    </label>
-                    <div class="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        @click="setGroupTipoVista('normal')"
-                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2 cursor-pointer"
-                        :class="groupTipoVista === 'normal'
-                          ? 'bg-cyan-50/90 border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'"
-                      >
-                        <Columns class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'normal' ? 'text-[#038391]' : 'text-slate-400'" />
-                        <div>
-                          <div class="text-xs font-black">Lista Simple</div>
-                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Una línea por repuesto con sus medidas directas</div>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        @click="setGroupTipoVista('tabla')"
-                        class="p-2.5 rounded-xl border text-left transition flex items-start gap-2 cursor-pointer"
-                        :class="groupTipoVista === 'tabla'
-                          ? 'bg-cyan-50/90 border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'"
-                      >
-                        <Table class="w-4 h-4 shrink-0 mt-0.5" :class="groupTipoVista === 'tabla' ? 'text-[#038391]' : 'text-slate-400'" />
-                        <div>
-                          <div class="text-xs font-black">En Tabla / Matriz</div>
-                          <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Cuadrícula con varias filas y columnas de medidas</div>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Nombre de Grupo (Obligatorio) -->
-                  <div>
-                    <label class="block text-xs font-bold text-slate-800 mb-1">
-                      Nombre de la Familia <span class="text-rose-500">*</span>
-                    </label>
-                    <input
-                      v-model="groupNombre"
-                      @input="onGroupNombreInput"
-                      type="text"
-                      placeholder="Ej. Anillos de motor, Cojinetes, Guías, Camisas..."
-                      class="w-full px-3 py-2 text-xs font-bold bg-slate-50 border rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
-                      :class="groupErrors.groupNombre ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
-                    />
-                    <span v-if="groupErrors.groupNombre" class="text-[10px] text-rose-600 font-bold mt-0.5 block">
-                      {{ groupErrors.groupNombre }}
-                    </span>
-                  </div>
-
-                  <!-- Parte del Motor (Opcional) -->
-                  <div class="relative">
-                    <label class="block text-xs font-bold text-slate-800 mb-1">
-                      Parte del Motor <span class="text-[10px] font-normal text-slate-400">(Opcional)</span>
-                    </label>
-
-                    <div class="relative flex items-center">
-                      <input
-                        v-model="subsistemaSearch"
-                        @focus="isSubsistemaOpen = true"
-                        @input="isSubsistemaOpen = true"
-                        @keydown.enter.prevent="isCustomSubsistemaCandidate ? handleCreateAndSelectSubsistema() : (filteredSubsistemas[0] ? handleSelectSubsistema(filteredSubsistemas[0]) : null)"
-                        type="text"
-                        placeholder="Ej. Block, Culata, Cigüeñal, General..."
-                        class="w-full pl-3 pr-16 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-[#04C4D9] transition"
-                      />
-                      <div class="absolute right-2 flex items-center gap-1">
-                        <button
-                          v-if="groupSubsistema || subsistemaSearch"
-                          type="button"
-                          @click="handleClearSubsistema"
-                          class="p-1 text-slate-400 hover:text-slate-600 rounded"
-                          title="Limpiar"
-                        >
-                          <X class="w-3.5 h-3.5" />
-                        </button>
-                        <ChevronDown
-                          @click="isSubsistemaOpen = !isSubsistemaOpen"
-                          class="w-4 h-4 text-slate-400 cursor-pointer hover:text-slate-600"
-                        />
-                      </div>
-                    </div>
-
-                    <!-- Backdrop para cerrar al hacer clic afuera -->
-                    <div
-                      v-if="isSubsistemaOpen"
-                      class="fixed inset-0 z-40 cursor-default"
-                      @click="isSubsistemaOpen = false"
-                    ></div>
-
-                    <!-- Menú Desplegable Creatable (Inline) -->
-                    <div
-                      v-if="isSubsistemaOpen"
-                      class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto divide-y divide-slate-100"
-                    >
-                      <div
-                        v-if="isCustomSubsistemaCandidate"
-                        @click="handleCreateAndSelectSubsistema"
-                        class="p-2.5 bg-cyan-50/80 hover:bg-cyan-100 cursor-pointer text-xs font-bold text-[#038391] flex items-center gap-1.5 transition"
-                      >
-                        <Plus class="w-3.5 h-3.5" />
-                        <span>+ Usar: <strong>"{{ subsistemaSearch.trim() }}"</strong></span>
-                      </div>
-
-                      <div
-                        v-for="sub in filteredSubsistemas"
-                        :key="sub"
-                        @click="handleSelectSubsistema(sub)"
-                        :class="[
-                          'px-3 py-2 cursor-pointer text-xs font-semibold flex items-center justify-between transition',
-                          groupSubsistema === sub ? 'bg-cyan-50 text-[#038391] font-bold' : 'text-slate-700 hover:bg-slate-50'
-                        ]"
-                      >
-                        <span>{{ sub }}</span>
-                        <Check v-if="groupSubsistema === sub" class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 2. CONFIGURACIÓN DE FILAS (SOLO PARA TABLA / MATRIZ) -->
-              <div
-                v-if="groupTipoVista === 'tabla'"
-                class="bg-cyan-50/50 border border-cyan-200 rounded-2xl p-4 shadow-2xs space-y-3.5"
-              >
-                <div class="flex items-center justify-between border-b pb-2 border-cyan-200/80">
-                  <h3 class="text-xs font-black uppercase tracking-wider text-[#004B97] flex items-center gap-1.5">
-                    <Table class="w-4 h-4 text-[#04C4D9]" />
-                    <span>2. Filas de la Tabla (Primera Columna)</span>
-                  </h3>
-                </div>
-
-                <!-- Título de la Primera Columna -->
-                <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1">
-                    Nombre de la primera columna <span class="text-rose-500">*</span>
-                  </label>
-                  <input
-                    v-model="groupTablaConfig.titulo_primera_columna"
-                    type="text"
-                    placeholder="Ej. Posición, Anillo, Pieza, Medida..."
-                    class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
-                  />
-                </div>
-
-                <!-- ¿Cómo se nombran las filas? (3 opciones claras y generales) -->
-                <div>
-                  <label class="block text-xs font-bold text-slate-800 mb-1.5">
-                    ¿Cómo se crean las filas de cada repuesto?
-                  </label>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      @click="selectModoFilas('incremental')"
-                      class="p-2.5 rounded-xl border text-left transition cursor-pointer"
-                      :class="groupTablaConfig.modo_filas === 'incremental'
-                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
-                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
-                    >
-                      <div class="text-xs font-black text-[#004B97]">Numeradas (1, 2, 3...)</div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Se numeran solas al agregar filas</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      @click="selectModoFilas('cojinetes')"
-                      class="p-2.5 rounded-xl border text-left transition cursor-pointer"
-                      :class="(groupTablaConfig.modo_filas === 'cojinetes' || groupTablaConfig.modo_filas === 'subfilas')
-                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
-                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
-                    >
-                      <div class="text-xs font-black text-[#004B97]">Filas Fijas (Plantilla)</div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Defines las filas fijas que tendrá cada registro / set</div>
-                    </button>
-
-                    <button
-                      type="button"
-                      @click="selectModoFilas('libre')"
-                      class="p-2.5 rounded-xl border text-left transition cursor-pointer"
-                      :class="groupTablaConfig.modo_filas === 'libre'
-                        ? 'bg-white border-[#04C4D9] ring-1 ring-[#04C4D9] text-slate-900 shadow-2xs'
-                        : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'"
-                    >
-                      <div class="text-xs font-black text-[#004B97]">Texto Libre</div>
-                      <div class="text-[10px] text-slate-500 leading-tight mt-0.5">Escribes el nombre al registrar la pieza</div>
-                    </button>
-                  </div>
-
-                  <!-- Opciones para Filas Fijas (Plantilla general para cualquier grupo) -->
-                  <div v-if="groupTablaConfig.modo_filas === 'cojinetes' || groupTablaConfig.modo_filas === 'subfilas'" class="mt-2.5 space-y-2.5 bg-white/90 p-3 rounded-xl border border-cyan-200">
-                    <div class="flex items-center justify-between">
-                      <div class="text-xs font-extrabold text-slate-800">
-                        Nombres de las filas fijas:
-                      </div>
-                      <button
-                        type="button"
-                        @click="addConfigSubfila"
-                        class="text-[10px] font-bold text-[#038391] hover:text-[#004B97] bg-cyan-50 px-2 py-1 rounded-lg border border-cyan-200 transition flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus class="w-3 h-3 text-[#04C4D9]" />
-                        <span>+ Agregar Fila</span>
-                      </button>
-                    </div>
-
-                    <div class="space-y-1.5 text-xs">
-                      <div
-                        v-for="(_sfName, sfIdx) in (groupTablaConfig.subfilas || ['Fila 1', 'Fila 2'])"
-                        :key="sfIdx"
-                        class="p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
-                      >
-                        <div class="flex items-center gap-2 flex-1">
-                          <span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-black uppercase font-mono">
-                            #{{ sfIdx + 1 }}
-                          </span>
-                          <input
-                            v-model="(groupTablaConfig.subfilas || ['Fila 1', 'Fila 2'])[sfIdx]"
-                            type="text"
-                            :placeholder="`Nombre de fila ${sfIdx + 1}`"
-                            class="px-2.5 py-1 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] flex-1"
-                          />
-                        </div>
-                        <button
-                          v-if="(groupTablaConfig.subfilas || []).length > 1"
-                          type="button"
-                          @click="removeConfigSubfila(sfIdx)"
-                          class="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
-                          title="Quitar fila"
-                        >
-                          <Trash2 class="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <label class="flex items-center gap-2 pt-1 cursor-pointer select-none text-xs font-bold text-slate-700">
-                      <input
-                        type="checkbox"
-                        v-model="groupTablaConfig.tiene_cabecera_marca"
-                        class="rounded text-[#04C4D9] focus:ring-[#04C4D9]"
-                      />
-                      <span>Mostrar barra de título (Marca / Aplicación) arriba de cada registro</span>
-                    </label>
-                  </div>
-
-                  <!-- Opciones para Numeradas (1, 2, 3...) -->
-                  <div v-if="groupTablaConfig.modo_filas === 'incremental'" class="mt-2.5 space-y-2 bg-white/80 p-2.5 rounded-xl border border-cyan-200/70">
-                    <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
-                      <input
-                        type="checkbox"
-                        v-model="groupTablaConfig.usar_prefijo_titulo"
-                        class="rounded text-[#04C4D9] focus:ring-[#04C4D9]"
-                      />
-                      <span>Repetir "{{ groupTablaConfig.titulo_primera_columna || 'Posición' }}" antes del número (ej. {{ groupTablaConfig.titulo_primera_columna || 'Posición' }} 1, 2...)</span>
-                    </label>
-                    <div>
-                      <label class="block text-[10px] font-bold text-slate-600 mb-1">
-                        Nombre especial para la última fila (opcional):
-                      </label>
-                      <input
-                        v-model="groupTablaConfig.etiqueta_ultima_fila"
-                        type="text"
-                        placeholder="Dejar vacío para numerar normal (1, 2, 3...)"
-                        class="w-full px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Etiqueta extra opcional por fila -->
-                <div v-if="groupTablaConfig.modo_filas !== 'cojinetes' && groupTablaConfig.modo_filas !== 'subfilas'" class="bg-white/90 p-3 rounded-xl border border-cyan-200/80 space-y-2">
-                  <div class="flex items-center justify-between gap-2">
-                    <div>
-                      <div class="text-xs font-black text-slate-800">
-                        Botón de etiqueta extra por fila (opcional)
-                      </div>
-                      <div class="text-[10px] text-slate-500">
-                        Permite resaltar filas específicas con una nota (ej. Cónico, STD, Especial)
-                      </div>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer select-none shrink-0">
-                      <input
-                        type="checkbox"
-                        v-model="groupTablaConfig.habilitar_identificador"
-                        class="sr-only peer"
-                      />
-                      <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#04C4D9]"></div>
-                    </label>
-                  </div>
-
-                  <div v-if="groupTablaConfig.habilitar_identificador" class="pt-1">
-                    <input
-                      v-model="groupTablaConfig.etiqueta_identificador"
-                      type="text"
-                      placeholder="Texto de la etiqueta (ej. Cónico, Especial...)"
-                      class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <!-- 3. COLUMNAS / MEDIDAS DE LA FAMILIA -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
-                <div class="flex items-center justify-between border-b pb-2.5 border-slate-100">
-                  <div>
-                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <SlidersHorizontal class="w-4 h-4 text-[#04C4D9]" />
-                      <span>{{ groupTipoVista === 'tabla' ? '3. Columnas de Medidas' : '2. Medidas de la Familia' }}</span>
-                    </h3>
-                    <p class="text-[10px] text-slate-500 mt-0.5">
-                      Agrega las medidas o datos que quieres ver y buscar en esta familia.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    @click="addParamRow"
-                    class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs shrink-0 active:scale-95 cursor-pointer"
-                  >
-                    <Plus class="w-3.5 h-3.5" />
-                    <span>+ Agregar Columna</span>
-                  </button>
-                </div>
-
-                <!-- Lista de Parámetros Dinámicos -->
-                <div class="space-y-3">
-                  <!-- Empty State cuando no hay parámetros definidos -->
-                  <div
-                    v-if="dynamicParams.length === 0"
-                    class="p-6 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-2"
-                  >
-                    <div class="w-9 h-9 rounded-xl bg-cyan-50 border border-cyan-200 text-[#038391] flex items-center justify-center mx-auto shadow-2xs">
-                      <SlidersHorizontal class="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p class="text-xs font-black text-slate-800">Aún no hay columnas de medidas</p>
-                      <p class="text-[11px] text-slate-500 mt-0.5 max-w-xs mx-auto">
-                        Haz clic abajo para agregar la primera medida (ej. Diámetro, Grosor, Altura, Largo...).
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      @click="addParamRow"
-                      class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white rounded-xl text-xs font-extrabold transition shadow-2xs cursor-pointer active:scale-95"
-                    >
-                      <Plus class="w-3.5 h-3.5" />
-                      <span>+ Agregar Primera Medida</span>
-                    </button>
-                  </div>
-
-                  <div
-                    v-for="(param, idx) in dynamicParams"
-                    :key="param.id"
-                    class="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3 space-y-2.5 relative transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    <!-- Barra superior de la columna -->
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="flex items-center gap-2 min-w-0">
-                        <div class="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden shrink-0">
-                          <button
-                            type="button"
-                            @click="moveParamUp(idx)"
-                            :disabled="idx === 0"
-                            class="p-1 hover:bg-slate-100 disabled:opacity-25 text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
-                            title="Mover arriba"
-                          >
-                            <ChevronUp class="w-3.5 h-3.5" />
-                          </button>
-                          <div class="w-px h-3.5 bg-slate-200"></div>
-                          <button
-                            type="button"
-                            @click="moveParamDown(idx)"
-                            :disabled="idx === dynamicParams.length - 1"
-                            class="p-1 hover:bg-slate-100 disabled:opacity-25 text-slate-600 transition cursor-pointer disabled:cursor-not-allowed"
-                            title="Mover abajo"
-                          >
-                            <ChevronDown class="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
-                          {{ idx + 1 }}
-                        </span>
-                        <span class="text-xs font-black text-slate-900 truncate">
-                          {{ param.etiqueta || `Columna ${idx + 1}` }}
-                        </span>
-                      </div>
-
-                      <div class="flex items-center gap-1.5 shrink-0">
-                        <!-- Botón Visible en Tabla -->
-                        <button
-                          type="button"
-                          @click="toggleParamRequerido(param)"
-                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[10px] font-bold cursor-pointer"
-                          :class="param.requerido 
-                            ? 'bg-cyan-50 border-cyan-300 text-[#038391] shadow-2xs' 
-                            : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'"
-                          title="Mostrar u ocultar esta columna en la tabla"
-                        >
-                          <Columns class="w-3 h-3" />
-                          <span>En Tabla</span>
-                        </button>
-
-                        <!-- Botón Buscador -->
-                        <button
-                          type="button"
-                          @click="toggleParamFiltrable(param)"
-                          class="flex items-center gap-1 select-none px-2 py-1 rounded-lg border transition-all text-[10px] font-bold cursor-pointer"
-                          :class="isParamFilterVisible(param)
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-2xs'
-                            : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'"
-                          title="Permitir buscar repuestos por esta medida"
-                        >
-                          <Filter class="w-3 h-3" />
-                          <span>Buscador</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          @click="removeParamRow(idx)"
-                          class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          title="Borrar esta medida"
-                        >
-                          <Trash2 class="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <!-- Campos simples y directos -->
-                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                      <!-- Nombre de la medida -->
-                      <div class="sm:col-span-6">
-                        <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Nombre de la columna *</label>
-                        <input
-                          v-model="param.etiqueta"
-                          @input="param.etiqueta_corta = param.etiqueta; handleParamLabelChange(param)"
-                          type="text"
-                          placeholder="Ej. Diámetro, Grosor, Altura..."
-                          class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-
-                      <!-- Unidad -->
-                      <div class="sm:col-span-3">
-                        <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Unidad</label>
-                        <input
-                          v-model="param.unidad"
-                          @input="handleParamUnitChange(param)"
-                          type="text"
-                          placeholder="mm, pulg..."
-                          class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        />
-                      </div>
-
-                      <!-- Tipo de valor -->
-                      <div class="sm:col-span-3">
-                        <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Tipo de dato</label>
-                        <select
-                          v-model="param.tipo_dato"
-                          class="w-full px-2 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                        >
-                          <option value="numero">Número</option>
-                          <option value="texto">Texto</option>
-                          <option value="seleccion">Opciones</option>
-                          <option value="booleano">Sí / No</option>
-                        </select>
-                      </div>
-
-                      <!-- Opciones si elige "Opciones" -->
-                      <div v-if="param.tipo_dato === 'seleccion'" class="sm:col-span-12 bg-cyan-50/80 p-2 rounded-xl border border-cyan-200">
-                        <label class="block text-[10px] font-bold text-[#038391] mb-1">Opciones separadas por coma:</label>
-                        <input
-                          v-model="param.opcionesStr"
-                          type="text"
-                          placeholder="Ej. Admisión, Escape, Estándar"
-                          class="w-full px-2.5 py-1 text-xs font-semibold bg-white border border-cyan-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#04C4D9]"
-                        />
-                      </div>
-
-                      <!-- Agrupar bajo un título superior (Sub-columna opcional) -->
-                      <div class="sm:col-span-12 pt-1.5 border-t border-slate-200/70">
-                        <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-                          <div class="flex-1 flex items-center gap-1.5">
-                            <Split class="w-3.5 h-3.5 text-[#004B97] shrink-0" />
-                            <input
-                              v-model="param.columna_padre"
-                              @input="handleParamParentChange(param)"
-                              type="text"
-                              placeholder="Título superior para agrupar varias columnas (opcional, ej. STD, 1ra medida...)"
-                              class="w-full px-2.5 py-1 text-[11px] font-semibold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
-                            />
-                            <button
-                              v-if="param.columna_padre"
-                              type="button"
-                              @click="param.columna_padre = ''; handleParamParentChange(param)"
-                              class="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                              title="Quitar grupo superior"
-                            >
-                              <X class="w-3 h-3" />
-                            </button>
-                          </div>
-                          <button
-                            v-if="param.columna_padre"
-                            type="button"
-                            @click="addSiblingSubcolumn(param, idx)"
-                            class="px-2.5 py-1 rounded-lg bg-cyan-50 border border-cyan-300 text-[#038391] hover:bg-cyan-100 text-[11px] font-bold transition flex items-center gap-1 shadow-2xs whitespace-nowrap cursor-pointer shrink-0"
-                          >
-                            <Plus class="w-3 h-3" />
-                            <span>+ Otra columna en "{{ param.columna_padre }}"</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- ================================================================= -->
-            <!-- PANEL DERECHO (7 COLUMNAS): VISTA PREVIA EN VIVO                  -->
-            <!-- ================================================================= -->
-            <div class="lg:col-span-7 lg:sticky lg:top-0 space-y-4">
-              <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl text-white space-y-4">
-                
-                <!-- Header del Marco de Inspección -->
-                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-lg bg-cyan-500/20 border border-[#04C4D9]/40 flex items-center justify-center text-[#04C4D9]">
-                      <Eye class="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div class="flex items-center gap-2">
-                        <h4 class="text-xs font-black uppercase tracking-wider text-white">
-                          Vista Previa de la Familia
-                        </h4>
-                        <span class="inline-flex items-center gap-1 px-2 py-0.2 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-bold">
-                          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                          En Vivo
-                        </span>
-                      </div>
-                      <p class="text-[10px] text-slate-400 mt-0.5">
-                        Así se verá "{{ groupNombre || 'Nueva Familia' }}" en el catálogo
-                      </p>
-                    </div>
-                  </div>
-
-                  <div class="text-right">
-                    <span class="font-mono text-xs font-black text-[#04C4D9]">
-                      {{ visibleTableColumns.length }}
-                    </span>
-                    <span class="text-[10px] text-slate-400 block font-sans">
-                      columnas
-                    </span>
-                  </div>
-                </div>
-
-                <!-- 1. PREVIEW DE BUSCADOR POR MEDIDAS -->
-                <div class="space-y-2 bg-slate-850/90 rounded-xl p-3 border border-slate-800">
-                  <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                      <Filter class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>Buscador por Medidas</span>
-                    </span>
-                  </div>
-
-                  <div class="pt-1 space-y-2">
-                    <div v-if="hasSubcolumnsInPreview" class="flex flex-wrap gap-2 items-center">
-                      <div
-                        v-for="item in nestedPreviewHeaders.tier1.filter(t => t.isGroup)"
-                        :key="`prev-grp-flt-${item.id}`"
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-800/80 text-xs font-mono"
-                      >
-                        <span class="text-[10px] font-black uppercase text-[#04C4D9]">{{ item.label }}:</span>
-                        <span
-                          v-for="(subP, sIdx) in (item.subParams || [])"
-                          :key="`subp-${sIdx}`"
-                          class="text-[10px] text-slate-300"
-                        >
-                          {{ subP.etiqueta_corta || subP.etiqueta || `Sub ${sIdx + 1}` }}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div v-else class="flex flex-wrap gap-2 items-center">
-                      <div
-                        v-for="param in dynamicParams.filter(p => isParamFilterVisible(p))"
-                        :key="`preview-filter-${param.id}`"
-                        class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs"
-                      >
-                        <span class="text-[10px] font-bold text-slate-300">{{ param.etiqueta_corta || param.etiqueta || 'Medida' }}:</span>
-                        <span class="font-mono font-bold text-[#04C4D9] text-[11px]">
-                          {{ param.tipo_dato === 'numero' ? (param.valor_muestra || '50.00') : 'Todos' }}
-                        </span>
-                        <span v-if="param.unidad && param.tipo_dato === 'numero'" class="text-[9px] text-slate-400">{{ param.unidad }}</span>
-                      </div>
-
-                      <span v-if="dynamicParams.filter(p => isParamFilterVisible(p)).length === 0" class="text-[11px] text-slate-500 italic">
-                        Agrega columnas a la izquierda para activar el buscador por medidas.
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 2. PREVIEW DE TABLA DE REPUESTOS -->
-                <div class="space-y-2">
-                  <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                      <Table class="w-3.5 h-3.5 text-[#04C4D9]" />
-                      <span>Vista en Tabla del Catálogo</span>
-                    </span>
-                  </div>
-
-                  <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-x-auto shadow-inner">
-                    <table class="w-full text-left text-xs border-collapse">
-                      <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles -->
-                      <thead v-if="hasSubcolumnsInPreview">
-                        <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
-                          <th rowspan="2" class="py-2 px-3 border-r border-slate-800 whitespace-nowrap" :class="isSubfilasActiveInPreview ? 'w-28' : 'w-44'">
-                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Posición') : 'Componente' }}
-                          </th>
-                          <th rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">
-                            Código
-                          </th>
-                          <th v-if="!isSubfilasActiveInPreview" rowspan="2" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">
-                            Alternos
-                          </th>
-                          <template v-for="item in nestedPreviewHeaders.tier1" :key="item.id">
-                            <th 
-                              v-if="item.isGroup"
-                              :colspan="item.colspan"
-                              class="py-1 px-2 border-r border-b border-slate-700 bg-cyan-950/60 text-[#04C4D9] text-center font-black uppercase tracking-wider text-[10px]"
-                            >
-                              {{ item.label }}
-                            </th>
-                            <th 
-                              v-else
-                              rowspan="2"
-                              class="py-2 px-2.5 border-r border-slate-800 text-cyan-300 font-bold uppercase text-[10px] text-center whitespace-nowrap"
-                            >
-                              {{ item.label }}
-                            </th>
-                          </template>
-                          <th rowspan="2" class="py-2 px-3 text-right w-24 whitespace-nowrap">Acciones</th>
-                        </tr>
-                        <tr class="bg-slate-900 text-[9px] text-slate-300 font-bold uppercase tracking-tight border-b border-slate-800">
-                          <th 
-                            v-for="sub in nestedPreviewHeaders.tier2"
-                            :key="sub.id"
-                            class="py-1 px-2 text-center border-r border-slate-800 whitespace-nowrap bg-slate-900/90 font-mono"
-                          >
-                            <span>{{ sub.label }}</span>
-                            <span v-if="sub.unidad" class="text-[8px] text-slate-400 font-normal ml-0.5">({{ sub.unidad }})</span>
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <!-- Caso B: Cabecera Estándar de 1 Nivel -->
-                      <thead v-else>
-                        <tr class="bg-slate-850 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800">
-                          <th class="py-2 px-3 border-r border-slate-800 whitespace-nowrap" :class="isSubfilasActiveInPreview ? 'w-28' : 'w-44'">
-                            {{ isSubfilasActiveInPreview ? (groupTablaConfig.titulo_primera_columna || 'Posición') : 'Componente' }}
-                          </th>
-                          <th class="py-2 px-2.5 border-r border-slate-800 w-28 whitespace-nowrap">
-                            Código
-                          </th>
-                          <th v-if="!isSubfilasActiveInPreview" class="py-2 px-2.5 border-r border-slate-800 w-32 whitespace-nowrap">
-                            Alternos
-                          </th>
-                          <template v-if="isSubfilasActiveInPreview">
-                            <th
-                              v-for="colParam in visibleTableColumns"
-                              :key="`prev-th-flat-${colParam.id}`"
-                              class="py-2 px-2.5 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px] text-center whitespace-nowrap"
-                            >
-                              {{ colParam.etiqueta_corta || colParam.etiqueta || 'Medida' }}{{ colParam.unidad ? ` (${colParam.unidad})` : '' }}
-                            </th>
-                          </template>
-                          <th v-else class="py-2 px-3 border-r border-slate-800 text-cyan-300 font-bold uppercase tracking-wider text-[10px]">
-                            <div class="flex items-center justify-between gap-2">
-                              <span class="truncate">
-                                {{ (groupNombre ? groupNombre.toUpperCase() : 'MEDIDAS') }}: 
-                                {{ visibleTableColumns.map((p, pIdx) => p.etiqueta_corta || p.etiqueta || `Columna ${pIdx + 1}`).join(' / ') || 'COLUMNAS DE MEDIDAS' }}
-                              </span>
-                            </div>
-                          </th>
-                          <th class="py-2 px-3 text-right w-24 whitespace-nowrap">Acciones</th>
-                        </tr>
-                      </thead>
-
-                      <!-- Caso A: Vista Previa para Filas Fijas (Plantilla General) -->
-                      <tbody v-if="isSubfilasActiveInPreview" class="divide-y divide-slate-800/70 font-mono text-[11px]">
-                        <tr v-if="groupTablaConfig.tiene_cabecera_marca" class="bg-cyan-950/40 border-t-2 border-cyan-800/60 text-cyan-200">
-                          <td class="py-1.5 px-3 border-r border-slate-800/80 text-center font-black uppercase text-cyan-300 bg-cyan-950/70 tracking-wider">
-                            <span>TOYOTA</span>
-                          </td>
-                          <td :colspan="visibleTableColumns.length + 1" class="py-1.5 px-3 border-r border-slate-800/80 font-sans text-xs">
-                            <div class="flex items-center justify-between gap-2">
-                              <span class="font-bold text-white">{{ groupNombre || 'Detalle Técnico' }} - Motor 2L / 3L</span>
-                              <span class="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-900/40 px-2 py-0.5 rounded border border-cyan-800/50">
-                                STD
-                              </span>
-                            </div>
-                          </td>
-                          <td class="py-1.5 px-3 text-right">
-                            <span class="text-[9px] font-bold text-cyan-300 uppercase">Editar</span>
-                          </td>
-                        </tr>
-
-                        <tr
-                          v-for="(sfName, sfIdx) in previewSubfilas"
-                          :key="`prev-sf-row-${sfIdx}`"
-                          class="hover:bg-slate-900/60 transition"
-                        >
-                          <td class="py-2 px-3 border-r border-slate-800/70 font-bold text-slate-200">
-                            {{ sfName || `Fila ${sfIdx + 1}` }}
-                          </td>
-                          <td class="py-2 px-2.5 border-r border-slate-800/70 text-slate-100 font-bold">
-                            COD-0{{ sfIdx + 1 }}
-                          </td>
-                          <td
-                            v-for="colParam in visibleTableColumns"
-                            :key="`prev-sf-${sfIdx}-${colParam.id}`"
-                            class="py-2 px-2 border-r border-slate-800/70 text-center font-bold text-emerald-400"
-                          >
-                            {{ getPreviewSubfilaValue(colParam, sfName, sfIdx) }}
-                          </td>
-                          <td class="py-2 px-3 text-right">
-                            <button type="button" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 text-[10px] font-bold">
-                              + Orden
-                            </button>
-                          </td>
-                        </tr>
-                      </tbody>
-
-                      <!-- Caso B: Vista Previa para Tabla Interna o Lista Simple -->
-                      <tbody v-else class="divide-y divide-slate-800/70 font-mono text-[11px]">
-                        <tr class="hover:bg-slate-900/60 transition group">
-                          <td class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
-                            <div class="flex items-center gap-2">
-                              <div class="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[#04C4D9] shrink-0">
-                                <Layers class="w-3.5 h-3.5" />
-                              </div>
-                              <div class="min-w-0">
-                                <div class="flex items-center gap-1.5">
-                                  <span class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">OEM</span>
-                                  <span class="text-xs font-black text-white truncate font-sans">{{ groupNombre || 'Repuesto Ejemplo' }} STD</span>
-                                </div>
-                                <p class="text-[10px] text-slate-400 font-sans truncate">
-                                  TOYOTA • {{ (groupSubsistema || 'MOTOR').toUpperCase() }}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 text-slate-200 font-mono font-bold align-middle">
-                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-200 text-[10px]">
-                              13011-54020
-                            </span>
-                          </td>
-
-                          <td class="py-2.5 px-2.5 border-r border-slate-800/70 align-middle whitespace-nowrap font-sans">
-                            <span class="text-[10px] text-slate-400">RIK / NPR</span>
-                          </td>
-
-                          <template v-if="hasSubcolumnsInPreview">
-                            <td 
-                              v-for="colParam in visibleTableColumns" 
-                              :key="`prev1-subcol-${colParam.id}`"
-                              class="py-2.5 px-2 border-r border-slate-800/70 text-center font-mono font-bold text-xs text-emerald-400"
-                            >
-                              {{ formatSubcolumnSample(colParam, 0) }}
-                            </td>
-                          </template>
-                          <td v-else class="py-2.5 px-3 border-r border-slate-800/70 align-middle">
-                            <template v-if="groupTipoVista === 'tabla'">
-                              <div class="inline-block border border-slate-700 rounded-lg overflow-hidden bg-slate-900 font-mono text-[11px]">
-                                <table class="border-collapse text-center">
-                                  <thead>
-                                    <tr class="bg-slate-800 text-slate-300 text-[9px] font-bold uppercase tracking-wider border-b border-slate-700">
-                                      <th class="px-2.5 py-1 border-r border-slate-700 text-left">{{ groupTablaConfig.titulo_primera_columna || 'Posición' }}</th>
-                                      <th
-                                        v-for="(colParam, colIdx) in visibleTableColumns"
-                                        :key="`prev1-th-${colParam.id}`"
-                                        class="px-2.5 py-1 text-cyan-300"
-                                        :class="colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : ''"
-                                      >
-                                        {{ colParam.etiqueta_corta || colParam.etiqueta || `Columna ${colIdx + 1}` }}{{ colParam.unidad && colParam.unidad !== 'mm' ? ` (${colParam.unidad})` : '' }}
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody class="divide-y divide-slate-800 text-[10px] text-slate-200">
-                                    <tr v-for="rIdx in [0, 1, 2]" :key="`prev1-tr-${rIdx}`">
-                                      <td class="px-2.5 py-1 bg-slate-850 font-bold text-left border-r border-slate-700 whitespace-nowrap">
-                                        <span>{{ getPreviewRowLabel(rIdx) }}</span>
-                                        <span
-                                          v-if="rIdx === 0 && groupTablaConfig.habilitar_identificador"
-                                          class="ml-1 text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold uppercase"
-                                        >
-                                          {{ groupTablaConfig.etiqueta_identificador || 'ESPECIAL' }}
-                                        </span>
-                                      </td>
-                                      <td
-                                        v-for="(colParam, colIdx) in visibleTableColumns"
-                                        :key="`prev1-td-${rIdx}-${colParam.id}`"
-                                        class="px-2.5 py-1 font-bold"
-                                        :class="[
-                                          colIdx < visibleTableColumns.length - 1 ? 'border-r border-slate-700' : '',
-                                          colIdx <= 1 ? 'text-emerald-400' : 'text-slate-200'
-                                        ]"
-                                      >
-                                        {{ getPreviewTableCellValue(colParam, 0, rIdx) }}
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                            </template>
-                            <div v-else class="flex flex-wrap items-center gap-1.5">
-                              <div
-                                v-for="(param, paramIdx) in visibleTableColumns"
-                                :key="`row1-${param.id}`"
-                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-850 border border-slate-700/80 text-xs font-mono font-bold text-emerald-400"
-                              >
-                                <span class="text-[9px] uppercase font-sans text-slate-400">{{ param.etiqueta_corta || param.etiqueta || `Columna ${paramIdx + 1}` }}:</span>
-                                <span class="tabular-nums">{{ formatSampleValue(param, 0) }}</span>
-                              </div>
-                              <span v-if="visibleTableColumns.length === 0" class="text-slate-400 text-[10px] italic font-sans">
-                                Agrega columnas de medidas para ver la vista previa
-                              </span>
-                            </div>
-                          </td>
-
-                          <td class="py-2.5 px-3 text-right align-middle whitespace-nowrap font-sans">
-                            <span class="px-2 py-0.5 rounded bg-[#04C4D9] text-slate-900 font-extrabold text-[10px]">
-                              + A Orden
-                            </span>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                </div>
-
-              </div>
-            </div>
-
-          </div>
+        <div v-else class="p-1 sm:p-2">
+          <FamilyTemplatePicker
+            :existing-groups="catalogStore.grupos"
+            :editing-group="currentEditingGroup"
+            :is-saving="isSubmittingGroup"
+            @save="handleFamilyTemplateSave"
+            @cancel="emit('close')"
+          />
         </div>
       </div>
 
@@ -4066,7 +2653,7 @@ onUnmounted(() => {
       <!-- ===================================================================== -->
       <!-- MODAL FOOTER CON BOTÓN GUARDAR                                        -->
       <!-- ===================================================================== -->
-      <div class="px-5 sm:px-7 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+      <div v-if="activeTab === 'repuesto'" class="px-5 sm:px-7 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2">
           <button
             type="button"
@@ -4126,17 +2713,7 @@ onUnmounted(() => {
             <span>{{ isSubmittingPart ? 'Guardando...' : (isEditPartMode ? 'Guardar Cambios' : 'Guardar Repuesto') }}</span>
           </button>
 
-          <button
-            v-else
-            type="button"
-            @click="handleSaveGroup"
-            :disabled="isSubmittingGroup"
-            class="px-5 py-2.5 rounded-xl bg-[#04C4D9] hover:bg-[#03a9bc] disabled:bg-slate-300 text-white text-xs font-extrabold flex items-center gap-2 transition shadow-sm active:scale-95"
-          >
-            <Loader2 v-if="isSubmittingGroup" class="w-4 h-4 animate-spin" />
-            <Save v-else class="w-4 h-4" />
-            <span>{{ isSubmittingGroup ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Guardar Familia') }}</span>
-          </button>
+          
         </div>
       </div>
 
