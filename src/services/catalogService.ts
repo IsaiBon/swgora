@@ -347,11 +347,24 @@ export interface RowCluster<T = string> {
 
 export function buildRowClusters<T>(
   rows: T[],
-  getParent: (row: T, idx: number) => string | undefined
+  getParent: (row: T, idx: number) => string | undefined,
+  isCentral?: (row: T, idx: number) => boolean
 ): RowCluster<T>[] {
   const clusters: RowCluster<T>[] = []
   let i = 0
   while (i < rows.length) {
+    if (isCentral?.(rows[i]!, i)) {
+      clusters.push({
+        key: `r-central-${i}`,
+        name: '',
+        isGrouped: false,
+        startIdx: i,
+        endIdx: i,
+        items: [{ rowIdx: i, name: rows[i]!, parent: '' }]
+      })
+      i++
+      continue
+    }
     const parentName = (getParent(rows[i]!, i) || '').trim()
     if (!parentName) {
       clusters.push({
@@ -366,7 +379,11 @@ export function buildRowClusters<T>(
     } else {
       const start = i
       const items: RowClusterItem<T>[] = []
-      while (i < rows.length && (getParent(rows[i]!, i) || '').trim() === parentName) {
+      while (
+        i < rows.length &&
+        !isCentral?.(rows[i]!, i) &&
+        (getParent(rows[i]!, i) || '').trim() === parentName
+      ) {
         items.push({ rowIdx: i, name: rows[i]!, parent: parentName })
         i++
       }
@@ -391,18 +408,28 @@ export interface RowSpanCellMeta {
 
 export function buildRowSpanMeta<T>(
   rows: T[],
-  getParent: (row: T, idx: number) => string | undefined
+  getParent: (row: T, idx: number) => string | undefined,
+  isCentral?: (row: T, idx: number) => boolean
 ): RowSpanCellMeta[] {
   const meta: RowSpanCellMeta[] = new Array(rows.length)
   let i = 0
   while (i < rows.length) {
+    if (isCentral?.(rows[i]!, i)) {
+      meta[i] = { show: false, rowspan: 0, label: '' }
+      i++
+      continue
+    }
     const label = (getParent(rows[i]!, i) || '').trim()
     if (!label) {
       meta[i] = { show: true, rowspan: 1, label: '' }
       i++
     } else {
       const start = i
-      while (i < rows.length && (getParent(rows[i]!, i) || '').trim() === label) {
+      while (
+        i < rows.length &&
+        !isCentral?.(rows[i]!, i) &&
+        (getParent(rows[i]!, i) || '').trim() === label
+      ) {
         i++
       }
       const span = i - start
@@ -410,6 +437,38 @@ export function buildRowSpanMeta<T>(
       for (let j = start + 1; j < i; j++) {
         meta[j] = { show: false, rowspan: 0, label }
       }
+    }
+  }
+  return meta
+}
+
+export interface NormalRowSegmentMeta {
+  isCentral: boolean
+  showShared: boolean
+  sharedRowspan: number
+}
+
+/**
+ * Calcula los segmentos contiguos de filas normales para que columnas con
+ * `compartido_filas` (rowspan) nunca atraviesen una fila central (colspan total).
+ */
+export function buildNormalRowSegmentMeta(isCentralFlags: boolean[]): NormalRowSegmentMeta[] {
+  const meta: NormalRowSegmentMeta[] = new Array(isCentralFlags.length)
+  let i = 0
+  while (i < isCentralFlags.length) {
+    if (isCentralFlags[i]) {
+      meta[i] = { isCentral: true, showShared: false, sharedRowspan: 0 }
+      i++
+      continue
+    }
+    const start = i
+    while (i < isCentralFlags.length && !isCentralFlags[i]) {
+      i++
+    }
+    const span = i - start
+    meta[start] = { isCentral: false, showShared: true, sharedRowspan: span }
+    for (let j = start + 1; j < i; j++) {
+      meta[j] = { isCentral: false, showShared: false, sharedRowspan: 0 }
     }
   }
   return meta
@@ -455,6 +514,7 @@ export interface RepuestoSubfilaItem {
   nombre: string
   codigo: string
   grupo?: string
+  es_fila_central?: boolean
   medidas: Record<string, any>
   extra?: Record<string, any>
 }
@@ -473,6 +533,7 @@ export interface TablaConfiguracion {
   etiqueta_marca?: string
   subfilas?: string[]
   subfila_padres?: string[]
+  subfila_tipos?: Array<'normal' | 'central'>
 }
 
 export interface GrupoRepuesto {

@@ -12,6 +12,7 @@ import {
   type Motor,
   buildNextAutoRowLabel,
   buildNestedTableHeaders,
+  buildNormalRowSegmentMeta,
   buildRowSpanMeta,
   getOptionBadgeClassByIndex,
   normalizeLegacyRingDesign,
@@ -35,7 +36,8 @@ import {
   Check, 
   AlertCircle,
   Link2,
-  Unlink2
+  Unlink2,
+  Columns
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -117,6 +119,7 @@ export interface SubfilaFormRow {
   nombre: string
   codigo: string
   grupo?: string
+  es_fila_central?: boolean
   medidas: Record<string, any>
 }
 
@@ -718,15 +721,20 @@ const initSubfilasForGroup = (grp: GrupoRepuesto | null) => {
     return
   }
   const padres = grp.tabla_config?.subfila_padres || []
+  const tipos = grp.tabla_config?.subfila_tipos || []
   if (grp.tabla_config?.subfilas && grp.tabla_config.subfilas.length > 0) {
-    subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => ({
-      id: `sf-${idx}-${Date.now()}`,
-      tipo: name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-      nombre: name,
-      codigo: '',
-      grupo: (padres[idx] || '').trim(),
-      medidas: {}
-    }))
+    subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => {
+      const esCentral = tipos[idx] === 'central'
+      return {
+        id: `sf-${idx}-${Date.now()}`,
+        tipo: esCentral ? 'central' : name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+        nombre: name,
+        codigo: '',
+        grupo: esCentral ? '' : (padres[idx] || '').trim(),
+        es_fila_central: esCentral,
+        medidas: {}
+      }
+    })
   } else {
     const firstCol = (grp.tabla_config?.titulo_primera_columna || '').trim() || 'Componente'
     subfilasRows.value = [{
@@ -1084,6 +1092,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   // Cargar sub-filas multilínea si existen (incluyendo familias migradas como anillos_motor)
   const partSubfilas = (part.dimensiones as any)?.subfilas
   const padres = matchedGroup?.tabla_config?.subfila_padres || []
+  const tipos = matchedGroup?.tabla_config?.subfila_tipos || []
   const hydrateSubfilaMedidas = (rawMedidas: Record<string, any>): Record<string, any> => {
     const out: Record<string, any> = { ...rawMedidas }
     if (out.tipo_diseno !== undefined) {
@@ -1101,14 +1110,18 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   }
 
   if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
-    subfilasRows.value = partSubfilas.map((sf: any, idx: number) => ({
-      id: sf.id || `sf-${idx}-${Date.now()}`,
-      tipo: sf.tipo || `fila_${idx + 1}`,
-      nombre: sf.nombre || `Componente ${idx + 1}`,
-      codigo: sf.codigo || '',
-      grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (padres[idx] || ''),
-      medidas: hydrateSubfilaMedidas(sf.medidas || {})
-    }))
+    subfilasRows.value = partSubfilas.map((sf: any, idx: number) => {
+      const esCentral = sf.es_fila_central !== undefined ? Boolean(sf.es_fila_central) : (tipos[idx] === 'central')
+      return {
+        id: sf.id || `sf-${idx}-${Date.now()}`,
+        tipo: sf.tipo || (esCentral ? 'central' : `fila_${idx + 1}`),
+        nombre: sf.nombre || (esCentral ? 'Fila Central' : `Componente ${idx + 1}`),
+        codigo: esCentral ? '' : (sf.codigo || ''),
+        grupo: esCentral ? '' : ((sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (padres[idx] || '')),
+        es_fila_central: esCentral,
+        medidas: esCentral ? {} : hydrateSubfilaMedidas(sf.medidas || {})
+      }
+    })
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   } else if (matchedGroup?.tipo_vista === 'tabla' && ringRows.value.length > 0) {
@@ -1124,6 +1137,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
         nombre: r.posicion || `Componente ${idx + 1}`,
         codigo: (r.extra?.codigo as string) || (idx === 0 ? (partCodigoOem.value || '') : ''),
         grupo: padres[idx] || '',
+        es_fila_central: false,
         medidas: hydrateSubfilaMedidas({
           ...(r.extra || {}),
           diametro_cilindro_mm: r.extra?.diametro_cilindro_mm ?? dFallback,
@@ -1137,16 +1151,17 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   }
 
-  // Asegurar que columnas marcadas como "compartido_filas" muestren el primer valor válido en todas las filas (y en la fila 0)
+  // Asegurar que columnas marcadas como "compartido_filas" muestren el primer valor válido en todas las filas normales
   if (matchedGroup?.parametros && subfilasRows.value.length > 0) {
+    const normalRows = subfilasRows.value.filter(r => !r.es_fila_central)
     for (const p of matchedGroup.parametros) {
       if (!p.compartido_filas) continue
-      const firstValidRow = subfilasRows.value.find(
+      const firstValidRow = normalRows.find(
         row => row.medidas[p.clave] !== undefined && row.medidas[p.clave] !== null && row.medidas[p.clave] !== ''
       )
       const fallbackVal = firstValidRow ? firstValidRow.medidas[p.clave] : loadedParams[p.clave]
       if (fallbackVal !== undefined && fallbackVal !== null && fallbackVal !== '') {
-        for (const row of subfilasRows.value) {
+        for (const row of normalRows) {
           row.medidas[p.clave] = fallbackVal
         }
       }
@@ -1215,19 +1230,23 @@ const handleSavePart = async () => {
     // Sincronizar sub-filas para familias en tabla unificada (incluyendo Anillos y Cojinetes)
     if (isSubfilasGroup.value) {
       if (activeGroup.value?.parametros && subfilasRows.value.length > 0) {
-        for (const p of activeGroup.value.parametros) {
-          if (p.compartido_filas) {
-            propagateSharedSubfilaValue(p.clave, subfilasRows.value[0]?.medidas[p.clave])
+        const firstNormal = subfilasRows.value.find(r => !r.es_fila_central)
+        if (firstNormal) {
+          for (const p of activeGroup.value.parametros) {
+            if (p.compartido_filas) {
+              propagateSharedSubfilaValue(p.clave, firstNormal.medidas[p.clave])
+            }
           }
         }
       }
       dimensionesPayload.subfilas = subfilasRows.value.map((sf, idx) => ({
         id: sf.id,
-        tipo: sf.tipo,
+        tipo: sf.es_fila_central ? 'central' : sf.tipo,
         nombre: sf.nombre,
-        codigo: sf.codigo?.trim() || '',
-        grupo: (sf.grupo ?? activeTablaConfig.value.subfila_padres?.[idx] ?? '').trim(),
-        medidas: { ...sf.medidas }
+        codigo: sf.es_fila_central ? '' : (sf.codigo?.trim() || ''),
+        grupo: sf.es_fila_central ? '' : (sf.grupo ?? activeTablaConfig.value.subfila_padres?.[idx] ?? '').trim(),
+        ...(sf.es_fila_central ? { es_fila_central: true } : {}),
+        medidas: sf.es_fila_central ? {} : { ...sf.medidas }
       }))
       dimensionesPayload.marca_banner = subfilasMarcaBanner.value.trim() || (selectedMotor.value ? getBrandName(selectedMotor.value.fabricante_id) : '')
       dimensionesPayload.aplicacion_banner = subfilasAplicacionBanner.value.trim() || (selectedMotor.value?.denominacion_venta || selectedMotor.value?.nombre_comercial || '')
@@ -1245,15 +1264,16 @@ const handleSavePart = async () => {
         const readRingDesign = (m: Record<string, any> | undefined) =>
           resolveSubfilaColumnValue(m, { clave: 'tipo_diseno', etiqueta: 'Diseño' })
 
-        const dFirst = subfilasRows.value
+        const normalSubfilas = subfilasRows.value.filter(sf => !sf.es_fila_central)
+        const dFirst = normalSubfilas
           .map(r => readRingDiam(r.medidas))
           .find(v => v != null && !isNaN(Number(v)))
         const dNum = dFirst != null
           ? Number(dFirst)
           : (dimensionesPayload.diametro_cilindro_mm != null ? Number(dimensionesPayload.diametro_cilindro_mm) : null)
 
-        const mappedRings = subfilasRows.value.map((sf, idx) => {
-          const isLast = idx === subfilasRows.value.length - 1
+        const mappedRings = normalSubfilas.map((sf, idx) => {
+          const isLast = idx === normalSubfilas.length - 1
           const isOil = isLast || sf.nombre.toLowerCase().includes('aceite')
           const rawDiam = readRingDiam(sf.medidas)
           const rawH1 = readRingGrosor(sf.medidas)
@@ -1544,7 +1564,9 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
 
 const propagateSharedSubfilaValue = (clave: string, val: unknown) => {
   for (const row of subfilasRows.value) {
-    row.medidas[clave] = val
+    if (!row.es_fila_central) {
+      row.medidas[clave] = val
+    }
   }
 }
 
@@ -1574,15 +1596,15 @@ const selectSubfilaOption = (sf: SubfilaFormRow, param: ParametroTecnicoDefinici
 const addFormSubfila = () => {
   const count = subfilasRows.value.length + 1
   const nextLabel = buildNextAutoRowLabel(
-    subfilasRows.value.map(r => r.nombre),
+    subfilasRows.value.filter(r => !r.es_fila_central).map(r => r.nombre),
     activeTablaConfig.value.titulo_primera_columna
   )
   const sharedMedidas: Record<string, any> = {}
-  const firstRow = subfilasRows.value[0]
-  if (firstRow && activeGroup.value?.parametros) {
+  const firstNormalRow = subfilasRows.value.find(r => !r.es_fila_central)
+  if (firstNormalRow && activeGroup.value?.parametros) {
     for (const p of activeGroup.value.parametros) {
-      if (p.compartido_filas && firstRow.medidas[p.clave] !== undefined) {
-        sharedMedidas[p.clave] = firstRow.medidas[p.clave]
+      if (p.compartido_filas && firstNormalRow.medidas[p.clave] !== undefined) {
+        sharedMedidas[p.clave] = firstNormalRow.medidas[p.clave]
       }
     }
   }
@@ -1592,8 +1614,45 @@ const addFormSubfila = () => {
     nombre: nextLabel,
     codigo: '',
     grupo: '',
+    es_fila_central: false,
     medidas: sharedMedidas
   })
+}
+
+const addFormCentralSubfila = () => {
+  subfilasRows.value.push({
+    id: `sf-c-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    tipo: 'central',
+    nombre: '',
+    codigo: '',
+    grupo: '',
+    es_fila_central: true,
+    medidas: {}
+  })
+}
+
+const toggleFormSubfilaCentral = (idx: number) => {
+  const row = subfilasRows.value[idx]
+  if (!row) return
+  row.es_fila_central = !row.es_fila_central
+  if (row.es_fila_central) {
+    row.tipo = 'central'
+    row.grupo = ''
+    row.codigo = ''
+    row.medidas = {}
+  } else {
+    row.tipo = `fila_${idx + 1}`
+    if (activeGroup.value?.parametros) {
+      const firstNormalRow = subfilasRows.value.find((r, i) => i !== idx && !r.es_fila_central)
+      if (firstNormalRow) {
+        for (const p of activeGroup.value.parametros) {
+          if (p.compartido_filas && firstNormalRow.medidas[p.clave] !== undefined) {
+            row.medidas[p.clave] = firstNormalRow.medidas[p.clave]
+          }
+        }
+      }
+    }
+  }
 }
 
 const removeFormSubfila = (idx: number) => {
@@ -1620,6 +1679,7 @@ const syncExplicitSubfilaGroups = () => {
 
 const areAdjacentSubfilasJoined = (idx: number): boolean => {
   if (idx < 0 || idx >= subfilasRows.value.length - 1) return false
+  if (subfilasRows.value[idx]?.es_fila_central || subfilasRows.value[idx + 1]?.es_fila_central) return false
   const g1 = getEffectiveSubfilaGroup(idx)
   const g2 = getEffectiveSubfilaGroup(idx + 1)
   return Boolean(g1 && g1 === g2)
@@ -1627,6 +1687,7 @@ const areAdjacentSubfilasJoined = (idx: number): boolean => {
 
 const toggleSubfilaJoinNext = (idx: number) => {
   if (idx < 0 || idx >= subfilasRows.value.length - 1) return
+  if (subfilasRows.value[idx]?.es_fila_central || subfilasRows.value[idx + 1]?.es_fila_central) return
   syncExplicitSubfilaGroups()
   const g1 = getEffectiveSubfilaGroup(idx)
   const g2 = getEffectiveSubfilaGroup(idx + 1)
@@ -1703,12 +1764,21 @@ const subfilasActiveHeaders = computed(() => {
 const subfilasRowSpans = computed(() => {
   return buildRowSpanMeta(
     subfilasRows.value,
-    (sf, idx) => (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (activeTablaConfig.value.subfila_padres?.[idx] || '')
+    (sf, idx) => (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (activeTablaConfig.value.subfila_padres?.[idx] || ''),
+    sf => Boolean(sf.es_fila_central)
   )
 })
 
 const hasSubfilasRowGroups = computed<boolean>(() => {
   return subfilasRowSpans.value.some(m => m.label.length > 0)
+})
+
+const subfilasSharedMeta = computed(() => {
+  return buildNormalRowSegmentMeta(subfilasRows.value.map(sf => Boolean(sf.es_fila_central)))
+})
+
+const subfilasCentralColspan = computed<number>(() => {
+  return (hasSubfilasRowGroups.value ? 1 : 0) + 2 + (activeGroup.value?.parametros?.length || 0)
 })
 
 const activeGroupStructureSummary = computed<string>(() => {
@@ -1830,6 +1900,11 @@ const handleExcelPasteToSubfilas = (e: ClipboardEvent, targetSubfilaIdx: number 
 
     const cells = line.split('\t').map(c => c.trim())
     if (cells.length === 0) return
+
+    if (sf.es_fila_central) {
+      sf.nombre = cells.filter(Boolean).join(' ')
+      return
+    }
 
     let colStart = 0
     if (cells.length > params.length) {
@@ -2594,14 +2669,25 @@ onUnmounted(() => {
                       Filas y Medidas de la Tabla
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    @click="addFormSubfila"
-                    class="text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2.5 py-1 rounded-lg border border-cyan-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                    <span>+ Agregar Fila</span>
-                  </button>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      @click="addFormCentralSubfila"
+                      class="text-[11px] font-extrabold text-slate-700 hover:text-[#004B97] bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                      title="Agregar fila central que cubre toda la tabla"
+                    >
+                      <Columns class="w-3.5 h-3.5 text-[#004B97]" />
+                      <span>+ Fila Central</span>
+                    </button>
+                    <button
+                      type="button"
+                      @click="addFormSubfila"
+                      class="text-[11px] font-extrabold text-[#038391] hover:text-[#004B97] bg-white px-2.5 py-1 rounded-lg border border-cyan-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                      <span>+ Agregar Fila</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -2685,6 +2771,21 @@ onUnmounted(() => {
                         :key="sf.id"
                         class="hover:bg-slate-50/70 transition"
                       >
+                        <template v-if="sf.es_fila_central">
+                          <td
+                            :colspan="subfilasCentralColspan"
+                            class="px-3 py-1.5 border-r border-slate-200 bg-slate-50/70"
+                          >
+                            <input
+                              v-model="sf.nombre"
+                              type="text"
+                              placeholder="Contenido de la fila central (cubre todos los campos)..."
+                              class="w-full px-2.5 py-1 text-center font-bold text-xs text-slate-900 bg-white/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-[#04C4D9] rounded-lg focus:outline-none transition font-sans"
+                            />
+                          </td>
+                        </template>
+
+                        <template v-else>
                         <!-- Columna central agrupadora de filas (rowspan editable) -->
                         <td
                           v-if="hasSubfilasRowGroups && subfilasRowSpans[sfIdx]?.show"
@@ -2731,8 +2832,8 @@ onUnmounted(() => {
                           :key="`td-sf-${sf.id}-${param.id}`"
                         >
                           <td
-                            v-if="!param.compartido_filas || sfIdx === 0"
-                            :rowspan="param.compartido_filas ? subfilasRows.length : undefined"
+                            v-if="!param.compartido_filas || subfilasSharedMeta[sfIdx]?.showShared"
+                            :rowspan="param.compartido_filas ? (subfilasSharedMeta[sfIdx]?.sharedRowspan || 1) : undefined"
                             class="px-1.5 py-1.5 border-r border-slate-200"
                             :class="param.compartido_filas ? 'align-middle bg-cyan-50/20' : ''"
                           >
@@ -2791,11 +2892,23 @@ onUnmounted(() => {
                             />
                           </td>
                         </template>
+                        </template>
 
                         <td class="px-2 py-1.5 text-center">
                           <div class="flex items-center justify-center gap-1">
                             <button
-                              v-if="sfIdx < subfilasRows.length - 1"
+                              type="button"
+                              @click="toggleFormSubfilaCentral(sfIdx)"
+                              class="p-1 rounded transition cursor-pointer border"
+                              :class="sf.es_fila_central
+                                ? 'bg-[#004B97] text-white border-[#004B97]'
+                                : 'bg-white text-slate-400 border-slate-200 hover:text-[#004B97] hover:border-slate-300'"
+                              :title="sf.es_fila_central ? 'Fila central activa (clic para volver a fila normal)' : 'Convertir en fila central'"
+                            >
+                              <Columns class="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              v-if="sfIdx < subfilasRows.length - 1 && !sf.es_fila_central && !subfilasRows[sfIdx + 1]?.es_fila_central"
                               type="button"
                               @click="toggleSubfilaJoinNext(sfIdx)"
                               class="p-1 rounded transition cursor-pointer border"

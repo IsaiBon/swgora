@@ -10,6 +10,7 @@ import {
   type Equivalencia,
   type ParametroTecnicoDefinicion,
   buildNestedTableHeaders,
+  buildNormalRowSegmentMeta,
   buildRowSpanMeta,
   normalizeLegacyRingDesign,
   normalizeText,
@@ -941,20 +942,28 @@ export interface PartSubfilaDisplay {
   nombre: string
   codigo: string
   grupo?: string
+  es_fila_central?: boolean
   medidas: Record<string, any>
 }
 
 const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   const dims = part.dimensiones as any
   const configuredPadres = currentGroupDefinition.value?.tabla_config?.subfila_padres || []
+  const configuredTipos = currentGroupDefinition.value?.tabla_config?.subfila_tipos || []
   if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
-    return dims.subfilas.map((sf: any, idx: number) => ({
-      ...sf,
-      grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (configuredPadres[idx] || ''),
-      medidas: sf.medidas?.tipo_diseno !== undefined
-        ? { ...sf.medidas, tipo_diseno: normalizeLegacyRingDesign([sf.medidas.tipo_diseno]) }
-        : (sf.medidas || {})
-    }))
+    return dims.subfilas.map((sf: any, idx: number) => {
+      const esCentral = sf.es_fila_central !== undefined ? Boolean(sf.es_fila_central) : (configuredTipos[idx] === 'central')
+      return {
+        ...sf,
+        es_fila_central: esCentral,
+        grupo: esCentral ? '' : ((sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (configuredPadres[idx] || '')),
+        medidas: esCentral
+          ? {}
+          : (sf.medidas?.tipo_diseno !== undefined
+            ? { ...sf.medidas, tipo_diseno: normalizeLegacyRingDesign([sf.medidas.tipo_diseno]) }
+            : (sf.medidas || {}))
+      }
+    })
   }
   if (
     (Array.isArray(dims?.anillos) && dims.anillos.length > 0) ||
@@ -971,6 +980,7 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
         nombre: ring.posicion || `Anillo ${idx + 1}`,
         codigo: ring.codigo || (idx === 0 ? (part.codigo_oem || '') : ''),
         grupo: configuredPadres[idx] || '',
+        es_fila_central: false,
         medidas: {
           ...(ring.extra || {}),
           ...ring,
@@ -984,24 +994,40 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   }
   const configuredSubfilas = currentGroupDefinition.value?.tabla_config?.subfilas
   if (Array.isArray(configuredSubfilas) && configuredSubfilas.length > 0) {
-    return configuredSubfilas.map((nombre, idx) => ({
-      nombre,
-      codigo: idx === 0 ? (part.codigo_oem || '') : '',
-      grupo: configuredPadres[idx] || '',
-      medidas: dims || {}
-    }))
+    return configuredSubfilas.map((nombre, idx) => {
+      const esCentral = configuredTipos[idx] === 'central'
+      return {
+        nombre,
+        codigo: esCentral ? '' : (idx === 0 ? (part.codigo_oem || '') : ''),
+        grupo: esCentral ? '' : (configuredPadres[idx] || ''),
+        es_fila_central: esCentral,
+        medidas: esCentral ? {} : (dims || {})
+      }
+    })
   }
   return [
-    { nombre: 'Estándar', codigo: part.codigo_oem || '', grupo: configuredPadres[0] || '', medidas: dims || {} }
+    { nombre: 'Estándar', codigo: part.codigo_oem || '', grupo: configuredPadres[0] || '', es_fila_central: false, medidas: dims || {} }
   ]
 }
 
 const getPartSubfilaRowSpans = (part: RepuestoTecnico) => {
-  return buildRowSpanMeta(getPartSubfilas(part), sf => sf.grupo || '')
+  return buildRowSpanMeta(
+    getPartSubfilas(part),
+    sf => sf.grupo || '',
+    sf => Boolean(sf.es_fila_central)
+  )
+}
+
+const getPartSubfilaSharedMeta = (part: RepuestoTecnico) => {
+  return buildNormalRowSegmentMeta(getPartSubfilas(part).map(sf => Boolean(sf.es_fila_central)))
 }
 
 const partHasRowGroups = (part: RepuestoTecnico): boolean => {
   return getPartSubfilaRowSpans(part).some(m => m.label.length > 0)
+}
+
+const getPartMiniTableColspan = (part: RepuestoTecnico): number => {
+  return (partHasRowGroups(part) ? 1 : 0) + 1 + activeTableGroupColumns.value.length
 }
 
 const getPartDisplayOemCodes = (part: RepuestoTecnico): string[] => {
@@ -1105,6 +1131,7 @@ const getPartMiniTableCellRawValue = (
   if (rowVal !== undefined && rowVal !== null && rowVal !== '') return rowVal
   const allRows = getPartSubfilas(part)
   for (const r of allRows) {
+    if (r.es_fila_central) continue
     const candidate = resolveSubfilaColumnValue(r.medidas, col)
     if (candidate !== undefined && candidate !== null && candidate !== '') return candidate
   }
@@ -2232,6 +2259,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
             const dims = (r.dimensiones as any) || {}
             if (isPartEmbeddedTableFormat(r) || (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) || (Array.isArray(dims.anillos) && dims.anillos.length > 0)) {
               const matchedInRow = getPartSubfilas(r).some((sf) => {
+                if (sf.es_fila_central) return false
                 const sfVal = resolveSubfilaColumnValue(sf.medidas, paramDef)
                 if (sfVal === undefined || sfVal === null || sfVal === '') return false
                 if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
@@ -5108,6 +5136,16 @@ onUnmounted(() => {
                             :key="`mt-sf-${part.id}-${sfIdx}`"
                             class="hover:bg-slate-50/70 transition"
                           >
+                            <!-- Fila central: cubre todas las columnas de la tabla con el mismo diseño que las demás filas -->
+                            <td
+                              v-if="sf.es_fila_central"
+                              :colspan="getPartMiniTableColspan(part)"
+                              class="px-2.5 py-1.5 bg-slate-50/70 font-bold text-slate-800 text-center whitespace-nowrap"
+                            >
+                              {{ sf.nombre || '—' }}
+                            </td>
+
+                            <template v-else>
                             <!-- Columna agrupadora de filas (rowspan) cuando existe unión -->
                             <td
                               v-if="partHasRowGroups(part) && getPartSubfilaRowSpans(part)[sfIdx]?.show"
@@ -5134,8 +5172,8 @@ onUnmounted(() => {
                               :key="`mt-val-${part.id}-${sfIdx}-${col.id || cIdx}`"
                             >
                               <td
-                                v-if="!col.compartido_filas || sfIdx === 0"
-                                :rowspan="col.compartido_filas ? getPartSubfilas(part).length : undefined"
+                                v-if="!col.compartido_filas || getPartSubfilaSharedMeta(part)[sfIdx]?.showShared"
+                                :rowspan="col.compartido_filas ? (getPartSubfilaSharedMeta(part)[sfIdx]?.sharedRowspan || 1) : undefined"
                                 class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
                                 :class="[
                                   cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : '',
@@ -5161,6 +5199,7 @@ onUnmounted(() => {
                                   {{ getPartMiniTableCellValue(part, sf, col) }}
                                 </template>
                               </td>
+                            </template>
                             </template>
                           </tr>
                         </tbody>

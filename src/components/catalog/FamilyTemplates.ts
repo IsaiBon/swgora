@@ -35,6 +35,7 @@ export interface FamilyTemplate {
     modo_filas: 'cojinetes' | 'subfilas' | 'incremental' | 'libre'
     subfilas?: string[]
     subfila_padres?: string[]
+    subfila_tipos?: Array<'normal' | 'central'>
     subfilas_activas?: boolean
     tiene_cabecera_marca?: boolean
     usar_prefijo_titulo?: boolean
@@ -246,6 +247,7 @@ export function cloneExistingGrupoToTemplate(grupo: GrupoRepuesto): FamilyTempla
           modo_filas: grupo.tabla_config.modo_filas || 'subfilas',
           subfilas: Array.isArray(grupo.tabla_config.subfilas) ? [...grupo.tabla_config.subfilas] : undefined,
           subfila_padres: Array.isArray(grupo.tabla_config.subfila_padres) ? [...grupo.tabla_config.subfila_padres] : undefined,
+          subfila_tipos: Array.isArray(grupo.tabla_config.subfila_tipos) ? [...grupo.tabla_config.subfila_tipos] : undefined,
           subfilas_activas: grupo.tabla_config.subfilas_activas,
           tiene_cabecera_marca: grupo.tabla_config.tiene_cabecera_marca,
           usar_prefijo_titulo: grupo.tabla_config.usar_prefijo_titulo,
@@ -358,18 +360,24 @@ export function convertTemplateToGrupoInsert(
   if (template.tipo_vista === 'tabla') {
     const rawFilas = Array.isArray(template.tabla_config?.subfilas) ? template.tabla_config!.subfilas : []
     const rawPadres = Array.isArray(template.tabla_config?.subfila_padres) ? template.tabla_config!.subfila_padres : []
+    const rawTipos = Array.isArray(template.tabla_config?.subfila_tipos) ? template.tabla_config!.subfila_tipos : []
     const cleanFilas: string[] = []
     const cleanPadres: string[] = []
+    const cleanTipos: Array<'normal' | 'central'> = []
     rawFilas.forEach((s, idx) => {
       const trimmed = (s || '').trim()
-      if (trimmed) {
-        cleanFilas.push(trimmed)
-        cleanPadres.push((rawPadres[idx] || '').trim())
+      const tipo: 'normal' | 'central' = rawTipos[idx] === 'central' ? 'central' : 'normal'
+      if (trimmed || tipo === 'central') {
+        cleanFilas.push(trimmed || 'Fila Central')
+        cleanPadres.push(tipo === 'central' ? '' : (rawPadres[idx] || '').trim())
+        cleanTipos.push(tipo)
       }
     })
     const finalFilas = cleanFilas.length > 0 ? cleanFilas : ['Fila 1']
     const finalPadres = cleanFilas.length > 0 ? cleanPadres : ['']
+    const finalTipos = cleanFilas.length > 0 ? cleanTipos : (['normal'] as Array<'normal' | 'central'>)
     const hasAnyGroup = finalPadres.some(p => p.length > 0)
+    const hasAnyCentral = finalTipos.some(t => t === 'central')
     const modo = template.tabla_config?.modo_filas || 'subfilas'
     tablaConfig = {
       titulo_primera_columna: template.tabla_config?.titulo_primera_columna?.trim() || 'Componente',
@@ -377,6 +385,7 @@ export function convertTemplateToGrupoInsert(
       modo_filas: modo,
       subfilas: finalFilas,
       subfila_padres: hasAnyGroup ? finalPadres : undefined,
+      subfila_tipos: hasAnyCentral ? finalTipos : undefined,
       subfilas_activas: modo === 'subfilas' || modo === 'cojinetes' || template.tabla_config?.subfilas_activas,
       tiene_cabecera_marca: template.tabla_config?.tiene_cabecera_marca ?? false,
       usar_prefijo_titulo: template.tabla_config?.usar_prefijo_titulo,

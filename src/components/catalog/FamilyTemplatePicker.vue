@@ -10,6 +10,7 @@ import {
 } from './FamilyTemplates'
 import {
   buildNextAutoRowLabel,
+  buildNormalRowSegmentMeta,
   buildRowClusters,
   buildRowSpanMeta,
   getOptionBadgeClassByIndex,
@@ -189,12 +190,15 @@ const onSubfilaDrop = (targetIdx: number) => {
   if (fromIdx === null || fromIdx === targetIdx) return
   const arr = ensureTablaSubfilas()
   const padres = ensureTablaSubfilaPadres()
+  const tipos = ensureTablaSubfilaTipos()
   if (fromIdx < 0 || fromIdx >= arr.length) return
   const [moved] = arr.splice(fromIdx, 1)
   const [movedParent] = padres.splice(fromIdx, 1)
+  const [movedTipo] = tipos.splice(fromIdx, 1)
   if (moved !== undefined) {
     arr.splice(targetIdx, 0, moved)
     padres.splice(targetIdx, 0, movedParent || '')
+    tipos.splice(targetIdx, 0, movedTipo === 'central' ? 'central' : 'normal')
   }
 }
 
@@ -324,6 +328,22 @@ const ensureTablaSubfilaPadres = (): string[] => {
   return cfg.subfila_padres
 }
 
+const ensureTablaSubfilaTipos = (): Array<'normal' | 'central'> => {
+  const rows = ensureTablaSubfilas()
+  const cfg = currentTemplate.value.tabla_config!
+  if (!Array.isArray(cfg.subfila_tipos)) {
+    cfg.subfila_tipos = rows.map(() => 'normal')
+  } else {
+    while (cfg.subfila_tipos.length < rows.length) cfg.subfila_tipos.push('normal')
+    if (cfg.subfila_tipos.length > rows.length) cfg.subfila_tipos.length = rows.length
+  }
+  return cfg.subfila_tipos
+}
+
+const isRowCentral = (idx: number): boolean => {
+  return currentTemplate.value.tabla_config?.subfila_tipos?.[idx] === 'central'
+}
+
 const firstColumnTitle = computed({
   get(): string {
     return currentTemplate.value.tabla_config?.titulo_primera_columna ?? 'Componente'
@@ -352,15 +372,39 @@ const unifiedRows = computed<string[]>(() => {
 const updateUnifiedRowName = (idx: number, val: string) => {
   const arr = ensureTablaSubfilas()
   ensureTablaSubfilaPadres()
+  ensureTablaSubfilaTipos()
   arr[idx] = val
 }
 
 const addUnifiedRow = () => {
   const arr = ensureTablaSubfilas()
   const padres = ensureTablaSubfilaPadres()
+  const tipos = ensureTablaSubfilaTipos()
   const nextLabel = buildNextAutoRowLabel(arr, currentTemplate.value.tabla_config?.titulo_primera_columna, true)
   arr.push(nextLabel)
   padres.push('')
+  tipos.push('normal')
+}
+
+const addCentralRow = () => {
+  const arr = ensureTablaSubfilas()
+  const padres = ensureTablaSubfilaPadres()
+  const tipos = ensureTablaSubfilaTipos()
+  arr.push('Encabezado / Aplicación')
+  padres.push('')
+  tipos.push('central')
+}
+
+const toggleRowCentralType = (idx: number) => {
+  const padres = ensureTablaSubfilaPadres()
+  const tipos = ensureTablaSubfilaTipos()
+  if (idx < 0 || idx >= tipos.length) return
+  if (tipos[idx] === 'central') {
+    tipos[idx] = 'normal'
+  } else {
+    tipos[idx] = 'central'
+    padres[idx] = ''
+  }
 }
 
 const removeUnifiedRow = (index: number) => {
@@ -370,12 +414,15 @@ const removeUnifiedRow = (index: number) => {
   if (Array.isArray(currentTemplate.value.tabla_config?.subfila_padres)) {
     currentTemplate.value.tabla_config!.subfila_padres.splice(index, 1)
   }
+  if (Array.isArray(currentTemplate.value.tabla_config?.subfila_tipos)) {
+    currentTemplate.value.tabla_config!.subfila_tipos.splice(index, 1)
+  }
 }
 
 // --- AGRUPACIÓN DE FILAS EN BLOQUES UNIDOS ("CENTRAR" + COLUMNA CENTRAL DE FILAS) ---
 const rowClusterGroups = computed(() => {
   const padres = currentTemplate.value.tabla_config?.subfila_padres || []
-  return buildRowClusters(unifiedRows.value, (_, i) => padres[i])
+  return buildRowClusters(unifiedRows.value, (_, i) => padres[i], (_, i) => isRowCentral(i))
 })
 
 const hasGroupedRows = computed<boolean>(() => {
@@ -385,10 +432,19 @@ const hasGroupedRows = computed<boolean>(() => {
 const previewRowSpans = computed(() => {
   if (!hasGroupedRows.value) return []
   const padres = currentTemplate.value.tabla_config?.subfila_padres || []
-  return buildRowSpanMeta(previewSampleRows.value, (_, i) => padres[i])
+  return buildRowSpanMeta(previewSampleRows.value, (_, i) => padres[i], (_, i) => isRowCentral(i))
+})
+
+const previewSharedRowMeta = computed(() => {
+  return buildNormalRowSegmentMeta(previewSampleRows.value.map((_, i) => isRowCentral(i)))
+})
+
+const previewTotalCols = computed(() => {
+  return (hasGroupedRows.value ? 1 : 0) + 1 + currentTemplate.value.columnas.length
 })
 
 const areAdjacentRowsJoined = (leftIdx: number): boolean => {
+  if (isRowCentral(leftIdx) || isRowCentral(leftIdx + 1)) return false
   const padres = currentTemplate.value.tabla_config?.subfila_padres || []
   const left = (padres[leftIdx] || '').trim()
   const right = (padres[leftIdx + 1] || '').trim()
@@ -399,6 +455,7 @@ const toggleJoinAdjacentRows = (leftIdx: number) => {
   const rows = ensureTablaSubfilas()
   const padres = ensureTablaSubfilaPadres()
   if (leftIdx < 0 || leftIdx >= rows.length - 1) return
+  if (isRowCentral(leftIdx) || isRowCentral(leftIdx + 1)) return
 
   if (areAdjacentRowsJoined(leftIdx)) {
     const shared = (padres[leftIdx] || '').trim()
@@ -975,14 +1032,26 @@ const handleSave = () => {
             </p>
           </div>
 
-          <button
-            type="button"
-            @click="addUnifiedRow"
-            class="px-3.5 py-1.5 bg-[#004B97] hover:bg-[#003875] text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95 self-start sm:self-auto shrink-0"
-          >
-            <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-            <span>+ Agregar Fila</span>
-          </button>
+          <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <button
+              type="button"
+              @click="addCentralRow"
+              class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95"
+              title="Agregar una fila horizontal que cubra todas las columnas de la tabla"
+            >
+              <Columns class="w-3.5 h-3.5 text-[#004B97]" />
+              <span>+ Fila Central</span>
+            </button>
+
+            <button
+              type="button"
+              @click="addUnifiedRow"
+              class="px-3.5 py-1.5 bg-[#004B97] hover:bg-[#003875] text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95"
+            >
+              <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <span>+ Agregar Fila</span>
+            </button>
+          </div>
         </div>
 
         <!-- Editor editable de la 1ra columna y nombre columna central de filas -->
@@ -1065,26 +1134,42 @@ const handleSave = () => {
                       @drop.prevent="onSubfilaDrop(item.rowIdx)"
                       @dragend="onSubfilaDragEnd"
                       :class="[
-                        'flex items-center gap-1.5 bg-white border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
+                        'flex items-center gap-1.5 border-2 px-2.5 py-1.5 rounded-xl shadow-2xs transition select-none cursor-grab active:cursor-grabbing',
                         draggedSubfilaIdx === item.rowIdx
-                          ? 'opacity-50 border-[#04C4D9] scale-95'
+                          ? 'opacity-50 border-[#04C4D9] scale-95 bg-white'
                           : (dragOverSubfilaIdx === item.rowIdx
                             ? 'border-[#004B97] ring-2 ring-[#04C4D9]/40 bg-cyan-50/40'
-                            : (rCluster.isGrouped
-                              ? 'border-[#04C4D9]/70 hover:border-[#004B97]'
-                              : 'border-slate-300 hover:border-[#04C4D9]'))
+                            : (isRowCentral(item.rowIdx)
+                              ? 'bg-slate-50 border-[#004B97]/50 hover:border-[#004B97]'
+                              : (rCluster.isGrouped
+                                ? 'bg-white border-[#04C4D9]/70 hover:border-[#004B97]'
+                                : 'bg-white border-slate-300 hover:border-[#04C4D9]')))
                       ]"
                     >
                       <GripVertical class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span class="w-4 h-4 rounded-full bg-[#004B97] text-white text-[9px] font-mono font-bold flex items-center justify-center shrink-0">
                         {{ item.rowIdx + 1 }}
                       </span>
+                      <button
+                        type="button"
+                        @click="toggleRowCentralType(item.rowIdx)"
+                        :class="[
+                          'px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tight border transition cursor-pointer shrink-0',
+                          isRowCentral(item.rowIdx)
+                            ? 'bg-[#004B97] text-white border-[#004B97]'
+                            : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                        ]"
+                        :title="isRowCentral(item.rowIdx) ? 'Fila central: cubre toda la tabla (clic para volver a fila normal)' : 'Convertir en fila central (cubre todos los campos)'"
+                      >
+                        {{ isRowCentral(item.rowIdx) ? 'Central' : 'Fila' }}
+                      </button>
                       <input
                         :value="item.name"
                         @input="updateUnifiedRowName(item.rowIdx, ($event.target as HTMLInputElement).value)"
                         type="text"
-                        class="w-32 text-xs font-black text-slate-800 bg-transparent focus:outline-none"
-                        placeholder="Nombre de fila"
+                        :class="isRowCentral(item.rowIdx) ? 'w-44' : 'w-32'"
+                        class="text-xs font-black text-slate-800 bg-transparent focus:outline-none"
+                        :placeholder="isRowCentral(item.rowIdx) ? 'Contenido fila central...' : 'Nombre de fila'"
                       />
                       <button
                         v-if="unifiedRows.length > 1"
@@ -1119,7 +1204,7 @@ const handleSave = () => {
 
               <!-- Puente con botón CENTRAR entre filas o grupos cercanos -->
               <div
-                v-if="rcIdx < rowClusterGroups.length - 1"
+                v-if="rcIdx < rowClusterGroups.length - 1 && !isRowCentral(rCluster.endIdx) && !isRowCentral(rCluster.endIdx + 1)"
                 class="flex items-center px-1 shrink-0"
               >
                 <span class="w-2 border-t-2 border-dotted border-slate-300"></span>
@@ -1692,29 +1777,37 @@ const handleSave = () => {
                             class="hover:bg-slate-50/70 transition"
                           >
                             <td
-                              v-if="hasGroupedRows && previewRowSpans[rIdx]?.show"
-                              :rowspan="previewRowSpans[rIdx]?.rowspan || 1"
-                              class="px-2.5 py-1 font-black text-[10px] text-center align-middle border-r border-slate-200 uppercase"
-                              :class="previewRowSpans[rIdx]?.label ? 'bg-cyan-50/70 text-[#004B97]' : 'bg-slate-50/40 text-slate-400'"
+                              v-if="isRowCentral(rIdx)"
+                              :colspan="previewTotalCols"
+                              class="px-2.5 py-1.5 bg-slate-50/70 font-bold text-slate-800 text-center whitespace-nowrap"
                             >
-                              {{ previewRowSpans[rIdx]?.label || '—' }}
-                            </td>
-                            <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
                               {{ rowLabel }}
                             </td>
-                            <template
-                              v-for="(col, colIdx) in currentTemplate.columnas"
-                              :key="`mt-val-${rIdx}-${colIdx}`"
-                            >
+                            <template v-else>
                               <td
-                                v-if="!col.compartido_filas || rIdx === 0"
-                                :rowspan="col.compartido_filas ? previewSampleRows.length : undefined"
-                                class="px-2.5 py-1 font-mono font-bold text-slate-800 whitespace-nowrap"
-                                :class="[
-                                  colIdx < currentTemplate.columnas.length - 1 ? 'border-r border-slate-200' : '',
-                                  col.compartido_filas ? 'align-middle bg-cyan-50/20 text-[#004B97]' : ''
-                                ]"
+                                v-if="hasGroupedRows && previewRowSpans[rIdx]?.show"
+                                :rowspan="previewRowSpans[rIdx]?.rowspan || 1"
+                                class="px-2.5 py-1 font-black text-[10px] text-center align-middle border-r border-slate-200 uppercase"
+                                :class="previewRowSpans[rIdx]?.label ? 'bg-cyan-50/70 text-[#004B97]' : 'bg-slate-50/40 text-slate-400'"
                               >
+                                {{ previewRowSpans[rIdx]?.label || '—' }}
+                              </td>
+                              <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
+                                {{ rowLabel }}
+                              </td>
+                              <template
+                                v-for="(col, colIdx) in currentTemplate.columnas"
+                                :key="`mt-val-${rIdx}-${colIdx}`"
+                              >
+                                <td
+                                  v-if="!col.compartido_filas || previewSharedRowMeta[rIdx]?.showShared"
+                                  :rowspan="col.compartido_filas ? (previewSharedRowMeta[rIdx]?.sharedRowspan || 1) : undefined"
+                                  class="px-2.5 py-1 font-mono font-bold text-slate-800 whitespace-nowrap"
+                                  :class="[
+                                    colIdx < currentTemplate.columnas.length - 1 ? 'border-r border-slate-200' : '',
+                                    col.compartido_filas ? 'align-middle bg-cyan-50/20 text-[#004B97]' : ''
+                                  ]"
+                                >
                                 <span
                                   v-if="col.tipo_dato === 'booleano'"
                                   class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black"
@@ -1733,8 +1826,9 @@ const handleSave = () => {
                                 <span v-else-if="(col.tipo_dato || 'numero') === 'numero'">
                                   {{ (45.00 + rIdx * 0.25).toFixed(2) }}
                                 </span>
-                                <span v-else class="text-slate-400 italic">—</span>
-                              </td>
+                                  <span v-else class="text-slate-400 italic">—</span>
+                                </td>
+                              </template>
                             </template>
                           </tr>
                         </tbody>
