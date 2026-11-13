@@ -24,6 +24,7 @@ import {
 } from 'lucide-vue-next'
 import {
   normalizarNombreRuta,
+  parseIndependentRole,
   rutasService,
   type RutaSucursal,
 } from '@/services/rutasService'
@@ -84,7 +85,8 @@ const usuariosDisponiblesParaRuta = computed(() => {
     (u) =>
       u.estado !== 'Inactivo' &&
       u.id !== authStore.user?.id &&
-      normalizeRole(u.rol) !== 'Administrador'
+      normalizeRole(u.rol) !== 'Administrador' &&
+      !parseIndependentRole(u.rol).isIndependent
   )
 })
 

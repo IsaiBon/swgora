@@ -3,11 +3,18 @@ import { ref, computed } from 'vue'
 import { authService } from '@/services/authService'
 import { perfilesService } from '@/services/perfilesService'
 import { registrarCredencialUsuario } from '@/services/usuariosService'
-import { parseSubAdminRole, rutasService } from '@/services/rutasService'
+import {
+  parseSubAdminRole,
+  parseIndependentRole,
+  getIndependentTenantForUser,
+  setActiveTenantContext,
+  rutasService,
+} from '@/services/rutasService'
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js'
 
 export type UserRole =
   | 'Administrador'
+  | 'Taller Independiente'
   | 'Sub-Administrador'
   | 'Operador'
   | 'Consultor'
@@ -19,6 +26,9 @@ export interface User {
   email: string
   role: UserRole
   rawRole?: string
+  isIndependent?: boolean
+  tenantId?: string
+  tenantWorkshopName?: string
   rutaId?: string
   rutaCodigo?: string
   rutaNombre?: string
@@ -32,8 +42,15 @@ const STORAGE_KEY = 'swgora_active_user'
  */
 export function normalizeRole(
   role?: string | null
-): 'Administrador' | 'Sub-Administrador' | 'Operador' | 'Consultor' {
+):
+  | 'Administrador'
+  | 'Taller Independiente'
+  | 'Sub-Administrador'
+  | 'Operador'
+  | 'Consultor' {
   if (!role) return 'Consultor'
+  const indInfo = parseIndependentRole(role)
+  if (indInfo.isIndependent) return 'Taller Independiente'
   const subAdminInfo = parseSubAdminRole(role)
   if (subAdminInfo.isSubAdmin) return 'Sub-Administrador'
   const lower = role.toLowerCase().trim()
@@ -56,6 +73,7 @@ export function getDefaultRouteForRole(role: string): string {
   const norm = normalizeRole(role)
   switch (norm) {
     case 'Administrador':
+    case 'Taller Independiente':
       return '/dashboard'
     case 'Sub-Administrador':
     case 'Operador':
@@ -70,6 +88,7 @@ export function getDefaultRouteForRole(role: string): string {
 /**
  * Determina si una ruta es accesible por un rol determinado
  * - Administrador: Acceso completo a todo el sistema (incluyendo /rutas y /usuarios)
+ * - Taller Independiente: Sistema propio aislado (Dashboard, Órdenes, Clientes, Mi Taller y Catálogo compartido; sin /usuarios ni /rutas)
  * - Sub-Administrador: Administra todas las órdenes de trabajo, clientes y catálogo pero SOLO de su ruta asignada
  * - Operador: Solo puede ver Órdenes y Catálogo (además de login)
  * - Consultor: Solo puede ver Catálogo (además de login). NUNCA Órdenes ni Clientes ni Dashboard.
@@ -77,6 +96,16 @@ export function getDefaultRouteForRole(role: string): string {
 export function isRouteAllowedForRole(path: string, role: string): boolean {
   const norm = normalizeRole(role)
   if (norm === 'Administrador') return true
+  if (norm === 'Taller Independiente') {
+    return (
+      path.startsWith('/dashboard') ||
+      path.startsWith('/ordenes') ||
+      path.startsWith('/catalogo') ||
+      path.startsWith('/clientes') ||
+      path.startsWith('/taller') ||
+      path.startsWith('/login')
+    )
+  }
   if (norm === 'Sub-Administrador') {
     return (
       path.startsWith('/ordenes') ||
@@ -108,6 +137,7 @@ function persistUser(u: User | null) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u))
     } else {
       localStorage.removeItem(STORAGE_KEY)
+      setActiveTenantContext(null)
     }
   } catch (e) {
     console.warn('[AuthStore] Error guardando usuario:', e)
@@ -127,8 +157,17 @@ export const useAuthStore = defineStore('auth', () => {
     () => normalizeRole(user.value?.role) === 'Administrador'
   )
 
+  const isIndependentAdmin = computed(
+    () => normalizeRole(user.value?.role) === 'Taller Independiente'
+  )
+
   const isSubAdmin = computed(
     () => normalizeRole(user.value?.role) === 'Sub-Administrador'
+  )
+
+  const activeTenantId = computed(() => user.value?.tenantId || null)
+  const activeTenantWorkshopName = computed(
+    () => user.value?.tenantWorkshopName || null
   )
 
   const activeRutaId = computed(() => user.value?.rutaId || null)
@@ -229,11 +268,39 @@ export const useAuthStore = defineStore('auth', () => {
 
     const rawRole = perfil.rol || sbUser.user_metadata?.role || 'consultor'
     const normalized = normalizeRole(rawRole)
-    const assignedRuta = rutasService.getRutaForUser({
+    const indTenant = getIndependentTenantForUser({
       id: perfil.id,
       email: perfil.email,
       rawRole,
     })
+    const workshopName = indTenant.isIndependent
+      ? indTenant.tallerNombre || `Taller de ${perfil.nombre}`
+      : undefined
+
+    const assignedRuta = indTenant.isIndependent
+      ? null
+      : rutasService.getRutaForUser({
+          id: perfil.id,
+          email: perfil.email,
+          rawRole,
+        })
+
+    if (indTenant.isIndependent) {
+      setActiveTenantContext({
+        isIndependent: true,
+        tenantId: indTenant.tenantId || null,
+        tallerNombre: workshopName,
+        userId: perfil.id,
+        userName: perfil.nombre,
+      })
+    } else {
+      setActiveTenantContext({
+        isIndependent: false,
+        tenantId: null,
+        userId: perfil.id,
+        userName: perfil.nombre,
+      })
+    }
 
     const u: User = {
       id: perfil.id,
@@ -241,6 +308,9 @@ export const useAuthStore = defineStore('auth', () => {
       email: perfil.email,
       role: normalized,
       rawRole,
+      isIndependent: indTenant.isIndependent,
+      tenantId: indTenant.tenantId,
+      tenantWorkshopName: workshopName,
       rutaId: assignedRuta?.id,
       rutaCodigo: assignedRuta?.codigo,
       rutaNombre: assignedRuta?.nombre,
@@ -530,7 +600,10 @@ export const useAuthStore = defineStore('auth', () => {
     session,
     isAuthenticated,
     isGlobalAdmin,
+    isIndependentAdmin,
     isSubAdmin,
+    activeTenantId,
+    activeTenantWorkshopName,
     activeRutaId,
     activeRutaCodigo,
     activeRutaNombre,

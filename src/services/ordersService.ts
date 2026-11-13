@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import {
   encodeTallerCodigoWithRoute,
   decodeTallerCodigoWithRoute,
+  getActiveTenantContext,
   rutasService,
 } from './rutasService'
 
@@ -88,6 +89,8 @@ export interface Order {
   rutaId?: string
   rutaCodigo?: string
   rutaNombre?: string
+  // Aislamiento multi-taller independiente
+  tenantId?: string
   // Atributos de compatibilidad
   component?: RectificationBlock
   engine?: string
@@ -382,6 +385,22 @@ function mapDbToOrder(row: any): Order {
     )
   }
 
+  const resolvedTenantId =
+    decodedTaller.tenantId ||
+    (row.tenant_id ? String(row.tenant_id) : undefined) ||
+    rutasService.getOrderTenant(
+      row.id ? String(row.id) : undefined,
+      row.numero_orden
+    )
+
+  if (resolvedTenantId && row.id) {
+    rutasService.setOrderTenant(
+      String(row.id),
+      row.numero_orden,
+      resolvedTenantId
+    )
+  }
+
   return {
     id: String(row.id),
     orderNumber: row.numero_orden || '#00000',
@@ -405,6 +424,7 @@ function mapDbToOrder(row: any): Order {
     rutaId: resolvedRoute?.rutaId,
     rutaCodigo: resolvedRoute?.rutaCodigo,
     rutaNombre: resolvedRoute?.rutaNombre,
+    tenantId: resolvedTenantId,
     component: (row.componente as RectificationBlock) || undefined,
     engine: row.motor || undefined,
     operations: Array.isArray(row.operaciones) ? row.operaciones : [],
@@ -440,9 +460,24 @@ function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
     rutasService.setOrderRoute(order.id, order.orderNumber, routeMeta)
   }
 
+  const activeTenantId = getActiveTenantContext().tenantId
+  const effectiveTenantId =
+    order.tenantId !== undefined
+      ? order.tenantId
+      : activeTenantId || undefined
+
+  if (order.id) {
+    rutasService.setOrderTenant(
+      order.id,
+      order.orderNumber,
+      effectiveTenantId || null
+    )
+  }
+
   const encodedTallerCodigo = encodeTallerCodigoWithRoute(
     order.workshopCode,
-    routeMeta
+    routeMeta,
+    effectiveTenantId
   )
 
   return {
@@ -482,25 +517,40 @@ function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
   }
 }
 
+function getOrdersStorageKey(): string {
+  const tenantId = getActiveTenantContext().tenantId
+  return tenantId ? `${LOCAL_STORAGE_KEY}__${tenantId}` : LOCAL_STORAGE_KEY
+}
+
 function getStoredOrders(): Order[] {
-  if (typeof window === 'undefined') return [...initialMockOrders]
+  const activeTenantId = getActiveTenantContext().tenantId
+  if (typeof window === 'undefined') {
+    return activeTenantId ? [] : [...initialMockOrders]
+  }
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
+    const raw = localStorage.getItem(getOrdersStorageKey())
     if (!raw) {
-      return [...initialMockOrders]
+      return activeTenantId ? [] : [...initialMockOrders]
     }
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [...initialMockOrders]
+    if (!Array.isArray(parsed)) {
+      return activeTenantId ? [] : [...initialMockOrders]
+    }
+    if (activeTenantId) {
+      return parsed.filter((o: Order) => o.tenantId === activeTenantId)
+    }
+    const ownOrders = parsed.filter((o: Order) => !o.tenantId)
+    return ownOrders.length > 0 ? ownOrders : [...initialMockOrders]
   } catch (e) {
     console.warn('[OrdersService] Error leyendo localStorage, usando memoria:', e)
-    return [...initialMockOrders]
+    return activeTenantId ? [] : [...initialMockOrders]
   }
 }
 
 function saveStoredOrders(orders: Order[]): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(orders))
+    localStorage.setItem(getOrdersStorageKey(), JSON.stringify(orders))
   } catch (e) {
     console.error('[OrdersService] Error guardando en localStorage:', e)
   }
@@ -508,12 +558,20 @@ function saveStoredOrders(orders: Order[]): void {
 
 const OPERATIONS_CATALOG_STORAGE_KEY = 'swgora_operations_catalog_v2'
 
+function getOperationsCatalogStorageKey(): string {
+  const tenantId = getActiveTenantContext().tenantId
+  return tenantId
+    ? `${OPERATIONS_CATALOG_STORAGE_KEY}__${tenantId}`
+    : OPERATIONS_CATALOG_STORAGE_KEY
+}
+
 function getStoredOperationsCatalog(): FormOperationItem[] {
   if (typeof window === 'undefined') return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
   try {
-    const raw = localStorage.getItem(OPERATIONS_CATALOG_STORAGE_KEY)
+    const storageKey = getOperationsCatalogStorageKey()
+    const raw = localStorage.getItem(storageKey)
     if (!raw) {
-      localStorage.setItem(OPERATIONS_CATALOG_STORAGE_KEY, JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
+      localStorage.setItem(storageKey, JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
       return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
     }
     const parsed = JSON.parse(raw)
@@ -530,7 +588,7 @@ function getStoredOperationsCatalog(): FormOperationItem[] {
 function saveStoredOperationsCatalog(catalog: FormOperationItem[]): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(OPERATIONS_CATALOG_STORAGE_KEY, JSON.stringify(catalog))
+    localStorage.setItem(getOperationsCatalogStorageKey(), JSON.stringify(catalog))
   } catch (e) {
     console.error('[OrdersService] Error guardando catálogo de operaciones:', e)
   }
@@ -553,7 +611,11 @@ export const ordersService = {
       }
 
       if (data) {
-        let remoteOrders = data.map(mapDbToOrder)
+        const activeTenantId = getActiveTenantContext().tenantId
+        const allRemoteOrders = data.map(mapDbToOrder)
+        let remoteOrders = allRemoteOrders.filter((o) =>
+          activeTenantId ? o.tenantId === activeTenantId : !o.tenantId
+        )
 
         // Sincronizar cualquier orden o cotización local pendiente hacia Supabase antes de reemplazar caché
         const localOrders = getStoredOrders()
@@ -587,7 +649,7 @@ export const ordersService = {
           remoteOrders = [...syncedOrders, ...remoteOrders]
         }
 
-        if (remoteOrders.length > 0) {
+        if (remoteOrders.length > 0 || activeTenantId) {
           saveStoredOrders(remoteOrders)
         }
         return remoteOrders
@@ -611,7 +673,14 @@ export const ordersService = {
         .maybeSingle()
 
       if (!error && data) {
+        const activeTenantId = getActiveTenantContext().tenantId
         const order = mapDbToOrder(data)
+        const belongsToTenant = activeTenantId
+          ? order.tenantId === activeTenantId
+          : !order.tenantId
+        if (!belongsToTenant) {
+          return undefined
+        }
         const currentOrders = getStoredOrders()
         const idx = currentOrders.findIndex(o => o.id === order.id)
         if (idx >= 0) currentOrders[idx] = order
@@ -632,14 +701,18 @@ export const ordersService = {
    */
   async getNextOrderNumber(): Promise<string> {
     let highest = 0
+    const activeTenantId = getActiveTenantContext().tenantId
 
     try {
       const { data } = await supabase
         .from('ordenes_trabajo')
-        .select('numero_orden')
+        .select('numero_orden, taller_codigo')
 
       if (data && data.length > 0) {
         for (const row of data) {
+          const rowTenantId =
+            decodeTallerCodigoWithRoute(row.taller_codigo).tenantId || null
+          if (rowTenantId !== activeTenantId) continue
           const match = String(row.numero_orden || '').replace(/[^0-9]/g, '')
           const num = match ? parseInt(match, 10) : 0
           if (num > highest) highest = num
@@ -667,6 +740,7 @@ export const ordersService = {
     const nextNum = orderData.orderNumber || await this.getNextOrderNumber()
     const newOrder: Order = {
       ...orderData,
+      tenantId: orderData.tenantId ?? (getActiveTenantContext().tenantId || undefined),
       id: orderData.id || `ord-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       orderNumber: nextNum,
       createdAt: new Date().toISOString(),
@@ -794,6 +868,7 @@ export const ordersService = {
       rutaId: existing.rutaId,
       rutaCodigo: existing.rutaCodigo,
       rutaNombre: existing.rutaNombre,
+      tenantId: existing.tenantId,
       component: existing.component,
       engine: existing.engine,
       observations: existing.observations || '',

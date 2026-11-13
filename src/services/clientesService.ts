@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getActiveTenantContext } from './rutasService'
 
 export type ClientType = 'Cliente' | 'Tallerista'
 export type ClientStatus = 'Activo' | 'Inactivo'
@@ -11,6 +12,7 @@ export interface Cliente {
   direccion?: string | null
   tipo: ClientType
   estado: ClientStatus
+  tenantId?: string
   especificaciones_tecnicas?: Record<string, any>
   created_at: string
   updated_at?: string
@@ -33,6 +35,53 @@ export interface ClienteFilters {
 
 const LOCAL_STORAGE_KEY = 'swgora_clientes_cache_v1'
 const LEGACY_STORAGE_KEY = 'jrblanco_supabase_clientes_cache_v5'
+const CLIENT_TENANT_CODE_SEP = '__'
+
+function encodeClientCodeForDb(
+  cleanCode: string,
+  tenantId?: string | null
+): string {
+  const clean = (cleanCode || '').trim()
+  if (!tenantId) return clean
+  return `${tenantId}${CLIENT_TENANT_CODE_SEP}${clean}`
+}
+
+function decodeClientRowTenant(item: any): {
+  cleanCode: string
+  tenantId: string | null
+} {
+  const rawCode = String(item?.codigo || '')
+  if (rawCode.includes(CLIENT_TENANT_CODE_SEP)) {
+    const [prefix, ...rest] = rawCode.split(CLIENT_TENANT_CODE_SEP)
+    if (prefix && prefix.startsWith('ind-')) {
+      return {
+        cleanCode: rest.join(CLIENT_TENANT_CODE_SEP),
+        tenantId: prefix,
+      }
+    }
+  }
+  if (item?.especificaciones_tecnicas?.tenant_id) {
+    return {
+      cleanCode: rawCode,
+      tenantId: String(item.especificaciones_tecnicas.tenant_id),
+    }
+  }
+  if (item?.tenantId) {
+    return {
+      cleanCode: rawCode,
+      tenantId: String(item.tenantId),
+    }
+  }
+  return {
+    cleanCode: rawCode,
+    tenantId: null,
+  }
+}
+
+function getClientesStorageKey(): string {
+  const tenantId = getActiveTenantContext().tenantId
+  return tenantId ? `${LOCAL_STORAGE_KEY}__${tenantId}` : LOCAL_STORAGE_KEY
+}
 
 export const initialClientesDemo: Cliente[] = [
   {
@@ -132,10 +181,15 @@ export function generateClientCode(tipo: ClientType, currentList: Cliente[]): st
 }
 
 function getLocalCache(): Cliente[] {
+  const activeTenantId = getActiveTenantContext().tenantId
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
+    const raw = activeTenantId
+      ? localStorage.getItem(getClientesStorageKey())
+      : localStorage.getItem(LOCAL_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
     if (raw) {
-      const list = JSON.parse(raw) as Cliente[]
+      const list = (JSON.parse(raw) as Cliente[]).filter((c) =>
+        activeTenantId ? c.tenantId === activeTenantId : !c.tenantId
+      )
       let updated = false
       for (let i = 0; i < list.length; i++) {
         if (!list[i].codigo) {
@@ -151,13 +205,17 @@ function getLocalCache(): Cliente[] {
   } catch (e) {
     console.error('Error leyendo caché de clientes:', e)
   }
+  if (activeTenantId) {
+    setLocalCache([])
+    return []
+  }
   setLocalCache(initialClientesDemo)
   return [...initialClientesDemo]
 }
 
 function setLocalCache(list: Cliente[]) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list))
+    localStorage.setItem(getClientesStorageKey(), JSON.stringify(list))
   } catch (e) {
     console.error('Error guardando caché de clientes:', e)
   }
@@ -176,16 +234,12 @@ export const clientesService = {
    * Obtiene todos los clientes aplicando filtros opcionales (búsqueda, tipo, estado).
    */
   async getClientesFromSupabase(searchQuery?: string): Promise<Cliente[]> {
+    const activeTenantId = getActiveTenantContext().tenantId
     try {
-      let query = supabase
+      const query = supabase
         .from('clientes')
         .select('*')
         .order('nombre', { ascending: true })
-
-      if (searchQuery && searchQuery.trim()) {
-        const s = searchQuery.trim()
-        query = query.or(`nombre.ilike.%${s}%,codigo.ilike.%${s}%,taller.ilike.%${s}%`)
-      }
 
       const { data, error } = await query
 
@@ -194,21 +248,47 @@ export const clientesService = {
         return []
       }
 
-      return (data || []).map((item: any, idx: number) => ({
-        id: item.id,
-        codigo: item.codigo || generateClientCode(item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente', data.slice(0, idx)),
-        nombre: item.nombre || '',
-        telefono: item.telefono || '',
-        direccion: item.direccion || '',
-        tipo: (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType,
-        estado: (item.estado === 'Inactivo' ? 'Inactivo' : 'Activo') as ClientStatus,
-        especificaciones_tecnicas: {
-          ...(item.especificaciones_tecnicas || {}),
-          ...(item.taller && !item.especificaciones_tecnicas?.taller ? { taller: item.taller } : {})
-        },
-        created_at: item.created_at || new Date().toISOString(),
-        updated_at: item.updated_at || new Date().toISOString(),
-      }))
+      const tenantRows = (data || []).filter((item: any) => {
+        const decoded = decodeClientRowTenant(item)
+        return (decoded.tenantId || null) === activeTenantId
+      })
+
+      const mapped: Cliente[] = tenantRows.map((item: any, idx: number) => {
+        const decoded = decodeClientRowTenant(item)
+        const tipo = (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType
+        return {
+          id: item.id,
+          codigo: decoded.cleanCode || generateClientCode(tipo, tenantRows.slice(0, idx)),
+          nombre: item.nombre || '',
+          telefono: item.telefono || '',
+          direccion: item.direccion || '',
+          tipo,
+          estado: (item.estado === 'Inactivo' ? 'Inactivo' : 'Activo') as ClientStatus,
+          tenantId: decoded.tenantId || undefined,
+          especificaciones_tecnicas: {
+            ...(item.especificaciones_tecnicas || {}),
+            ...(item.taller && !item.especificaciones_tecnicas?.taller ? { taller: item.taller } : {})
+          },
+          created_at: item.created_at || new Date().toISOString(),
+          updated_at: item.updated_at || new Date().toISOString(),
+        }
+      })
+
+      if (searchQuery && searchQuery.trim()) {
+        const s = searchQuery.toLowerCase().trim()
+        return mapped.filter((c) => {
+          const taller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+          const empresa = (c.especificaciones_tecnicas?.empresa || '').toLowerCase()
+          return (
+            c.nombre.toLowerCase().includes(s) ||
+            (c.codigo && c.codigo.toLowerCase().includes(s)) ||
+            taller.includes(s) ||
+            empresa.includes(s)
+          )
+        })
+      }
+
+      return mapped
     } catch (err) {
       console.error('[ClientesService] Error inesperado consultando Supabase:', err)
       return []
@@ -219,6 +299,7 @@ export const clientesService = {
    * Obtiene todos los clientes aplicando filtros opcionales (búsqueda, tipo, estado).
    */
   async getClientes(filters?: ClienteFilters): Promise<Cliente[]> {
+    const activeTenantId = getActiveTenantContext().tenantId
     try {
       let query = supabase
         .from('clientes')
@@ -239,23 +320,35 @@ export const clientesService = {
         throw error
       }
 
-      if (data && data.length > 0) {
-        const normalized: Cliente[] = data.map((item: any, idx: number) => ({
-          id: item.id,
-          codigo: item.codigo || generateClientCode(item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente', data.slice(0, idx)),
-          nombre: item.nombre || '',
-          telefono: item.telefono || '',
-          direccion: item.direccion || '',
-          tipo: (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType,
-          estado: (item.estado === 'Inactivo' ? 'Inactivo' : 'Activo') as ClientStatus,
-          especificaciones_tecnicas: {
-            ...(item.especificaciones_tecnicas || {}),
-            ...(item.taller && !item.especificaciones_tecnicas?.taller ? { taller: item.taller } : {})
-          },
-          created_at: item.created_at || new Date().toISOString(),
-          updated_at: item.updated_at || new Date().toISOString(),
-        }))
-        setLocalCache(normalized)
+      if (data) {
+        const tenantRows = data.filter((item: any) => {
+          const decoded = decodeClientRowTenant(item)
+          return (decoded.tenantId || null) === activeTenantId
+        })
+
+        const normalized: Cliente[] = tenantRows.map((item: any, idx: number) => {
+          const decoded = decodeClientRowTenant(item)
+          const tipo = (item.tipo === 'Tallerista' ? 'Tallerista' : 'Cliente') as ClientType
+          return {
+            id: item.id,
+            codigo: decoded.cleanCode || generateClientCode(tipo, tenantRows.slice(0, idx)),
+            nombre: item.nombre || '',
+            telefono: item.telefono || '',
+            direccion: item.direccion || '',
+            tipo,
+            estado: (item.estado === 'Inactivo' ? 'Inactivo' : 'Activo') as ClientStatus,
+            tenantId: decoded.tenantId || undefined,
+            especificaciones_tecnicas: {
+              ...(item.especificaciones_tecnicas || {}),
+              ...(item.taller && !item.especificaciones_tecnicas?.taller ? { taller: item.taller } : {})
+            },
+            created_at: item.created_at || new Date().toISOString(),
+            updated_at: item.updated_at || new Date().toISOString(),
+          }
+        })
+        if (normalized.length > 0 || activeTenantId) {
+          setLocalCache(normalized)
+        }
 
         if (filters?.search && filters.search.trim()) {
           const s = filters.search.toLowerCase().trim()
@@ -274,7 +367,9 @@ export const clientesService = {
           })
         }
 
-        return normalized
+        if (normalized.length > 0 || activeTenantId) {
+          return normalized
+        }
       }
     } catch (err) {
       console.warn('[ClientesService] Fallback a caché local:', err)
@@ -315,15 +410,24 @@ export const clientesService = {
    * Obtiene un cliente por su ID o por su código único
    */
   async getClienteById(idOrCodigo: string): Promise<Cliente | null> {
+    const activeTenantId = getActiveTenantContext().tenantId
     try {
+      const dbCodigo = encodeClientCodeForDb(idOrCodigo, activeTenantId)
       const { data, error } = await supabase
         .from('clientes')
         .select('*')
-        .or(`id.eq.${idOrCodigo},codigo.eq.${idOrCodigo}`)
-        .single()
+        .or(`id.eq.${idOrCodigo},codigo.eq.${dbCodigo}`)
+        .maybeSingle()
 
       if (!error && data) {
-        return data as Cliente
+        const decoded = decodeClientRowTenant(data)
+        if ((decoded.tenantId || null) === activeTenantId) {
+          return {
+            ...(data as Cliente),
+            codigo: decoded.cleanCode || data.codigo,
+            tenantId: decoded.tenantId || undefined,
+          }
+        }
       }
     } catch (err) {
       console.warn('[ClientesService] Error al obtener por ID en Supabase:', err)
@@ -337,8 +441,13 @@ export const clientesService = {
    * Crea un nuevo cliente con estado 'Activo' por defecto y código generado automáticamente
    */
   async createCliente(cliente: ClienteInsert): Promise<Cliente> {
+    const activeTenantId = getActiveTenantContext().tenantId
     const cache = getLocalCache()
     const autoCode = cliente.codigo || generateClientCode(cliente.tipo || 'Cliente', cache)
+    const specsWithTenant = {
+      ...(cliente.especificaciones_tecnicas || {}),
+      ...(activeTenantId ? { tenant_id: activeTenantId } : {}),
+    }
 
     const newRecord: Cliente = {
       id: cliente.id || 'cli-' + Date.now(),
@@ -348,7 +457,8 @@ export const clientesService = {
       direccion: cliente.direccion ? cliente.direccion.trim() : null,
       tipo: cliente.tipo || 'Cliente',
       estado: 'Activo', // Al crear cliente siempre es Activo
-      especificaciones_tecnicas: cliente.especificaciones_tecnicas || {},
+      tenantId: activeTenantId || undefined,
+      especificaciones_tecnicas: specsWithTenant,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -357,7 +467,7 @@ export const clientesService = {
       const { data, error } = await supabase
         .from('clientes')
         .insert([{
-          codigo: newRecord.codigo,
+          codigo: encodeClientCodeForDb(newRecord.codigo, activeTenantId),
           nombre: newRecord.nombre,
           telefono: newRecord.telefono,
           direccion: newRecord.direccion,
@@ -371,7 +481,8 @@ export const clientesService = {
 
       if (!error && data) {
         newRecord.id = data.id
-        if (data.codigo) newRecord.codigo = data.codigo
+        const decoded = decodeClientRowTenant(data)
+        if (decoded.cleanCode) newRecord.codigo = decoded.cleanCode
       }
     } catch (err) {
       console.warn('[ClientesService] Inserción guardada en caché local:', err)
@@ -387,12 +498,24 @@ export const clientesService = {
    * Actualiza los datos de un cliente existente
    */
   async updateCliente(id: string, updates: ClienteUpdate): Promise<Cliente> {
+    const activeTenantId = getActiveTenantContext().tenantId
     const updatedPayload: any = {
       ...updates,
       updated_at: new Date().toISOString()
     }
-    if (updates.especificaciones_tecnicas?.taller !== undefined) {
-      updatedPayload.taller = updates.especificaciones_tecnicas.taller
+    delete updatedPayload.tenantId
+
+    if (updates.especificaciones_tecnicas) {
+      updatedPayload.especificaciones_tecnicas = {
+        ...updates.especificaciones_tecnicas,
+        ...(activeTenantId ? { tenant_id: activeTenantId } : {}),
+      }
+      if (updates.especificaciones_tecnicas.taller !== undefined) {
+        updatedPayload.taller = updates.especificaciones_tecnicas.taller
+      }
+    }
+    if (updates.codigo !== undefined && activeTenantId) {
+      updatedPayload.codigo = encodeClientCodeForDb(updates.codigo, activeTenantId)
     }
 
     try {
@@ -404,9 +527,15 @@ export const clientesService = {
         .single()
 
       if (!error && data) {
-        const cache = getLocalCache().map(c => (c.id === id ? { ...c, ...data } : c))
+        const decoded = decodeClientRowTenant(data)
+        const normalizedUpdated: Cliente = {
+          ...(data as Cliente),
+          codigo: decoded.cleanCode || data.codigo,
+          tenantId: decoded.tenantId || activeTenantId || undefined,
+        }
+        const cache = getLocalCache().map(c => (c.id === id ? { ...c, ...normalizedUpdated } : c))
         setLocalCache(cache)
-        return data as Cliente
+        return normalizedUpdated
       }
     } catch (err) {
       console.warn('[ClientesService] Error actualizando en Supabase:', err)
@@ -420,7 +549,8 @@ export const clientesService = {
 
     cache[index] = {
       ...cache[index],
-      ...updatedPayload,
+      ...updates,
+      updated_at: updatedPayload.updated_at,
     }
     setLocalCache(cache)
 
@@ -445,6 +575,10 @@ export const clientesService = {
    * Restaura los clientes demo iniciales
    */
   resetDemo(): Cliente[] {
+    if (getActiveTenantContext().tenantId) {
+      setLocalCache([])
+      return []
+    }
     setLocalCache(initialClientesDemo)
     return [...initialClientesDemo]
   }

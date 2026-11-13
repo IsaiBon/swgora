@@ -1,4 +1,5 @@
 import { supabase } from '@/services/supabase'
+import { getActiveTenantContext } from '@/services/rutasService'
 
 export interface TallerInfo {
   id: string
@@ -26,24 +27,55 @@ export const DEFAULT_TALLER_INFO: TallerInfo = {
 
 const LOCAL_STORAGE_KEY = 'swgora_taller_config'
 
+function getTargetTallerId(): string {
+  const ctx = getActiveTenantContext()
+  return ctx.tenantId ? `taller_${ctx.tenantId}` : 'principal'
+}
+
+function getTallerStorageKey(): string {
+  const ctx = getActiveTenantContext()
+  return ctx.tenantId ? `${LOCAL_STORAGE_KEY}__${ctx.tenantId}` : LOCAL_STORAGE_KEY
+}
+
+function getDefaultTallerInfoForContext(): TallerInfo {
+  const ctx = getActiveTenantContext()
+  if (ctx.tenantId) {
+    return {
+      id: `taller_${ctx.tenantId}`,
+      nombre: (ctx.tallerNombre || ctx.userName || 'MI TALLER MECÁNICO').toUpperCase(),
+      direccion: 'Configura la dirección de tu taller',
+      celular1: '',
+      celular2: '',
+      eslogan: 'SERVICIO MECÁNICO Y RECTIFICACIÓN',
+      logo_url: '/logo-taller.png',
+      iva_porcentaje: 13,
+    }
+  }
+  return { ...DEFAULT_TALLER_INFO }
+}
+
 export const tallerService = {
   /**
    * Obtiene la información institucional del taller desde Supabase.
    * Cuenta con respaldo local en localStorage y fallback a valores oficiales predeterminados.
    */
   async getTallerInfo(): Promise<TallerInfo> {
+    const targetId = getTargetTallerId()
+    const storageKey = getTallerStorageKey()
+    const defaults = getDefaultTallerInfoForContext()
+
     try {
       const { data, error } = await supabase
         .from('taller')
         .select('*')
-        .eq('id', 'principal')
-        .single()
+        .eq('id', targetId)
+        .maybeSingle()
 
       if (!error && data) {
-        let cachedIva = DEFAULT_TALLER_INFO.iva_porcentaje ?? 13
+        let cachedIva = defaults.iva_porcentaje ?? 13
         if (typeof window !== 'undefined' && window.localStorage) {
           try {
-            const rawCache = window.localStorage.getItem(LOCAL_STORAGE_KEY)
+            const rawCache = window.localStorage.getItem(storageKey)
             if (rawCache) {
               const parsedCache = JSON.parse(rawCache)
               if (parsedCache?.iva_porcentaje !== undefined && !isNaN(Number(parsedCache.iva_porcentaje))) {
@@ -54,13 +86,13 @@ export const tallerService = {
         }
 
         const info: TallerInfo = {
-          id: data.id || 'principal',
-          nombre: data.nombre || DEFAULT_TALLER_INFO.nombre,
-          direccion: data.direccion || DEFAULT_TALLER_INFO.direccion,
-          celular1: data.celular1 || DEFAULT_TALLER_INFO.celular1,
-          celular2: data.celular2 !== undefined && data.celular2 !== null ? data.celular2 : DEFAULT_TALLER_INFO.celular2,
-          eslogan: data.eslogan || DEFAULT_TALLER_INFO.eslogan,
-          logo_url: data.logo_url || DEFAULT_TALLER_INFO.logo_url,
+          id: data.id || targetId,
+          nombre: data.nombre || defaults.nombre,
+          direccion: data.direccion || defaults.direccion,
+          celular1: data.celular1 !== undefined && data.celular1 !== null ? data.celular1 : defaults.celular1,
+          celular2: data.celular2 !== undefined && data.celular2 !== null ? data.celular2 : defaults.celular2,
+          eslogan: data.eslogan || defaults.eslogan,
+          logo_url: data.logo_url || defaults.logo_url,
           iva_porcentaje: data.iva_porcentaje !== undefined && data.iva_porcentaje !== null
             ? Number(data.iva_porcentaje)
             : cachedIva,
@@ -68,7 +100,7 @@ export const tallerService = {
           updated_at: data.updated_at
         }
         if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(info))
+          window.localStorage.setItem(storageKey, JSON.stringify(info))
         }
         return info
       }
@@ -79,7 +111,7 @@ export const tallerService = {
     // Fallback a localStorage si la BD no responde
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        const cached = window.localStorage.getItem(LOCAL_STORAGE_KEY)
+        const cached = window.localStorage.getItem(storageKey)
         if (cached) {
           return JSON.parse(cached)
         }
@@ -88,25 +120,68 @@ export const tallerService = {
       }
     }
 
-    return { ...DEFAULT_TALLER_INFO }
+    return { ...defaults }
+  },
+
+  /**
+   * Inicializa el registro de taller propio para una nueva cuenta independiente
+   */
+  async initIndependentTaller(params: {
+    tenantId: string
+    nombreTaller: string
+  }): Promise<void> {
+    const cleanTenantId = params.tenantId.trim()
+    if (!cleanTenantId) return
+
+    const tallerId = `taller_${cleanTenantId}`
+    const storageKey = `${LOCAL_STORAGE_KEY}__${cleanTenantId}`
+    const initialInfo: TallerInfo = {
+      id: tallerId,
+      nombre: (params.nombreTaller.trim() || 'MI TALLER MECÁNICO').toUpperCase(),
+      direccion: 'Configura la dirección de tu taller',
+      celular1: '0000-0000',
+      celular2: '',
+      eslogan: 'SERVICIO MECÁNICO Y RECTIFICACIÓN',
+      logo_url: '/logo-taller.png',
+      iva_porcentaje: 13,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(initialInfo))
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    try {
+      await supabase.from('taller').upsert(initialInfo)
+    } catch {
+      // Respaldo local ya persistido
+    }
   },
 
   /**
    * Actualiza la información institucional del taller en Supabase y sincroniza localmente.
    */
   async updateTallerInfo(info: Partial<TallerInfo>): Promise<TallerInfo> {
+    const targetId = getTargetTallerId()
+    const storageKey = getTallerStorageKey()
+    const defaults = getDefaultTallerInfoForContext()
+
     const ivaPct = info.iva_porcentaje !== undefined && !isNaN(Number(info.iva_porcentaje))
       ? Math.max(0, Math.min(100, Number(info.iva_porcentaje)))
-      : (DEFAULT_TALLER_INFO.iva_porcentaje ?? 13)
+      : (defaults.iva_porcentaje ?? 13)
 
     const basePayload = {
-      id: 'principal',
-      nombre: (info.nombre?.trim() || DEFAULT_TALLER_INFO.nombre).toUpperCase(),
-      direccion: info.direccion?.trim() || DEFAULT_TALLER_INFO.direccion,
-      celular1: info.celular1?.trim() || DEFAULT_TALLER_INFO.celular1,
-      celular2: info.celular2 !== undefined ? info.celular2.trim() : DEFAULT_TALLER_INFO.celular2,
-      eslogan: info.eslogan?.trim() || DEFAULT_TALLER_INFO.eslogan,
-      logo_url: info.logo_url || DEFAULT_TALLER_INFO.logo_url,
+      id: targetId,
+      nombre: (info.nombre?.trim() || defaults.nombre).toUpperCase(),
+      direccion: info.direccion?.trim() || defaults.direccion,
+      celular1: info.celular1 !== undefined ? info.celular1.trim() : defaults.celular1,
+      celular2: info.celular2 !== undefined ? info.celular2.trim() : defaults.celular2,
+      eslogan: info.eslogan?.trim() || defaults.eslogan,
+      logo_url: info.logo_url || defaults.logo_url,
       updated_at: new Date().toISOString()
     }
     const payload = { ...basePayload, iva_porcentaje: ivaPct }
@@ -121,7 +196,7 @@ export const tallerService = {
       if (!error && data) {
         const merged = { ...data, iva_porcentaje: data.iva_porcentaje ?? ivaPct } as TallerInfo
         if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged))
+          window.localStorage.setItem(storageKey, JSON.stringify(merged))
         }
         return merged
       } else if (error) {
@@ -134,7 +209,7 @@ export const tallerService = {
         if (!retryErr && retryData) {
           const merged = { ...retryData, iva_porcentaje: ivaPct } as TallerInfo
           if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged))
+            window.localStorage.setItem(storageKey, JSON.stringify(merged))
           }
           return merged
         }
@@ -146,7 +221,7 @@ export const tallerService = {
 
     // Guardar en localStorage como fallback
     if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload))
+      window.localStorage.setItem(storageKey, JSON.stringify(payload))
     }
     return payload as TallerInfo
   },

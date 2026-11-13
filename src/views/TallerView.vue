@@ -25,9 +25,9 @@ const tallerStore = useTallerStore()
 const pendingLogoFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-// Validación de permisos: Solo Administrador
+// Validación de permisos: Administrador o Taller Independiente
 onMounted(async () => {
-  if (authStore.user?.role !== 'Administrador') {
+  if (!authStore.canAccess('/taller')) {
     router.replace(authStore.defaultRoute)
     return
   }

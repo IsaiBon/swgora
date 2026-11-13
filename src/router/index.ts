@@ -34,7 +34,7 @@ const routes = [
     meta: {
       layout: 'main',
       title: 'Configuración del Taller - JR Blanco',
-      allowedRoles: ['Administrador'],
+      allowedRoles: ['Administrador', 'Taller Independiente'],
     },
   },
 
@@ -54,7 +54,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Dashboard - JR Blanco',
-      allowedRoles: ['Administrador']
+      allowedRoles: ['Administrador', 'Taller Independiente']
     },
   },
   {
@@ -64,7 +64,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Clientes y Flotillas - JR Blanco',
-      allowedRoles: ['Administrador', 'Sub-Administrador']
+      allowedRoles: ['Administrador', 'Taller Independiente', 'Sub-Administrador']
     },
   },
   {
@@ -74,7 +74,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Órdenes - JR Blanco',
-      allowedRoles: ['Administrador', 'Sub-Administrador', 'Operador']
+      allowedRoles: ['Administrador', 'Taller Independiente', 'Sub-Administrador', 'Operador']
     },
   },
   {
@@ -84,7 +84,7 @@ const routes = [
     meta: { 
       layout: 'main', 
       title: 'Catálogo - JR Blanco',
-      allowedRoles: ['Administrador', 'Sub-Administrador', 'Operador', 'Consultor']
+      allowedRoles: ['Administrador', 'Taller Independiente', 'Sub-Administrador', 'Operador', 'Consultor']
     },
   },
   {

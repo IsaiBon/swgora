@@ -25,10 +25,68 @@ export interface OrderRouteMetadata {
   rutaNombre: string
 }
 
+export interface IndependentTenantInfo {
+  isIndependent: boolean
+  tenantId?: string
+  tallerNombre?: string
+}
+
+export interface ActiveTenantContext {
+  isIndependent: boolean
+  tenantId: string | null
+  tallerNombre?: string
+  userId?: string
+  userName?: string
+}
+
 const RUTAS_STORAGE_KEY = 'swgora_rutas_sucursales_v1'
 const ORDER_ROUTES_MAP_KEY = 'swgora_order_routes_map_v1'
+const ORDER_TENANTS_MAP_KEY = 'swgora_order_tenants_map_v1'
+const INDEPENDENT_TENANTS_STORAGE_KEY = 'swgora_independent_tenants_v1'
 const ROLE_SUBADMIN_PREFIX = 'subadmin|'
+const ROLE_INDEPENDENT_PREFIX = 'independiente|'
 const TALLER_CODIGO_ROUTE_SEPARATOR = '__RUTA__'
+const TALLER_CODIGO_TENANT_SEPARATOR = '__TENANT__'
+
+let currentTenantContext: ActiveTenantContext | null = null
+
+export function setActiveTenantContext(ctx: ActiveTenantContext | null): void {
+  currentTenantContext = ctx ? { ...ctx } : null
+}
+
+export function getActiveTenantContext(): ActiveTenantContext {
+  if (currentTenantContext) {
+    return currentTenantContext
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem('swgora_active_user')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.isIndependent && parsed?.tenantId) {
+          return {
+            isIndependent: true,
+            tenantId: String(parsed.tenantId),
+            tallerNombre: parsed.tenantWorkshopName || undefined,
+            userId: parsed.id || undefined,
+            userName: parsed.name || undefined,
+          }
+        }
+        if (parsed?.id) {
+          return {
+            isIndependent: false,
+            tenantId: null,
+            userId: parsed.id,
+            userName: parsed.name,
+          }
+        }
+      }
+    } catch {
+      // Ignorar errores de parsing
+    }
+  }
+  return { isIndependent: false, tenantId: null }
+}
 
 /**
  * Codifica el rol de un Sub-Administrador incluyendo los metadatos de su ruta
@@ -86,38 +144,188 @@ export function parseSubAdminRole(rawRole?: string | null): {
 }
 
 /**
- * Codifica `taller_codigo` para almacenar tanto el código del cliente/taller
- * como la ruta asignada a la orden de trabajo en `public.ordenes_trabajo`
+ * Codifica el rol de un Taller Independiente incluyendo su tenantId
+ * y nombre de taller para que viaje en `public.perfiles.rol`.
+ * Formato: independiente|<tenantId>|<tallerNombre>
+ */
+export function encodeIndependentRole(params: {
+  tenantId: string
+  tallerNombre?: string
+}): string {
+  const cleanTenantId = (params.tenantId || '').replace(/\|/g, '-').trim()
+  const cleanTaller = (params.tallerNombre || '').replace(/\|/g, ' ').trim()
+  return `${ROLE_INDEPENDENT_PREFIX}${cleanTenantId}|${cleanTaller}`
+}
+
+/**
+ * Extrae información de tenant independiente desde `rol`.
+ */
+export function parseIndependentRole(rawRole?: string | null): IndependentTenantInfo {
+  if (!rawRole) return { isIndependent: false }
+  const trimmed = rawRole.trim()
+  if (trimmed.toLowerCase().startsWith(ROLE_INDEPENDENT_PREFIX)) {
+    const parts = trimmed.split('|')
+    return {
+      isIndependent: true,
+      tenantId: parts[1]?.trim() || undefined,
+      tallerNombre: parts[2]?.trim() || undefined,
+    }
+  }
+  if (trimmed.toLowerCase() === 'independiente') {
+    return { isIndependent: true }
+  }
+  return { isIndependent: false }
+}
+
+interface StoredIndependentTenantMap {
+  byId: Record<string, { tenantId: string; tallerNombre?: string }>
+  byEmail: Record<string, { tenantId: string; tallerNombre?: string }>
+}
+
+function loadIndependentTenantMap(): StoredIndependentTenantMap {
+  try {
+    const raw = localStorage.getItem(INDEPENDENT_TENANTS_STORAGE_KEY)
+    if (!raw) return { byId: {}, byEmail: {} }
+    const parsed = JSON.parse(raw)
+    return {
+      byId: parsed?.byId && typeof parsed.byId === 'object' ? parsed.byId : {},
+      byEmail:
+        parsed?.byEmail && typeof parsed.byEmail === 'object'
+          ? parsed.byEmail
+          : {},
+    }
+  } catch {
+    return { byId: {}, byEmail: {} }
+  }
+}
+
+export function registerIndependentTenantUser(params: {
+  userId?: string
+  email?: string
+  tenantId: string
+  tallerNombre?: string
+}): void {
+  if (!params.tenantId) return
+  try {
+    const map = loadIndependentTenantMap()
+    const entry = {
+      tenantId: params.tenantId.trim(),
+      tallerNombre: params.tallerNombre?.trim() || undefined,
+    }
+    if (params.userId) {
+      map.byId[params.userId] = entry
+    }
+    if (params.email) {
+      map.byEmail[params.email.trim().toLowerCase()] = entry
+    }
+    localStorage.setItem(INDEPENDENT_TENANTS_STORAGE_KEY, JSON.stringify(map))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getIndependentTenantForUser(user: {
+  id?: string | null
+  email?: string | null
+  rawRole?: string | null
+}): IndependentTenantInfo {
+  const parsed = parseIndependentRole(user.rawRole)
+  if (parsed.isIndependent && parsed.tenantId) {
+    return parsed
+  }
+
+  const map = loadIndependentTenantMap()
+  if (user.id && map.byId[user.id]) {
+    return {
+      isIndependent: true,
+      tenantId: map.byId[user.id]!.tenantId,
+      tallerNombre: map.byId[user.id]!.tallerNombre || parsed.tallerNombre,
+    }
+  }
+  if (user.email) {
+    const emailLower = user.email.trim().toLowerCase()
+    if (map.byEmail[emailLower]) {
+      return {
+        isIndependent: true,
+        tenantId: map.byEmail[emailLower]!.tenantId,
+        tallerNombre:
+          map.byEmail[emailLower]!.tallerNombre || parsed.tallerNombre,
+      }
+    }
+  }
+
+  if (parsed.isIndependent) {
+    const seed = (user.id || user.email || 'user')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 10)
+      .toLowerCase()
+    return {
+      isIndependent: true,
+      tenantId: `ind-${seed}`,
+      tallerNombre: parsed.tallerNombre,
+    }
+  }
+
+  return { isIndependent: false }
+}
+
+/**
+ * Codifica `taller_codigo` para almacenar el código del cliente/taller,
+ * la ruta asignada y/o el tenant independiente en `public.ordenes_trabajo`
  * sin requerir columnas adicionales ni romper esquemas existentes.
  */
 export function encodeTallerCodigoWithRoute(
   baseCode?: string | null,
-  route?: OrderRouteMetadata | null
+  route?: OrderRouteMetadata | null,
+  tenantId?: string | null
 ): string | null {
-  const cleanBase = (baseCode || '').split(TALLER_CODIGO_ROUTE_SEPARATOR)[0]?.trim() || ''
-  if (!route || !route.rutaId || !route.rutaNombre) {
-    return cleanBase || null
+  const withoutTenant = (baseCode || '').split(TALLER_CODIGO_TENANT_SEPARATOR)[0] || ''
+  const cleanBase = withoutTenant.split(TALLER_CODIGO_ROUTE_SEPARATOR)[0]?.trim() || ''
+
+  let encoded = cleanBase
+  if (route && route.rutaId && route.rutaNombre) {
+    const payload = `${route.rutaId}::${route.rutaCodigo || ''}::${route.rutaNombre}`
+    encoded = `${encoded}${TALLER_CODIGO_ROUTE_SEPARATOR}${payload}`
   }
-  const payload = `${route.rutaId}::${route.rutaCodigo || ''}::${route.rutaNombre}`
-  return `${cleanBase}${TALLER_CODIGO_ROUTE_SEPARATOR}${payload}`
+
+  const cleanTenant = tenantId?.trim()
+  if (cleanTenant) {
+    encoded = `${encoded}${TALLER_CODIGO_TENANT_SEPARATOR}${cleanTenant}`
+  }
+
+  return encoded || null
 }
 
 /**
  * Decodifica `taller_codigo` proveniente de `public.ordenes_trabajo`
- * separando el código original del cliente/taller y los metadatos de la ruta.
+ * separando el código original del cliente/taller, la ruta y el tenant independiente.
  */
 export function decodeTallerCodigoWithRoute(rawTallerCodigo?: string | null): {
   cleanCode?: string
   route?: OrderRouteMetadata
+  tenantId?: string
 } {
   if (!rawTallerCodigo) return {}
-  if (!rawTallerCodigo.includes(TALLER_CODIGO_ROUTE_SEPARATOR)) {
-    return { cleanCode: rawTallerCodigo }
+
+  let withoutTenant = rawTallerCodigo
+  let tenantId: string | undefined
+  if (rawTallerCodigo.includes(TALLER_CODIGO_TENANT_SEPARATOR)) {
+    const tenantParts = rawTallerCodigo.split(TALLER_CODIGO_TENANT_SEPARATOR)
+    withoutTenant = tenantParts[0] || ''
+    tenantId = tenantParts[1]?.trim() || undefined
   }
-  const [basePart, routePart] = rawTallerCodigo.split(TALLER_CODIGO_ROUTE_SEPARATOR)
+
+  if (!withoutTenant.includes(TALLER_CODIGO_ROUTE_SEPARATOR)) {
+    return {
+      cleanCode: withoutTenant.trim() || undefined,
+      tenantId,
+    }
+  }
+
+  const [basePart, routePart] = withoutTenant.split(TALLER_CODIGO_ROUTE_SEPARATOR)
   const cleanCode = basePart?.trim() || undefined
   if (!routePart) {
-    return { cleanCode }
+    return { cleanCode, tenantId }
   }
   const [rutaId, rutaCodigo, rutaNombre] = routePart.split('::')
   if (rutaId && rutaNombre) {
@@ -128,9 +336,10 @@ export function decodeTallerCodigoWithRoute(rawTallerCodigo?: string | null): {
         rutaCodigo: rutaCodigo?.trim() || undefined,
         rutaNombre: rutaNombre.trim(),
       },
+      tenantId,
     }
   }
-  return { cleanCode }
+  return { cleanCode, tenantId }
 }
 
 function loadStoredRutas(): RutaSucursal[] {
@@ -166,6 +375,25 @@ function loadOrderRoutesMap(): Record<string, OrderRouteMetadata> {
 function saveOrderRoutesMap(map: Record<string, OrderRouteMetadata>): void {
   try {
     localStorage.setItem(ORDER_ROUTES_MAP_KEY, JSON.stringify(map))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function loadOrderTenantsMap(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(ORDER_TENANTS_MAP_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveOrderTenantsMap(map: Record<string, string>): void {
+  try {
+    localStorage.setItem(ORDER_TENANTS_MAP_KEY, JSON.stringify(map))
   } catch {
     // Ignore storage errors
   }
@@ -219,6 +447,9 @@ export const rutasService = {
    * Obtiene todas las rutas locales de forma síncrona
    */
   getRutasSync(): RutaSucursal[] {
+    if (getActiveTenantContext().isIndependent) {
+      return []
+    }
     return loadStoredRutas()
   },
 
@@ -227,6 +458,9 @@ export const rutasService = {
    * reconstruyendo automáticamente cualquier ruta creada desde otro dispositivo.
    */
   async getRutas(): Promise<RutaSucursal[]> {
+    if (getActiveTenantContext().isIndependent) {
+      return []
+    }
     const localRutas = loadStoredRutas()
     const byId = new Map<string, RutaSucursal>()
 
@@ -756,6 +990,39 @@ export const rutasService = {
     orderNumber?: string | null
   ): OrderRouteMetadata | undefined {
     const map = loadOrderRoutesMap()
+    if (orderId && map[orderId]) return map[orderId]
+    if (orderNumber && map[orderNumber]) return map[orderNumber]
+    return undefined
+  },
+
+  /**
+   * Registra la asociación entre una orden de trabajo y un tenant independiente
+   */
+  setOrderTenant(
+    orderId: string,
+    orderNumber: string | undefined,
+    tenantId?: string | null
+  ): void {
+    const map = loadOrderTenantsMap()
+    const clean = tenantId?.trim()
+    if (!clean) {
+      delete map[orderId]
+      if (orderNumber) delete map[orderNumber]
+    } else {
+      map[orderId] = clean
+      if (orderNumber) map[orderNumber] = clean
+    }
+    saveOrderTenantsMap(map)
+  },
+
+  /**
+   * Obtiene el tenant independiente asociado a una orden si no venía en la fila
+   */
+  getOrderTenant(
+    orderId?: string | null,
+    orderNumber?: string | null
+  ): string | undefined {
+    const map = loadOrderTenantsMap()
     if (orderId && map[orderId]) return map[orderId]
     if (orderNumber && map[orderNumber]) return map[orderNumber]
     return undefined

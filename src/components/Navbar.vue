@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useTallerStore } from '@/stores/taller'
@@ -88,8 +88,15 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  void tallerStore.loadTallerInfo()
+  void tallerStore.loadTallerInfo(true)
 })
+
+watch(
+  () => [authStore.user?.id, authStore.activeTenantId],
+  () => {
+    void tallerStore.loadTallerInfo(true)
+  }
+)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
@@ -106,6 +113,7 @@ const handleLogout = async () => {
 const roleIcon = computed(() => {
   const r = normalizeRole(authStore.user?.role)
   if (r === 'Administrador') return ShieldCheck
+  if (r === 'Taller Independiente') return Wrench
   if (r === 'Sub-Administrador') return MapPin
   if (r === 'Operador') return Wrench
   return Eye
@@ -114,6 +122,7 @@ const roleIcon = computed(() => {
 const roleBadgeClass = computed(() => {
   const r = normalizeRole(authStore.user?.role)
   if (r === 'Administrador') return 'bg-[#05C7F2]/15 text-[#05F2F2] border-[#05C7F2]/40'
+  if (r === 'Taller Independiente') return 'bg-[#05F2F2]/15 text-[#05F2F2] border-[#04C4D9]/50'
   if (r === 'Sub-Administrador') return 'bg-[#05F2F2]/15 text-[#05F2F2] border-[#05F2F2]/40'
   if (r === 'Operador') return 'bg-[#04C4D9]/15 text-[#04C4D9] border-[#04C4D9]/40'
   return 'bg-[#F2F2F2]/10 text-[#F2F2F2] border-[#F2F2F2]/25'
@@ -170,9 +179,15 @@ const handleNewOrder = () => {
           />
         </div>
 
-        <!-- Solo Nombre JR BLANCO (sin badge de SWGORA) -->
-        <span class="font-black text-white text-xs sm:text-sm tracking-tight whitespace-nowrap">
-          JR BLANCO
+        <!-- Nombre del taller (JR BLANCO o Taller Independiente) -->
+        <span class="font-black text-white text-xs sm:text-sm tracking-tight whitespace-nowrap max-w-[160px] truncate">
+          {{
+            authStore.isIndependentAdmin
+              ? tallerStore.tallerInfo.nombre ||
+                authStore.activeTenantWorkshopName ||
+                'MI TALLER'
+              : 'JR BLANCO'
+          }}
         </span>
       </router-link>
 
@@ -320,8 +335,8 @@ const handleNewOrder = () => {
                 </span>
               </div>
 
-              <!-- Información de la Empresa / Módulo de Taller (Acceso Rápido Administrador) -->
-              <div v-if="authStore.user?.role === 'Administrador'" class="py-2.5 border-b border-neutral-800">
+              <!-- Información de la Empresa / Módulo de Taller -->
+              <div v-if="authStore.canAccess('/taller')" class="py-2.5 border-b border-neutral-800">
                 <router-link
                   to="/taller"
                   @click="userMenuOpen = false"

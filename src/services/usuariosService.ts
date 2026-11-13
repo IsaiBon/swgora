@@ -178,7 +178,10 @@ async function upsertPerfilSafely(
   if (!withoutEstadoError) return true
 
   // Último respaldo si hubiera un CHECK constraint en `rol` en base de datos
-  if (params.rol.startsWith('subadmin|')) {
+  if (
+    params.rol.startsWith('subadmin|') ||
+    params.rol.startsWith('independiente|')
+  ) {
     const { error: fallbackRoleError } = await client.from('perfiles').upsert(
       {
         id: params.id,
@@ -200,7 +203,8 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<{ id: string }>
   const cleanNombre = datos.nombre.trim()
   const cleanEmail = datos.email.trim().toLowerCase()
   const cleanPassword = datos.password
-  const isCustomSubAdminRole = datos.rol.startsWith('subadmin|')
+  const isCustomSubAdminRole =
+    datos.rol.startsWith('subadmin|') || datos.rol.startsWith('independiente|')
 
   // 1. Intentar primero mediante la Edge Function oficial
   try {

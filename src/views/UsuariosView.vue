@@ -13,6 +13,9 @@ import {
   Smartphone,
   MonitorSmartphone,
   Unlock,
+  Wrench,
+  Building2,
+  Sparkles,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -28,9 +31,13 @@ import { perfilesService, type Perfil } from '@/services/perfilesService'
 import {
   encodeSubAdminRole,
   parseSubAdminRole,
+  encodeIndependentRole,
+  parseIndependentRole,
+  registerIndependentTenantUser,
   rutasService,
   type RutaSucursal,
 } from '@/services/rutasService'
+import { tallerService } from '@/services/tallerService'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 
 const modalAbierto = ref(false)
@@ -47,10 +54,13 @@ const rolesBase = [
   { valor: 'consultor', nombre: 'Consultor' },
   { valor: 'admin', nombre: 'Administrador' },
   { valor: 'subadmin', nombre: 'Sub-Administrador de Ruta' },
+  { valor: 'independiente', nombre: 'Taller Independiente · Sistema Propio' },
 ] as const
 
 const rutas = ref<RutaSucursal[]>([])
 const rutaNuevoUsuarioId = ref('')
+const nombreTallerIndependiente = ref('')
+const filtroTipoCuenta = ref<'todos' | 'internos' | 'independientes'>('todos')
 
 const roles = computed(() => {
   if (rutas.value.length > 0) {
@@ -58,6 +68,10 @@ const roles = computed(() => {
   }
   return rolesBase.filter((opcion) => opcion.valor !== 'subadmin')
 })
+
+const rolesEquipo = computed(() =>
+  roles.value.filter((opcion) => opcion.valor !== 'independiente')
+)
 
 const datos = reactive<NuevoUsuario>({
   nombre: '',
@@ -71,6 +85,7 @@ async function abrirModal() {
   datos.email = ''
   datos.password = ''
   datos.rol = 'operador'
+  nombreTallerIndependiente.value = ''
   rutaNuevoUsuarioId.value =
     rutas.value.find((r) => !r.subAdminId && !r.subAdminEmail)?.id ||
     rutas.value[0]?.id ||
@@ -141,6 +156,8 @@ async function guardarUsuario() {
 
   let rolParaCrear = datos.rol
   let rutaObjetivo: RutaSucursal | undefined
+  let tenantIdIndependiente = ''
+  let tallerNombreIndependiente = ''
   if (datos.rol === 'subadmin') {
     rutaObjetivo = rutas.value.find((r) => r.id === rutaNuevoUsuarioId.value)
     if (!rutaObjetivo) {
@@ -148,6 +165,15 @@ async function guardarUsuario() {
       return
     }
     rolParaCrear = encodeSubAdminRole(rutaObjetivo)
+  } else if (datos.rol === 'independiente') {
+    tenantIdIndependiente = `ind-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+    tallerNombreIndependiente =
+      nombreTallerIndependiente.value.trim() ||
+      `Taller de ${datos.nombre.trim()}`
+    rolParaCrear = encodeIndependentRole({
+      tenantId: tenantIdIndependiente,
+      tallerNombre: tallerNombreIndependiente,
+    })
   }
 
   guardando.value = true
@@ -168,13 +194,28 @@ async function guardarUsuario() {
           email: datos.email.trim().toLowerCase(),
         },
       })
+    } else if (datos.rol === 'independiente' && tenantIdIndependiente) {
+      registerIndependentTenantUser({
+        userId: creado.id,
+        email: datos.email.trim().toLowerCase(),
+        tenantId: tenantIdIndependiente,
+        tallerNombre: tallerNombreIndependiente,
+      })
+      await tallerService
+        .initIndependentTaller({
+          tenantId: tenantIdIndependiente,
+          nombreTaller: tallerNombreIndependiente,
+        })
+        .catch(() => undefined)
     }
 
     versionCredenciales.value++
 
     const nombreRolSeleccionado = rutaObjetivo
       ? `Sub-Admin (${rutaObjetivo.codigo} · ${rutaObjetivo.nombre})`
-      : roles.value.find((opcion) => opcion.valor === datos.rol)?.nombre
+      : datos.rol === 'independiente'
+        ? `Sistema Independiente (${tallerNombreIndependiente})`
+        : roles.value.find((opcion) => opcion.valor === datos.rol)?.nombre
 
     mensajeExito.value =
       `La cuenta de ${datos.nombre.trim()} fue creada con rol ${nombreRolSeleccionado}.`
@@ -199,10 +240,27 @@ function normalizarBusqueda(texto: string): string {
   return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
+const totalCuentasIndependientes = computed(
+  () =>
+    usuarios.value.filter((u) => parseIndependentRole(u.rol).isIndependent)
+      .length
+)
+
+const totalCuentasInternas = computed(
+  () => usuarios.value.length - totalCuentasIndependientes.value
+)
+
 const usuariosFiltrados = computed(() => {
+  const baseList = usuarios.value.filter((usuario) => {
+    const esInd = parseIndependentRole(usuario.rol).isIndependent
+    if (filtroTipoCuenta.value === 'independientes') return esInd
+    if (filtroTipoCuenta.value === 'internos') return !esInd
+    return true
+  })
+
   const palabras = normalizarBusqueda(busqueda.value).trim().split(/\s+/).filter(Boolean)
-  if (!palabras.length) return usuarios.value
-  return usuarios.value.filter((usuario) => {
+  if (!palabras.length) return baseList
+  return baseList.filter((usuario) => {
     const texto = normalizarBusqueda(
       `${usuario.nombre ?? ''} ${usuario.email ?? ''} ${nombreRol(usuario.rol)}`
     )
@@ -227,6 +285,8 @@ function claseRol(rol: string): string {
   switch (normalizeRole(rol)) {
     case 'Administrador':
       return 'bg-[#0D0D0D] text-[#05F2F2] ring-[#0D0D0D] font-semibold'
+    case 'Taller Independiente':
+      return 'bg-[#05C7F2]/20 text-[#0D0D0D] ring-[#04C4D9] font-bold'
     case 'Sub-Administrador':
       return 'bg-[#05F2F2]/25 text-[#0D0D0D] ring-[#04C4D9] font-semibold'
     case 'Operador':
@@ -247,6 +307,10 @@ const botonCancelar = ref<HTMLButtonElement | null>(null)
 let botonOrigen: HTMLElement | null = null
 
 function nombreRol(rol: string): string {
+  const ind = parseIndependentRole(rol)
+  if (ind.isIndependent) {
+    return `Sistema Propio (${ind.tallerNombre || 'Taller Independiente'})`
+  }
   const subAdmin = parseSubAdminRole(rol)
   if (subAdmin.isSubAdmin) {
     if (subAdmin.rutaCodigo && subAdmin.rutaNombre) {
@@ -525,6 +589,7 @@ async function confirmarDesactivacion() {
 const usuarioRol = ref<Perfil | null>(null)
 const rolElegido = ref<NuevoUsuario['rol']>('operador')
 const rutaCambioRolId = ref('')
+const nombreTallerCambioRol = ref('')
 const guardandoRol = ref(false)
 const errorRol = ref('')
 const formularioRol = ref<HTMLFormElement | null>(null)
@@ -534,6 +599,7 @@ let botonOrigenRol: HTMLElement | null = null
 function valorRol(rol: string): NuevoUsuario['rol'] {
   const normalizado = normalizeRole(rol)
   if (normalizado === 'Administrador') return 'admin'
+  if (normalizado === 'Taller Independiente') return 'independiente'
   if (normalizado === 'Sub-Administrador') return 'subadmin'
   if (normalizado === 'Consultor') return 'consultor'
   return 'operador'
@@ -561,6 +627,11 @@ const sinCambiosRol = computed(() => {
   if (rolElegido.value === 'subadmin') {
     return rutaCambioRolId.value === rutaIdActualDePerfil(usuarioRol.value)
   }
+  if (rolElegido.value === 'independiente') {
+    const actualTaller =
+      parseIndependentRole(usuarioRol.value.rol).tallerNombre || ''
+    return nombreTallerCambioRol.value.trim() === actualTaller
+  }
   return true
 })
 
@@ -577,6 +648,8 @@ async function abrirCambioRol(perfil: Perfil, evento: MouseEvent) {
   botonOrigenRol = evento.currentTarget as HTMLElement
   usuarioRol.value = perfil
   rolElegido.value = valorRol(perfil.rol)
+  nombreTallerCambioRol.value =
+    parseIndependentRole(perfil.rol).tallerNombre || ''
   rutaCambioRolId.value =
     rutaIdActualDePerfil(perfil) ||
     rutas.value.find((r) => !r.subAdminId && !r.subAdminEmail)?.id ||
@@ -592,6 +665,7 @@ async function cerrarCambioRol() {
   if (guardandoRol.value) return
   usuarioRol.value = null
   rutaCambioRolId.value = ''
+  nombreTallerCambioRol.value = ''
   errorRol.value = ''
   await nextTick()
   if (botonOrigenRol?.isConnected && !botonOrigenRol.hasAttribute('disabled')) {
@@ -675,6 +749,40 @@ async function guardarCambioRol() {
       const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
       if (fila) fila.rol = rolCodificado
       mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(rolCodificado)}.`
+    } else if (nuevoRol === 'independiente') {
+      for (const r of rutasPrevias) {
+        await rutasService
+          .updateRuta(r.id, { assignSubAdmin: null })
+          .catch(() => undefined)
+      }
+      const existingInd = parseIndependentRole(perfil.rol)
+      const tenantId =
+        existingInd.tenantId ||
+        `ind-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+      const tallerNombreFinal =
+        nombreTallerCambioRol.value.trim() ||
+        existingInd.tallerNombre ||
+        `Taller de ${perfil.nombre}`
+      const rolCodificado = encodeIndependentRole({
+        tenantId,
+        tallerNombre: tallerNombreFinal,
+      })
+      await cambiarRolUsuario(perfil.id, rolCodificado, perfil.email)
+      registerIndependentTenantUser({
+        userId: perfil.id,
+        email: perfil.email,
+        tenantId,
+        tallerNombre: tallerNombreFinal,
+      })
+      await tallerService
+        .initIndependentTaller({
+          tenantId,
+          nombreTaller: tallerNombreFinal,
+        })
+        .catch(() => undefined)
+      const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
+      if (fila) fila.rol = rolCodificado
+      mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(rolCodificado)}.`
     } else {
       for (const r of rutasPrevias) {
         await rutasService
@@ -752,7 +860,11 @@ async function copiarTexto(texto: string, clave: string) {
 
 async function copiarFichaAcceso(usuario: Perfil) {
   const pwd = credencialDeUsuario(usuario) || 'No registrada'
-  const ficha = `SWGORA - JR Blanco\nNombre: ${usuario.nombre}\nUsuario (Correo): ${usuario.email}\nContraseña: ${pwd}\nRol: ${nombreRol(usuario.rol)}`
+  const ind = parseIndependentRole(usuario.rol)
+  const lineaExtra = ind.isIndependent
+    ? `\nModalidad: Sistema Independiente (${ind.tallerNombre || 'Taller Propio'}) · Catálogo Compartido`
+    : ''
+  const ficha = `SWGORA\nNombre: ${usuario.nombre}\nUsuario (Correo): ${usuario.email}\nContraseña: ${pwd}\nRol: ${nombreRol(usuario.rol)}${lineaExtra}`
   await copiarTexto(ficha, `ficha-${usuario.id}`)
 }
 
@@ -890,25 +1002,67 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="flex flex-wrap items-end justify-between gap-3 border-b border-[#F2F2F2] p-5">
-        <div class="w-full sm:max-w-sm">
-          <label for="buscar-usuarios" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Buscar usuarios</label>
-          <div class="relative group">
-            <Search aria-hidden="true" class="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#0D0D0D]/40 transition-colors group-focus-within:text-[#04C4D9]" />
-            <input
-              id="buscar-usuarios"
-              v-model="busqueda"
-              type="search"
-              autocomplete="off"
-              placeholder="Nombre, correo o ruta"
-              aria-controls="tabla-usuarios"
-              class="w-full rounded-full border border-[#0D0D0D]/15 bg-[#F2F2F2] py-2.5 pl-10 pr-4 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
-            />
-          </div>
+      <div class="space-y-4 border-b border-[#F2F2F2] p-5">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+            :class="
+              filtroTipoCuenta === 'todos'
+                ? 'bg-[#0D0D0D] text-[#05F2F2]'
+                : 'bg-[#F2F2F2] text-[#0D0D0D]/75 hover:bg-[#05C7F2]/15'
+            "
+            @click="filtroTipoCuenta = 'todos'"
+          >
+            Todos ({{ usuarios.length }})
+          </button>
+          <button
+            type="button"
+            class="rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+            :class="
+              filtroTipoCuenta === 'internos'
+                ? 'bg-[#0D0D0D] text-[#05F2F2]'
+                : 'bg-[#F2F2F2] text-[#0D0D0D]/75 hover:bg-[#05C7F2]/15'
+            "
+            @click="filtroTipoCuenta = 'internos'"
+          >
+            Equipo interno y rutas ({{ totalCuentasInternas }})
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+            :class="
+              filtroTipoCuenta === 'independientes'
+                ? 'bg-[#0D0D0D] text-[#05F2F2]'
+                : 'border border-[#04C4D9]/45 bg-[#05C7F2]/10 text-[#0D0D0D] hover:bg-[#05C7F2]/25'
+            "
+            @click="filtroTipoCuenta = 'independientes'"
+          >
+            <Wrench class="h-3.5 w-3.5" />
+            <span>Talleres independientes ({{ totalCuentasIndependientes }})</span>
+          </button>
         </div>
-        <p v-if="!cargandoUsuarios && !errorLista" role="status" class="text-xs font-medium text-[#0D0D0D]/60 tabular-nums">
-          {{ usuariosFiltrados.length }} de {{ usuarios.length }} usuarios cargados
-        </p>
+
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div class="w-full sm:max-w-sm">
+            <label for="buscar-usuarios" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Buscar usuarios</label>
+            <div class="relative group">
+              <Search aria-hidden="true" class="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#0D0D0D]/40 transition-colors group-focus-within:text-[#04C4D9]" />
+              <input
+                id="buscar-usuarios"
+                v-model="busqueda"
+                type="search"
+                autocomplete="off"
+                placeholder="Nombre, correo, ruta o taller"
+                aria-controls="tabla-usuarios"
+                class="w-full rounded-full border border-[#0D0D0D]/15 bg-[#F2F2F2] py-2.5 pl-10 pr-4 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+              />
+            </div>
+          </div>
+          <p v-if="!cargandoUsuarios && !errorLista" role="status" class="text-xs font-medium text-[#0D0D0D]/60 tabular-nums">
+            {{ usuariosFiltrados.length }} de {{ usuarios.length }} usuarios cargados
+          </p>
+        </div>
       </div>
 
       <p v-if="errorLista" role="alert" class="m-5 rounded-xl border border-[#0D0D0D]/20 bg-[#F2F2F2] p-3 text-sm font-medium text-[#0D0D0D]">
@@ -1114,7 +1268,11 @@ onMounted(() => {
                 id="titulo-nuevo-usuario"
                 class="text-lg font-bold text-[#0D0D0D]"
               >
-                Nuevo usuario
+                {{
+                  datos.rol === 'independiente'
+                    ? 'Compartir sistema independiente'
+                    : 'Nuevo usuario'
+                }}
               </h2>
 
               <button
@@ -1129,6 +1287,35 @@ onMounted(() => {
             </div>
 
             <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-1.5 rounded-xl bg-[#F2F2F2] p-1">
+                <button
+                  type="button"
+                  :disabled="guardando"
+                  class="rounded-lg px-2.5 py-2 text-xs font-bold transition cursor-pointer"
+                  :class="
+                    datos.rol !== 'independiente'
+                      ? 'bg-[#0D0D0D] text-[#05F2F2] shadow-sm'
+                      : 'text-[#0D0D0D]/70 hover:text-[#0D0D0D]'
+                  "
+                  @click="datos.rol = datos.rol === 'independiente' ? 'operador' : datos.rol"
+                >
+                  Equipo de mi taller
+                </button>
+                <button
+                  type="button"
+                  :disabled="guardando"
+                  class="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-2 text-xs font-bold transition cursor-pointer"
+                  :class="
+                    datos.rol === 'independiente'
+                      ? 'bg-[#0D0D0D] text-[#05F2F2] shadow-sm'
+                      : 'text-[#0D0D0D]/70 hover:text-[#0D0D0D]'
+                  "
+                  @click="datos.rol = 'independiente'"
+                >
+                  <Wrench class="h-3.5 w-3.5 shrink-0" />
+                  <span>Sistema Independiente</span>
+                </button>
+              </div>
               <div>
                 <label
                   for="usuario-nombre"
@@ -1210,7 +1397,7 @@ onMounted(() => {
                 </p>
               </div>
 
-              <div>
+              <div v-if="datos.rol !== 'independiente'">
                 <label
                   for="usuario-rol"
                   class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
@@ -1226,7 +1413,7 @@ onMounted(() => {
                   class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
                 >
                   <option
-                    v-for="opcion in roles"
+                    v-for="opcion in rolesEquipo"
                     :key="opcion.valor"
                     :value="opcion.valor"
                   >
@@ -1265,6 +1452,39 @@ onMounted(() => {
                       : 'Tallerista utiliza los permisos del rol Operador.'
                   }}
                 </p>
+              </div>
+
+              <div v-else class="space-y-3">
+                <div>
+                  <label
+                    for="usuario-taller-independiente"
+                    class="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-[#0D0D0D]"
+                  >
+                    <Building2 class="h-3.5 w-3.5 text-[#04C4D9]" />
+                    <span>Nombre del taller independiente</span>
+                  </label>
+                  <input
+                    id="usuario-taller-independiente"
+                    v-model="nombreTallerIndependiente"
+                    type="text"
+                    maxlength="120"
+                    :disabled="guardando"
+                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                    placeholder="Ej. Taller Mecánico El Rayo (opcional)"
+                  />
+                </div>
+
+                <div class="rounded-xl border border-[#04C4D9]/45 bg-[#05C7F2]/10 p-3 text-xs text-[#0D0D0D] space-y-1.5">
+                  <div class="flex items-center gap-1.5 font-bold">
+                    <Sparkles class="h-3.5 w-3.5 text-[#04C4D9] shrink-0" />
+                    <span>Sistema independiente desde cero + Catálogo compartido</span>
+                  </div>
+                  <ul class="list-disc pl-4 space-y-0.5 text-[#0D0D0D]/80">
+                    <li>Iniciará vacío: 0 órdenes, 0 clientes y configuración de su propio taller para PDFs.</li>
+                    <li>Solo compartirá el <strong>Catálogo técnico</strong>.</li>
+                    <li>Aislamiento total: él no verá tus datos y tú tampoco verás los suyos.</li>
+                  </ul>
+                </div>
               </div>
 
               <p
@@ -1393,8 +1613,23 @@ onMounted(() => {
                 </option>
               </select>
             </div>
+            <div v-else-if="rolElegido === 'independiente'" class="mt-3">
+              <label for="cambiar-taller-independiente" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Nombre del taller independiente</label>
+              <input
+                id="cambiar-taller-independiente"
+                v-model="nombreTallerCambioRol"
+                type="text"
+                maxlength="120"
+                :disabled="guardandoRol"
+                placeholder="Ej. Taller Mecánico El Rayo"
+                class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+              />
+            </div>
             <p v-if="rolElegido === 'admin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-[#05C7F2]/10 p-3 text-sm font-medium text-[#0D0D0D]">
               Administrador permite gestionar usuarios y acceder a todas las secciones del sistema.
+            </p>
+            <p v-else-if="rolElegido === 'independiente'" class="mt-3 rounded-xl border border-[#04C4D9]/45 bg-[#05C7F2]/15 p-3 text-sm font-medium text-[#0D0D0D]">
+              Sistema propio vacío (0 órdenes y 0 clientes propios) compartiendo únicamente el Catálogo técnico.
             </p>
             <p v-else-if="rolElegido === 'subadmin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-[#05F2F2]/15 p-3 text-sm font-medium text-[#0D0D0D]">
               Sub-Administrador de Ruta administra únicamente las órdenes y clientes de su ruta asignada.
