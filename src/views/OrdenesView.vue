@@ -881,7 +881,11 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
       aria-hidden="true"
     >
       <div ref="downloadContainerRef" class="bg-white">
-        <WorkOrderDocument :order="orderForDownload" variant="pdf" />
+        <WorkOrderDocument
+          :order="orderForDownload"
+          :showSubtotals="typeof orderForDownload.showSubtotals === 'boolean' ? orderForDownload.showSubtotals : true"
+          variant="pdf"
+        />
       </div>
     </div>
 

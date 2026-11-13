@@ -230,6 +230,9 @@ const customMaterialName = ref('')
 // Impuesto IVA (13%)
 const applyIva = ref(false)
 
+// Mostrar subtotales por componente en el PDF
+const showSubtotals = ref(true)
+
 // Modal de impresión
 const showPrintModal = ref(false)
 const orderForPrint = ref<Order | null>(null)
@@ -729,6 +732,7 @@ const loadExistingOrder = (order: Order) => {
   parts.value = order.parts ? JSON.parse(JSON.stringify(order.parts)) : []
   materials.value = order.materials ? JSON.parse(JSON.stringify(order.materials)) : []
   applyIva.value = Boolean(order.hasIva)
+  showSubtotals.value = order.showSubtotals !== undefined ? Boolean(order.showSubtotals) : true
 
   // Sincronizar las operaciones existentes en la lista unificada
   if (order.operations && order.operations.length > 0) {
@@ -1044,6 +1048,7 @@ const handleSaveOrder = async () => {
       partsTotal: partsTotal.value,
       materialsTotal: materialsTotal.value,
       hasIva: applyIva.value,
+      showSubtotals: showSubtotals.value,
       subtotal: laborTotal.value,
       iva: applyIva.value ? ivaAmount.value : 0,
       total: totalOrder.value,
@@ -1062,8 +1067,12 @@ const handleSaveOrder = async () => {
       saved = await ordersService.createOrder(orderPayload)
     }
 
-    lastSavedOrder.value = saved
-    orderForPrint.value = saved
+    const finalSavedOrder: Order = {
+      ...saved,
+      showSubtotals: showSubtotals.value
+    }
+    lastSavedOrder.value = finalSavedOrder
+    orderForPrint.value = finalSavedOrder
 
     notificationMessage.value = { 
       type: 'success', 
@@ -2137,6 +2146,44 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 Cotización (B/N)
               </button>
             </div>
+          </div>
+
+          <!-- Opción: Mostrar Subtotales por Componente en el PDF -->
+          <div class="pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              @click="showSubtotals = !showSubtotals"
+              class="w-full flex items-center justify-between p-2.5 rounded-xl border transition text-left cursor-pointer select-none"
+              :class="showSubtotals ? 'bg-cyan-50/70 border-[#04c4d9]/50 shadow-xs' : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'"
+              title="mostrar subtotales por componente"
+            >
+              <div class="flex items-center gap-2.5">
+                <!-- Visual Switch Toggle -->
+                <div
+                  class="w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0"
+                  :class="showSubtotals ? 'bg-[#04c4d9]' : 'bg-slate-300'"
+                >
+                  <div
+                    class="w-4 h-4 rounded-full bg-white shadow transform transition-transform"
+                    :class="showSubtotals ? 'translate-x-4' : 'translate-x-0'"
+                  ></div>
+                </div>
+                <div>
+                  <span class="text-xs font-bold text-slate-800 block leading-tight">
+                    Mostrar subtotales
+                  </span>
+                  <span class="text-[10px] text-slate-500 italic block mt-0.5">
+                    mostrar subtotales por componente
+                  </span>
+                </div>
+              </div>
+              <span
+                class="text-[10px] font-black px-2 py-0.5 rounded font-mono transition"
+                :class="showSubtotals ? 'bg-[#04c4d9] text-white' : 'bg-slate-200 text-slate-600'"
+              >
+                {{ showSubtotals ? 'SÍ' : 'NO' }}
+              </span>
+            </button>
           </div>
 
           <!-- Botones de Acción (Acción Unificada: Guardar Orden e Imprimir) -->

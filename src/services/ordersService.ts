@@ -81,6 +81,7 @@ export interface Order {
   partsTotal: number
   materialsTotal: number
   hasIva?: boolean
+  showSubtotals?: boolean
   subtotal?: number
   iva?: number
   total: number
@@ -362,6 +363,32 @@ const initialMockOrders: Order[] = [
   }
 ]
 
+const SUBTITLES_PREF_KEY = 'swgora_orders_subtotals_prefs'
+
+function getSubtotalsPref(orderIdOrNum?: string): boolean {
+  if (!orderIdOrNum) return true
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SUBTITLES_PREF_KEY) : null
+    if (raw) {
+      const map = JSON.parse(raw)
+      if (map[orderIdOrNum] !== undefined) return Boolean(map[orderIdOrNum])
+    }
+  } catch {}
+  return true
+}
+
+function setSubtotalsPref(orderIdOrNum: string | undefined, val: boolean) {
+  if (!orderIdOrNum) return
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(SUBTITLES_PREF_KEY)
+      const map = raw ? JSON.parse(raw) : {}
+      map[orderIdOrNum] = val
+      localStorage.setItem(SUBTITLES_PREF_KEY, JSON.stringify(map))
+    }
+  } catch {}
+}
+
 function mapDbToOrder(row: any): Order {
   const decodedTaller = decodeTallerCodigoWithRoute(row.taller_codigo)
   const fallbackRoute = rutasService.getOrderRoute(
@@ -434,6 +461,9 @@ function mapDbToOrder(row: any): Order {
     partsTotal: Number(row.total_repuestos || 0),
     materialsTotal: Number(row.total_materiales || 0),
     hasIva: Boolean(row.tiene_iva),
+    showSubtotals: row.show_subtotals !== undefined
+      ? Boolean(row.show_subtotals)
+      : getSubtotalsPref(row.id || row.numero_orden),
     subtotal: Number(row.subtotal || 0),
     iva: Number(row.iva || 0),
     total: Number(row.total || 0),
@@ -444,6 +474,11 @@ function mapDbToOrder(row: any): Order {
 }
 
 function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
+  if (order.showSubtotals !== undefined) {
+    setSubtotalsPref(order.id, Boolean(order.showSubtotals))
+    setSubtotalsPref(order.orderNumber, Boolean(order.showSubtotals))
+  }
+
   const cleanDate = order.date ? String(order.date).split('T')[0] : new Date().toISOString().split('T')[0]
   const cleanDeliveryDate = order.deliveryDate ? String(order.deliveryDate).split('T')[0] : null
 
@@ -770,6 +805,11 @@ export const ordersService = {
         console.error('[OrdersService] Error guardando orden/cotización en Supabase:', error)
       } else if (data) {
         const serverOrder = mapDbToOrder(data)
+        if (newOrder.showSubtotals !== undefined) {
+          serverOrder.showSubtotals = newOrder.showSubtotals
+          setSubtotalsPref(serverOrder.id, Boolean(newOrder.showSubtotals))
+          setSubtotalsPref(serverOrder.orderNumber, Boolean(newOrder.showSubtotals))
+        }
         const updatedList = getStoredOrders().map(o => o.id === serverOrder.id ? serverOrder : o)
         saveStoredOrders(updatedList)
         return serverOrder
@@ -822,6 +862,11 @@ export const ordersService = {
         console.error('[OrdersService] Error actualizando orden/cotización en Supabase:', error)
       } else if (data) {
         const serverOrder = mapDbToOrder(data)
+        if (updatedOrder.showSubtotals !== undefined) {
+          serverOrder.showSubtotals = updatedOrder.showSubtotals
+          setSubtotalsPref(serverOrder.id, Boolean(updatedOrder.showSubtotals))
+          setSubtotalsPref(serverOrder.orderNumber, Boolean(updatedOrder.showSubtotals))
+        }
         const list = getStoredOrders().map(o => o.id === serverOrder.id ? serverOrder : o)
         saveStoredOrders(list)
         return serverOrder
