@@ -994,12 +994,28 @@ const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion):
   return String(val)
 }
 
-const getPartSubfilaRawValue = (sf: PartSubfilaDisplay, col: ParametroTecnicoDefinicion): unknown => {
-  return resolveSubfilaColumnValue(sf.medidas, col)
+const getPartMiniTableCellRawValue = (
+  part: RepuestoTecnico,
+  sf: PartSubfilaDisplay,
+  col: ParametroTecnicoDefinicion
+): unknown => {
+  const rowVal = resolveSubfilaColumnValue(sf.medidas, col)
+  if (!col.compartido_filas) return rowVal
+  if (rowVal !== undefined && rowVal !== null && rowVal !== '') return rowVal
+  const allRows = getPartSubfilas(part)
+  for (const r of allRows) {
+    const candidate = resolveSubfilaColumnValue(r.medidas, col)
+    if (candidate !== undefined && candidate !== null && candidate !== '') return candidate
+  }
+  return getPartParamValue(part, col.clave)
 }
 
-const getPartSubfilaValue = (sf: PartSubfilaDisplay, col: ParametroTecnicoDefinicion): string => {
-  return formatPartParamColValue(getPartSubfilaRawValue(sf, col), col)
+const getPartMiniTableCellValue = (
+  part: RepuestoTecnico,
+  sf: PartSubfilaDisplay,
+  col: ParametroTecnicoDefinicion
+): string => {
+  return formatPartParamColValue(getPartMiniTableCellRawValue(part, sf, col), col)
 }
 
 const CORE_TABLE_RING_KEYS = new Set([
@@ -4911,33 +4927,39 @@ onUnmounted(() => {
                             </td>
 
                             <!-- Columnas de medidas / booleanos / opciones -->
-                            <td
+                            <template
                               v-for="(col, cIdx) in activeTableGroupColumns"
                               :key="`mt-val-${part.id}-${sfIdx}-${col.id || cIdx}`"
-                              class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
-                              :class="[
-                                cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : '',
-                                getMeasurementMatchClass(getPartSubfilaRawValue(sf, col) as any, dynamicParamFilters[col.clave], getTol(col.clave))
-                              ]"
                             >
-                              <span
-                                v-if="col.tipo_dato === 'seleccion' && getPartSubfilaRawValue(sf, col)"
-                                class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
-                                :class="resolveOptionBadgeClass(String(getPartSubfilaRawValue(sf, col)), col.opciones)"
+                              <td
+                                v-if="!col.compartido_filas || sfIdx === 0"
+                                :rowspan="col.compartido_filas ? getPartSubfilas(part).length : undefined"
+                                class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
+                                :class="[
+                                  cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : '',
+                                  col.compartido_filas ? 'align-middle bg-cyan-50/15' : '',
+                                  getMeasurementMatchClass(getPartMiniTableCellRawValue(part, sf, col) as any, dynamicParamFilters[col.clave], getTol(col.clave))
+                                ]"
                               >
-                                {{ getPartSubfilaValue(sf, col) }}
-                              </span>
-                              <span
-                                v-else-if="col.tipo_dato === 'booleano'"
-                                class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
-                                :class="getPartSubfilaRawValue(sf, col) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
-                              >
-                                {{ getPartSubfilaRawValue(sf, col) ? 'Sí' : 'No' }}
-                              </span>
-                              <template v-else>
-                                {{ getPartSubfilaValue(sf, col) }}
-                              </template>
-                            </td>
+                                <span
+                                  v-if="col.tipo_dato === 'seleccion' && getPartMiniTableCellRawValue(part, sf, col)"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                  :class="resolveOptionBadgeClass(String(getPartMiniTableCellRawValue(part, sf, col)), col.opciones)"
+                                >
+                                  {{ getPartMiniTableCellValue(part, sf, col) }}
+                                </span>
+                                <span
+                                  v-else-if="col.tipo_dato === 'booleano'"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
+                                  :class="getPartMiniTableCellRawValue(part, sf, col) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                                >
+                                  {{ getPartMiniTableCellRawValue(part, sf, col) ? 'Sí' : 'No' }}
+                                </span>
+                                <template v-else>
+                                  {{ getPartMiniTableCellValue(part, sf, col) }}
+                                </template>
+                              </td>
+                            </template>
                           </tr>
                         </tbody>
                       </table>

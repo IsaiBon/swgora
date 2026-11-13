@@ -1098,6 +1098,22 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   }
 
+  // Asegurar que columnas marcadas como "compartido_filas" muestren el primer valor válido en todas las filas (y en la fila 0)
+  if (matchedGroup?.parametros && subfilasRows.value.length > 0) {
+    for (const p of matchedGroup.parametros) {
+      if (!p.compartido_filas) continue
+      const firstValidRow = subfilasRows.value.find(
+        row => row.medidas[p.clave] !== undefined && row.medidas[p.clave] !== null && row.medidas[p.clave] !== ''
+      )
+      const fallbackVal = firstValidRow ? firstValidRow.medidas[p.clave] : loadedParams[p.clave]
+      if (fallbackVal !== undefined && fallbackVal !== null && fallbackVal !== '') {
+        for (const row of subfilasRows.value) {
+          row.medidas[p.clave] = fallbackVal
+        }
+      }
+    }
+  }
+
   // Si algún parámetro del grupo activo tiene clave con prefijo pero existía un valor bajo clave simple previa:
   if (activeGroup.value?.parametros) {
     for (const p of activeGroup.value.parametros) {
@@ -1159,6 +1175,13 @@ const handleSavePart = async () => {
 
     // Sincronizar sub-filas para familias en tabla unificada (incluyendo Anillos y Cojinetes)
     if (isSubfilasGroup.value) {
+      if (activeGroup.value?.parametros && subfilasRows.value.length > 0) {
+        for (const p of activeGroup.value.parametros) {
+          if (p.compartido_filas) {
+            propagateSharedSubfilaValue(p.clave, subfilasRows.value[0]?.medidas[p.clave])
+          }
+        }
+      }
       dimensionesPayload.subfilas = subfilasRows.value.map((sf, idx) => ({
         id: sf.id,
         tipo: sf.tipo,
@@ -1480,19 +1503,57 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
   selectedEditGroupId.value = grp.codigo || grp.id
 }
 
+const propagateSharedSubfilaValue = (clave: string, val: unknown) => {
+  for (const row of subfilasRows.value) {
+    row.medidas[clave] = val
+  }
+}
+
+const syncSharedOnMicrotask = (sf: SubfilaFormRow, param: ParametroTecnicoDefinicion) => {
+  if (!param.compartido_filas) return
+  Promise.resolve().then(() => {
+    propagateSharedSubfilaValue(param.clave, sf.medidas[param.clave])
+  })
+}
+
+const toggleSubfilaBool = (sf: SubfilaFormRow, param: ParametroTecnicoDefinicion) => {
+  const nextVal = !sf.medidas[param.clave]
+  sf.medidas[param.clave] = nextVal
+  if (param.compartido_filas) {
+    propagateSharedSubfilaValue(param.clave, nextVal)
+  }
+}
+
+const selectSubfilaOption = (sf: SubfilaFormRow, param: ParametroTecnicoDefinicion, opt: string) => {
+  const nextVal = sf.medidas[param.clave] === opt ? '' : opt
+  sf.medidas[param.clave] = nextVal
+  if (param.compartido_filas) {
+    propagateSharedSubfilaValue(param.clave, nextVal)
+  }
+}
+
 const addFormSubfila = () => {
   const count = subfilasRows.value.length + 1
   const nextLabel = buildNextAutoRowLabel(
     subfilasRows.value.map(r => r.nombre),
     activeTablaConfig.value.titulo_primera_columna
   )
+  const sharedMedidas: Record<string, any> = {}
+  const firstRow = subfilasRows.value[0]
+  if (firstRow && activeGroup.value?.parametros) {
+    for (const p of activeGroup.value.parametros) {
+      if (p.compartido_filas && firstRow.medidas[p.clave] !== undefined) {
+        sharedMedidas[p.clave] = firstRow.medidas[p.clave]
+      }
+    }
+  }
   subfilasRows.value.push({
     id: `sf-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
     tipo: `fila_${count}`,
     nombre: nextLabel,
     codigo: '',
     grupo: '',
-    medidas: {}
+    medidas: sharedMedidas
   })
 }
 
@@ -2626,63 +2687,71 @@ onUnmounted(() => {
                           />
                         </td>
 
-                        <td
+                        <template
                           v-for="param in (activeGroup?.parametros || [])"
                           :key="`td-sf-${sf.id}-${param.id}`"
-                          class="px-1.5 py-1.5 border-r border-slate-200"
                         >
-                          <input
-                            v-if="param.tipo_dato === 'numero'"
-                            v-model.number="sf.medidas[param.clave]"
-                            type="number"
-                            step="0.001"
-                            placeholder="0.00"
-                            class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                          />
-                          <!-- Booleano (Sí / No) -->
-                          <button
-                            v-else-if="param.tipo_dato === 'booleano'"
-                            type="button"
-                            @click="sf.medidas[param.clave] = !sf.medidas[param.clave]"
-                            :class="[
-                              'px-2.5 py-1 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
-                              sf.medidas[param.clave]
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
-                                : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                            ]"
+                          <td
+                            v-if="!param.compartido_filas || sfIdx === 0"
+                            :rowspan="param.compartido_filas ? subfilasRows.length : undefined"
+                            class="px-1.5 py-1.5 border-r border-slate-200"
+                            :class="param.compartido_filas ? 'align-middle bg-cyan-50/20' : ''"
                           >
-                            <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-emerald-600" />
-                            <X v-else class="w-3 h-3 text-slate-400" />
-                            <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
-                          </button>
-                          <!-- Selección (Opciones con color por posición) -->
-                          <div
-                            v-else-if="param.tipo_dato === 'seleccion'"
-                            class="flex flex-wrap items-center justify-center gap-1 min-w-[110px]"
-                          >
+                            <input
+                              v-if="param.tipo_dato === 'numero'"
+                              v-model.number="sf.medidas[param.clave]"
+                              @input="syncSharedOnMicrotask(sf, param)"
+                              type="number"
+                              step="0.001"
+                              placeholder="0.00"
+                              class="w-20 px-1 py-1 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                            <!-- Booleano (Sí / No) -->
                             <button
-                              v-for="(opt, optIdx) in (param.opciones || [])"
-                              :key="opt"
+                              v-else-if="param.tipo_dato === 'booleano'"
                               type="button"
-                              @click="sf.medidas[param.clave] = sf.medidas[param.clave] === opt ? '' : opt"
+                              @click="toggleSubfilaBool(sf, param)"
                               :class="[
-                                'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer',
-                                sf.medidas[param.clave] === opt
-                                  ? `${getOptionBadgeClassByIndex(optIdx)} ring-1 ring-offset-1 ring-slate-400 shadow-2xs`
-                                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
+                                'px-2.5 py-1 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
+                                sf.medidas[param.clave]
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                                  : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
                               ]"
                             >
-                              {{ opt }}
+                              <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-emerald-600" />
+                              <X v-else class="w-3 h-3 text-slate-400" />
+                              <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
                             </button>
-                          </div>
-                          <input
-                            v-else
-                            v-model="sf.medidas[param.clave]"
-                            type="text"
-                            placeholder="—"
-                            class="w-24 px-1 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                          />
-                        </td>
+                            <!-- Selección (Opciones con color por posición) -->
+                            <div
+                              v-else-if="param.tipo_dato === 'seleccion'"
+                              class="flex flex-wrap items-center justify-center gap-1 min-w-[110px]"
+                            >
+                              <button
+                                v-for="(opt, optIdx) in (param.opciones || [])"
+                                :key="opt"
+                                type="button"
+                                @click="selectSubfilaOption(sf, param, opt)"
+                                :class="[
+                                  'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer',
+                                  sf.medidas[param.clave] === opt
+                                    ? `${getOptionBadgeClassByIndex(optIdx)} ring-1 ring-offset-1 ring-slate-400 shadow-2xs`
+                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
+                                ]"
+                              >
+                                {{ opt }}
+                              </button>
+                            </div>
+                            <input
+                              v-else
+                              v-model="sf.medidas[param.clave]"
+                              @input="syncSharedOnMicrotask(sf, param)"
+                              type="text"
+                              placeholder="—"
+                              class="w-24 px-1 py-1 text-center font-sans font-semibold text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </td>
+                        </template>
 
                         <td class="px-2 py-1.5 text-center">
                           <div class="flex items-center justify-center gap-1">

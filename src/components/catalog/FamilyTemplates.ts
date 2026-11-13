@@ -9,6 +9,7 @@ export interface TemplateColumnDef {
   clave?: string
   etiqueta: string
   columna_padre?: string
+  compartido_filas?: boolean
   unidad?: string
   tipo_dato?: 'numero' | 'texto' | 'seleccion' | 'booleano'
   requerido?: boolean
@@ -258,6 +259,7 @@ export function cloneExistingGrupoToTemplate(grupo: GrupoRepuesto): FamilyTempla
       clave: p.clave,
       etiqueta: p.etiqueta,
       columna_padre: (p as any).columna_padre || undefined,
+      compartido_filas: Boolean(p.compartido_filas) || undefined,
       unidad: p.unidad || (p.tipo_dato === 'numero' ? 'mm' : ''),
       tipo_dato: p.tipo_dato || 'numero',
       requerido: p.requerido !== false,
@@ -344,6 +346,9 @@ export function convertTemplateToGrupoInsert(
 
     if (col.columna_padre && col.columna_padre.trim()) {
       ;(paramObj as any).columna_padre = col.columna_padre.trim()
+    }
+    if (template.tipo_vista === 'tabla' && col.compartido_filas) {
+      paramObj.compartido_filas = true
     }
 
     return paramObj

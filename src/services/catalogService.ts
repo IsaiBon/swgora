@@ -77,6 +77,7 @@ export interface ParametroTecnicoDefinicion {
   valor_minimo?: number
   valor_maximo?: number
   columna_padre?: string // Columna superior/padre para sub-columnas (ej. "STD", "1er", "2da", "Diámetros")
+  compartido_filas?: boolean // Si true en vista en tabla, comparte un único valor verticalmente entre todas las filas
 }
 
 export interface HeaderTier1Item<T = unknown> {

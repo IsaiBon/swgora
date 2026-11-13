@@ -1355,6 +1355,30 @@ const handleSave = () => {
                             </span>
                           </div>
                         </div>
+
+                        <!-- Valor compartido verticalmente entre todas las filas -->
+                        <div v-if="currentTemplate.tipo_vista === 'tabla'" class="pt-1.5 mt-1.5 border-t border-slate-100">
+                          <button
+                            type="button"
+                            @click="item.col.compartido_filas = !item.col.compartido_filas"
+                            class="w-full px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center justify-between gap-1.5 border cursor-pointer"
+                            :class="item.col.compartido_filas
+                              ? 'bg-cyan-50 border-[#04C4D9] text-[#004B97] shadow-2xs'
+                              : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'"
+                            title="Si se activa, esta columna mostrará un único valor centrado y compartido para todas las filas del repuesto (ej. Diámetro)"
+                          >
+                            <span class="flex items-center gap-1 truncate">
+                              <Layers class="w-3 h-3 shrink-0" :class="item.col.compartido_filas ? 'text-[#004B97]' : 'text-slate-400'" />
+                              <span class="truncate">Compartido en filas</span>
+                            </span>
+                            <span
+                              class="px-1.5 py-0.2 rounded text-[9px] font-black shrink-0"
+                              :class="item.col.compartido_filas ? 'bg-[#004B97] text-white' : 'bg-slate-100 text-slate-400'"
+                            >
+                              {{ item.col.compartido_filas ? 'SÍ' : 'NO' }}
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1678,32 +1702,40 @@ const handleSave = () => {
                             <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
                               {{ rowLabel }}
                             </td>
-                            <td
+                            <template
                               v-for="(col, colIdx) in currentTemplate.columnas"
                               :key="`mt-val-${rIdx}-${colIdx}`"
-                              class="px-2.5 py-1 font-mono font-bold text-slate-800 whitespace-nowrap"
-                              :class="colIdx < currentTemplate.columnas.length - 1 ? 'border-r border-slate-200' : ''"
                             >
-                              <span
-                                v-if="col.tipo_dato === 'booleano'"
-                                class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black"
-                                :class="rIdx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                              <td
+                                v-if="!col.compartido_filas || rIdx === 0"
+                                :rowspan="col.compartido_filas ? previewSampleRows.length : undefined"
+                                class="px-2.5 py-1 font-mono font-bold text-slate-800 whitespace-nowrap"
+                                :class="[
+                                  colIdx < currentTemplate.columnas.length - 1 ? 'border-r border-slate-200' : '',
+                                  col.compartido_filas ? 'align-middle bg-cyan-50/20 text-[#004B97]' : ''
+                                ]"
                               >
-                                <Check v-if="rIdx === 0" class="w-2.5 h-2.5 text-emerald-600" />
-                                <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
-                              </span>
-                              <span
-                                v-else-if="col.tipo_dato === 'seleccion'"
-                                class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
-                                :class="getOptionBadgeClassByIndex(getParsedOptionsList(col).length > 0 ? rIdx % getParsedOptionsList(col).length : 0)"
-                              >
-                                {{ getParsedOptionsList(col).length > 0 ? getParsedOptionsList(col)[rIdx % getParsedOptionsList(col).length] : 'Opción' }}
-                              </span>
-                              <span v-else-if="(col.tipo_dato || 'numero') === 'numero'">
-                                {{ (45.00 + rIdx * 0.25).toFixed(2) }}
-                              </span>
-                              <span v-else class="text-slate-400 italic">—</span>
-                            </td>
+                                <span
+                                  v-if="col.tipo_dato === 'booleano'"
+                                  class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black"
+                                  :class="rIdx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                                >
+                                  <Check v-if="rIdx === 0" class="w-2.5 h-2.5 text-emerald-600" />
+                                  <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
+                                </span>
+                                <span
+                                  v-else-if="col.tipo_dato === 'seleccion'"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                  :class="getOptionBadgeClassByIndex(getParsedOptionsList(col).length > 0 ? rIdx % getParsedOptionsList(col).length : 0)"
+                                >
+                                  {{ getParsedOptionsList(col).length > 0 ? getParsedOptionsList(col)[rIdx % getParsedOptionsList(col).length] : 'Opción' }}
+                                </span>
+                                <span v-else-if="(col.tipo_dato || 'numero') === 'numero'">
+                                  {{ (45.00 + rIdx * 0.25).toFixed(2) }}
+                                </span>
+                                <span v-else class="text-slate-400 italic">—</span>
+                              </td>
+                            </template>
                           </tr>
                         </tbody>
                       </table>
