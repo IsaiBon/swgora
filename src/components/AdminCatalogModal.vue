@@ -10,6 +10,7 @@ import {
   type TablaConfiguracion,
   type RepuestoTecnico,
   type Motor,
+  type DocumentoPdf,
   buildNextAutoRowLabel,
   buildNestedTableHeaders,
   buildNormalRowSegmentMeta,
@@ -388,6 +389,54 @@ const partNombre = ref<string>('')
 const partSubsistema = ref<string>('Block')
 const partCatalogoOrigen = ref<string>('OEM')
 const partImagenUrl = ref<string>('')
+const partImagenes = ref<string[]>([])
+const partDocumentosPdf = ref<DocumentoPdf[]>([])
+const partDisenosAnillo = ref<string[]>([])
+const customRingDesignInput = ref<string>('')
+const partDescripcionTecnica = ref<string>('')
+
+const RING_DESIGN_CHIPS = [
+  'Cromado',
+  'Biselado',
+  'Raspador',
+  'Recto',
+  'Nitro',
+  'Cónico',
+  'Semi-cónico',
+  '1 Espiral',
+  'Doble Espiral',
+  'Escalonado',
+  'Plano'
+]
+
+const isAnillosActiveGroup = computed<boolean>(() => {
+  if (!activeGroup.value) return false
+  const code = (activeGroup.value.codigo || '').toLowerCase()
+  const cat = (activeGroup.value.categoria || '').toLowerCase()
+  return code === 'anillos_motor' || cat === 'anillos' || cat.includes('anillo')
+})
+
+const availableRingDesignChips = computed<string[]>(() => {
+  return Array.from(new Set([...RING_DESIGN_CHIPS, ...partDisenosAnillo.value]))
+})
+
+const toggleRingDesignChip = (chip: string) => {
+  const idx = partDisenosAnillo.value.findIndex(d => d.toLowerCase() === chip.toLowerCase())
+  if (idx >= 0) {
+    partDisenosAnillo.value.splice(idx, 1)
+  } else {
+    partDisenosAnillo.value.push(chip)
+  }
+}
+
+const addCustomRingDesignChip = () => {
+  const clean = customRingDesignInput.value.trim()
+  if (!clean) return
+  if (!partDisenosAnillo.value.some(d => d.toLowerCase() === clean.toLowerCase())) {
+    partDisenosAnillo.value.push(clean)
+  }
+  customRingDesignInput.value = ''
+}
 
 const availableModalModelos = computed(() => {
   const brandClean = partMarca.value.trim().toLowerCase()
@@ -880,7 +929,28 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   partAno.value = spec.ano || spec.anios || dims.ano || (part.motor?.anios) || ''
   partSubsistema.value = part.subsistema || 'Block'
   partCatalogoOrigen.value = part.catalogo_origen || 'OEM'
-  partImagenUrl.value = part.imagen_url || ''
+  const rawImgs = Array.isArray(part.imagenes) && part.imagenes.length > 0
+    ? part.imagenes
+    : (Array.isArray(spec.imagenes) ? spec.imagenes : (part.imagen_url ? [part.imagen_url] : []))
+  partImagenes.value = Array.from(
+    new Set([part.imagen_url || '', ...rawImgs.map((u: unknown) => String(u || '').trim())].filter(Boolean))
+  )
+  partImagenUrl.value = partImagenes.value[0] || part.imagen_url || ''
+  partDocumentosPdf.value = Array.isArray(part.documentos_pdf)
+    ? [...part.documentos_pdf]
+    : (Array.isArray(spec.documentos_pdf) ? [...spec.documentos_pdf] : [])
+  const loadedDisenos =
+    (Array.isArray(part.disenos_anillo) ? part.disenos_anillo : null) ||
+    (Array.isArray(spec.disenos_anillo) ? spec.disenos_anillo : null) ||
+    (Array.isArray(dims.disenos_anillo) ? dims.disenos_anillo : null) ||
+    []
+  partDisenosAnillo.value = Array.from(new Set(loadedDisenos.map((d: unknown) => String(d || '').trim()).filter(Boolean)))
+  customRingDesignInput.value = ''
+  partDescripcionTecnica.value =
+    part.descripcion_tecnica ||
+    spec.descripcion_tecnica ||
+    dims.descripcion_tecnica ||
+    ''
 
   // Motor asociado
   if (part.motor_id) {
@@ -1296,6 +1366,11 @@ const handleSavePart = async () => {
         if (dNum != null) dimensionesPayload.diametro_cilindro_mm = dNum
         if (mappedRings[0]?.h1 != null) dimensionesPayload.espesor_anillo1_mm = mappedRings[0].h1
         if (mappedRings.length >= 3 && mappedRings[1]?.h1 != null) dimensionesPayload.espesor_anillo2_mm = mappedRings[1].h1
+        if (mappedRings.length >= 4 && mappedRings[2]?.h1 != null) {
+          dimensionesPayload.espesor_anillo3_mm = mappedRings[2].h1
+        } else {
+          delete dimensionesPayload.espesor_anillo3_mm
+        }
         const rOil = mappedRings[mappedRings.length - 1]
         if (rOil?.h1 != null) dimensionesPayload.espesor_aceite_mm = rOil.h1
         const conicoRow = mappedRings.find(r => (r.perfil || '').toLowerCase().includes('cónic') || (r.perfil || '').toLowerCase().includes('conic'))
@@ -1429,6 +1504,23 @@ const handleSavePart = async () => {
     dimensionesPayload.vehiculo = `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()}`
     dimensionesPayload.ano = partAno.value.trim()
 
+    const cleanImagenes = Array.from(
+      new Set([...(partImagenes.value || []), partImagenUrl.value || ''].map(u => u.trim()).filter(Boolean))
+    )
+    const cleanDisenos = Array.from(new Set(partDisenosAnillo.value.map(d => d.trim()).filter(Boolean)))
+    const cleanDesc = partDescripcionTecnica.value.trim()
+
+    if (cleanDisenos.length > 0) {
+      dimensionesPayload.disenos_anillo = cleanDisenos
+    } else {
+      delete dimensionesPayload.disenos_anillo
+    }
+    if (cleanDesc) {
+      dimensionesPayload.descripcion_tecnica = cleanDesc
+    } else {
+      delete dimensionesPayload.descripcion_tecnica
+    }
+
     const prevSpec = (editingPartId.value && props.editPart?.especificaciones_tecnicas)
       ? { ...(props.editPart.especificaciones_tecnicas as Record<string, unknown>) }
       : {}
@@ -1440,7 +1532,11 @@ const handleSavePart = async () => {
       modelo: partModelo.value.trim().toUpperCase(),
       vehiculo: `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()}`,
       ano: partAno.value.trim(),
-      anios: partAno.value.trim()
+      anios: partAno.value.trim(),
+      imagenes: cleanImagenes,
+      documentos_pdf: partDocumentosPdf.value || [],
+      disenos_anillo: cleanDisenos,
+      descripcion_tecnica: cleanDesc || undefined
     }
 
     const finalNombre = partNombre.value.trim() || 
@@ -1457,7 +1553,11 @@ const handleSavePart = async () => {
       stock: editingPartId.value && props.editPart ? (props.editPart.stock ?? 0) : 0,
       estado: editingPartId.value && props.editPart ? (props.editPart.estado ?? 'Disponible') : 'Disponible',
       catalogo_origen: partCatalogoOrigen.value,
-      imagen_url: partImagenUrl.value ? partImagenUrl.value.trim() : undefined,
+      imagen_url: cleanImagenes[0] || (partImagenUrl.value ? partImagenUrl.value.trim() : undefined),
+      imagenes: cleanImagenes,
+      documentos_pdf: partDocumentosPdf.value || [],
+      disenos_anillo: cleanDisenos,
+      descripcion_tecnica: cleanDesc || undefined,
       dimensiones: dimensionesPayload,
       especificaciones_tecnicas: especificacionesPayload,
       // Mapear cotas estándar si coinciden con nombres típicos
@@ -1518,6 +1618,11 @@ function resetPartForm() {
   isMotorDropdownOpen.value = false
   partCatalogoOrigen.value = 'OEM'
   partImagenUrl.value = ''
+  partImagenes.value = []
+  partDocumentosPdf.value = []
+  partDisenosAnillo.value = []
+  customRingDesignInput.value = ''
+  partDescripcionTecnica.value = ''
   const emptyParams: Record<string, any> = {}
   for (const p of (activeGroup.value?.parametros || [])) {
     emptyParams[p.clave] = p.tipo_dato === 'booleano' ? false : (p.tipo_dato === 'numero' ? null : '')
@@ -1595,10 +1700,15 @@ const selectSubfilaOption = (sf: SubfilaFormRow, param: ParametroTecnicoDefinici
 
 const addFormSubfila = () => {
   const count = subfilasRows.value.length + 1
-  const nextLabel = buildNextAutoRowLabel(
-    subfilasRows.value.filter(r => !r.es_fila_central).map(r => r.nombre),
-    activeTablaConfig.value.titulo_primera_columna
+  const nonOilNormalRows = subfilasRows.value.filter(
+    r => !r.es_fila_central && !r.nombre.toLowerCase().includes('aceite')
   )
+  const nextLabel = isAnillosActiveGroup.value
+    ? `${nonOilNormalRows.length + 1}° Anillo (Compresión)`
+    : buildNextAutoRowLabel(
+        subfilasRows.value.filter(r => !r.es_fila_central).map(r => r.nombre),
+        activeTablaConfig.value.titulo_primera_columna
+      )
   const sharedMedidas: Record<string, any> = {}
   const firstNormalRow = subfilasRows.value.find(r => !r.es_fila_central)
   if (firstNormalRow && activeGroup.value?.parametros) {
@@ -1608,7 +1718,7 @@ const addFormSubfila = () => {
       }
     }
   }
-  subfilasRows.value.push({
+  const newRow: SubfilaFormRow = {
     id: `sf-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
     tipo: `fila_${count}`,
     nombre: nextLabel,
@@ -1616,7 +1726,16 @@ const addFormSubfila = () => {
     grupo: '',
     es_fila_central: false,
     medidas: sharedMedidas
-  })
+  }
+  if (isAnillosActiveGroup.value) {
+    // Mantener siempre "Anillo de aceite" como última fila
+    const oilIdx = subfilasRows.value.findIndex(r => !r.es_fila_central && r.nombre.toLowerCase().includes('aceite'))
+    if (oilIdx >= 0) {
+      subfilasRows.value.splice(oilIdx, 0, newRow)
+      return
+    }
+  }
+  subfilasRows.value.push(newRow)
 }
 
 const addFormCentralSubfila = () => {
@@ -2388,12 +2507,14 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Imagen Técnica / Diagrama de explosión (5 cols) -->
+            <!-- Imagen Técnica / Galería Multimedia y PDFs (5 cols) -->
             <div class="lg:col-span-5 bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5">
               <PartImageUploader
                 v-model="partImagenUrl"
+                v-model:imagenes="partImagenes"
+                v-model:documentos-pdf="partDocumentosPdf"
                 :part-code="partCodigoOem"
-                label="Diagrama / Foto de Pieza"
+                label="Galería de Fotos y Documentos PDF"
               />
             </div>
 
@@ -3031,6 +3152,68 @@ onUnmounted(() => {
 
             <div v-else class="p-4 text-center bg-white border border-slate-200 rounded-xl text-xs text-slate-500">
               Este grupo no tiene medidas dimensionales adicionales.
+            </div>
+
+            <!-- Diseño de Anillos (Multi-select chips) + Descripción Técnica / Notas de Aplicación -->
+            <div class="pt-2 border-t border-slate-200/80 space-y-3">
+              <div v-if="isAnillosActiveGroup" class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <label class="text-[11px] font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
+                    <span>Diseño de Anillos (Selección Múltiple)</span>
+                  </label>
+                  <span v-if="partDisenosAnillo.length > 0" class="text-[10px] font-bold text-[#038391] bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">
+                    {{ partDisenosAnillo.length }} seleccionado(s)
+                  </span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button
+                    v-for="chip in availableRingDesignChips"
+                    :key="`ring-chip-${chip}`"
+                    type="button"
+                    @click="toggleRingDesignChip(chip)"
+                    :class="[
+                      'px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1',
+                      partDisenosAnillo.some(d => d.toLowerCase() === chip.toLowerCase())
+                        ? 'bg-[#004B97] text-white border-[#004B97] shadow-2xs'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    ]"
+                  >
+                    <Check v-if="partDisenosAnillo.some(d => d.toLowerCase() === chip.toLowerCase())" class="w-3 h-3 text-[#04C4D9]" />
+                    <span>{{ chip }}</span>
+                  </button>
+                </div>
+
+                <div class="flex items-center gap-1.5 max-w-xs pt-0.5">
+                  <input
+                    v-model="customRingDesignInput"
+                    type="text"
+                    placeholder="Otro diseño (ej. Fosfatado)..."
+                    class="flex-1 px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                    @keydown.enter.prevent="addCustomRingDesignChip"
+                  />
+                  <button
+                    type="button"
+                    @click="addCustomRingDesignChip"
+                    class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold transition"
+                  >
+                    + Agregar
+                  </button>
+                </div>
+              </div>
+
+              <div class="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                <label class="block text-[11px] font-black uppercase tracking-wider text-slate-800">
+                  Descripción Técnica / Notas de Aplicación
+                </label>
+                <textarea
+                  v-model="partDescripcionTecnica"
+                  rows="2"
+                  placeholder="Ej. Juego de anillos para pistón diésel turbo, ranura 1ra keystone, holguras o notas de montaje en taller..."
+                  class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9] resize-y"
+                ></textarea>
+              </div>
             </div>
           </div>
 

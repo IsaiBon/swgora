@@ -567,6 +567,40 @@ export interface GrupoRepuestoInsert {
   orden_visual?: number
 }
 
+export interface DocumentoPdf {
+  nombre: string
+  url: string
+  size?: number
+  uploaded_at?: string
+}
+
+export interface DimensionesAnillo {
+  posicion?: string
+  tipo_aro?: 'fuego' | 'compresion' | 'aceite' | string
+  d1?: number | null
+  h1?: number | null
+  a1?: number | null
+  perfil?: string
+  forma?: string
+  diseno?: string
+  identificador?: string
+  codigo?: string
+  [key: string]: unknown
+}
+
+export interface CasqueteriaSpec {
+  tipo?: 'MS' | 'CB' | 'TW' | 'SH' | 'PB' | string
+  std_min?: number | null
+  std_max?: number | null
+  ov_025_min?: number | null
+  ov_025_max?: number | null
+  ov_050_min?: number | null
+  ov_050_max?: number | null
+  ov_075_min?: number | null
+  ov_075_max?: number | null
+  [key: string]: unknown
+}
+
 export interface RepuestoTecnico {
   id: string
   motor_id?: string
@@ -579,6 +613,10 @@ export interface RepuestoTecnico {
   stock: number
   estado: 'Disponible' | 'Bajo Stock' | 'Agotado'
   imagen_url?: string
+  imagenes?: string[]
+  documentos_pdf?: DocumentoPdf[]
+  disenos_anillo?: string[]
+  descripcion_tecnica?: string
   catalogo_origen?: 'Dokuro' | 'Rik' | 'NDC' | 'Ajusa' | 'Pioneer' | 'Taiho' | 'OEM' | string
 
   // Dimensiones físicas - Válvulas
@@ -672,6 +710,9 @@ export interface CatalogProduct {
   stock: number
   status: 'Disponible' | 'Bajo Stock' | 'Agotado'
   imageUrl: string
+  imagenes?: string[]
+  documentos_pdf?: DocumentoPdf[]
+  descripcion_tecnica?: string
   especificaciones_tecnicas?: Record<string, unknown>
   created_at?: string
   updated_at?: string
@@ -1608,6 +1649,47 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     new Set([...oemFromMain, ...extraFlat].filter(c => c.length > 0 && c !== primaryOem))
   )
 
+  const rawImagenes =
+    (Array.isArray(item.imagenes) ? item.imagenes : null) ||
+    (Array.isArray(spec.imagenes) ? spec.imagenes : null) ||
+    (Array.isArray(dims.imagenes) ? dims.imagenes : null) ||
+    []
+  const basePrimaryImg = item.imagen_url ? String(item.imagen_url).trim() : ''
+  const imagenesList = Array.from(
+    new Set(
+      [basePrimaryImg, ...rawImagenes.map(u => String(u || '').trim())].filter(Boolean)
+    )
+  )
+
+  const rawDocs =
+    (Array.isArray(item.documentos_pdf) ? item.documentos_pdf : null) ||
+    (Array.isArray(spec.documentos_pdf) ? spec.documentos_pdf : null) ||
+    (Array.isArray(dims.documentos_pdf) ? dims.documentos_pdf : null) ||
+    []
+  const documentosPdf: DocumentoPdf[] = rawDocs
+    .filter((d: unknown): d is Record<string, unknown> => Boolean(d && typeof d === 'object' && (d as Record<string, unknown>).url))
+    .map(d => ({
+      nombre: String(d.nombre || 'Documento PDF'),
+      url: String(d.url),
+      size: d.size != null ? Number(d.size) : undefined,
+      uploaded_at: d.uploaded_at ? String(d.uploaded_at) : undefined
+    }))
+
+  const rawDisenos =
+    (Array.isArray(item.disenos_anillo) ? item.disenos_anillo : null) ||
+    (Array.isArray(spec.disenos_anillo) ? spec.disenos_anillo : null) ||
+    (Array.isArray(dims.disenos_anillo) ? dims.disenos_anillo : null) ||
+    []
+  const disenosAnillo = Array.from(
+    new Set(rawDisenos.map(d => String(d || '').trim()).filter(Boolean))
+  )
+
+  const descripcionTecnica =
+    (item.descripcion_tecnica ? String(item.descripcion_tecnica) : '') ||
+    (spec.descripcion_tecnica ? String(spec.descripcion_tecnica) : '') ||
+    (dims.descripcion_tecnica ? String(dims.descripcion_tecnica) : '') ||
+    undefined
+
   return {
     id: String(item.id),
     motor_id: item.motor_id ? String(item.motor_id) : undefined,
@@ -1619,7 +1701,11 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     precio: Number(item.precio || 0),
     stock: Number(item.stock || 0),
     estado: (item.estado as RepuestoTecnico['estado']) || 'Disponible',
-    imagen_url: item.imagen_url ? String(item.imagen_url) : undefined,
+    imagen_url: imagenesList[0] || undefined,
+    imagenes: imagenesList,
+    documentos_pdf: documentosPdf,
+    disenos_anillo: disenosAnillo,
+    descripcion_tecnica: descripcionTecnica,
     catalogo_origen: resolveCatalogoOrigen(item, spec),
 
     diametro_cabeza_mm: item.diametro_cabeza_mm != null 
@@ -3296,6 +3382,17 @@ export const catalogService = {
     }
     const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
 
+    const finalImagenes = Array.from(
+      new Set([
+        ...(Array.isArray(part.imagenes) ? part.imagenes.map(u => String(u || '').trim()) : []),
+        part.imagen_url ? String(part.imagen_url).trim() : ''
+      ].filter(Boolean))
+    )
+    const primaryImagenUrl = finalImagenes[0] || part.imagen_url || null
+    const finalDocsPdf = Array.isArray(part.documentos_pdf) ? part.documentos_pdf : []
+    const finalDisenos = Array.isArray(part.disenos_anillo) ? Array.from(new Set(part.disenos_anillo.map(d => String(d || '').trim()).filter(Boolean))) : []
+    const finalDescripcion = part.descripcion_tecnica ? String(part.descripcion_tecnica).trim() : undefined
+
     const insertPayload = {
       motor_id: part.motor_id || null,
       codigo_oem: primaryOem,
@@ -3305,7 +3402,7 @@ export const catalogService = {
       precio: Number(part.precio || 0),
       stock: Number(part.stock || 0),
       estado: part.estado || 'Disponible',
-      imagen_url: part.imagen_url || null,
+      imagen_url: primaryImagenUrl,
       diametro_cabeza_mm: part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null,
       diametro_vastago_mm: part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null,
       longitud_total_mm: part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null,
@@ -3331,10 +3428,16 @@ export const catalogService = {
         longitud2_mm: part.longitud2_mm,
         espesor_anillo3_mm: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : null,
         codigos_oem_adicionales: finalAdditional,
+        ...(finalDisenos.length > 0 ? { disenos_anillo: finalDisenos } : {}),
+        ...(finalDescripcion ? { descripcion_tecnica: finalDescripcion } : {}),
         ...(part.dimensiones || {})
       },
       especificaciones_tecnicas: {
         codigos_oem_adicionales: finalAdditional,
+        imagenes: finalImagenes,
+        documentos_pdf: finalDocsPdf,
+        ...(finalDisenos.length > 0 ? { disenos_anillo: finalDisenos } : {}),
+        ...(finalDescripcion ? { descripcion_tecnica: finalDescripcion } : {}),
         ...(part.especificaciones_tecnicas || {})
       }
     }
@@ -3406,6 +3509,10 @@ export const catalogService = {
       stock: insertPayload.stock,
       estado: insertPayload.estado as any,
       imagen_url: insertPayload.imagen_url || undefined,
+      imagenes: finalImagenes,
+      documentos_pdf: finalDocsPdf,
+      disenos_anillo: finalDisenos,
+      descripcion_tecnica: finalDescripcion,
       catalogo_origen: 'OEM',
       diametro_cabeza_mm: insertPayload.diametro_cabeza_mm,
       diametro_vastago_mm: insertPayload.diametro_vastago_mm,
@@ -3457,6 +3564,14 @@ export const catalogService = {
     }
     const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
 
+    const hasImagenes = part.imagenes !== undefined
+    const resolvedImagenes = hasImagenes
+      ? Array.from(new Set((part.imagenes || []).map(u => String(u || '').trim()).filter(Boolean)))
+      : (part.imagen_url ? [String(part.imagen_url).trim()] : undefined)
+    const resolvedPrimaryImage = resolvedImagenes !== undefined
+      ? (resolvedImagenes[0] || null)
+      : (part.imagen_url !== undefined ? (part.imagen_url || null) : undefined)
+
     const updatePayload: Record<string, unknown> = {
       motor_id: part.motor_id !== undefined ? (part.motor_id || null) : undefined,
       codigo_oem: primaryOem,
@@ -3466,7 +3581,7 @@ export const catalogService = {
       precio: part.precio !== undefined ? Number(part.precio || 0) : undefined,
       stock: part.stock !== undefined ? Number(part.stock || 0) : undefined,
       estado: part.estado !== undefined ? part.estado : undefined,
-      imagen_url: part.imagen_url !== undefined ? (part.imagen_url || null) : undefined,
+      imagen_url: resolvedPrimaryImage,
       diametro_cabeza_mm: part.diametro_cabeza_mm !== undefined ? (part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null) : undefined,
       diametro_vastago_mm: part.diametro_vastago_mm !== undefined ? (part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null) : undefined,
       longitud_total_mm: part.longitud_total_mm !== undefined ? (part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null) : undefined,
@@ -3481,11 +3596,17 @@ export const catalogService = {
       ancho_casquete_mm: part.ancho_casquete_mm !== undefined ? (part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null) : undefined,
       dimensiones: part.dimensiones !== undefined ? {
         ...(part.dimensiones || {}),
-        codigos_oem_adicionales: finalAdditional
+        codigos_oem_adicionales: finalAdditional,
+        ...(part.disenos_anillo !== undefined ? { disenos_anillo: part.disenos_anillo } : {}),
+        ...(part.descripcion_tecnica !== undefined ? { descripcion_tecnica: part.descripcion_tecnica } : {})
       } : undefined,
       especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? {
         ...(part.especificaciones_tecnicas || {}),
-        codigos_oem_adicionales: finalAdditional
+        codigos_oem_adicionales: finalAdditional,
+        ...(resolvedImagenes !== undefined ? { imagenes: resolvedImagenes } : {}),
+        ...(part.documentos_pdf !== undefined ? { documentos_pdf: part.documentos_pdf } : {}),
+        ...(part.disenos_anillo !== undefined ? { disenos_anillo: part.disenos_anillo } : {}),
+        ...(part.descripcion_tecnica !== undefined ? { descripcion_tecnica: part.descripcion_tecnica } : {})
       } : undefined,
       updated_at: new Date().toISOString()
     }
