@@ -1778,7 +1778,7 @@ const subfilasSharedMeta = computed(() => {
 })
 
 const subfilasCentralColspan = computed<number>(() => {
-  return (hasSubfilasRowGroups.value ? 1 : 0) + 2 + (activeGroup.value?.parametros?.length || 0)
+  return (hasSubfilasRowGroups.value ? 1 : 0) + 1 + (activeGroup.value?.parametros?.length || 0)
 })
 
 const activeGroupStructureSummary = computed<string>(() => {
@@ -1908,7 +1908,7 @@ const handleExcelPasteToSubfilas = (e: ClipboardEvent, targetSubfilaIdx: number 
 
     let colStart = 0
     if (cells.length > params.length) {
-      sf.codigo = cells[0]
+      sf.nombre = cells[0] || sf.nombre
       colStart = 1
     }
 
@@ -2705,9 +2705,6 @@ onUnmounted(() => {
                         <th rowspan="2" class="px-3 py-2 text-left border-r border-slate-200 min-w-[140px] whitespace-nowrap">
                           {{ activeTablaConfig.titulo_primera_columna || 'Componente' }}
                         </th>
-                        <th rowspan="2" class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
-                          Código OEM
-                        </th>
                         <template v-for="item in subfilasActiveHeaders.tier1" :key="item.id">
                           <th
                             v-if="item.isGroup"
@@ -2749,9 +2746,6 @@ onUnmounted(() => {
                         </th>
                         <th class="px-3 py-2 text-left border-r border-slate-200 min-w-[140px] whitespace-nowrap">
                           {{ activeTablaConfig.titulo_primera_columna || 'Componente' }}
-                        </th>
-                        <th class="px-2.5 py-2 border-r border-slate-200 w-32 whitespace-nowrap">
-                          Código OEM
                         </th>
                         <th
                           v-for="param in (activeGroup?.parametros || [])"
@@ -2816,15 +2810,6 @@ onUnmounted(() => {
                               class="w-full px-1.5 py-0.5 text-xs font-black text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-[#04C4D9] rounded focus:outline-none transition"
                             />
                           </div>
-                        </td>
-
-                        <td class="px-2 py-1.5 border-r border-slate-200">
-                          <input
-                            v-model="sf.codigo"
-                            type="text"
-                            placeholder="Código..."
-                            class="w-28 px-1.5 py-1 text-center font-mono font-black text-xs uppercase bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                          />
                         </td>
 
                         <template
