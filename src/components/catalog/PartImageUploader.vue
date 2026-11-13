@@ -1,51 +1,83 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { 
   UploadCloud, 
   Image as ImageIcon, 
   Trash2, 
-  RefreshCw, 
   ExternalLink, 
   CheckCircle2, 
   AlertCircle, 
   Loader2, 
   Link as LinkIcon,
-  Maximize2
+  Maximize2,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Star,
+  Plus,
+  Download
 } from 'lucide-vue-next'
 import { 
   uploadRepuestoImage, 
+  uploadRepuestoDocument,
   formatFileSize, 
   type CompressionResult 
 } from '@/services/storageService'
+import type { DocumentoPdf } from '@/services/catalogService'
 
 const props = withDefaults(
   defineProps<{
     modelValue?: string | null
+    imagenes?: string[]
+    documentosPdf?: DocumentoPdf[]
     partCode?: string
     label?: string
     hint?: string
   }>(),
   {
     modelValue: '',
+    imagenes: undefined,
+    documentosPdf: undefined,
     partCode: 'repuesto',
-    label: 'Imagen Técnica / Diagrama de Explosión',
-    hint: 'Soporta PNG, JPG, WEBP o SVG. Las imágenes se comprimen automáticamente para acelerar su carga en taller.'
+    label: 'Imágenes Técnicas y Documentos PDF',
+    hint: 'Soporta múltiples fotos (PNG, JPG, WEBP) y fichas técnicas en PDF.'
   }
 )
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
+  (e: 'update:imagenes', value: string[]): void
+  (e: 'update:documentosPdf', value: DocumentoPdf[]): void
 }>()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const pdfInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref<boolean>(false)
+const isDraggingPdf = ref<boolean>(false)
 const isUploading = ref<boolean>(false)
+const isUploadingPdf = ref<boolean>(false)
 const errorMessage = ref<string | null>(null)
 const uploadWarning = ref<string | null>(null)
 const compressionStats = ref<CompressionResult | null>(null)
 const showUrlInput = ref<boolean>(false)
+const showPdfUrlInput = ref<boolean>(false)
 const manualUrl = ref<string>('')
+const manualPdfName = ref<string>('')
+const manualPdfUrl = ref<string>('')
 const isPreviewModalOpen = ref<boolean>(false)
+const previewIndex = ref<number>(0)
+
+const currentImages = computed<string[]>(() => {
+  if (Array.isArray(props.imagenes) && props.imagenes.length > 0) {
+    return Array.from(new Set(props.imagenes.map(u => String(u || '').trim()).filter(Boolean)))
+  }
+  const single = String(props.modelValue || '').trim()
+  return single ? [single] : []
+})
+
+const currentDocs = computed<DocumentoPdf[]>(() => {
+  return Array.isArray(props.documentosPdf) ? props.documentosPdf : []
+})
 
 watch(
   () => props.modelValue,
@@ -57,15 +89,25 @@ watch(
   { immediate: true }
 )
 
+const updateImageList = (nextList: string[]) => {
+  const clean = Array.from(new Set(nextList.map(u => u.trim()).filter(Boolean)))
+  emit('update:imagenes', clean)
+  emit('update:modelValue', clean[0] || '')
+}
+
 const triggerFileInput = () => {
   fileInputRef.value?.click()
+}
+
+const triggerPdfInput = () => {
+  pdfInputRef.value?.click()
 }
 
 const handleFileSelect = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const files = target.files
   if (!files || files.length === 0) return
-  await processFile(files[0])
+  await processImageFiles(Array.from(files))
   target.value = ''
 }
 
@@ -73,66 +115,195 @@ const handleDrop = async (e: DragEvent) => {
   isDragging.value = false
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
-  await processFile(files[0])
+  const imgFiles: File[] = []
+  const pdfFiles: File[] = []
+  for (const f of Array.from(files)) {
+    if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
+      pdfFiles.push(f)
+    } else if (f.type.startsWith('image/')) {
+      imgFiles.push(f)
+    }
+  }
+  if (imgFiles.length > 0) await processImageFiles(imgFiles)
+  if (pdfFiles.length > 0) await processPdfFiles(pdfFiles)
 }
 
-const processFile = async (file: File) => {
+const handlePdfSelect = async (e: Event) => {
+  const target = e.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0) return
+  await processPdfFiles(Array.from(files))
+  target.value = ''
+}
+
+const handlePdfDrop = async (e: DragEvent) => {
+  isDraggingPdf.value = false
+  const files = e.dataTransfer?.files
+  if (!files || files.length === 0) return
+  await processPdfFiles(Array.from(files))
+}
+
+const processImageFiles = async (files: File[]) => {
   errorMessage.value = null
+  const validFiles = files.filter(file => {
+    if (!file.type.startsWith('image/')) {
+      errorMessage.value = 'Solo se admiten archivos de imagen (PNG, JPG, WEBP, SVG, GIF).'
+      return false
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      errorMessage.value = `El archivo "${file.name}" supera el límite de 12 MB.`
+      return false
+    }
+    return true
+  })
 
-  // Validar formato
-  if (!file.type.startsWith('image/')) {
-    errorMessage.value = 'Solo se admiten archivos de imagen (PNG, JPG, WEBP, SVG, GIF).'
-    return
-  }
-
-  // Validar peso máximo inicial (máximo 12 MB antes de compresión)
-  if (file.size > 12 * 1024 * 1024) {
-    errorMessage.value = 'El archivo supera el límite de 12 MB. Elige una imagen más liviana.'
-    return
-  }
+  if (validFiles.length === 0) return
 
   isUploading.value = true
   try {
-    const result = await uploadRepuestoImage(file, props.partCode || 'repuesto')
-    if (result.compression) {
-      compressionStats.value = result.compression
+    const nextUrls = [...currentImages.value]
+    for (const file of validFiles) {
+      const result = await uploadRepuestoImage(file, props.partCode || 'repuesto')
+      if (result.compression) {
+        compressionStats.value = result.compression
+      }
+      if (result.warning) {
+        uploadWarning.value = result.warning
+      }
+      nextUrls.push(result.url)
     }
-    uploadWarning.value = result.warning || null
-    emit('update:modelValue', result.url)
-    manualUrl.value = result.url
+    updateImageList(nextUrls)
+    manualUrl.value = nextUrls[0] || ''
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al procesar la imagen'
+    const msg = err instanceof Error ? err.message : 'Error al procesar las imágenes'
     errorMessage.value = msg
   } finally {
     isUploading.value = false
   }
 }
 
-const removeImage = () => {
-  emit('update:modelValue', '')
-  manualUrl.value = ''
-  compressionStats.value = null
+const processPdfFiles = async (files: File[]) => {
   errorMessage.value = null
+  const validPdfs = files.filter(file => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!isPdf) {
+      errorMessage.value = `"${file.name}" no es un archivo PDF válido.`
+      return false
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      errorMessage.value = `El PDF "${file.name}" supera el límite de 25 MB.`
+      return false
+    }
+    return true
+  })
+
+  if (validPdfs.length === 0) return
+
+  isUploadingPdf.value = true
+  try {
+    const nextDocs: DocumentoPdf[] = [...currentDocs.value]
+    for (const file of validPdfs) {
+      const result = await uploadRepuestoDocument(file, props.partCode || 'repuesto')
+      if (result.warning) {
+        uploadWarning.value = result.warning
+      }
+      nextDocs.push({
+        nombre: file.name,
+        url: result.url,
+        size: file.size,
+        uploaded_at: new Date().toISOString()
+      })
+    }
+    emit('update:documentosPdf', nextDocs)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al subir documento PDF'
+    errorMessage.value = msg
+  } finally {
+    isUploadingPdf.value = false
+  }
+}
+
+const removeImageAt = (idx: number) => {
+  const next = [...currentImages.value]
+  next.splice(idx, 1)
+  updateImageList(next)
+  if (previewIndex.value >= next.length) {
+    previewIndex.value = Math.max(0, next.length - 1)
+  }
+  if (next.length === 0) {
+    manualUrl.value = ''
+    compressionStats.value = null
+  }
+}
+
+const setPrimaryImageAt = (idx: number) => {
+  if (idx <= 0 || idx >= currentImages.value.length) return
+  const next = [...currentImages.value]
+  const [chosen] = next.splice(idx, 1)
+  if (chosen) {
+    next.unshift(chosen)
+    updateImageList(next)
+  }
+}
+
+const moveImage = (idx: number, delta: -1 | 1) => {
+  const targetIdx = idx + delta
+  if (targetIdx < 0 || targetIdx >= currentImages.value.length) return
+  const next = [...currentImages.value]
+  const temp = next[idx]!
+  next[idx] = next[targetIdx]!
+  next[targetIdx] = temp
+  updateImageList(next)
+}
+
+const openImagePreviewAt = (idx: number) => {
+  previewIndex.value = idx
+  isPreviewModalOpen.value = true
 }
 
 const applyManualUrl = () => {
   const clean = manualUrl.value.trim()
-  if (!clean) {
-    removeImage()
-    return
-  }
-  emit('update:modelValue', clean)
+  if (!clean) return
+  updateImageList([...currentImages.value, clean])
+  manualUrl.value = ''
+  showUrlInput.value = false
   compressionStats.value = null
+}
+
+const addManualPdfUrl = () => {
+  const url = manualPdfUrl.value.trim()
+  if (!url) return
+  const name = manualPdfName.value.trim() || url.split('/').pop()?.split('?')[0] || 'Ficha Técnica.pdf'
+  emit('update:documentosPdf', [
+    ...currentDocs.value,
+    {
+      nombre: name.toLowerCase().endsWith('.pdf') ? name : `${name}.pdf`,
+      url,
+      uploaded_at: new Date().toISOString()
+    }
+  ])
+  manualPdfUrl.value = ''
+  manualPdfName.value = ''
+  showPdfUrlInput.value = false
+}
+
+const removePdfAt = (idx: number) => {
+  const next = [...currentDocs.value]
+  next.splice(idx, 1)
+  emit('update:documentosPdf', next)
 }
 </script>
 
 <template>
-  <div class="space-y-2">
-    <!-- Cabecera del Campo -->
-    <div class="flex items-center justify-between">
-      <label class="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+  <div class="space-y-3">
+    <!-- Cabecera del Campo Multimedia -->
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <label class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
         <ImageIcon class="w-4 h-4 text-[#04C4D9]" />
         <span>{{ label }}</span>
+        <span v-if="currentImages.length > 0" class="px-1.5 py-0.2 rounded-full bg-cyan-50 text-[#038391] border border-cyan-200 text-[10px] font-black">
+          {{ currentImages.length }} foto(s)
+        </span>
       </label>
 
       <button
@@ -141,11 +312,21 @@ const applyManualUrl = () => {
         class="text-[11px] font-semibold text-[#038391] hover:underline flex items-center gap-1"
       >
         <LinkIcon class="w-3 h-3" />
-        <span>{{ showUrlInput ? 'Subir archivo' : 'Ingresar URL directa' }}</span>
+        <span>{{ showUrlInput ? 'Subir archivo(s)' : 'Agregar URL de imagen' }}</span>
       </button>
     </div>
 
-    <!-- 1. MODO URL DIRECTA -->
+    <!-- Input oculto múltiple para imágenes -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+      class="hidden"
+      @change="handleFileSelect"
+    />
+
+    <!-- 1. MODO URL DIRECTA PARA FOTO -->
     <div v-if="showUrlInput" class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
       <div class="flex gap-2">
         <input
@@ -160,119 +341,118 @@ const applyManualUrl = () => {
           @click="applyManualUrl"
           class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg transition"
         >
-          Aplicar
+          Agregar
         </button>
       </div>
       <p class="text-[10px] text-slate-400">
-        Pega un enlace público de Cloudinary, Unsplash o el sitio del fabricante.
+        Pega un enlace público para añadirlo a la galería de este repuesto.
       </p>
     </div>
 
-    <!-- 2. VISTA PREVIA SI YA TIENE IMAGEN -->
-    <div 
-      v-if="modelValue && !showUrlInput" 
-      class="relative bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row items-center gap-3.5 group"
-    >
-      <!-- Thumbnail miniatura -->
-      <div 
-        class="relative w-28 h-28 sm:w-24 sm:h-24 rounded-lg overflow-hidden border border-slate-200 bg-white shadow-xs shrink-0 cursor-pointer"
-        @click="isPreviewModalOpen = true"
-        title="Clic para ver en tamaño completo"
-      >
-        <img 
-          :src="modelValue" 
-          alt="Vista previa del repuesto" 
-          class="w-full h-full object-contain p-1"
-          loading="lazy"
-        />
-        <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-          <Maximize2 class="w-5 h-5 text-white" />
+    <!-- 2. GALERÍA DE MÚLTIPLES IMÁGENES -->
+    <div v-if="currentImages.length > 0" class="space-y-2">
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div
+          v-for="(imgUrl, idx) in currentImages"
+          :key="`up-img-${idx}-${imgUrl}`"
+          class="relative bg-white border rounded-xl p-1.5 flex flex-col gap-1.5 group transition"
+          :class="idx === 0 ? 'border-[#04C4D9] ring-1 ring-[#04C4D9]/30 shadow-xs' : 'border-slate-200 hover:border-slate-300'"
+        >
+          <div
+            class="relative w-full h-20 rounded-lg overflow-hidden bg-slate-50 cursor-pointer flex items-center justify-center"
+            @click="openImagePreviewAt(idx)"
+            title="Clic para ampliar"
+          >
+            <img
+              :src="imgUrl"
+              :alt="`Foto ${idx + 1}`"
+              class="w-full h-full object-contain p-0.5"
+              loading="lazy"
+            />
+            <span
+              v-if="idx === 0"
+              class="absolute top-1 left-1 px-1.5 py-0.2 rounded bg-[#004B97] text-white text-[9px] font-black uppercase tracking-wide shadow"
+            >
+              Principal
+            </span>
+            <div class="absolute inset-0 bg-slate-900/35 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+              <Maximize2 class="w-4 h-4 text-white" />
+            </div>
+          </div>
+
+          <!-- Controles de reordenar / principal / eliminar -->
+          <div class="flex items-center justify-between gap-1 text-[10px]">
+            <div class="flex items-center gap-0.5">
+              <button
+                type="button"
+                @click="moveImage(idx, -1)"
+                :disabled="idx === 0"
+                class="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition"
+                title="Mover a la izquierda"
+              >
+                <ChevronLeft class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click="moveImage(idx, 1)"
+                :disabled="idx === currentImages.length - 1"
+                class="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition"
+                title="Mover a la derecha"
+              >
+                <ChevronRight class="w-3 h-3" />
+              </button>
+            </div>
+
+            <div class="flex items-center gap-0.5">
+              <button
+                v-if="idx !== 0"
+                type="button"
+                @click="setPrimaryImageAt(idx)"
+                class="p-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition"
+                title="Definir como foto principal"
+              >
+                <Star class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click="removeImageAt(idx)"
+                class="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
+                title="Quitar imagen"
+              >
+                <Trash2 class="w-3 h-3" />
+              </button>
+            </div>
+          </div>
         </div>
+
+        <!-- Botón añadir más fotos rápido -->
+        <button
+          type="button"
+          @click="triggerFileInput"
+          :disabled="isUploading"
+          class="min-h-[112px] border-2 border-dashed border-slate-300 hover:border-[#04C4D9] rounded-xl flex flex-col items-center justify-center gap-1 p-2 text-slate-500 hover:text-[#038391] bg-slate-50/70 hover:bg-cyan-50/30 transition cursor-pointer"
+        >
+          <Loader2 v-if="isUploading" class="w-5 h-5 text-[#04C4D9] animate-spin" />
+          <Plus v-else class="w-5 h-5" />
+          <span class="text-[10px] font-bold text-center">
+            {{ isUploading ? 'Subiendo...' : 'Agregar Foto(s)' }}
+          </span>
+        </button>
       </div>
 
-      <!-- Información y Acciones -->
-      <div class="flex-1 min-w-0 space-y-1.5 text-left w-full sm:w-auto">
-        <div class="flex items-center gap-1.5">
-          <!-- Origen del Storage -->
-          <span 
-            v-if="modelValue.includes('supabase.co')" 
-            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
-          >
-            <CheckCircle2 class="w-3 h-3 text-emerald-600" />
-            Almacenado en la nube
-          </span>
-          <span 
-            v-else-if="modelValue.startsWith('blob:') || modelValue.startsWith('data:')" 
-            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
-            title="Vista previa cargada localmente"
-          >
-            <AlertCircle class="w-3 h-3 text-amber-600" />
-            Vista previa local
-          </span>
-          <span 
-            v-else 
-            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-200"
-          >
-            <CheckCircle2 class="w-3 h-3 text-cyan-600" />
-            Enlace Externo
-          </span>
-
-          <span 
-            v-if="compressionStats" 
-            class="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200"
-          >
-            Optimizado: {{ formatFileSize(compressionStats.originalSize) }} → {{ formatFileSize(compressionStats.compressedSize) }} (-{{ compressionStats.reductionPercent }}%)
-          </span>
-        </div>
-
-        <p class="text-[11px] text-slate-600 truncate font-mono" :title="modelValue">
-          {{ modelValue }}
-        </p>
-
-        <div v-if="uploadWarning" class="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg font-medium flex items-start gap-1.5">
-          <AlertCircle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-          <span>{{ uploadWarning }}</span>
-        </div>
-
-        <!-- Botonera de acciones -->
-        <div class="flex items-center gap-2 pt-1 flex-wrap">
-          <button
-            type="button"
-            @click="isPreviewModalOpen = true"
-            class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center gap-1"
-          >
-            <Maximize2 class="w-3.5 h-3.5 text-slate-500" />
-            <span>Ver Ampliada</span>
-          </button>
-
-          <button
-            type="button"
-            @click="triggerFileInput"
-            class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[#038391] transition flex items-center gap-1"
-          >
-            <RefreshCw class="w-3.5 h-3.5" />
-            <span>Reemplazar</span>
-          </button>
-
-          <button
-            type="button"
-            @click="removeImage"
-            class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-600 transition flex items-center gap-1"
-          >
-            <Trash2 class="w-3.5 h-3.5" />
-            <span>Quitar</span>
-          </button>
-        </div>
+      <div v-if="compressionStats" class="flex items-center gap-1.5 text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200">
+        <CheckCircle2 class="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+        <span>Última imagen optimizada: {{ formatFileSize(compressionStats.originalSize) }} → {{ formatFileSize(compressionStats.compressedSize) }} (-{{ compressionStats.reductionPercent }}%)</span>
       </div>
     </div>
 
-    <!-- 3. DROPZONE DE SUBIDA (Si no tiene imagen o se desea reemplazar) -->
+    <!-- 3. DROPZONE DE SUBIDA INICIAL DE IMÁGENES (Si no tiene ninguna) -->
     <div
       v-else-if="!showUrlInput"
       @dragover.prevent="isDragging = true"
       @dragleave.prevent="isDragging = false"
       @drop.prevent="handleDrop"
-      class="border-2 border-dashed rounded-xl p-4 sm:p-5 text-center transition cursor-pointer flex flex-col items-center justify-center gap-2"
+      class="border-2 border-dashed rounded-xl p-4 text-center transition cursor-pointer flex flex-col items-center justify-center gap-1.5"
       :class="[
         isDragging 
           ? 'border-[#04C4D9] bg-cyan-50/50 scale-[0.99]' 
@@ -280,55 +460,174 @@ const applyManualUrl = () => {
       ]"
       @click="triggerFileInput"
     >
-      <input
-        ref="fileInputRef"
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
-        class="hidden"
-        @change="handleFileSelect"
-      />
-
-      <!-- Estado: Subiendo / Optimizando -->
-      <div v-if="isUploading" class="py-2 flex flex-col items-center gap-2">
-        <Loader2 class="w-8 h-8 text-[#04C4D9] animate-spin" />
-        <span class="text-xs font-bold text-slate-700">Comprimiendo y alojando imagen en la nube...</span>
-        <span class="text-[10px] text-slate-400">Optimizando dimensiones para carga ultrarrápida</span>
+      <div v-if="isUploading" class="py-1 flex flex-col items-center gap-1.5">
+        <Loader2 class="w-7 h-7 text-[#04C4D9] animate-spin" />
+        <span class="text-xs font-bold text-slate-700">Comprimiendo y alojando imágenes...</span>
       </div>
-
-      <!-- Estado: Esperando archivo -->
       <template v-else>
-        <div class="w-10 h-10 rounded-full bg-cyan-50 flex items-center justify-center text-[#04C4D9]">
+        <div class="w-9 h-9 rounded-full bg-cyan-50 flex items-center justify-center text-[#04C4D9]">
           <UploadCloud class="w-5 h-5" />
         </div>
-
         <div>
           <p class="text-xs font-bold text-slate-700">
-            Arrastra aquí el diagrama o foto, o <span class="text-[#038391] underline">explora tus archivos</span>
+            Arrastra aquí una o varias fotos, o <span class="text-[#038391] underline">explora tus archivos</span>
           </p>
-          <p class="text-[10px] text-slate-400 mt-0.5">
-            {{ hint }}
-          </p>
+          <p class="text-[10px] text-slate-400 mt-0.5">{{ hint }}</p>
         </div>
       </template>
     </div>
 
-    <!-- Mensaje de Error -->
+    <!-- 4. DOCUMENTOS PDF TÉCNICOS (Hojas de catálogo, planos de montaje) -->
+    <div class="pt-2 border-t border-slate-200/90 space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+          <FileText class="w-3.5 h-3.5 text-rose-600" />
+          <span>Fichas / Planos PDF</span>
+          <span v-if="currentDocs.length > 0" class="px-1.5 py-0.2 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black">
+            {{ currentDocs.length }}
+          </span>
+        </span>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            @click="showPdfUrlInput = !showPdfUrlInput"
+            class="text-[10px] font-semibold text-slate-500 hover:text-[#038391] underline cursor-pointer"
+          >
+            {{ showPdfUrlInput ? 'Ocultar URL' : 'URL PDF' }}
+          </button>
+          <button
+            type="button"
+            @click="triggerPdfInput"
+            :disabled="isUploadingPdf"
+            class="px-2 py-1 rounded-lg bg-white border border-slate-300 hover:border-rose-400 text-[11px] font-bold text-slate-700 hover:text-rose-700 flex items-center gap-1 shadow-2xs transition cursor-pointer"
+          >
+            <Loader2 v-if="isUploadingPdf" class="w-3 h-3 animate-spin text-rose-600" />
+            <Plus v-else class="w-3 h-3 text-rose-600" />
+            <span>{{ isUploadingPdf ? 'Subiendo PDF...' : 'Adjuntar PDF' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <input
+        ref="pdfInputRef"
+        type="file"
+        multiple
+        accept="application/pdf,.pdf"
+        class="hidden"
+        @change="handlePdfSelect"
+      />
+
+      <!-- Agregar PDF por URL -->
+      <div v-if="showPdfUrlInput" class="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <input
+            v-model="manualPdfName"
+            type="text"
+            placeholder="Nombre (ej. Hoja Técnica NPR.pdf)"
+            class="px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+          />
+          <div class="flex gap-1">
+            <input
+              v-model="manualPdfUrl"
+              type="url"
+              placeholder="https://.../manual.pdf"
+              class="flex-1 px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+              @keydown.enter.prevent="addManualPdfUrl"
+            />
+            <button
+              type="button"
+              @click="addManualPdfUrl"
+              class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de PDFs adjuntos / Zona drop compacta -->
+      <div
+        v-if="currentDocs.length > 0"
+        class="space-y-1.5"
+      >
+        <div
+          v-for="(doc, dIdx) in currentDocs"
+          :key="`doc-pdf-${dIdx}-${doc.url}`"
+          class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs shadow-2xs"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <FileText class="w-4 h-4 text-rose-600 shrink-0" />
+            <div class="min-w-0">
+              <p class="font-bold text-slate-800 truncate text-[11px]" :title="doc.nombre">{{ doc.nombre }}</p>
+              <span v-if="doc.size" class="text-[9px] text-slate-400 font-mono">{{ formatFileSize(doc.size) }}</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <a
+              :href="doc.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="p-1 rounded hover:bg-slate-100 text-[#038391]"
+              title="Ver PDF en nueva pestaña"
+            >
+              <ExternalLink class="w-3.5 h-3.5" />
+            </a>
+            <a
+              :href="doc.url"
+              :download="doc.nombre"
+              class="p-1 rounded hover:bg-slate-100 text-slate-600"
+              title="Descargar PDF"
+            >
+              <Download class="w-3.5 h-3.5" />
+            </a>
+            <button
+              type="button"
+              @click="removePdfAt(dIdx)"
+              class="p-1 rounded hover:bg-rose-50 text-rose-600"
+              title="Quitar PDF"
+            >
+              <Trash2 class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+      <div
+        v-else
+        @dragover.prevent="isDraggingPdf = true"
+        @dragleave.prevent="isDraggingPdf = false"
+        @drop.prevent="handlePdfDrop"
+        @click="triggerPdfInput"
+        class="border border-dashed rounded-lg px-3 py-2 text-center text-[11px] cursor-pointer transition"
+        :class="isDraggingPdf ? 'border-rose-400 bg-rose-50/50 text-rose-700' : 'border-slate-300 bg-white/70 text-slate-500 hover:border-slate-400'"
+      >
+        Arrastra aquí hojas de catálogo o planos PDF (máx. 25 MB)
+      </div>
+    </div>
+
+    <!-- Advertencia / Error -->
+    <div v-if="uploadWarning" class="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg font-medium flex items-start gap-1.5">
+      <AlertCircle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+      <span>{{ uploadWarning }}</span>
+    </div>
+
     <div v-if="errorMessage" class="flex items-center gap-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200 p-2 rounded-lg">
       <AlertCircle class="w-4 h-4 shrink-0" />
       <span>{{ errorMessage }}</span>
     </div>
 
-    <!-- Modal Lightbox Preview Local -->
+    <!-- Modal Lightbox Preview Local con Carrusel -->
     <div
-      v-if="isPreviewModalOpen && modelValue"
+      v-if="isPreviewModalOpen && currentImages.length > 0"
       class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4"
       @click.self="isPreviewModalOpen = false"
     >
-      <div class="bg-white rounded-2xl max-w-xl w-full p-4 space-y-3 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div class="bg-white rounded-2xl max-w-2xl w-full p-4 space-y-3 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div class="flex items-center gap-2">
             <ImageIcon class="w-4 h-4 text-[#04C4D9]" />
-            <h4 class="text-xs font-bold text-slate-900 uppercase">Vista Previa de Imagen Técnica</h4>
+            <h4 class="text-xs font-bold text-slate-900 uppercase">
+              Galería Técnica ({{ previewIndex + 1 }} / {{ currentImages.length }})
+            </h4>
           </div>
           <button
             type="button"
@@ -339,17 +638,33 @@ const applyManualUrl = () => {
           </button>
         </div>
 
-        <div class="flex-1 overflow-auto flex items-center justify-center bg-slate-50 rounded-xl p-2 min-h-[240px]">
+        <div class="relative flex-1 overflow-auto flex items-center justify-center bg-slate-50 rounded-xl p-2 min-h-[260px]">
+          <button
+            v-if="currentImages.length > 1"
+            type="button"
+            @click="previewIndex = (previewIndex - 1 + currentImages.length) % currentImages.length"
+            class="absolute left-2 p-2 rounded-full bg-white/90 hover:bg-white shadow border border-slate-200 text-slate-700"
+          >
+            <ChevronLeft class="w-4 h-4" />
+          </button>
           <img 
-            :src="modelValue" 
+            :src="currentImages[previewIndex]" 
             alt="Plano / Foto" 
-            class="max-w-full max-h-[60vh] object-contain rounded-lg"
+            class="max-w-full max-h-[58vh] object-contain rounded-lg"
           />
+          <button
+            v-if="currentImages.length > 1"
+            type="button"
+            @click="previewIndex = (previewIndex + 1) % currentImages.length"
+            class="absolute right-2 p-2 rounded-full bg-white/90 hover:bg-white shadow border border-slate-200 text-slate-700"
+          >
+            <ChevronRight class="w-4 h-4" />
+          </button>
         </div>
 
         <div class="flex items-center justify-between text-xs pt-1">
           <a
-            :href="modelValue"
+            :href="currentImages[previewIndex]"
             target="_blank"
             rel="noopener noreferrer"
             class="text-[#038391] hover:underline flex items-center gap-1 text-[11px] font-semibold"

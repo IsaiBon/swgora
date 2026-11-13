@@ -229,9 +229,70 @@ export async function uploadRepuestoImage(
 }
 
 /**
- * Elimina una imagen de repuesto en Supabase Storage
+ * Sube un documento PDF técnico a Supabase Storage en la carpeta docs/
  */
-export async function deleteRepuestoImage(pathOrUrl: string): Promise<boolean> {
+export async function uploadRepuestoDocument(
+  file: File,
+  prefix: string = 'repuesto'
+): Promise<UploadResult> {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+  if (!isPdf) {
+    throw new Error('Solo se admiten documentos en formato PDF.')
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    throw new Error('El documento PDF supera el límite de 25 MB.')
+  }
+
+  const timestamp = Date.now()
+  const randomSuffix = Math.random().toString(36).substring(2, 7)
+  const cleanPrefix = prefix.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() || 'repuesto'
+  const filePath = `${cleanPrefix}/docs/${timestamp}_${randomSuffix}.pdf`
+  const previewUrl = URL.createObjectURL(file)
+
+  try {
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(filePath, file, {
+        contentType: 'application/pdf',
+        cacheControl: '3600',
+        upsert: true
+      })
+
+    if (error || !data) {
+      console.warn('[StorageService] Fallo subida PDF a Storage, usando fallback local:', error?.message)
+      return {
+        url: previewUrl,
+        path: filePath,
+        size: file.size,
+        isRemote: false,
+        warning: `No se pudo alojar el PDF en la nube (${error?.message || 'sin permisos'}). Vista previa local activa.`
+      }
+    }
+
+    const { data: urlData } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(data.path)
+
+    return {
+      url: urlData.publicUrl,
+      path: data.path,
+      size: file.size,
+      isRemote: true
+    }
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    console.warn('[StorageService] Excepción durante subida PDF a Storage:', err)
+    return {
+      url: previewUrl,
+      path: filePath,
+      size: file.size,
+      isRemote: false,
+      warning: `Error de conexión con Supabase Storage: ${errorMsg}`
+    }
+  }
+}
+
+async function removeStorageObject(pathOrUrl: string): Promise<boolean> {
   if (!pathOrUrl) return false
 
   try {
@@ -250,15 +311,29 @@ export async function deleteRepuestoImage(pathOrUrl: string): Promise<boolean> {
       .remove([filePath])
 
     if (error) {
-      console.warn('[StorageService] Error al eliminar imagen de Storage:', error.message)
+      console.warn('[StorageService] Error al eliminar archivo de Storage:', error.message)
       return false
     }
 
     return true
   } catch (err) {
-    console.warn('[StorageService] Excepción al eliminar imagen:', err)
+    console.warn('[StorageService] Excepción al eliminar archivo:', err)
     return false
   }
+}
+
+/**
+ * Elimina una imagen de repuesto en Supabase Storage
+ */
+export async function deleteRepuestoImage(pathOrUrl: string): Promise<boolean> {
+  return removeStorageObject(pathOrUrl)
+}
+
+/**
+ * Elimina un documento PDF de repuesto en Supabase Storage
+ */
+export async function deleteRepuestoDocument(pathOrUrl: string): Promise<boolean> {
+  return removeStorageObject(pathOrUrl)
 }
 
 /**
