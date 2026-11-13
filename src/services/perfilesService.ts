@@ -18,6 +18,66 @@ export type PerfilUpdate = Partial<
   Omit<Perfil, 'id' | 'created_at' | 'updated_at' | 'estado'>
 >
 
+const PERFILES_CACHE_KEY = 'swgora_perfiles_cache_v1'
+
+function readPerfilesCache(): Perfil[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(PERFILES_CACHE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as Perfil[]) : []
+  } catch {
+    return []
+  }
+}
+
+function writePerfilesCache(lista: Perfil[]): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(PERFILES_CACHE_KEY, JSON.stringify(lista))
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function isRichEncodedRole(rol?: string | null): boolean {
+  if (!rol) return false
+  const lower = rol.trim().toLowerCase()
+  return (
+    lower.startsWith('independiente|') ||
+    lower.startsWith('subadmin|') ||
+    lower.includes('||tenant|')
+  )
+}
+
+function mergePerfilesIntoCache(entradas: Perfil[]): Perfil[] {
+  const actuales = readPerfilesCache()
+  if (!entradas.length) return []
+  const mapa = new Map<string, Perfil>()
+  for (const item of actuales) {
+    if (item?.id) mapa.set(item.id, item)
+  }
+  const mergedResultados: Perfil[] = []
+  for (const item of entradas) {
+    if (!item?.id) continue
+    const prev = mapa.get(item.id)
+    const incomingGeneric =
+      !item.rol || item.rol.trim().toLowerCase() === 'operador'
+    const resolvedRol =
+      incomingGeneric && isRichEncodedRole(prev?.rol) ? prev!.rol : item.rol
+    const merged: Perfil = {
+      ...prev,
+      ...item,
+      rol: resolvedRol,
+    }
+    mapa.set(item.id, merged)
+    mergedResultados.push(merged)
+  }
+  writePerfilesCache(Array.from(mapa.values()))
+  return mergedResultados
+}
+
 function isMissingSessionColumnError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const e = err as { code?: string; message?: string; details?: string }
@@ -31,20 +91,55 @@ function isMissingSessionColumnError(err: unknown): boolean {
 }
 
 export const perfilesService = {
+  cachePerfilesList(perfiles: Perfil[]): void {
+    mergePerfilesIntoCache(perfiles)
+  },
+
+  getCachedPerfilByEmailOrId(params: {
+    id?: string | null
+    email?: string | null
+  }): Perfil | null {
+    const lista = readPerfilesCache()
+    if (params.id) {
+      const porId = lista.find((p) => p.id === params.id)
+      if (porId) return porId
+    }
+    if (params.email) {
+      const emailKey = params.email.trim().toLowerCase()
+      const porEmail = lista.find(
+        (p) => (p.email || '').trim().toLowerCase() === emailKey
+      )
+      if (porEmail) return porEmail
+    }
+    return null
+  },
+
   /**
    * Obtiene el perfil de un usuario por su ID (UUID de auth.users)
    */
   async getPerfilById(id: string): Promise<Perfil | null> {
-    const { data, error } = await supabase
-      .from('perfiles')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
+    try {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
 
-    if (error) {
-      throw error
+      if (error) {
+        const fallback = this.getCachedPerfilByEmailOrId({ id })
+        if (fallback) return fallback
+        throw error
+      }
+      if (data) {
+        const merged = mergePerfilesIntoCache([data as Perfil])
+        return merged[0] ?? (data as Perfil)
+      }
+      return this.getCachedPerfilByEmailOrId({ id })
+    } catch (err) {
+      const fallback = this.getCachedPerfilByEmailOrId({ id })
+      if (fallback) return fallback
+      throw err
     }
-    return data as Perfil | null
   },
 
   /**
@@ -59,7 +154,9 @@ export const perfilesService = {
     if (error) {
       throw error
     }
-    return (data as Perfil[]) || []
+    const lista = (data as Perfil[]) || []
+    const merged = mergePerfilesIntoCache(lista)
+    return merged.length > 0 ? merged : lista
   },
 
   /**
@@ -78,6 +175,9 @@ export const perfilesService = {
 
     if (error) {
       throw error
+    }
+    if (data) {
+      mergePerfilesIntoCache([data as Perfil])
     }
     return data as Perfil
   },

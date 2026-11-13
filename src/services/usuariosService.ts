@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { perfilesService } from './perfilesService'
 
 export interface NuevoUsuario {
   nombre: string
@@ -13,6 +14,8 @@ const CREDENTIALS_STORAGE_KEY = 'swgora_admin_credentials_vault'
 interface StoredCredentialMap {
   byId: Record<string, string>
   byEmail: Record<string, string>
+  historyById?: Record<string, string[]>
+  historyByEmail?: Record<string, string[]>
 }
 
 const DEFAULT_KNOWN_CREDENTIALS: Record<string, string> = {
@@ -37,10 +40,34 @@ function createIsolatedAuthClient() {
   })
 }
 
+function normalizeHistoryRecord(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object') return {}
+  const result: Record<string, string[]> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) {
+      result[k] = v.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    }
+  }
+  return result
+}
+
+function pushCredentialHistory(
+  historyMap: Record<string, string[]>,
+  key: string,
+  oldPassword?: string | null
+): void {
+  if (!oldPassword) return
+  const existing = historyMap[key] || []
+  const filtered = existing.filter((p) => p !== oldPassword)
+  historyMap[key] = [oldPassword, ...filtered].slice(0, 15)
+}
+
 function loadCredentialVault(): StoredCredentialMap {
   try {
     const raw = localStorage.getItem(CREDENTIALS_STORAGE_KEY)
-    if (!raw) return { byId: {}, byEmail: {} }
+    if (!raw) {
+      return { byId: {}, byEmail: {}, historyById: {}, historyByEmail: {} }
+    }
     const parsed = JSON.parse(raw)
     return {
       byId: parsed?.byId && typeof parsed.byId === 'object' ? parsed.byId : {},
@@ -48,9 +75,11 @@ function loadCredentialVault(): StoredCredentialMap {
         parsed?.byEmail && typeof parsed.byEmail === 'object'
           ? parsed.byEmail
           : {},
+      historyById: normalizeHistoryRecord(parsed?.historyById),
+      historyByEmail: normalizeHistoryRecord(parsed?.historyByEmail),
     }
   } catch {
-    return { byId: {}, byEmail: {} }
+    return { byId: {}, byEmail: {}, historyById: {}, historyByEmail: {} }
   }
 }
 
@@ -74,12 +103,26 @@ export function registrarCredencialUsuario(params: {
   if (!pwd) return
 
   const vault = loadCredentialVault()
+  const historyById = vault.historyById || {}
+  const historyByEmail = vault.historyByEmail || {}
+
   if (params.id) {
+    const prevById = vault.byId[params.id]
+    if (prevById && prevById !== pwd) {
+      pushCredentialHistory(historyById, params.id, prevById)
+    }
     vault.byId[params.id] = pwd
   }
   if (params.email) {
-    vault.byEmail[params.email.trim().toLowerCase()] = pwd
+    const emailKey = params.email.trim().toLowerCase()
+    const prevByEmail = vault.byEmail[emailKey]
+    if (prevByEmail && prevByEmail !== pwd) {
+      pushCredentialHistory(historyByEmail, emailKey, prevByEmail)
+    }
+    vault.byEmail[emailKey] = pwd
   }
+  vault.historyById = historyById
+  vault.historyByEmail = historyByEmail
   saveCredentialVault(vault)
 }
 
@@ -136,6 +179,143 @@ function getExactVaultPassword(params: {
 }
 
 /**
+ * Devuelve la lista ordenada y sin duplicados de contraseñas candidatas conocidas para un usuario
+ */
+export function obtenerCandidatosPasswordUsuario(params: {
+  id?: string | null
+  email?: string | null
+}): string[] {
+  const vault = loadCredentialVault()
+  const candidatos: string[] = []
+  const agregar = (pwd?: string | null) => {
+    if (pwd && !candidatos.includes(pwd)) {
+      candidatos.push(pwd)
+    }
+  }
+
+  if (params.id) {
+    agregar(vault.byId[params.id])
+    for (const h of vault.historyById?.[params.id] || []) {
+      agregar(h)
+    }
+  }
+
+  if (params.email) {
+    const emailKey = params.email.trim().toLowerCase()
+    agregar(vault.byEmail[emailKey])
+    for (const h of vault.historyByEmail?.[emailKey] || []) {
+      agregar(h)
+    }
+    agregar(DEFAULT_KNOWN_CREDENTIALS[emailKey])
+    const localPart = emailKey.split('@')[0] || 'usuario'
+    agregar(`${localPart.charAt(0).toUpperCase() + localPart.slice(1)}2026*`)
+  }
+
+  return candidatos
+}
+
+/**
+ * Verifica si la contraseña coincide con la credencial activa registrada por el Administrador en la bóveda
+ */
+export function verificarCredencialAdmin(params: {
+  id?: string | null
+  email?: string | null
+  password: string
+}): boolean {
+  if (!params.password) return false
+  const expected = getExactVaultPassword({
+    id: params.id,
+    email: params.email,
+  })
+  return !!expected && params.password === expected
+}
+
+/**
+ * Actualiza la contraseña del usuario en Supabase Auth (cuando es posible autenticar con sus credenciales previas o Edge Function)
+ * y la registra en la bóveda local manteniendo el historial de contraseñas anteriores.
+ */
+export async function cambiarPasswordUsuario(params: {
+  id?: string | null
+  email?: string | null
+  password: string
+}): Promise<{ updatedInAuth: boolean }> {
+  const cleanPassword = params.password.trim()
+  if (cleanPassword.length < 6) {
+    throw new Error('La contraseña debe tener al menos 6 caracteres.')
+  }
+
+  const cleanEmail = params.email?.trim().toLowerCase() || ''
+  const candidatos = obtenerCandidatosPasswordUsuario({
+    id: params.id,
+    email: cleanEmail || params.email,
+  })
+
+  let updatedInAuth = false
+
+  // 1. Intentar primero vía Edge Function oficial (si está desplegada)
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      'cambiar-password-usuario',
+      {
+        body: {
+          usuarioId: params.id || undefined,
+          email: cleanEmail || undefined,
+          password: cleanPassword,
+        },
+      }
+    )
+
+    if (!error && (data?.actualizado === true || data?.ok === true || data?.usuario?.id)) {
+      updatedInAuth = true
+    }
+  } catch {
+    // Continuar con actualización usando cliente aislado
+  }
+
+  // 2. Respaldo: autenticar en cliente aislado con la contraseña previa del usuario y actualizar su password en Auth
+  if (!updatedInAuth && cleanEmail && candidatos.length > 0) {
+    for (const candidatePwd of candidatos) {
+      const isolatedClient = createIsolatedAuthClient()
+      try {
+        const { data: signInRes, error: signInErr } =
+          await isolatedClient.auth.signInWithPassword({
+            email: cleanEmail,
+            password: candidatePwd,
+          })
+
+        if (!signInErr && signInRes?.session) {
+          if (candidatePwd === cleanPassword) {
+            updatedInAuth = true
+            break
+          }
+          const { error: updateErr } = await isolatedClient.auth.updateUser({
+            password: cleanPassword,
+            data: { password_visible: cleanPassword },
+          })
+          if (!updateErr) {
+            updatedInAuth = true
+          }
+          break
+        }
+      } catch {
+        // Probar siguiente candidato
+      } finally {
+        await isolatedClient.auth.signOut().catch(() => undefined)
+      }
+    }
+  }
+
+  // 3. Guardar la nueva contraseña en la bóveda local (conservando el historial de anteriores)
+  registrarCredencialUsuario({
+    id: params.id,
+    email: cleanEmail || params.email,
+    password: cleanPassword,
+  })
+
+  return { updatedInAuth }
+}
+
+/**
  * Persiste o actualiza la fila en `public.perfiles` manejando tolerancia de columnas/constraints
  */
 async function upsertPerfilSafely(
@@ -180,7 +360,8 @@ async function upsertPerfilSafely(
   // Último respaldo si hubiera un CHECK constraint en `rol` en base de datos
   if (
     params.rol.startsWith('subadmin|') ||
-    params.rol.startsWith('independiente|')
+    params.rol.startsWith('independiente|') ||
+    params.rol.includes('||tenant|')
   ) {
     const { error: fallbackRoleError } = await client.from('perfiles').upsert(
       {
@@ -199,12 +380,40 @@ async function upsertPerfilSafely(
   return false
 }
 
+function registrarPerfilYCredencial(params: {
+  id: string
+  nombre: string
+  email: string
+  rol: string
+  password: string
+}): void {
+  const now = new Date().toISOString()
+  perfilesService.cachePerfilesList([
+    {
+      id: params.id,
+      nombre: params.nombre,
+      email: params.email,
+      rol: params.rol,
+      estado: 'Activo',
+      created_at: now,
+      updated_at: now,
+    },
+  ])
+  registrarCredencialUsuario({
+    id: params.id,
+    email: params.email,
+    password: params.password,
+  })
+}
+
 export async function crearUsuario(datos: NuevoUsuario): Promise<{ id: string }> {
   const cleanNombre = datos.nombre.trim()
   const cleanEmail = datos.email.trim().toLowerCase()
   const cleanPassword = datos.password
   const isCustomSubAdminRole =
-    datos.rol.startsWith('subadmin|') || datos.rol.startsWith('independiente|')
+    datos.rol.startsWith('subadmin|') ||
+    datos.rol.startsWith('independiente|') ||
+    datos.rol.includes('||tenant|')
 
   // 1. Intentar primero mediante la Edge Function oficial
   try {
@@ -218,9 +427,11 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<{ id: string }>
     })
 
     if (!error && data?.usuario?.id) {
-      registrarCredencialUsuario({
+      registrarPerfilYCredencial({
         id: data.usuario.id,
+        nombre: cleanNombre,
         email: cleanEmail,
+        rol: datos.rol,
         password: cleanPassword,
       })
       return { id: data.usuario.id }
@@ -284,9 +495,11 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<{ id: string }>
             })
             await isolatedClient.auth.signOut().catch(() => undefined)
           }
-          registrarCredencialUsuario({
+          registrarPerfilYCredencial({
             id: createdId,
+            nombre: cleanNombre,
             email: cleanEmail,
+            rol: datos.rol,
             password: cleanPassword,
           })
           return { id: createdId }
@@ -344,10 +557,12 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<{ id: string }>
     await isolatedClient.auth.signOut().catch(() => undefined)
   }
 
-  // Guardar credencial en la bóveda para consulta inmediata del administrador
-  registrarCredencialUsuario({
+  // Guardar perfil en caché y credencial en la bóveda para consulta inmediata del administrador
+  registrarPerfilYCredencial({
     id: newUserId,
+    nombre: cleanNombre,
     email: cleanEmail,
+    rol: datos.rol,
     password: cleanPassword,
   })
 

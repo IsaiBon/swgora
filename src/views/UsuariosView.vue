@@ -16,6 +16,7 @@ import {
   Wrench,
   Building2,
   Sparkles,
+  Pencil,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -23,7 +24,7 @@ import {
   eliminarUsuario,
   cambiarRolUsuario,
   obtenerCredencialUsuario,
-  registrarCredencialUsuario,
+  cambiarPasswordUsuario,
   type NuevoUsuario,
 } from '@/services/usuariosService'
 
@@ -33,12 +34,17 @@ import {
   parseSubAdminRole,
   encodeIndependentRole,
   parseIndependentRole,
+  encodeTenantMemberRole,
+  getUserTenantMembership,
   registerIndependentTenantUser,
   rutasService,
   type RutaSucursal,
 } from '@/services/rutasService'
 import { tallerService } from '@/services/tallerService'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
+
+const auth = useAuthStore()
+const esTallerIndependiente = computed(() => Boolean(auth.user?.isIndependent))
 
 const modalAbierto = ref(false)
 const guardando = ref(false)
@@ -63,10 +69,14 @@ const nombreTallerIndependiente = ref('')
 const filtroTipoCuenta = ref<'todos' | 'internos' | 'independientes'>('todos')
 
 const roles = computed(() => {
-  if (rutas.value.length > 0) {
-    return rolesBase
+  let list = [...rolesBase]
+  if (rutas.value.length === 0) {
+    list = list.filter((opcion) => opcion.valor !== 'subadmin')
   }
-  return rolesBase.filter((opcion) => opcion.valor !== 'subadmin')
+  if (esTallerIndependiente.value) {
+    list = list.filter((opcion) => opcion.valor !== 'independiente')
+  }
+  return list
 })
 
 const rolesEquipo = computed(() =>
@@ -154,6 +164,14 @@ async function guardarUsuario() {
     return
   }
 
+  if (esTallerIndependiente.value && datos.rol === 'independiente') {
+    datos.rol = 'operador'
+  }
+
+  const esCreacionIndependienteOwner =
+    !esTallerIndependiente.value && datos.rol === 'independiente'
+  const tenantIdActivo = esTallerIndependiente.value ? auth.activeTenantId : null
+
   let rolParaCrear = datos.rol
   let rutaObjetivo: RutaSucursal | undefined
   let tenantIdIndependiente = ''
@@ -165,7 +183,7 @@ async function guardarUsuario() {
       return
     }
     rolParaCrear = encodeSubAdminRole(rutaObjetivo)
-  } else if (datos.rol === 'independiente') {
+  } else if (esCreacionIndependienteOwner) {
     tenantIdIndependiente = `ind-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
     tallerNombreIndependiente =
       nombreTallerIndependiente.value.trim() ||
@@ -174,6 +192,15 @@ async function guardarUsuario() {
       tenantId: tenantIdIndependiente,
       tallerNombre: tallerNombreIndependiente,
     })
+  }
+
+  const baseRolParaCrear = rolParaCrear
+  if (tenantIdActivo) {
+    rolParaCrear = encodeTenantMemberRole(
+      baseRolParaCrear,
+      tenantIdActivo,
+      auth.activeTenantWorkshopName || undefined
+    )
   }
 
   guardando.value = true
@@ -194,7 +221,7 @@ async function guardarUsuario() {
           email: datos.email.trim().toLowerCase(),
         },
       })
-    } else if (datos.rol === 'independiente' && tenantIdIndependiente) {
+    } else if (esCreacionIndependienteOwner && tenantIdIndependiente) {
       registerIndependentTenantUser({
         userId: creado.id,
         email: datos.email.trim().toLowerCase(),
@@ -207,13 +234,22 @@ async function guardarUsuario() {
           nombreTaller: tallerNombreIndependiente,
         })
         .catch(() => undefined)
+    } else if (tenantIdActivo) {
+      registerIndependentTenantUser({
+        userId: creado.id,
+        email: datos.email.trim().toLowerCase(),
+        tenantId: tenantIdActivo,
+        tallerNombre: auth.activeTenantWorkshopName || undefined,
+        isMember: true,
+        baseRole: baseRolParaCrear,
+      })
     }
 
     versionCredenciales.value++
 
     const nombreRolSeleccionado = rutaObjetivo
       ? `Sub-Admin (${rutaObjetivo.codigo} · ${rutaObjetivo.nombre})`
-      : datos.rol === 'independiente'
+      : esCreacionIndependienteOwner
         ? `Sistema Independiente (${tallerNombreIndependiente})`
         : roles.value.find((opcion) => opcion.valor === datos.rol)?.nombre
 
@@ -232,7 +268,6 @@ async function guardarUsuario() {
   }
 }
 
-const auth = useAuthStore()
 const usuarios = ref<Perfil[]>([])
 const busqueda = ref('')
 
@@ -335,10 +370,16 @@ function rutaIdDeUsuarioSoloRuta(perfil: Perfil): string {
 
 function puedeEliminar(perfil: Perfil): boolean {
   const norm = normalizeRole(perfil.rol)
+  const membership = getUserTenantMembership({
+    id: perfil.id,
+    email: perfil.email,
+    rawRole: perfil.rol,
+  })
   return (
-    normalizeRole(auth.user?.role) === 'Administrador' &&
+    esAdministrador.value &&
     perfil.id !== auth.user?.id &&
-    norm !== 'Administrador'
+    norm !== 'Administrador' &&
+    !(esTallerIndependiente.value && membership.isTenantOwner)
   )
 }
 
@@ -366,7 +407,22 @@ async function cargarUsuarios() {
     ])
     rutas.value = rutasData
 
-    const combinados: Perfil[] = perfilesData.map((perfil) => {
+    const perfilesDelTenant = perfilesData.filter((perfil) => {
+      const membership = getUserTenantMembership({
+        id: perfil.id,
+        email: perfil.email,
+        rawRole: perfil.rol,
+      })
+      if (esTallerIndependiente.value) {
+        return (
+          membership.isIndependent &&
+          membership.tenantId === auth.activeTenantId
+        )
+      }
+      return !membership.isIndependent || membership.isTenantOwner
+    })
+
+    const combinados: Perfil[] = perfilesDelTenant.map((perfil) => {
       const rutaAsociada = rutasData.find(
         (r) =>
           r.subAdminId === perfil.id ||
@@ -420,6 +476,7 @@ async function cargarUsuarios() {
       })
     )
     usuarios.value = combinados
+    perfilesService.cachePerfilesList(combinados)
   } catch {
     errorLista.value = 'No se pudo actualizar la lista. Pulsa Actualizar para reintentar.'
   } finally {
@@ -636,10 +693,16 @@ const sinCambiosRol = computed(() => {
 })
 
 function puedeCambiarRol(perfil: Perfil): boolean {
+  const membership = getUserTenantMembership({
+    id: perfil.id,
+    email: perfil.email,
+    rawRole: perfil.rol,
+  })
   return (
     !esUsuarioSoloRuta(perfil) &&
-    normalizeRole(auth.user?.role) === 'Administrador' &&
-    perfil.id !== auth.user?.id
+    esAdministrador.value &&
+    perfil.id !== auth.user?.id &&
+    !(esTallerIndependiente.value && membership.isTenantOwner)
   )
 }
 
@@ -730,6 +793,10 @@ async function guardarCambioRol() {
         (!!emailLower && r.subAdminEmail?.trim().toLowerCase() === emailLower)
     )
 
+    const tenantIdActivo = esTallerIndependiente.value
+      ? auth.activeTenantId
+      : null
+
     if (nuevoRol === 'subadmin' && rutaDestino) {
       for (const r of rutasPrevias) {
         if (r.id !== rutaDestino.id) {
@@ -738,7 +805,13 @@ async function guardarCambioRol() {
             .catch(() => undefined)
         }
       }
-      const rolCodificado = encodeSubAdminRole(rutaDestino)
+      const rolCodificado = tenantIdActivo
+        ? encodeTenantMemberRole(
+            encodeSubAdminRole(rutaDestino),
+            tenantIdActivo,
+            auth.activeTenantWorkshopName || undefined
+          )
+        : encodeSubAdminRole(rutaDestino)
       await rutasService.updateRuta(rutaDestino.id, {
         assignSubAdmin: {
           id: perfil.id,
@@ -749,7 +822,7 @@ async function guardarCambioRol() {
       const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
       if (fila) fila.rol = rolCodificado
       mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(rolCodificado)}.`
-    } else if (nuevoRol === 'independiente') {
+    } else if (!esTallerIndependiente.value && nuevoRol === 'independiente') {
       for (const r of rutasPrevias) {
         await rutasService
           .updateRuta(r.id, { assignSubAdmin: null })
@@ -789,10 +862,27 @@ async function guardarCambioRol() {
           .updateRuta(r.id, { assignSubAdmin: null })
           .catch(() => undefined)
       }
-      await cambiarRolUsuario(perfil.id, nuevoRol, perfil.email)
+      const rolFinal = tenantIdActivo
+        ? encodeTenantMemberRole(
+            nuevoRol,
+            tenantIdActivo,
+            auth.activeTenantWorkshopName || undefined
+          )
+        : nuevoRol
+      await cambiarRolUsuario(perfil.id, rolFinal, perfil.email)
+      if (tenantIdActivo) {
+        registerIndependentTenantUser({
+          userId: perfil.id,
+          email: perfil.email,
+          tenantId: tenantIdActivo,
+          tallerNombre: auth.activeTenantWorkshopName || undefined,
+          isMember: true,
+          baseRole: nuevoRol,
+        })
+      }
       const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
-      if (fila) fila.rol = nuevoRol
-      mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(nuevoRol)}.`
+      if (fila) fila.rol = rolFinal
+      mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(rolFinal)}.`
     }
 
     guardandoRol.value = false
@@ -820,15 +910,37 @@ const credencialesVisibles = reactive<Record<string, boolean>>({})
 const versionCredenciales = ref(0)
 const copiadoId = ref<string | null>(null)
 const usuarioCredencial = ref<Perfil | null>(null)
+const nombreEditableFicha = ref('')
+const guardandoNombreFicha = ref(false)
 const credencialEditable = ref('')
 const mostrarPasswordEnModal = ref(true)
+const esNuevaPasswordVisible = ref(true)
 const mensajeModalCredencial = ref('')
+const tipoMensajeModalCredencial = ref<'ok' | 'error'>('ok')
+const guardandoCredencial = ref(false)
 const dialogoCredenciales = ref<HTMLDivElement | null>(null)
 let botonOrigenCredencial: HTMLElement | null = null
 
 const esAdministrador = computed(() => {
-  return normalizeRole(auth.user?.role) === 'Administrador'
+  const norm = normalizeRole(auth.user?.role)
+  return norm === 'Administrador' || norm === 'Taller Independiente'
 })
+
+function inicialesFicha(nombre?: string | null): string {
+  const parts = (nombre || 'US').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'US'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return `${parts[0]![0] || ''}${parts[1]![0] || ''}`.toUpperCase()
+}
+
+function generarPasswordSeguraModal() {
+  const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz'
+  const digitos = '23456789'
+  const pick = (pool: string, len: number) =>
+    Array.from({ length: len }, () => pool[Math.floor(Math.random() * pool.length)]).join('')
+  credencialEditable.value = `${pick(letras, 4)}-${pick(digitos, 4)}`
+  esNuevaPasswordVisible.value = true
+}
 
 function credencialDeUsuario(usuario: Perfil): string {
   // Depender de versionCredenciales para reactividad inmediata al guardar
@@ -874,9 +986,12 @@ async function abrirModalCredenciales(perfil: Perfil, evento?: MouseEvent) {
     botonOrigenCredencial = evento.currentTarget
   }
   usuarioCredencial.value = perfil
+  nombreEditableFicha.value = perfil.nombre || ''
   credencialEditable.value = credencialDeUsuario(perfil) || ''
-  mostrarPasswordEnModal.value = true
+  mostrarPasswordEnModal.value = false
+  esNuevaPasswordVisible.value = true
   mensajeModalCredencial.value = ''
+  tipoMensajeModalCredencial.value = 'ok'
   await nextTick()
   dialogoCredenciales.value?.focus()
 }
@@ -890,22 +1005,94 @@ async function cerrarModalCredenciales() {
   }
 }
 
-function guardarCredencialVisible() {
+async function guardarNombreFichaUsuario() {
   const perfil = usuarioCredencial.value
-  if (!perfil) return
+  if (!perfil || guardandoNombreFicha.value) return
+  const nuevoNombre = nombreEditableFicha.value.trim().replace(/\s+/g, ' ')
+  if (nuevoNombre.length < 2) {
+    tipoMensajeModalCredencial.value = 'error'
+    mensajeModalCredencial.value = 'Escribe un nombre válido de al menos 2 caracteres.'
+    return
+  }
+  if (nuevoNombre === perfil.nombre) {
+    tipoMensajeModalCredencial.value = 'ok'
+    mensajeModalCredencial.value = 'El nombre de la ficha ya está actualizado.'
+    return
+  }
+
+  guardandoNombreFicha.value = true
+  mensajeModalCredencial.value = ''
+  try {
+    if (esUsuarioSoloRuta(perfil)) {
+      const rutaId = rutaIdDeUsuarioSoloRuta(perfil)
+      await rutasService.updateRuta(rutaId, {
+        assignSubAdmin: {
+          nombre: nuevoNombre,
+          email: perfil.email,
+        },
+      })
+    } else {
+      await perfilesService.updatePerfil(perfil.id, { nombre: nuevoNombre })
+    }
+
+    perfil.nombre = nuevoNombre
+    const fila = usuarios.value.find((u) => u.id === perfil.id)
+    if (fila) {
+      fila.nombre = nuevoNombre
+    }
+    perfilesService.cachePerfilesList(usuarios.value)
+    tipoMensajeModalCredencial.value = 'ok'
+    mensajeModalCredencial.value = 'Nombre de la ficha de usuario actualizado correctamente.'
+  } catch (err: unknown) {
+    tipoMensajeModalCredencial.value = 'error'
+    mensajeModalCredencial.value =
+      err instanceof Error
+        ? err.message
+        : 'No se pudo actualizar el nombre del usuario.'
+  } finally {
+    guardandoNombreFicha.value = false
+  }
+}
+
+async function guardarCredencialVisible() {
+  const perfil = usuarioCredencial.value
+  if (!perfil || guardandoCredencial.value) return
   const limpia = credencialEditable.value.trim()
   if (!limpia) {
+    tipoMensajeModalCredencial.value = 'error'
     mensajeModalCredencial.value = 'Escribe la contraseña que deseas registrar para este usuario.'
     return
   }
-  registrarCredencialUsuario({
-    id: perfil.id,
-    email: perfil.email,
-    password: limpia,
-  })
-  versionCredenciales.value++
-  credencialesVisibles[perfil.id] = true
-  mensajeModalCredencial.value = 'Contraseña registrada en la bóveda del administrador.'
+  if (limpia.length < 6) {
+    tipoMensajeModalCredencial.value = 'error'
+    mensajeModalCredencial.value = 'La contraseña debe tener al menos 6 caracteres.'
+    return
+  }
+
+  guardandoCredencial.value = true
+  mensajeModalCredencial.value = ''
+  try {
+    const res = await cambiarPasswordUsuario({
+      id: perfil.id,
+      email: perfil.email,
+      password: limpia,
+    })
+    versionCredenciales.value++
+    credencialesVisibles[perfil.id] = true
+    mostrarPasswordEnModal.value = true
+    tipoMensajeModalCredencial.value = 'ok'
+    mensajeModalCredencial.value = res.updatedInAuth
+      ? 'Contraseña actualizada en el acceso del usuario y guardada en la bóveda.'
+      : 'Contraseña actualizada para iniciar sesión y guardada en la bóveda.'
+  } catch (err: unknown) {
+    tipoMensajeModalCredencial.value = 'error'
+    mensajeModalCredencial.value =
+      err instanceof Error
+        ? err.message
+        : 'No se pudo actualizar la contraseña.'
+  } finally {
+    guardandoCredencial.value = false
+  }
 }
 
 onMounted(() => {
@@ -1003,7 +1190,10 @@ onMounted(() => {
       </div>
 
       <div class="space-y-4 border-b border-[#F2F2F2] p-5">
-        <div class="flex flex-wrap items-center gap-2">
+        <div
+          v-if="!esTallerIndependiente"
+          class="flex flex-wrap items-center gap-2"
+        >
           <button
             type="button"
             class="rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
@@ -1287,7 +1477,10 @@ onMounted(() => {
             </div>
 
             <div class="space-y-4">
-              <div class="grid grid-cols-2 gap-1.5 rounded-xl bg-[#F2F2F2] p-1">
+              <div
+                v-if="!esTallerIndependiente"
+                class="grid grid-cols-2 gap-1.5 rounded-xl bg-[#F2F2F2] p-1"
+              >
                 <button
                   type="button"
                   :disabled="guardando"
@@ -1662,10 +1855,10 @@ onMounted(() => {
         </form>
       </div>
 
-      <!-- Modal de Credenciales del Usuario (Solo Administrador) -->
+      <!-- Modal Mejorado de Ficha de Usuario y Cambio de Contraseña -->
       <div
         v-if="usuarioCredencial"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#0D0D0D]/70 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#0D0D0D]/75 backdrop-blur-xs p-4"
         @click.self="cerrarModalCredenciales"
         @keydown.esc="cerrarModalCredenciales"
       >
@@ -1675,131 +1868,254 @@ onMounted(() => {
           aria-modal="true"
           aria-labelledby="titulo-credenciales-usuario"
           tabindex="-1"
-          class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[#0D0D0D]/15 bg-white shadow-2xl outline-none overflow-hidden"
+          class="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#0D0D0D]/15 bg-white shadow-2xl outline-none overflow-hidden"
         >
-          <div class="h-1.5 w-full bg-gradient-to-r from-[#05C7F2] via-[#04C4D9] to-[#05F2F2]"></div>
-          <div class="p-6 space-y-5">
+          <!-- Cabecera oscura de Ficha de Usuario -->
+          <div class="relative bg-[#0D0D0D] px-6 py-5 text-white">
+            <div class="h-1 w-full bg-gradient-to-r from-[#05C7F2] via-[#04C4D9] to-[#05F2F2] absolute top-0 left-0"></div>
             <div class="flex items-start justify-between gap-3">
-              <div class="flex items-center gap-3">
-                <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0D0D0D] text-[#05F2F2] ring-1 ring-[#05C7F2]/40">
-                  <KeyRound class="h-5 w-5" />
+              <div class="flex items-center gap-3.5 min-w-0">
+                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#05C7F2] to-[#04C4D9] text-sm font-black text-[#0D0D0D] shadow-lg shadow-[#05C7F2]/20">
+                  {{ inicialesFicha(usuarioCredencial.nombre) }}
                 </div>
-                <div>
-                  <h2 id="titulo-credenciales-usuario" class="text-lg font-bold text-[#0D0D0D]">
-                    Credenciales de acceso
-                  </h2>
-                  <p class="text-xs text-[#0D0D0D]/60">
-                    {{ usuarioCredencial.nombre }} • {{ nombreRol(usuarioCredencial.rol) }}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                aria-label="Cerrar credenciales"
-                class="rounded-xl p-2 text-[#0D0D0D]/50 transition hover:bg-[#F2F2F2] hover:text-[#0D0D0D] cursor-pointer"
-                @click="cerrarModalCredenciales"
-              >
-                <X class="h-5 w-5" />
-              </button>
-            </div>
-
-            <!-- Tarjeta de Credenciales Actuales -->
-            <div class="space-y-3 rounded-2xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/70 p-4">
-              <div>
-                <span class="block text-[11px] font-bold uppercase tracking-wider text-[#0D0D0D]/55">
-                  Usuario (Correo electrónico)
-                </span>
-                <div class="mt-1 flex items-center justify-between gap-2 rounded-xl border border-[#0D0D0D]/10 bg-white px-3 py-2">
-                  <span class="break-all font-mono text-xs font-bold text-[#0D0D0D]">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h2 id="titulo-credenciales-usuario" class="truncate text-base font-bold text-white">
+                      {{ usuarioCredencial.nombre }}
+                    </h2>
+                    <span
+                      class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                      :class="
+                        usuarioCredencial.estado === 'Inactivo'
+                          ? 'bg-white/10 text-white/60'
+                          : 'bg-[#05F2F2]/20 text-[#05F2F2] ring-1 ring-[#05F2F2]/40'
+                      "
+                    >
+                      {{ usuarioCredencial.estado || 'Activo' }}
+                    </span>
+                  </div>
+                  <p class="mt-0.5 truncate font-mono text-xs text-white/65">
                     {{ usuarioCredencial.email }}
-                  </span>
-                  <button
-                    type="button"
-                    class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#F2F2F2] px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] transition hover:bg-[#05C7F2]/20 cursor-pointer"
-                    @click="copiarTexto(usuarioCredencial.email, `modal-email-${usuarioCredencial.id}`)"
-                  >
-                    <Check v-if="copiadoId === `modal-email-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
-                    <Copy v-else class="h-3.5 w-3.5" />
-                    <span>{{ copiadoId === `modal-email-${usuarioCredencial.id}` ? 'Copiado' : 'Copiar' }}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <span class="block text-[11px] font-bold uppercase tracking-wider text-[#0D0D0D]/55">
-                  Contraseña registrada
-                </span>
-                <div class="mt-1 flex items-center justify-between gap-2 rounded-xl border border-[#0D0D0D]/10 bg-white px-3 py-2">
-                  <span class="font-mono text-xs font-bold text-[#0D0D0D]">
-                    {{
-                      mostrarPasswordEnModal
-                        ? credencialDeUsuario(usuarioCredencial) || 'Sin registrar en bóveda'
-                        : '••••••••••••'
-                    }}
-                  </span>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      class="rounded-lg p-1.5 text-[#0D0D0D]/60 transition hover:bg-[#F2F2F2] hover:text-[#0D0D0D] cursor-pointer"
-                      :title="mostrarPasswordEnModal ? 'Ocultar' : 'Mostrar'"
-                      @click="mostrarPasswordEnModal = !mostrarPasswordEnModal"
-                    >
-                      <EyeOff v-if="mostrarPasswordEnModal" class="h-3.5 w-3.5" />
-                      <Eye v-else class="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      v-if="credencialDeUsuario(usuarioCredencial)"
-                      type="button"
-                      class="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#F2F2F2] px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] transition hover:bg-[#05C7F2]/20 cursor-pointer"
-                      @click="copiarTexto(credencialDeUsuario(usuarioCredencial)!, `modal-pwd-${usuarioCredencial.id}`)"
-                    >
-                      <Check v-if="copiadoId === `modal-pwd-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
-                      <Copy v-else class="h-3.5 w-3.5" />
-                      <span>{{ copiadoId === `modal-pwd-${usuarioCredencial.id}` ? 'Copiada' : 'Copiar' }}</span>
-                    </button>
+                  </p>
+                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#05C7F2]">
+                      <ShieldCheck class="h-3 w-3" />
+                      {{ nombreRol(usuarioCredencial.rol) }}
+                    </span>
+                    <span class="text-[11px] text-white/45">
+                      Alta: {{ fechaCreacion(usuarioCredencial.created_at) }}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <button
                 type="button"
-                class="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0D0D0D] py-2.5 px-4 text-xs font-bold text-[#05F2F2] transition hover:bg-black cursor-pointer"
-                @click="copiarFichaAcceso(usuarioCredencial)"
+                aria-label="Cerrar ficha de usuario"
+                class="rounded-xl p-2 text-white/60 transition hover:bg-white/10 hover:text-white cursor-pointer"
+                @click="cerrarModalCredenciales"
               >
-                <Check v-if="copiadoId === `ficha-${usuarioCredencial.id}`" class="h-4 w-4 text-[#05F2F2]" />
-                <Copy v-else class="h-4 w-4 text-[#05F2F2]" />
-                <span>
-                  {{
-                    copiadoId === `ficha-${usuarioCredencial.id}`
-                      ? '¡Ficha de acceso copiada al portapapeles!'
-                      : 'Copiar ficha completa (Usuario + Contraseña)'
-                  }}
-                </span>
+                <X class="h-5 w-5" />
               </button>
             </div>
+          </div>
 
-            <!-- Registrar / Actualizar contraseña en la bóveda del administrador -->
-            <form class="space-y-2.5" @submit.prevent="guardarCredencialVisible">
-              <label for="input-credencial-visible" class="block text-xs font-bold text-[#0D0D0D]">
-                Registrar o actualizar contraseña visible en bóveda
-              </label>
-              <p class="text-[11px] text-[#0D0D0D]/60">
-                Las cuentas creadas desde este panel o que inicien sesión se registran automáticamente. También puedes anotarla o actualizarla manualmente aquí:
-              </p>
-              <div class="flex gap-2">
+          <div class="p-6 space-y-5">
+            <!-- 1. Editar nombre y configuración rápida de ficha -->
+            <div class="rounded-2xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/60 p-4 space-y-3.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">
+                  <Pencil class="h-3.5 w-3.5 text-[#04C4D9]" />
+                  <span>Ficha del usuario</span>
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    v-if="!esUsuarioSoloRuta(usuarioCredencial)"
+                    type="button"
+                    :disabled="actualizandoSesionId === usuarioCredencial.id"
+                    class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition cursor-pointer disabled:opacity-50"
+                    :class="
+                      usuarioCredencial.sesion_unica
+                        ? 'bg-[#0D0D0D] text-[#05F2F2]'
+                        : 'border border-[#0D0D0D]/15 bg-white text-[#0D0D0D]/75 hover:border-[#04C4D9]'
+                    "
+                    @click="alternarSesionUnica(usuarioCredencial)"
+                  >
+                    <Smartphone v-if="usuarioCredencial.sesion_unica" class="h-3 w-3" />
+                    <MonitorSmartphone v-else class="h-3 w-3" />
+                    <span>
+                      {{
+                        usuarioCredencial.sesion_unica
+                          ? '1 Dispositivo'
+                          : 'Multi-dispositivo'
+                      }}
+                    </span>
+                  </button>
+                  <button
+                    v-if="puedeCambiarRol(usuarioCredencial)"
+                    type="button"
+                    class="rounded-full border border-[#04C4D9]/45 bg-white px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] transition hover:bg-[#05C7F2]/15 cursor-pointer"
+                    @click="(e) => { const target = usuarioCredencial!; void cerrarModalCredenciales().then(() => abrirCambioRol(target, e)) }"
+                  >
+                    Cambiar rol
+                  </button>
+                </div>
+              </div>
+
+              <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="guardarNombreFichaUsuario">
                 <input
-                  id="input-credencial-visible"
-                  v-model="credencialEditable"
+                  id="input-nombre-ficha"
+                  v-model="nombreEditableFicha"
                   type="text"
-                  placeholder="Escribe la contraseña del usuario"
-                  class="flex-1 rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2 text-xs font-mono text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  maxlength="120"
+                  :disabled="guardandoNombreFicha"
+                  placeholder="Nombre completo del usuario"
+                  class="flex-1 rounded-xl border border-[#0D0D0D]/15 bg-white px-3.5 py-2 text-xs font-semibold text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
                 />
                 <button
                   type="submit"
-                  class="rounded-xl border border-[#04C4D9]/50 bg-[#05C7F2]/15 px-3.5 py-2 text-xs font-bold text-[#0D0D0D] transition hover:bg-[#04C4D9] cursor-pointer"
+                  :disabled="guardandoNombreFicha || nombreEditableFicha.trim() === usuarioCredencial.nombre"
+                  class="rounded-xl bg-[#0D0D0D] px-4 py-2 text-xs font-bold text-[#05F2F2] transition hover:bg-black disabled:opacity-40 cursor-pointer"
                 >
-                  Guardar
+                  {{ guardandoNombreFicha ? 'Guardando…' : 'Guardar nombre' }}
+                </button>
+              </form>
+            </div>
+
+            <!-- 2. Credenciales actuales y copiar ficha -->
+            <div class="space-y-3 rounded-2xl border border-[#0D0D0D]/10 bg-white p-4 shadow-xs">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">
+                  <KeyRound class="h-3.5 w-3.5 text-[#04C4D9]" />
+                  <span>Credenciales actuales</span>
+                </span>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1.5 rounded-full bg-[#0D0D0D] px-3 py-1.5 text-[11px] font-bold text-[#05F2F2] transition hover:bg-black cursor-pointer"
+                  @click="copiarFichaAcceso(usuarioCredencial)"
+                >
+                  <Check v-if="copiadoId === `ficha-${usuarioCredencial.id}`" class="h-3.5 w-3.5" />
+                  <Copy v-else class="h-3.5 w-3.5" />
+                  <span>
+                    {{
+                      copiadoId === `ficha-${usuarioCredencial.id}`
+                        ? 'Ficha copiada'
+                        : 'Copiar ficha'
+                    }}
+                  </span>
+                </button>
+              </div>
+
+              <div class="grid gap-2.5 sm:grid-cols-2">
+                <div class="rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/70 px-3 py-2">
+                  <span class="block text-[10px] font-bold uppercase tracking-wider text-[#0D0D0D]/50">
+                    Correo de acceso
+                  </span>
+                  <div class="mt-1 flex items-center justify-between gap-1.5">
+                    <span class="truncate font-mono text-xs font-bold text-[#0D0D0D]" :title="usuarioCredencial.email">
+                      {{ usuarioCredencial.email }}
+                    </span>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-lg bg-white p-1.5 text-[#0D0D0D] shadow-xs transition hover:bg-[#05C7F2]/20 cursor-pointer"
+                      title="Copiar correo"
+                      @click="copiarTexto(usuarioCredencial.email, `modal-email-${usuarioCredencial.id}`)"
+                    >
+                      <Check v-if="copiadoId === `modal-email-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
+                      <Copy v-else class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div class="rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/70 px-3 py-2">
+                  <span class="block text-[10px] font-bold uppercase tracking-wider text-[#0D0D0D]/50">
+                    Contraseña actual
+                  </span>
+                  <div class="mt-1 flex items-center justify-between gap-1.5">
+                    <span class="truncate font-mono text-xs font-bold text-[#0D0D0D]">
+                      {{
+                        mostrarPasswordEnModal
+                          ? credencialDeUsuario(usuarioCredencial) || 'No guardada'
+                          : '••••••••••'
+                      }}
+                    </span>
+                    <div class="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        class="rounded-lg bg-white p-1.5 text-[#0D0D0D]/70 shadow-xs transition hover:text-[#0D0D0D] cursor-pointer"
+                        :title="mostrarPasswordEnModal ? 'Ocultar' : 'Mostrar'"
+                        @click="mostrarPasswordEnModal = !mostrarPasswordEnModal"
+                      >
+                        <EyeOff v-if="mostrarPasswordEnModal" class="h-3.5 w-3.5" />
+                        <Eye v-else class="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        v-if="credencialDeUsuario(usuarioCredencial)"
+                        type="button"
+                        class="rounded-lg bg-white p-1.5 text-[#0D0D0D] shadow-xs transition hover:bg-[#05C7F2]/20 cursor-pointer"
+                        title="Copiar contraseña"
+                        @click="copiarTexto(credencialDeUsuario(usuarioCredencial)!, `modal-pwd-${usuarioCredencial.id}`)"
+                      >
+                        <Check v-if="copiadoId === `modal-pwd-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
+                        <Copy v-else class="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. Cambiar contraseña -->
+            <form
+              class="rounded-2xl border border-[#04C4D9]/35 bg-[#05C7F2]/[0.06] p-4 space-y-3"
+              @submit.prevent="guardarCredencialVisible"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <label for="input-credencial-visible" class="text-xs font-bold uppercase tracking-wider text-[#0D0D0D]">
+                  Cambiar contraseña de acceso
+                </label>
+                <button
+                  type="button"
+                  :disabled="guardandoCredencial"
+                  class="inline-flex items-center gap-1 rounded-full border border-[#04C4D9]/50 bg-white px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] transition hover:bg-[#05C7F2]/20 cursor-pointer disabled:opacity-50"
+                  @click="generarPasswordSeguraModal"
+                >
+                  <Sparkles class="h-3 w-3 text-[#04C4D9]" />
+                  <span>Generar clave</span>
+                </button>
+              </div>
+
+              <div class="relative">
+                <input
+                  id="input-credencial-visible"
+                  v-model="credencialEditable"
+                  :type="esNuevaPasswordVisible ? 'text' : 'password'"
+                  :disabled="guardandoCredencial"
+                  placeholder="Nueva contraseña (mínimo 6 caracteres)"
+                  class="w-full rounded-xl border border-[#0D0D0D]/15 bg-white pl-3.5 pr-10 py-2.5 text-xs font-mono font-bold text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                />
+                <button
+                  type="button"
+                  class="absolute right-2.5 top-2 rounded-lg p-1 text-[#0D0D0D]/55 transition hover:bg-[#F2F2F2] hover:text-[#0D0D0D] cursor-pointer"
+                  :title="esNuevaPasswordVisible ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'"
+                  @click="esNuevaPasswordVisible = !esNuevaPasswordVisible"
+                >
+                  <EyeOff v-if="esNuevaPasswordVisible" class="h-4 w-4" />
+                  <Eye v-else class="h-4 w-4" />
+                </button>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <span class="text-[11px] font-medium text-[#0D0D0D]/60">
+                  Mínimo 6 caracteres · Aplica de inmediato al iniciar sesión
+                </span>
+                <button
+                  type="submit"
+                  :disabled="guardandoCredencial || credencialEditable.trim().length < 6"
+                  class="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#05C7F2] to-[#04C4D9] px-4 py-2 text-xs font-bold text-[#0D0D0D] shadow-sm transition hover:brightness-95 disabled:opacity-45 cursor-pointer"
+                >
+                  <KeyRound class="h-3.5 w-3.5" />
+                  <span>{{ guardandoCredencial ? 'Actualizando…' : 'Actualizar contraseña' }}</span>
                 </button>
               </div>
             </form>
@@ -1807,7 +2123,12 @@ onMounted(() => {
             <p
               v-if="mensajeModalCredencial"
               role="status"
-              class="rounded-xl border border-[#04C4D9]/45 bg-[#05C7F2]/10 p-3 text-xs font-medium text-[#0D0D0D]"
+              class="rounded-xl border p-3 text-xs font-semibold"
+              :class="
+                tipoMensajeModalCredencial === 'error'
+                  ? 'border-red-300 bg-red-50 text-red-700'
+                  : 'border-[#04C4D9]/50 bg-[#05C7F2]/15 text-[#0D0D0D]'
+              "
             >
               {{ mensajeModalCredencial }}
             </p>

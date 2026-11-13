@@ -182,7 +182,7 @@ const handleNewOrder = () => {
         <!-- Nombre del taller (JR BLANCO o Taller Independiente) -->
         <span class="font-black text-white text-xs sm:text-sm tracking-tight whitespace-nowrap max-w-[160px] truncate">
           {{
-            authStore.isIndependentAdmin
+            authStore.user?.isIndependent
               ? tallerStore.tallerInfo.nombre ||
                 authStore.activeTenantWorkshopName ||
                 'MI TALLER'

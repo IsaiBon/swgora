@@ -14,7 +14,7 @@ const routes = [
     meta: {
       layout: 'main',
       title: 'Rutas y Sub-Administradores - JR Blanco',
-      allowedRoles: ['Administrador'],
+      allowedRoles: ['Administrador', 'Taller Independiente'],
     },
   },
   {
@@ -24,7 +24,7 @@ const routes = [
     meta: {
       layout: 'main',
       title: 'Administración de usuarios - JR Blanco',
-      allowedRoles: ['Administrador'],
+      allowedRoles: ['Administrador', 'Taller Independiente'],
     },
   },
   {

@@ -1,12 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authService } from '@/services/authService'
-import { perfilesService } from '@/services/perfilesService'
-import { registrarCredencialUsuario } from '@/services/usuariosService'
+import { perfilesService, type Perfil } from '@/services/perfilesService'
+import {
+  registrarCredencialUsuario,
+  obtenerCandidatosPasswordUsuario,
+  verificarCredencialAdmin,
+} from '@/services/usuariosService'
 import {
   parseSubAdminRole,
-  parseIndependentRole,
-  getIndependentTenantForUser,
+  extractTenantFromRole,
+  getUserTenantMembership,
+  encodeSubAdminRole,
+  encodeIndependentRole,
   setActiveTenantContext,
   rutasService,
 } from '@/services/rutasService'
@@ -33,6 +39,7 @@ export interface User {
   rutaCodigo?: string
   rutaNombre?: string
   avatar?: string
+  isVaultSession?: boolean
 }
 
 const STORAGE_KEY = 'swgora_active_user'
@@ -49,11 +56,20 @@ export function normalizeRole(
   | 'Operador'
   | 'Consultor' {
   if (!role) return 'Consultor'
-  const indInfo = parseIndependentRole(role)
-  if (indInfo.isIndependent) return 'Taller Independiente'
-  const subAdminInfo = parseSubAdminRole(role)
+  const tenantInfo = extractTenantFromRole(role)
+  if (tenantInfo.isTenantOwner) return 'Taller Independiente'
+  const effectiveRole = (tenantInfo.baseRole || role).trim()
+  const subAdminInfo = parseSubAdminRole(effectiveRole)
   if (subAdminInfo.isSubAdmin) return 'Sub-Administrador'
-  const lower = role.toLowerCase().trim()
+  const lower = effectiveRole.toLowerCase()
+  if (
+    lower === 'taller independiente' ||
+    lower === 'independiente' ||
+    lower.startsWith('independiente|') ||
+    lower.includes('taller independiente')
+  ) {
+    return 'Taller Independiente'
+  }
   if (lower.includes('admin')) return 'Administrador'
   if (lower.includes('consult')) return 'Consultor'
   if (
@@ -88,24 +104,14 @@ export function getDefaultRouteForRole(role: string): string {
 /**
  * Determina si una ruta es accesible por un rol determinado
  * - Administrador: Acceso completo a todo el sistema (incluyendo /rutas y /usuarios)
- * - Taller Independiente: Sistema propio aislado (Dashboard, Órdenes, Clientes, Mi Taller y Catálogo compartido; sin /usuarios ni /rutas)
+ * - Taller Independiente: Sistema propio completo y aislado (Dashboard, Órdenes, Rutas, Clientes, Usuarios, Mi Taller y Catálogo compartido; sin opción de compartir sistema)
  * - Sub-Administrador: Administra todas las órdenes de trabajo, clientes y catálogo pero SOLO de su ruta asignada
  * - Operador: Solo puede ver Órdenes y Catálogo (además de login)
  * - Consultor: Solo puede ver Catálogo (además de login). NUNCA Órdenes ni Clientes ni Dashboard.
  */
 export function isRouteAllowedForRole(path: string, role: string): boolean {
   const norm = normalizeRole(role)
-  if (norm === 'Administrador') return true
-  if (norm === 'Taller Independiente') {
-    return (
-      path.startsWith('/dashboard') ||
-      path.startsWith('/ordenes') ||
-      path.startsWith('/catalogo') ||
-      path.startsWith('/clientes') ||
-      path.startsWith('/taller') ||
-      path.startsWith('/login')
-    )
-  }
+  if (norm === 'Administrador' || norm === 'Taller Independiente') return true
   if (norm === 'Sub-Administrador') {
     return (
       path.startsWith('/ordenes') ||
@@ -128,7 +134,61 @@ export function isRouteAllowedForRole(path: string, role: string): boolean {
 }
 
 function loadInitialUser(): User | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as User
+    if (parsed?.id) {
+      const membership = getUserTenantMembership({
+        id: parsed.id,
+        email: parsed.email,
+        rawRole: parsed.rawRole || parsed.role,
+      })
+      if (membership.isTenantOwner) {
+        parsed.role = 'Taller Independiente'
+        parsed.isIndependent = true
+        parsed.tenantId = membership.tenantId || parsed.tenantId
+        parsed.tenantWorkshopName =
+          membership.tallerNombre || parsed.tenantWorkshopName
+      } else {
+        parsed.role = normalizeRole(
+          membership.baseRole || parsed.rawRole || parsed.role
+        )
+      }
+      if (parsed.isVaultSession) {
+        return parsed
+      }
+    }
+  } catch {
+    // Ignorar error de lectura local
+  }
   return null
+}
+
+function applyTenantContextForUser(params: {
+  id: string
+  name: string
+  isIndependent: boolean
+  tenantId?: string | null
+  workshopName?: string
+}) {
+  if (params.isIndependent) {
+    setActiveTenantContext({
+      isIndependent: true,
+      tenantId: params.tenantId || null,
+      tallerNombre: params.workshopName,
+      userId: params.id,
+      userName: params.name,
+    })
+  } else {
+    setActiveTenantContext({
+      isIndependent: false,
+      tenantId: null,
+      userId: params.id,
+      userName: params.name,
+    })
+  }
 }
 
 function persistUser(u: User | null) {
@@ -153,9 +213,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => user.value !== null)
 
-  const isGlobalAdmin = computed(
-    () => normalizeRole(user.value?.role) === 'Administrador'
-  )
+  const isGlobalAdmin = computed(() => {
+    const norm = normalizeRole(user.value?.role)
+    return norm === 'Administrador' || norm === 'Taller Independiente'
+  })
 
   const isIndependentAdmin = computed(
     () => normalizeRole(user.value?.role) === 'Taller Independiente'
@@ -195,6 +256,124 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem(DEVICE_TOKEN_KEY, token)
     }
     return token
+  }
+
+  function buildAndStoreUserFromPerfil(
+    perfil: Perfil,
+    fallbackRawRole?: string,
+    isVaultSession = false
+  ) {
+    const isGenericDbRole =
+      !perfil.rol || perfil.rol.trim().toLowerCase() === 'operador'
+    const hasRichFallback =
+      !!fallbackRawRole &&
+      (fallbackRawRole.startsWith('independiente|') ||
+        fallbackRawRole.startsWith('subadmin|') ||
+        fallbackRawRole.includes('||tenant|'))
+    const rawRole =
+      (isGenericDbRole && hasRichFallback ? fallbackRawRole : perfil.rol) ||
+      fallbackRawRole ||
+      'consultor'
+    const membership = getUserTenantMembership({
+      id: perfil.id,
+      email: perfil.email,
+      rawRole,
+    })
+    const normalized = membership.isTenantOwner
+      ? 'Taller Independiente'
+      : normalizeRole(membership.baseRole || rawRole)
+
+    const workshopName = membership.isIndependent
+      ? membership.tallerNombre || `Taller de ${perfil.nombre}`
+      : undefined
+
+    const assignedRuta =
+      normalized === 'Sub-Administrador'
+        ? rutasService.getRutaForUser({
+            id: perfil.id,
+            email: perfil.email,
+            rawRole,
+          })
+        : null
+
+    applyTenantContextForUser({
+      id: perfil.id,
+      name: perfil.nombre,
+      isIndependent: membership.isIndependent,
+      tenantId: membership.tenantId || null,
+      workshopName,
+    })
+
+    const u: User = {
+      id: perfil.id,
+      name: perfil.nombre,
+      email: perfil.email,
+      role: normalized,
+      rawRole,
+      isIndependent: membership.isIndependent,
+      tenantId: membership.tenantId,
+      tenantWorkshopName: workshopName,
+      rutaId: assignedRuta?.id,
+      rutaCodigo: assignedRuta?.codigo,
+      rutaNombre: assignedRuta?.nombre,
+      avatar:
+        perfil.avatar_url ||
+        'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
+      ...(isVaultSession ? { isVaultSession: true } : {}),
+    }
+
+    user.value = u
+    persistUser(u)
+  }
+
+  async function resolveProfileForVaultLogin(emailLower: string): Promise<Perfil | null> {
+    const cached = perfilesService.getCachedPerfilByEmailOrId({ email: emailLower })
+    if (cached) return cached
+
+    const rutasData = await rutasService.getRutas().catch(() => [])
+    const rutaMatch = rutasData.find(
+      (r) => (r.subAdminEmail || '').trim().toLowerCase() === emailLower
+    )
+    if (rutaMatch) {
+      const now = new Date().toISOString()
+      const perfilRuta: Perfil = {
+        id: rutaMatch.subAdminId || `ruta-user-${rutaMatch.id}`,
+        nombre: rutaMatch.subAdminNombre?.trim() || `Encargado ${rutaMatch.nombre}`,
+        email: emailLower,
+        rol: encodeSubAdminRole(rutaMatch),
+        estado: rutaMatch.estado === 'Inactiva' ? 'Inactivo' : 'Activo',
+        created_at: rutaMatch.createdAt || now,
+        updated_at: now,
+      }
+      perfilesService.cachePerfilesList([perfilRuta])
+      return perfilRuta
+    }
+
+    const membership = getUserTenantMembership({ email: emailLower })
+    if (membership.isIndependent && membership.tenantId) {
+      const now = new Date().toISOString()
+      const perfilInd: Perfil = {
+        id: `ind-user-${membership.tenantId}`,
+        nombre:
+          membership.tallerNombre ||
+          emailLower.split('@')[0] ||
+          'Taller Independiente',
+        email: emailLower,
+        rol: membership.isTenantOwner
+          ? encodeIndependentRole({
+              tenantId: membership.tenantId,
+              tallerNombre: membership.tallerNombre,
+            })
+          : membership.baseRole || 'operador',
+        estado: 'Activo',
+        created_at: now,
+        updated_at: now,
+      }
+      perfilesService.cachePerfilesList([perfilInd])
+      return perfilInd
+    }
+
+    return null
   }
 
   async function syncUserWithProfile(
@@ -266,61 +445,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
 
-    const rawRole = perfil.rol || sbUser.user_metadata?.role || 'consultor'
-    const normalized = normalizeRole(rawRole)
-    const indTenant = getIndependentTenantForUser({
-      id: perfil.id,
-      email: perfil.email,
-      rawRole,
-    })
-    const workshopName = indTenant.isIndependent
-      ? indTenant.tallerNombre || `Taller de ${perfil.nombre}`
-      : undefined
-
-    const assignedRuta = indTenant.isIndependent
-      ? null
-      : rutasService.getRutaForUser({
-          id: perfil.id,
-          email: perfil.email,
-          rawRole,
-        })
-
-    if (indTenant.isIndependent) {
-      setActiveTenantContext({
-        isIndependent: true,
-        tenantId: indTenant.tenantId || null,
-        tallerNombre: workshopName,
-        userId: perfil.id,
-        userName: perfil.nombre,
-      })
-    } else {
-      setActiveTenantContext({
-        isIndependent: false,
-        tenantId: null,
-        userId: perfil.id,
-        userName: perfil.nombre,
-      })
-    }
-
-    const u: User = {
-      id: perfil.id,
-      name: perfil.nombre,
-      email: perfil.email,
-      role: normalized,
-      rawRole,
-      isIndependent: indTenant.isIndependent,
-      tenantId: indTenant.tenantId,
-      tenantWorkshopName: workshopName,
-      rutaId: assignedRuta?.id,
-      rutaCodigo: assignedRuta?.codigo,
-      rutaNombre: assignedRuta?.nombre,
-      avatar:
-        perfil.avatar_url ||
-        'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80',
-    }
-
-    user.value = u
-    persistUser(u)
+    buildAndStoreUserFromPerfil(perfil, sbUser.user_metadata?.role, false)
   }
 
   async function init() {
@@ -344,6 +469,14 @@ export const useAuthStore = defineStore('auth', () => {
       session.value = currentSession
       if (currentSession?.user && !isPasswordRecovery.value) {
         await syncUserWithProfile(currentSession.user)
+      } else if (!currentSession && user.value?.isVaultSession && !isPasswordRecovery.value) {
+        applyTenantContextForUser({
+          id: user.value.id,
+          name: user.value.name,
+          isIndependent: !!user.value.isIndependent,
+          tenantId: user.value.tenantId || null,
+          workshopName: user.value.tenantWorkshopName,
+        })
       }
 
       authService.onAuthStateChange((event, newSession) => {
@@ -355,6 +488,9 @@ export const useAuthStore = defineStore('auth', () => {
         }
 
         if (!newSession) {
+          if (user.value?.isVaultSession && event !== 'SIGNED_OUT') {
+            return
+          }
           user.value = null
           persistUser(null)
           return
@@ -422,15 +558,77 @@ export const useAuthStore = defineStore('auth', () => {
     password: string
   ): Promise<void> {
     loading.value = true
+    const cleanEmail = email.trim()
+    const cleanEmailLower = cleanEmail.toLowerCase()
 
     try {
-      const data = await authService.signIn(email.trim(), password)
+      let data: Awaited<ReturnType<typeof authService.signIn>> | null = null
+      try {
+        data = await authService.signIn(cleanEmail, password)
+      } catch (signInErr: unknown) {
+        const errMsg =
+          signInErr instanceof Error ? signInErr.message.toLowerCase() : ''
+        const isInvalidCreds =
+          errMsg.includes('invalid login credentials') ||
+          errMsg.includes('invalid_credentials')
+
+        if (
+          !isInvalidCreds ||
+          !verificarCredencialAdmin({ email: cleanEmailLower, password })
+        ) {
+          throw signInErr
+        }
+
+        // La contraseña ingresada coincide con la asignada por el Administrador en el panel.
+        // 1) Intentar iniciar sesión con contraseñas anteriores conocidas para sincronizar el cambio en Supabase Auth.
+        const candidatos = obtenerCandidatosPasswordUsuario({
+          email: cleanEmailLower,
+        })
+        for (const prevPwd of candidatos) {
+          if (prevPwd === password) continue
+          try {
+            const prevLogin = await authService.signIn(cleanEmail, prevPwd)
+            if (prevLogin?.user) {
+              await authService.updatePassword(password).catch(() => undefined)
+              data = prevLogin
+              break
+            }
+          } catch {
+            // Probar siguiente candidato
+          }
+        }
+
+        // 2) Si ninguna contraseña previa pudo iniciar sesión en Auth (p.ej. usuario de ruta o sobrescritura previa),
+        // autenticar usando el perfil local/ruta verificado contra la bóveda del Administrador.
+        if (!data) {
+          const perfilLocal = await resolveProfileForVaultLogin(cleanEmailLower)
+          if (!perfilLocal) {
+            throw new Error(
+              'No se encontró el perfil local del usuario. Pide al administrador abrir la sección Usuarios para sincronizar.'
+            )
+          }
+          if (perfilLocal.estado && perfilLocal.estado !== 'Activo') {
+            throw new Error(
+              'Tu cuenta está desactivada. Contacta al administrador.'
+            )
+          }
+
+          session.value = null
+          buildAndStoreUserFromPerfil(perfilLocal, perfilLocal.rol, true)
+          registrarCredencialUsuario({
+            id: perfilLocal.id,
+            email: cleanEmailLower,
+            password,
+          })
+          return
+        }
+      }
 
       session.value = data.session
       await syncUserWithProfile(data.user, true)
       registrarCredencialUsuario({
         id: data.user?.id,
-        email: email.trim(),
+        email: cleanEmailLower,
         password,
       })
     } catch (err: unknown) {
@@ -482,7 +680,11 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout(): Promise<void> {
     loading.value = true
     try {
-      if (user.value?.id && !user.value.id.startsWith('demo-')) {
+      if (
+        user.value?.id &&
+        !user.value.isVaultSession &&
+        !user.value.id.startsWith('demo-')
+      ) {
         try {
           const perfil = await perfilesService.getPerfilById(user.value.id)
           const deviceToken = getOrCreateDeviceToken()

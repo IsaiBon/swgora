@@ -13,6 +13,7 @@ export interface RutaSucursal {
   zona: string
   descripcion?: string
   estado: 'Activa' | 'Inactiva'
+  tenantId?: string
   subAdminId?: string
   subAdminNombre?: string
   subAdminEmail?: string
@@ -31,6 +32,11 @@ export interface IndependentTenantInfo {
   tallerNombre?: string
 }
 
+export interface TenantMembershipInfo extends IndependentTenantInfo {
+  isTenantOwner: boolean
+  baseRole?: string
+}
+
 export interface ActiveTenantContext {
   isIndependent: boolean
   tenantId: string | null
@@ -45,6 +51,7 @@ const ORDER_TENANTS_MAP_KEY = 'swgora_order_tenants_map_v1'
 const INDEPENDENT_TENANTS_STORAGE_KEY = 'swgora_independent_tenants_v1'
 const ROLE_SUBADMIN_PREFIX = 'subadmin|'
 const ROLE_INDEPENDENT_PREFIX = 'independiente|'
+const ROLE_TENANT_MEMBER_SEPARATOR = '||tenant|'
 const TALLER_CODIGO_ROUTE_SEPARATOR = '__RUTA__'
 const TALLER_CODIGO_TENANT_SEPARATOR = '__TENANT__'
 
@@ -89,6 +96,79 @@ export function getActiveTenantContext(): ActiveTenantContext {
 }
 
 /**
+ * Codifica el rol de un usuario interno perteneciente a un Taller Independiente
+ * preservando su rol operativo real (`operador`, `consultor`, `admin`, `subadmin|...`)
+ * más el identificador del tenant aislado.
+ * Formato: <baseRole>||tenant|<tenantId>|<tallerNombre>
+ */
+export function encodeTenantMemberRole(
+  baseRole: string,
+  tenantId: string,
+  tallerNombre?: string
+): string {
+  const extracted = extractTenantFromRole(baseRole)
+  const cleanBase = extracted.baseRole?.trim() || 'operador'
+  const cleanTenant = tenantId.replace(/\|/g, '-').trim()
+  if (!cleanTenant) return cleanBase
+  const cleanTaller = (tallerNombre || extracted.tallerNombre || '')
+    .replace(/\|/g, ' ')
+    .trim()
+  return `${cleanBase}${ROLE_TENANT_MEMBER_SEPARATOR}${cleanTenant}|${cleanTaller}`
+}
+
+/**
+ * Extrae información de pertenencia a tenant independiente (dueño o miembro interno)
+ * desde el string `rol`.
+ */
+export function extractTenantFromRole(
+  rawRole?: string | null
+): TenantMembershipInfo {
+  if (!rawRole) {
+    return { isIndependent: false, isTenantOwner: false }
+  }
+  const trimmed = rawRole.trim()
+  const lower = trimmed.toLowerCase()
+
+  if (
+    lower.startsWith(ROLE_INDEPENDENT_PREFIX) ||
+    lower === 'independiente' ||
+    lower === 'taller independiente' ||
+    lower.includes('taller independiente')
+  ) {
+    const parsed = parseIndependentRole(trimmed)
+    return {
+      isIndependent: true,
+      isTenantOwner: true,
+      tenantId: parsed.tenantId,
+      tallerNombre: parsed.tallerNombre,
+      baseRole: trimmed,
+    }
+  }
+
+  const sepIdx = lower.indexOf(ROLE_TENANT_MEMBER_SEPARATOR)
+  if (sepIdx !== -1) {
+    const baseRole = trimmed.slice(0, sepIdx).trim() || 'operador'
+    const rest = trimmed.slice(sepIdx + ROLE_TENANT_MEMBER_SEPARATOR.length)
+    const parts = rest.split('|')
+    const tenantId = parts[0]?.trim() || undefined
+    const tallerNombre = parts[1]?.trim() || undefined
+    return {
+      isIndependent: !!tenantId,
+      isTenantOwner: false,
+      tenantId,
+      tallerNombre,
+      baseRole,
+    }
+  }
+
+  return {
+    isIndependent: false,
+    isTenantOwner: false,
+    baseRole: trimmed,
+  }
+}
+
+/**
  * Codifica el rol de un Sub-Administrador incluyendo los metadatos de su ruta
  * para que viaje de forma nativa en `public.perfiles.rol` en Supabase.
  * Formato: subadmin|<rutaId>|<rutaCodigo>|<rutaNombre>|<rutaZona>
@@ -117,7 +197,9 @@ export function parseSubAdminRole(rawRole?: string | null): {
   rutaZona?: string
 } {
   if (!rawRole) return { isSubAdmin: false }
-  const trimmed = rawRole.trim()
+  const extracted = extractTenantFromRole(rawRole)
+  if (extracted.isTenantOwner) return { isSubAdmin: false }
+  const trimmed = (extracted.baseRole || rawRole).trim()
   if (trimmed.toLowerCase().startsWith(ROLE_SUBADMIN_PREFIX)) {
     const parts = trimmed.split('|')
     return {
@@ -171,15 +253,26 @@ export function parseIndependentRole(rawRole?: string | null): IndependentTenant
       tallerNombre: parts[2]?.trim() || undefined,
     }
   }
-  if (trimmed.toLowerCase() === 'independiente') {
+  if (
+    trimmed.toLowerCase() === 'independiente' ||
+    trimmed.toLowerCase() === 'taller independiente' ||
+    trimmed.toLowerCase().includes('taller independiente')
+  ) {
     return { isIndependent: true }
   }
   return { isIndependent: false }
 }
 
+interface StoredIndependentTenantEntry {
+  tenantId: string
+  tallerNombre?: string
+  isMember?: boolean
+  baseRole?: string
+}
+
 interface StoredIndependentTenantMap {
-  byId: Record<string, { tenantId: string; tallerNombre?: string }>
-  byEmail: Record<string, { tenantId: string; tallerNombre?: string }>
+  byId: Record<string, StoredIndependentTenantEntry>
+  byEmail: Record<string, StoredIndependentTenantEntry>
 }
 
 function loadIndependentTenantMap(): StoredIndependentTenantMap {
@@ -204,13 +297,17 @@ export function registerIndependentTenantUser(params: {
   email?: string
   tenantId: string
   tallerNombre?: string
+  isMember?: boolean
+  baseRole?: string
 }): void {
   if (!params.tenantId) return
   try {
     const map = loadIndependentTenantMap()
-    const entry = {
+    const entry: StoredIndependentTenantEntry = {
       tenantId: params.tenantId.trim(),
       tallerNombre: params.tallerNombre?.trim() || undefined,
+      ...(params.isMember !== undefined ? { isMember: params.isMember } : {}),
+      ...(params.baseRole !== undefined ? { baseRole: params.baseRole } : {}),
     }
     if (params.userId) {
       map.byId[params.userId] = entry
@@ -224,49 +321,69 @@ export function registerIndependentTenantUser(params: {
   }
 }
 
-export function getIndependentTenantForUser(user: {
+export function getUserTenantMembership(user: {
   id?: string | null
   email?: string | null
   rawRole?: string | null
-}): IndependentTenantInfo {
-  const parsed = parseIndependentRole(user.rawRole)
-  if (parsed.isIndependent && parsed.tenantId) {
-    return parsed
+}): TenantMembershipInfo {
+  const extracted = extractTenantFromRole(user.rawRole)
+  if (extracted.isIndependent && extracted.tenantId) {
+    return extracted
   }
 
   const map = loadIndependentTenantMap()
-  if (user.id && map.byId[user.id]) {
+  const entry =
+    (user.id && map.byId[user.id]) ||
+    (user.email && map.byEmail[user.email.trim().toLowerCase()]) ||
+    undefined
+
+  if (entry) {
+    const hasSpecificExtracted =
+      !!extracted.baseRole &&
+      extracted.baseRole.toLowerCase() !== 'operador' &&
+      extracted.baseRole.toLowerCase() !== 'consultor'
     return {
       isIndependent: true,
-      tenantId: map.byId[user.id]!.tenantId,
-      tallerNombre: map.byId[user.id]!.tallerNombre || parsed.tallerNombre,
-    }
-  }
-  if (user.email) {
-    const emailLower = user.email.trim().toLowerCase()
-    if (map.byEmail[emailLower]) {
-      return {
-        isIndependent: true,
-        tenantId: map.byEmail[emailLower]!.tenantId,
-        tallerNombre:
-          map.byEmail[emailLower]!.tallerNombre || parsed.tallerNombre,
-      }
+      isTenantOwner: entry.isMember ? false : true,
+      tenantId: entry.tenantId,
+      tallerNombre: entry.tallerNombre || extracted.tallerNombre,
+      baseRole:
+        (hasSpecificExtracted ? extracted.baseRole : entry.baseRole) ||
+        extracted.baseRole,
     }
   }
 
-  if (parsed.isIndependent) {
+  if (extracted.isIndependent) {
     const seed = (user.id || user.email || 'user')
       .replace(/[^a-zA-Z0-9]/g, '')
       .slice(0, 10)
       .toLowerCase()
     return {
       isIndependent: true,
+      isTenantOwner: extracted.isTenantOwner,
       tenantId: `ind-${seed}`,
-      tallerNombre: parsed.tallerNombre,
+      tallerNombre: extracted.tallerNombre,
+      baseRole: extracted.baseRole,
     }
   }
 
-  return { isIndependent: false }
+  return extracted
+}
+
+export function getIndependentTenantForUser(user: {
+  id?: string | null
+  email?: string | null
+  rawRole?: string | null
+}): IndependentTenantInfo {
+  const membership = getUserTenantMembership(user)
+  if (!membership.isIndependent) {
+    return { isIndependent: false }
+  }
+  return {
+    isIndependent: true,
+    tenantId: membership.tenantId,
+    tallerNombre: membership.tallerNombre,
+  }
 }
 
 /**
@@ -442,30 +559,59 @@ function validarDuplicadoRuta(
   }
 }
 
+function getRutaTenantId(ruta: Pick<RutaSucursal, 'id' | 'tenantId'>): string | null {
+  if (ruta.tenantId?.trim()) return ruta.tenantId.trim()
+  if (ruta.id.startsWith('ruta-') && ruta.id.includes('__')) {
+    const prefix = ruta.id.slice(5).split('__')[0]?.trim()
+    if (prefix) return prefix
+  }
+  return null
+}
+
+function isRutaInActiveTenant(
+  ruta: Pick<RutaSucursal, 'id' | 'tenantId'>,
+  ctx = getActiveTenantContext()
+): boolean {
+  const rutaTenant = getRutaTenantId(ruta)
+  if (ctx.isIndependent) {
+    return !!ctx.tenantId && rutaTenant === ctx.tenantId
+  }
+  return !rutaTenant
+}
+
+function buildTenantScopedRole(
+  baseRole: string,
+  tenantId?: string | null,
+  tallerNombre?: string
+): string {
+  const cleanTenant = tenantId?.trim()
+  if (!cleanTenant) return baseRole
+  return encodeTenantMemberRole(baseRole, cleanTenant, tallerNombre)
+}
+
 export const rutasService = {
   /**
-   * Obtiene todas las rutas locales de forma síncrona
+   * Obtiene todas las rutas locales del taller activo de forma síncrona
    */
   getRutasSync(): RutaSucursal[] {
-    if (getActiveTenantContext().isIndependent) {
-      return []
-    }
-    return loadStoredRutas()
+    return loadStoredRutas().filter((r) => isRutaInActiveTenant(r))
   },
 
   /**
    * Sincroniza las rutas con Supabase (`public.perfiles` y `public.rutas` si existe)
-   * reconstruyendo automáticamente cualquier ruta creada desde otro dispositivo.
+   * reconstruyendo automáticamente cualquier ruta creada desde otro dispositivo,
+   * completamente aisladas por taller (principal vs taller independiente).
    */
   async getRutas(): Promise<RutaSucursal[]> {
-    if (getActiveTenantContext().isIndependent) {
-      return []
-    }
+    const ctx = getActiveTenantContext()
     const localRutas = loadStoredRutas()
     const byId = new Map<string, RutaSucursal>()
 
     for (const r of localRutas) {
-      byId.set(r.id, { ...r })
+      byId.set(r.id, {
+        ...r,
+        tenantId: getRutaTenantId(r) || undefined,
+      })
     }
 
     // 1. Intentar leer tabla `rutas` de Supabase si existe
@@ -477,6 +623,10 @@ export const rutasService = {
 
       if (!error && Array.isArray(dbRutas)) {
         for (const row of dbRutas) {
+          const rowTenant =
+            (row as { tenant_id?: string | null }).tenant_id?.trim() ||
+            getRutaTenantId({ id: row.id }) ||
+            undefined
           byId.set(row.id, {
             id: row.id,
             codigo: row.codigo || 'RUT-01',
@@ -484,6 +634,7 @@ export const rutasService = {
             zona: row.zona || '',
             descripcion: row.descripcion || '',
             estado: row.estado === 'Inactiva' ? 'Inactiva' : 'Activa',
+            tenantId: rowTenant,
             subAdminId: row.sub_admin_id || undefined,
             subAdminNombre: row.sub_admin_nombre || undefined,
             subAdminEmail: row.sub_admin_email || undefined,
@@ -500,12 +651,24 @@ export const rutasService = {
       const perfiles = await perfilesService.getPerfiles()
       for (const perfil of perfiles) {
         const parsed = parseSubAdminRole(perfil.rol)
+        const membership = getUserTenantMembership({
+          id: perfil.id,
+          email: perfil.email,
+          rawRole: perfil.rol,
+        })
+        const perfilTenant = membership.isIndependent
+          ? membership.tenantId || null
+          : null
+
         if (parsed.isSubAdmin && parsed.rutaId && parsed.rutaNombre) {
           const existing = byId.get(parsed.rutaId)
           if (existing) {
             existing.subAdminId = perfil.id
             existing.subAdminNombre = perfil.nombre
             existing.subAdminEmail = perfil.email
+            if (!existing.tenantId && perfilTenant) {
+              existing.tenantId = perfilTenant
+            }
             if (!existing.zona && parsed.rutaZona) {
               existing.zona = parsed.rutaZona
             }
@@ -519,6 +682,7 @@ export const rutasService = {
               nombre: parsed.rutaNombre,
               zona: parsed.rutaZona || 'Ruta Comercial',
               estado: perfil.estado === 'Inactivo' ? 'Inactiva' : 'Activa',
+              tenantId: perfilTenant || getRutaTenantId({ id: parsed.rutaId }) || undefined,
               subAdminId: perfil.id,
               subAdminNombre: perfil.nombre,
               subAdminEmail: perfil.email,
@@ -526,10 +690,12 @@ export const rutasService = {
             })
           }
         } else if (perfil.email) {
-          // Vincular UUID faltante si alguna ruta local coincide por correo
+          // Vincular UUID faltante si alguna ruta local coincide por correo y tenant
           const emailLower = perfil.email.trim().toLowerCase()
           for (const ruta of byId.values()) {
+            const rutaTenant = getRutaTenantId(ruta)
             if (
+              rutaTenant === perfilTenant &&
               ruta.subAdminEmail?.trim().toLowerCase() === emailLower &&
               !ruta.subAdminId
             ) {
@@ -547,14 +713,14 @@ export const rutasService = {
       a.codigo.localeCompare(b.codigo, undefined, { numeric: true })
     )
     saveStoredRutas(merged)
-    return merged
+    return merged.filter((r) => isRutaInActiveTenant(r, ctx))
   },
 
   /**
-   * Genera el siguiente código correlativo de ruta (ej. RUT-01, RUT-02)
+   * Genera el siguiente código correlativo de ruta del taller activo (ej. RUT-01, RUT-02)
    */
   getNextRutaCode(): string {
-    const rutas = loadStoredRutas()
+    const rutas = loadStoredRutas().filter((r) => isRutaInActiveTenant(r))
     const existentes = new Set(
       rutas.map((r) => (r.codigo || '').trim().toUpperCase()).filter(Boolean)
     )
@@ -577,7 +743,7 @@ export const rutasService = {
   },
 
   /**
-   * Obtiene la ruta asignada a un usuario (por su rol codificado, su ID o su email)
+   * Obtiene la ruta asignada a un usuario (respetando aislamiento por tenant)
    */
   getRutaForUser(user: {
     id?: string | null
@@ -585,7 +751,13 @@ export const rutasService = {
     rawRole?: string | null
   }): RutaSucursal | null {
     const parsed = parseSubAdminRole(user.rawRole)
-    const rutas = loadStoredRutas()
+    const membership = getUserTenantMembership(user)
+    const userTenant = membership.isIndependent
+      ? membership.tenantId || null
+      : null
+    const rutas = loadStoredRutas().filter(
+      (r) => getRutaTenantId(r) === userTenant
+    )
 
     if (parsed.rutaId) {
       const foundById = rutas.find((r) => r.id === parsed.rutaId)
@@ -597,6 +769,7 @@ export const rutasService = {
           nombre: parsed.rutaNombre,
           zona: parsed.rutaZona || '',
           estado: 'Activa',
+          tenantId: userTenant || undefined,
           subAdminId: user.id || undefined,
           subAdminEmail: user.email || undefined,
           createdAt: new Date().toISOString(),
@@ -622,7 +795,7 @@ export const rutasService = {
 
   /**
    * Crea una nueva Ruta / Sucursal y automáticamente crea o asigna la cuenta
-   * de su Sub-Administrador en Supabase Auth + `public.perfiles`.
+   * de su Sub-Administrador en Supabase Auth + `public.perfiles` dentro del taller activo.
    */
   async createRutaWithSubAdmin(params: {
     codigo?: string
@@ -638,16 +811,24 @@ export const rutasService = {
     ruta: RutaSucursal
     credenciales?: { nombre: string; email: string; password: string }
   }> {
-    const rutas = await this.getRutas().catch(() => loadStoredRutas())
+    const ctx = getActiveTenantContext()
+    const activeTenantId =
+      ctx.isIndependent && ctx.tenantId ? ctx.tenantId.trim() : null
+    const rutasTenant = await this.getRutas().catch(() =>
+      loadStoredRutas().filter((r) => isRutaInActiveTenant(r, ctx))
+    )
     const cleanNombre = params.nombre.trim().replace(/\s+/g, ' ')
     const cleanCodigo = (params.codigo?.trim() || this.getNextRutaCode()).toUpperCase()
-    validarDuplicadoRuta(rutas, {
+    validarDuplicadoRuta(rutasTenant, {
       nombre: cleanNombre,
       codigo: cleanCodigo,
     })
 
     const cleanZona = (params.zona || '').trim()
-    const rutaId = `ruta-${Date.now().toString(36)}`
+    const tsSuffix = Date.now().toString(36)
+    const rutaId = activeTenantId
+      ? `ruta-${activeTenantId.replace(/__/g, '-')}__${tsSuffix}`
+      : `ruta-${tsSuffix}`
 
     const nuevaRuta: RutaSucursal = {
       id: rutaId,
@@ -656,10 +837,16 @@ export const rutasService = {
       zona: cleanZona,
       descripcion: params.descripcion?.trim() || '',
       estado: 'Activa',
+      ...(activeTenantId ? { tenantId: activeTenantId } : {}),
       createdAt: new Date().toISOString(),
     }
 
-    const encodedRole = encodeSubAdminRole(nuevaRuta)
+    const encodedSubBase = encodeSubAdminRole(nuevaRuta)
+    const encodedRole = buildTenantScopedRole(
+      encodedSubBase,
+      activeTenantId,
+      ctx.tallerNombre
+    )
     let credencialesCreadas:
       | { nombre: string; email: string; password: string }
       | undefined
@@ -715,6 +902,17 @@ export const rutasService = {
       nuevaRuta.subAdminNombre = adminNombre
       nuevaRuta.subAdminEmail = adminEmail
 
+      if (activeTenantId) {
+        registerIndependentTenantUser({
+          userId: resolvedUserId,
+          email: adminEmail,
+          tenantId: activeTenantId,
+          tallerNombre: ctx.tallerNombre,
+          isMember: true,
+          baseRole: encodedSubBase,
+        })
+      }
+
       registrarCredencialUsuario({
         id: resolvedUserId,
         email: adminEmail,
@@ -745,6 +943,17 @@ export const rutasService = {
       nuevaRuta.subAdminId = targetPerfil.id
       nuevaRuta.subAdminNombre = targetPerfil.nombre
       nuevaRuta.subAdminEmail = targetPerfil.email
+
+      if (activeTenantId) {
+        registerIndependentTenantUser({
+          userId: targetPerfil.id,
+          email: targetPerfil.email,
+          tenantId: activeTenantId,
+          tallerNombre: ctx.tallerNombre,
+          isMember: true,
+          baseRole: encodedSubBase,
+        })
+      }
     }
 
     // Intentar guardar en tabla `rutas` de Supabase si existe
@@ -765,8 +974,9 @@ export const rutasService = {
       // Respaldo transparente en localStorage + perfiles
     }
 
-    rutas.push(nuevaRuta)
-    saveStoredRutas(rutas)
+    const allStored = loadStoredRutas()
+    allStored.push(nuevaRuta)
+    saveStoredRutas(allStored)
 
     return {
       ruta: nuevaRuta,
@@ -790,13 +1000,15 @@ export const rutasService = {
       } | null
     }
   ): Promise<RutaSucursal> {
-    const rutas = loadStoredRutas()
-    const index = rutas.findIndex((r) => r.id === id)
+    const ctx = getActiveTenantContext()
+    const allRutas = loadStoredRutas()
+    const index = allRutas.findIndex((r) => r.id === id)
     if (index === -1) {
       throw new Error('No se encontró la ruta especificada.')
     }
 
-    const current = rutas[index]!
+    const current = allRutas[index]!
+    const rutaTenant = getRutaTenantId(current)
     const updated: RutaSucursal = {
       ...current,
       codigo: updates.codigo !== undefined ? updates.codigo.trim().toUpperCase() : current.codigo,
@@ -813,14 +1025,27 @@ export const rutasService = {
     }
 
     if (updates.nombre !== undefined || updates.codigo !== undefined) {
-      validarDuplicadoRuta(rutas, {
+      const tenantRutas = allRutas.filter(
+        (r) => getRutaTenantId(r) === rutaTenant
+      )
+      validarDuplicadoRuta(tenantRutas, {
         nombre: updated.nombre,
         codigo: updated.codigo,
         excludeId: id,
       })
     }
 
-    const encodedRole = encodeSubAdminRole(updated)
+    const encodedSubBase = encodeSubAdminRole(updated)
+    const encodedRole = buildTenantScopedRole(
+      encodedSubBase,
+      rutaTenant,
+      ctx.tallerNombre
+    )
+    const revertRole = buildTenantScopedRole(
+      'operador',
+      rutaTenant,
+      ctx.tallerNombre
+    )
 
     if (updates.assignSubAdmin !== undefined) {
       if (updates.assignSubAdmin === null) {
@@ -828,7 +1053,7 @@ export const rutasService = {
           try {
             await cambiarRolUsuario(
               current.subAdminId,
-              'operador',
+              revertRole,
               current.subAdminEmail
             )
           } catch {
@@ -847,7 +1072,7 @@ export const rutasService = {
           try {
             await cambiarRolUsuario(
               current.subAdminId,
-              'operador',
+              revertRole,
               current.subAdminEmail
             )
           } catch {
@@ -860,6 +1085,16 @@ export const rutasService = {
         updated.subAdminEmail =
           updates.assignSubAdmin.email || updated.subAdminEmail
         if (updated.subAdminId) {
+          if (rutaTenant) {
+            registerIndependentTenantUser({
+              userId: updated.subAdminId,
+              email: updated.subAdminEmail,
+              tenantId: rutaTenant,
+              tallerNombre: ctx.tallerNombre,
+              isMember: true,
+              baseRole: encodedSubBase,
+            })
+          }
           try {
             await cambiarRolUsuario(
               updated.subAdminId,
@@ -877,7 +1112,7 @@ export const rutasService = {
           try {
             await cambiarRolUsuario(
               current.subAdminId,
-              'operador',
+              revertRole,
               current.subAdminEmail
             )
           } catch {
@@ -891,6 +1126,16 @@ export const rutasService = {
         const perfiles = await perfilesService.getPerfiles().catch(() => [] as Perfil[])
         const target = perfiles.find((p) => p.id === updates.assignUserId)
         if (target) {
+          if (rutaTenant) {
+            registerIndependentTenantUser({
+              userId: target.id,
+              email: target.email,
+              tenantId: rutaTenant,
+              tallerNombre: ctx.tallerNombre,
+              isMember: true,
+              baseRole: encodedSubBase,
+            })
+          }
           try {
             await cambiarRolUsuario(target.id, encodedRole as any, target.email)
           } catch (err) {
@@ -914,8 +1159,8 @@ export const rutasService = {
       }
     }
 
-    rutas[index] = updated
-    saveStoredRutas(rutas)
+    allRutas[index] = updated
+    saveStoredRutas(allRutas)
 
     try {
       await supabase
@@ -939,21 +1184,28 @@ export const rutasService = {
   },
 
   /**
-   * Elimina una ruta y opcionalmente pasa a su Sub-Administrador a rol 'operador'
+   * Elimina una ruta y opcionalmente pasa a su Sub-Administrador a rol 'operador' dentro del mismo taller
    */
   async deleteRuta(id: string): Promise<void> {
-    const rutas = loadStoredRutas()
-    const target = rutas.find((r) => r.id === id)
+    const ctx = getActiveTenantContext()
+    const allRutas = loadStoredRutas()
+    const target = allRutas.find((r) => r.id === id)
+    const rutaTenant = target ? getRutaTenantId(target) : null
+    const revertRole = buildTenantScopedRole(
+      'operador',
+      rutaTenant,
+      ctx.tallerNombre
+    )
 
     if (target?.subAdminId) {
       try {
-        await cambiarRolUsuario(target.subAdminId, 'operador')
+        await cambiarRolUsuario(target.subAdminId, revertRole, target.subAdminEmail)
       } catch {
         // Ignore
       }
     }
 
-    const filtered = rutas.filter((r) => r.id !== id)
+    const filtered = allRutas.filter((r) => r.id !== id)
     saveStoredRutas(filtered)
 
     try {
