@@ -50,6 +50,7 @@ import {
   Sparkles,
   FolderPlus,
   Edit3,
+  Trash2,
   Ruler,
   Maximize2,
   Hash,
@@ -167,6 +168,8 @@ const editingBrandId = ref<string | null>(null)
 const quickBrandName = ref<string>('')
 const quickBrandCountry = ref<string>('Japón')
 const isSavingQuickBrand = ref<boolean>(false)
+const confirmDeleteBrand = ref<boolean>(false)
+const isDeletingQuickBrand = ref<boolean>(false)
 
 const isQuickCreateMotorOpen = ref<boolean>(false)
 const editingMotorId = ref<string | null>(null)
@@ -180,6 +183,8 @@ const quickMotorCc = ref<number | undefined>(undefined)
 const quickMotorFuel = ref<string>('Diésel')
 const quickMotorYears = ref<string>('')
 const isSavingQuickMotor = ref<boolean>(false)
+const confirmDeleteMotor = ref<boolean>(false)
+const isDeletingQuickMotor = ref<boolean>(false)
 
 const isQuickCreateModelOpen = ref<boolean>(false)
 const editingModelId = ref<string | null>(null)
@@ -192,6 +197,8 @@ const quickModelMotorQuery = ref<string>('')
 const quickModelAvailableMotors = ref<Motor[]>([])
 const loadingQuickModelMotors = ref<boolean>(false)
 const isSavingQuickModel = ref<boolean>(false)
+const confirmDeleteModel = ref<boolean>(false)
+const isDeletingQuickModel = ref<boolean>(false)
 
 const isQuickCreateYearOpen = ref<boolean>(false)
 const quickYearValue = ref<string>('')
@@ -201,18 +208,49 @@ const unitMode = ref<'mm' | 'milesimas'>('mm')
 
 const openQuickCreateBrandModal = (initialName?: string) => {
   editingBrandId.value = null
+  confirmDeleteBrand.value = false
   quickBrandName.value = (initialName || brandInput.value || '').trim().toUpperCase()
   quickBrandCountry.value = 'Japón'
   isBrandOpen.value = false
   isQuickCreateBrandOpen.value = true
 }
 
-const openEditBrandModal = (fab: Fabricante) => {
+const openEditBrandModal = (fab: Fabricante, startDelete = false) => {
   editingBrandId.value = fab.id
+  confirmDeleteBrand.value = startDelete
   quickBrandName.value = fab.nombre.toUpperCase()
   quickBrandCountry.value = fab.pais_origen || 'Japón'
   isBrandOpen.value = false
   isQuickCreateBrandOpen.value = true
+}
+
+const handleDeleteQuickBrand = async () => {
+  const targetId = editingBrandId.value
+  if (!targetId) return
+  const targetName = quickBrandName.value.trim().toUpperCase() || 'Marca'
+  isDeletingQuickBrand.value = true
+  try {
+    await catalogStore.deleteFabricante(targetId)
+    isQuickCreateBrandOpen.value = false
+    confirmDeleteBrand.value = false
+    if (selectedBrand.value?.id === targetId) {
+      selectedBrand.value = null
+      brandInput.value = ''
+    }
+    if (selectedModel.value?.fabricante_id === targetId) {
+      selectedModel.value = null
+      modelInput.value = ''
+    }
+    if (selectedMotor.value?.fabricante_id === targetId) {
+      selectedMotor.value = null
+      motorInput.value = ''
+    }
+    showToast(`✓ Marca "${targetName}" eliminada`)
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : 'No se pudo eliminar la marca')
+  } finally {
+    isDeletingQuickBrand.value = false
+  }
 }
 
 const handleSaveQuickBrand = async () => {
@@ -247,6 +285,7 @@ const handleSaveQuickBrand = async () => {
 
 const openQuickCreateMotorModal = (initialCode?: string) => {
   editingMotorId.value = null
+  confirmDeleteMotor.value = false
   quickMotorCode.value = (initialCode || motorInput.value || '').trim().toUpperCase()
   quickMotorBrandId.value = selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || '11111111-1111-1111-1111-111111111101'
   quickMotorModelId.value = selectedModel.value?.id || ''
@@ -259,9 +298,10 @@ const openQuickCreateMotorModal = (initialCode?: string) => {
   isQuickCreateMotorOpen.value = true
 }
 
-const openEditMotorModal = (mot: Motor, e?: Event) => {
+const openEditMotorModal = (mot: Motor, e?: Event, startDelete = false) => {
   e?.stopPropagation()
   editingMotorId.value = mot.id
+  confirmDeleteMotor.value = startDelete
   quickMotorBrandId.value = mot.fabricante_id
   quickMotorModelId.value = mot.modelo_id || ''
   quickMotorCode.value = mot.codigo
@@ -272,6 +312,27 @@ const openEditMotorModal = (mot: Motor, e?: Event) => {
   quickMotorFuel.value = mot.combustible || 'Diésel'
   quickMotorYears.value = mot.anios || ''
   isQuickCreateMotorOpen.value = true
+}
+
+const handleDeleteQuickMotor = async () => {
+  const targetId = editingMotorId.value
+  if (!targetId) return
+  const targetCode = quickMotorCode.value.trim().toUpperCase() || 'Motor'
+  isDeletingQuickMotor.value = true
+  try {
+    await catalogStore.deleteMotor(targetId)
+    isQuickCreateMotorOpen.value = false
+    confirmDeleteMotor.value = false
+    if (selectedMotor.value?.id === targetId) {
+      selectedMotor.value = null
+      motorInput.value = ''
+    }
+    showToast(`✓ Motor "${targetCode}" eliminado`)
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : 'No se pudo eliminar el motor')
+  } finally {
+    isDeletingQuickMotor.value = false
+  }
 }
 
 const handleSaveQuickMotor = async () => {
@@ -363,6 +424,7 @@ const toggleQuickModelMotor = (motorId: string) => {
 
 const openQuickCreateModelModal = async (initialName?: string) => {
   editingModelId.value = null
+  confirmDeleteModel.value = false
   quickModelName.value = (initialName || modelInput.value || '').trim().toUpperCase()
   const brandId =
     selectedMotor.value?.fabricante_id ||
@@ -380,8 +442,9 @@ const openQuickCreateModelModal = async (initialName?: string) => {
   await loadQuickModelMotors(brandId)
 }
 
-const openEditModelModal = async (mod: Modelo) => {
+const openEditModelModal = async (mod: Modelo, startDelete = false) => {
   editingModelId.value = mod.id
+  confirmDeleteModel.value = startDelete
   quickModelName.value = mod.nombre.toUpperCase()
   quickModelBrandId.value = mod.fabricante_id
   quickModelYearStart.value = mod.anio_inicio
@@ -395,6 +458,27 @@ const openEditModelModal = async (mod: Modelo) => {
     catalogStore.getMotorIdsByModelo(mod.id).catch(() => [] as string[])
   ])
   quickModelMotorIds.value = linkedIds
+}
+
+const handleDeleteQuickModel = async () => {
+  const targetId = editingModelId.value
+  if (!targetId) return
+  const targetName = quickModelName.value.trim().toUpperCase() || 'Modelo'
+  isDeletingQuickModel.value = true
+  try {
+    await catalogStore.deleteModelo(targetId)
+    isQuickCreateModelOpen.value = false
+    confirmDeleteModel.value = false
+    if (selectedModel.value?.id === targetId) {
+      selectedModel.value = null
+      modelInput.value = ''
+    }
+    showToast(`✓ Modelo "${targetName}" eliminado`)
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : 'No se pudo eliminar el modelo')
+  } finally {
+    isDeletingQuickModel.value = false
+  }
 }
 
 const handleSaveQuickModel = async () => {
@@ -3035,6 +3119,15 @@ onUnmounted(() => {
                 <span>Editar</span>
               </button>
               <button
+                v-if="selectedBrand"
+                type="button"
+                @click="openEditBrandModal(selectedBrand, true)"
+                class="text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 transition cursor-pointer"
+                title="Eliminar marca seleccionada"
+              >
+                <Trash2 class="w-3 h-3" />
+              </button>
+              <button
                 type="button"
                 @click="openQuickCreateBrandModal(brandInput)"
                 class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
@@ -3135,6 +3228,15 @@ onUnmounted(() => {
                 <span>Editar</span>
               </button>
               <button
+                v-if="selectedMotor"
+                type="button"
+                @click="openEditMotorModal(selectedMotor, undefined, true)"
+                class="text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 transition cursor-pointer"
+                title="Eliminar motor seleccionado"
+              >
+                <Trash2 class="w-3 h-3" />
+              </button>
+              <button
                 type="button"
                 @click="openQuickCreateMotorModal(motorInput)"
                 class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
@@ -3202,6 +3304,15 @@ onUnmounted(() => {
               >
                 <Edit3 class="w-3 h-3" />
                 <span>Editar</span>
+              </button>
+              <button
+                v-if="selectedModel"
+                type="button"
+                @click="openEditModelModal(selectedModel, true)"
+                class="text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 transition cursor-pointer"
+                title="Eliminar modelo seleccionado"
+              >
+                <Trash2 class="w-3 h-3" />
               </button>
               <button
                 type="button"
@@ -3765,16 +3876,26 @@ onUnmounted(() => {
                   </span>
                 </td>
 
-                <!-- 12. Editar motor/modelo/año -->
+                <!-- 12. Editar / eliminar motor -->
                 <td class="py-2 px-2 text-center align-middle" @click.stop>
-                  <button
-                    type="button"
-                    @click="openEditMotorModal(mot, $event)"
-                    class="p-1.5 rounded-lg text-slate-400 hover:text-[#004B97] hover:bg-blue-50 transition cursor-pointer"
-                    title="Editar código de motor, modelo o año"
-                  >
-                    <Edit3 class="w-3.5 h-3.5" />
-                  </button>
+                  <div class="inline-flex items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      @click="openEditMotorModal(mot, $event)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-[#004B97] hover:bg-blue-50 transition cursor-pointer"
+                      title="Editar código de motor, modelo o año"
+                    >
+                      <Edit3 class="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      @click="openEditMotorModal(mot, $event, true)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="Eliminar motor"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
 
@@ -5962,22 +6083,55 @@ onUnmounted(() => {
               </select>
             </div>
 
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                @click="isQuickCreateBrandOpen = false"
-                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                :disabled="isSavingQuickBrand || !quickBrandName.trim()"
-                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
-              >
-                <Check class="w-3.5 h-3.5" />
-                <span>{{ editingBrandId ? 'Guardar Cambios' : 'Guardar y Seleccionar' }}</span>
-              </button>
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div v-if="editingBrandId">
+                <div v-if="confirmDeleteBrand" class="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg">
+                  <span class="text-[10px] font-bold text-rose-700">¿Eliminar marca y sus motores/modelos?</span>
+                  <button
+                    type="button"
+                    :disabled="isDeletingQuickBrand"
+                    @click="handleDeleteQuickBrand"
+                    class="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    {{ isDeletingQuickBrand ? 'Eliminando...' : 'Sí, eliminar' }}
+                  </button>
+                  <button
+                    type="button"
+                    @click="confirmDeleteBrand = false"
+                    class="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600 text-[10px] font-semibold hover:bg-slate-50 cursor-pointer"
+                  >
+                    No
+                  </button>
+                </div>
+                <button
+                  v-else
+                  type="button"
+                  @click="confirmDeleteBrand = true"
+                  class="px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
+              </div>
+              <span v-else></span>
+
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="isQuickCreateBrandOpen = false"
+                  class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  :disabled="isSavingQuickBrand || !quickBrandName.trim()"
+                  class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Check class="w-3.5 h-3.5" />
+                  <span>{{ editingBrandId ? 'Guardar Cambios' : 'Guardar y Seleccionar' }}</span>
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -6126,22 +6280,55 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                @click="isQuickCreateMotorOpen = false"
-                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                :disabled="isSavingQuickMotor || !quickMotorCode.trim()"
-                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
-              >
-                <Check class="w-3.5 h-3.5" />
-                <span>Guardar Motor</span>
-              </button>
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div v-if="editingMotorId">
+                <div v-if="confirmDeleteMotor" class="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg">
+                  <span class="text-[10px] font-bold text-rose-700">¿Eliminar motor?</span>
+                  <button
+                    type="button"
+                    :disabled="isDeletingQuickMotor"
+                    @click="handleDeleteQuickMotor"
+                    class="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    {{ isDeletingQuickMotor ? 'Eliminando...' : 'Sí, eliminar' }}
+                  </button>
+                  <button
+                    type="button"
+                    @click="confirmDeleteMotor = false"
+                    class="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600 text-[10px] font-semibold hover:bg-slate-50 cursor-pointer"
+                  >
+                    No
+                  </button>
+                </div>
+                <button
+                  v-else
+                  type="button"
+                  @click="confirmDeleteMotor = true"
+                  class="px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
+              </div>
+              <span v-else></span>
+
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="isQuickCreateMotorOpen = false"
+                  class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  :disabled="isSavingQuickMotor || !quickMotorCode.trim()"
+                  class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Check class="w-3.5 h-3.5" />
+                  <span>Guardar Motor</span>
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -6305,22 +6492,55 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                @click="isQuickCreateModelOpen = false"
-                class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                :disabled="isSavingQuickModel || !quickModelName.trim()"
-                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
-              >
-                <Check class="w-3.5 h-3.5" />
-                <span>{{ editingModelId ? 'Guardar Cambios' : 'Guardar Modelo' }}</span>
-              </button>
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div v-if="editingModelId">
+                <div v-if="confirmDeleteModel" class="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg">
+                  <span class="text-[10px] font-bold text-rose-700">¿Eliminar modelo?</span>
+                  <button
+                    type="button"
+                    :disabled="isDeletingQuickModel"
+                    @click="handleDeleteQuickModel"
+                    class="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    {{ isDeletingQuickModel ? 'Eliminando...' : 'Sí, eliminar' }}
+                  </button>
+                  <button
+                    type="button"
+                    @click="confirmDeleteModel = false"
+                    class="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600 text-[10px] font-semibold hover:bg-slate-50 cursor-pointer"
+                  >
+                    No
+                  </button>
+                </div>
+                <button
+                  v-else
+                  type="button"
+                  @click="confirmDeleteModel = true"
+                  class="px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
+              </div>
+              <span v-else></span>
+
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="isQuickCreateModelOpen = false"
+                  class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  :disabled="isSavingQuickModel || !quickModelName.trim()"
+                  class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Check class="w-3.5 h-3.5" />
+                  <span>{{ editingModelId ? 'Guardar Cambios' : 'Guardar Modelo' }}</span>
+                </button>
+              </div>
             </div>
           </form>
         </div>

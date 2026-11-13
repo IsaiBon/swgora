@@ -1109,6 +1109,67 @@ function saveLocalCustomModelo(modelo: Modelo): void {
   }
 }
 
+function isCatalogUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || '').trim())
+}
+
+function removeLocalCustomFabricante(id: string): void {
+  if (typeof window !== 'undefined') {
+    try {
+      const nextFabs = getLocalCustomFabricantes().filter(f => f.id !== id)
+      localStorage.setItem(LOCAL_BRANDS_STORAGE_KEY, JSON.stringify(nextFabs))
+      const nextMods = getLocalCustomModelos().filter(m => m.fabricante_id !== id)
+      localStorage.setItem(LOCAL_MODELS_STORAGE_KEY, JSON.stringify(nextMods))
+      const nextMotors = getLocalCustomMotores().filter(m => m.fabricante_id !== id)
+      localStorage.setItem(LOCAL_MOTORS_STORAGE_KEY, JSON.stringify(nextMotors))
+    } catch {
+      // Silencioso
+    }
+  }
+  for (let i = mockFabricantes.length - 1; i >= 0; i--) {
+    if (mockFabricantes[i]!.id === id) mockFabricantes.splice(i, 1)
+  }
+  for (let i = mockModelos.length - 1; i >= 0; i--) {
+    if (mockModelos[i]!.fabricante_id === id) mockModelos.splice(i, 1)
+  }
+  for (let i = mockMotores.length - 1; i >= 0; i--) {
+    if (mockMotores[i]!.fabricante_id === id) mockMotores.splice(i, 1)
+  }
+}
+
+function removeLocalCustomModelo(id: string): void {
+  if (typeof window !== 'undefined') {
+    try {
+      const nextMods = getLocalCustomModelos().filter(m => m.id !== id)
+      localStorage.setItem(LOCAL_MODELS_STORAGE_KEY, JSON.stringify(nextMods))
+      const nextMotors = getLocalCustomMotores().map(m => (m.modelo_id === id ? { ...m, modelo_id: undefined } : m))
+      localStorage.setItem(LOCAL_MOTORS_STORAGE_KEY, JSON.stringify(nextMotors))
+    } catch {
+      // Silencioso
+    }
+  }
+  for (let i = mockModelos.length - 1; i >= 0; i--) {
+    if (mockModelos[i]!.id === id) mockModelos.splice(i, 1)
+  }
+  mockMotores.forEach(m => {
+    if (m.modelo_id === id) m.modelo_id = undefined
+  })
+}
+
+function removeLocalCustomMotor(id: string): void {
+  if (typeof window !== 'undefined') {
+    try {
+      const nextMotors = getLocalCustomMotores().filter(m => m.id !== id)
+      localStorage.setItem(LOCAL_MOTORS_STORAGE_KEY, JSON.stringify(nextMotors))
+    } catch {
+      // Silencioso
+    }
+  }
+  for (let i = mockMotores.length - 1; i >= 0; i--) {
+    if (mockMotores[i]!.id === id) mockMotores.splice(i, 1)
+  }
+}
+
 export const mockFabricantes: Fabricante[] = [
   { id: 'fab-1', nombre: 'Toyota', pais_origen: 'Japón', logo_url: 'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?w=120&auto=format&fit=crop&q=80', activo: true, orden_visual: 1, engines_count: 5 },
   { id: 'fab-2', nombre: 'Nissan', pais_origen: 'Japón', logo_url: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=120&auto=format&fit=crop&q=80', activo: true, orden_visual: 2, engines_count: 4 },
@@ -1778,6 +1839,20 @@ export const catalogService = {
   },
 
   /**
+   * Elimina un fabricante/marca de Supabase y caché local
+   */
+  async deleteFabricante(id: string): Promise<boolean> {
+    if (isCatalogUuid(id)) {
+      const { error } = await supabase.from('fabricantes').delete().eq('id', id)
+      if (error) {
+        throw new Error(error.message || 'No se pudo eliminar la marca en la base de datos')
+      }
+    }
+    removeLocalCustomFabricante(id)
+    return true
+  },
+
+  /**
    * Obtiene modelos de vehículos desde Supabase, opcionalmente filtrados por fabricante
    */
   async getModelos(fabricanteId?: string): Promise<Modelo[]> {
@@ -1947,6 +2022,22 @@ export const catalogService = {
     if (mockIdx >= 0) mockModelos[mockIdx] = { ...mockModelos[mockIdx], ...updated }
 
     return updated
+  },
+
+  /**
+   * Elimina un modelo de vehículo en Supabase y limpia sus vínculos
+   */
+  async deleteModelo(id: string): Promise<boolean> {
+    if (isCatalogUuid(id)) {
+      await supabase.from('modelo_motor').delete().eq('modelo_id', id)
+      await supabase.from('motores').update({ modelo_id: null }).eq('modelo_id', id)
+      const { error } = await supabase.from('modelos').delete().eq('id', id)
+      if (error) {
+        throw new Error(error.message || 'No se pudo eliminar el modelo en la base de datos')
+      }
+    }
+    removeLocalCustomModelo(id)
+    return true
   },
 
   /**
@@ -2264,6 +2355,22 @@ export const catalogService = {
     if (mockIdx >= 0) mockMotores[mockIdx] = { ...mockMotores[mockIdx], ...updated }
 
     return updated
+  },
+
+  /**
+   * Elimina un código de motor en Supabase y limpia sus vínculos con modelos/repuestos
+   */
+  async deleteMotor(id: string): Promise<boolean> {
+    if (isCatalogUuid(id)) {
+      await supabase.from('modelo_motor').delete().eq('motor_id', id)
+      await supabase.from('repuestos_tecnicos').update({ motor_id: null }).eq('motor_id', id)
+      const { error } = await supabase.from('motores').delete().eq('id', id)
+      if (error) {
+        throw new Error(error.message || 'No se pudo eliminar el motor en la base de datos')
+      }
+    }
+    removeLocalCustomMotor(id)
+    return true
   },
 
   /**

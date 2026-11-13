@@ -161,6 +161,16 @@ export const useCatalogStore = defineStore('catalog', () => {
     return updated
   }
 
+  async function deleteModelo(id: string): Promise<void> {
+    await catalogService.deleteModelo(id)
+    modelos.value = modelos.value.filter(m => m.id !== id)
+    motores.value = motores.value.map(m => (m.modelo_id === id ? { ...m, modelo_id: undefined } : m))
+    modeloIdsDelMotor.value = modeloIdsDelMotor.value.filter(mid => mid !== id)
+    if (selectedModeloId.value === id) {
+      selectedModeloId.value = null
+    }
+  }
+
   async function getMotorIdsByModelo(modeloId: string): Promise<string[]> {
     return await catalogService.getMotorIdsByModelo(modeloId)
   }
@@ -643,6 +653,35 @@ export const useCatalogStore = defineStore('catalog', () => {
     }
   }
 
+  async function deleteFabricante(id: string) {
+    isSaving.value = true
+    error.value = null
+    try {
+      await catalogService.deleteFabricante(id)
+      const deletedMotorIds = new Set(motores.value.filter(m => m.fabricante_id === id).map(m => m.id))
+      const deletedModelIds = new Set(modelos.value.filter(m => m.fabricante_id === id).map(m => m.id))
+      fabricantes.value = fabricantes.value.filter(f => f.id !== id)
+      modelos.value = modelos.value.filter(m => m.fabricante_id !== id)
+      motores.value = motores.value.filter(m => m.fabricante_id !== id)
+      if (selectedFabricanteId.value === id) {
+        selectedFabricanteId.value = null
+      }
+      if (selectedModeloId.value && deletedModelIds.has(selectedModeloId.value)) {
+        selectedModeloId.value = null
+      }
+      if (selectedMotorId.value && deletedMotorIds.has(selectedMotorId.value)) {
+        selectedMotorId.value = null
+        modeloIdsDelMotor.value = []
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar el fabricante'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
   /**
    * Registra un nuevo motor y lo incorpora reactivamente al catálogo
    */
@@ -673,6 +712,25 @@ export const useCatalogStore = defineStore('catalog', () => {
       return updated
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al actualizar el motor'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  async function deleteMotor(id: string) {
+    isSaving.value = true
+    error.value = null
+    try {
+      await catalogService.deleteMotor(id)
+      motores.value = motores.value.filter(m => m.id !== id)
+      if (selectedMotorId.value === id) {
+        selectedMotorId.value = null
+        modeloIdsDelMotor.value = []
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar el motor'
       error.value = msg
       throw err
     } finally {
@@ -738,6 +796,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     loadAllRepuestos,
     createModelo,
     updateModelo,
+    deleteModelo,
     getMotorIdsByModelo,
     getMotoresForBrand,
     syncModeloMotores,
@@ -747,8 +806,10 @@ export const useCatalogStore = defineStore('catalog', () => {
     deleteGrupo,
     createFabricante,
     updateFabricante,
+    deleteFabricante,
     createMotor,
     updateMotor,
+    deleteMotor,
     searchParts,
     selectFabricante,
     selectModelo,
