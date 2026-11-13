@@ -186,6 +186,10 @@ const quickModelBrandId = ref<string>('')
 const quickModelName = ref<string>('')
 const quickModelYearStart = ref<number | undefined>(undefined)
 const quickModelYearEnd = ref<number | undefined>(undefined)
+const quickModelMotorIds = ref<string[]>([])
+const quickModelMotorQuery = ref<string>('')
+const quickModelAvailableMotors = ref<Motor[]>([])
+const loadingQuickModelMotors = ref<boolean>(false)
 const isSavingQuickModel = ref<boolean>(false)
 
 const isQuickCreateYearOpen = ref<boolean>(false)
@@ -313,24 +317,83 @@ const handleSaveQuickMotor = async () => {
   }
 }
 
-const openQuickCreateModelModal = (initialName?: string) => {
-  editingModelId.value = null
-  quickModelName.value = (initialName || modelInput.value || '').trim().toUpperCase()
-  quickModelBrandId.value = selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || '11111111-1111-1111-1111-111111111101'
-  quickModelYearStart.value = selectedYear.value && !isNaN(Number(selectedYear.value)) ? Number(selectedYear.value) : undefined
-  quickModelYearEnd.value = undefined
-  isModelOpen.value = false
-  isQuickCreateModelOpen.value = true
+const filteredQuickModelMotors = computed<Motor[]>(() => {
+  const q = quickModelMotorQuery.value.trim().toLowerCase()
+  const list = quickModelAvailableMotors.value
+  if (!q) return list
+  return sortMotorsByRelevance(
+    list.filter(m =>
+      m.codigo.toLowerCase().includes(q) ||
+      (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
+      (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q))
+    ),
+    q
+  )
+})
+
+const loadQuickModelMotors = async (brandId: string) => {
+  if (!brandId) {
+    quickModelAvailableMotors.value = []
+    return
+  }
+  loadingQuickModelMotors.value = true
+  try {
+    quickModelAvailableMotors.value = await catalogStore.getMotoresForBrand(brandId)
+  } finally {
+    loadingQuickModelMotors.value = false
+  }
 }
 
-const openEditModelModal = (mod: Modelo) => {
+watch(quickModelBrandId, async (newBrandId, oldBrandId) => {
+  if (!isQuickCreateModelOpen.value || !newBrandId) return
+  if (oldBrandId && newBrandId !== oldBrandId) {
+    quickModelMotorIds.value = []
+    await loadQuickModelMotors(newBrandId)
+  }
+})
+
+const toggleQuickModelMotor = (motorId: string) => {
+  if (quickModelMotorIds.value.includes(motorId)) {
+    quickModelMotorIds.value = quickModelMotorIds.value.filter(id => id !== motorId)
+  } else {
+    quickModelMotorIds.value = [...quickModelMotorIds.value, motorId]
+  }
+}
+
+const openQuickCreateModelModal = async (initialName?: string) => {
+  editingModelId.value = null
+  quickModelName.value = (initialName || modelInput.value || '').trim().toUpperCase()
+  const brandId =
+    selectedMotor.value?.fabricante_id ||
+    selectedBrand.value?.id ||
+    catalogStore.fabricantes[0]?.id ||
+    '11111111-1111-1111-1111-111111111101'
+  quickModelBrandId.value = brandId
+  quickModelYearStart.value = selectedYear.value && !isNaN(Number(selectedYear.value)) ? Number(selectedYear.value) : undefined
+  quickModelYearEnd.value = undefined
+  quickModelMotorQuery.value = ''
+  quickModelMotorIds.value =
+    selectedMotor.value && selectedMotor.value.fabricante_id === brandId ? [selectedMotor.value.id] : []
+  isModelOpen.value = false
+  isQuickCreateModelOpen.value = true
+  await loadQuickModelMotors(brandId)
+}
+
+const openEditModelModal = async (mod: Modelo) => {
   editingModelId.value = mod.id
   quickModelName.value = mod.nombre.toUpperCase()
   quickModelBrandId.value = mod.fabricante_id
   quickModelYearStart.value = mod.anio_inicio
   quickModelYearEnd.value = mod.anio_fin
+  quickModelMotorQuery.value = ''
+  quickModelMotorIds.value = []
   isModelOpen.value = false
   isQuickCreateModelOpen.value = true
+  const [, linkedIds] = await Promise.all([
+    loadQuickModelMotors(mod.fabricante_id),
+    catalogStore.getMotorIdsByModelo(mod.id).catch(() => [] as string[])
+  ])
+  quickModelMotorIds.value = linkedIds
 }
 
 const handleSaveQuickModel = async () => {
@@ -339,6 +402,10 @@ const handleSaveQuickModel = async () => {
   if (!cleanName || !brandId) return
   isSavingQuickModel.value = true
   try {
+    const motorsToLink = quickModelAvailableMotors.value
+      .filter(m => quickModelMotorIds.value.includes(m.id))
+      .map(m => ({ id: m.id, codigo: m.codigo }))
+
     if (editingModelId.value) {
       const updated = await catalogStore.updateModelo(editingModelId.value, {
         fabricante_id: brandId,
@@ -346,12 +413,18 @@ const handleSaveQuickModel = async () => {
         anio_inicio: quickModelYearStart.value ? Number(quickModelYearStart.value) : null,
         anio_fin: quickModelYearEnd.value ? Number(quickModelYearEnd.value) : null
       })
+      await catalogStore.syncModeloMotores(updated.id, motorsToLink)
       isQuickCreateModelOpen.value = false
       if (selectedModel.value?.id === updated.id) {
         selectedModel.value = updated
         modelInput.value = updated.nombre
+        await catalogStore.fetchMotores(brandId, updated.id)
       }
-      showToast(`✓ Modelo actualizado a "${updated.nombre}"`)
+      showToast(
+        motorsToLink.length > 0
+          ? `✓ Modelo "${updated.nombre}" actualizado y vinculado con ${motorsToLink.length} motor(es)`
+          : `✓ Modelo actualizado a "${updated.nombre}"`
+      )
     } else {
       const created = await catalogStore.createModelo(
         brandId,
@@ -359,9 +432,14 @@ const handleSaveQuickModel = async () => {
         quickModelYearStart.value ? Number(quickModelYearStart.value) : undefined,
         quickModelYearEnd.value ? Number(quickModelYearEnd.value) : undefined
       )
+      await catalogStore.syncModeloMotores(created.id, motorsToLink)
       isQuickCreateModelOpen.value = false
       await handleSelectModel(created)
-      showToast(`✓ Modelo "${created.nombre}" registrado y seleccionado`)
+      showToast(
+        motorsToLink.length > 0
+          ? `✓ Modelo "${created.nombre}" registrado y vinculado con ${motorsToLink.length} motor(es)`
+          : `✓ Modelo "${created.nombre}" registrado y seleccionado`
+      )
     }
   } catch (err) {
     showToast(err instanceof Error ? err.message : 'No se pudo guardar el modelo')
@@ -6164,6 +6242,82 @@ onUnmounted(() => {
                   placeholder="ej. 2026"
                   class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                 />
+              </div>
+            </div>
+
+            <!-- Vincular con Motor(es) de la Marca -->
+            <div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/70 space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                  Vincular con Motor(es)
+                </label>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="quickModelMotorIds.length > 0 ? 'bg-cyan-100 text-[#004B97]' : 'bg-slate-200/70 text-slate-500'">
+                  {{ quickModelMotorIds.length }} seleccionado(s)
+                </span>
+              </div>
+
+              <!-- Chips de motores seleccionados -->
+              <div v-if="quickModelMotorIds.length > 0" class="flex flex-wrap gap-1">
+                <span
+                  v-for="selId in quickModelMotorIds"
+                  :key="`chip-mot-${selId}`"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-[10px]"
+                >
+                  <span>{{ quickModelAvailableMotors.find(m => m.id === selId)?.codigo || 'Motor' }}</span>
+                  <button
+                    type="button"
+                    @click="toggleQuickModelMotor(selId)"
+                    class="text-slate-300 hover:text-rose-400 cursor-pointer"
+                    title="Quitar vínculo"
+                  >
+                    <X class="w-3 h-3" />
+                  </button>
+                </span>
+              </div>
+
+              <div class="relative flex items-center">
+                <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                <input
+                  v-model="quickModelMotorQuery"
+                  type="text"
+                  placeholder="Buscar motor por código para vincular..."
+                  class="w-full pl-8 pr-3 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+
+              <div class="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                <div v-if="loadingQuickModelMotors" class="p-3 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+                  <Loader2 class="w-3.5 h-3.5 animate-spin text-[#04C4D9]" />
+                  <span>Cargando motores de la marca...</span>
+                </div>
+                <div v-else-if="filteredQuickModelMotors.length === 0" class="p-2.5 text-center text-[11px] text-slate-400">
+                  No hay motores disponibles para esta marca
+                </div>
+                <button
+                  v-else
+                  v-for="mot in filteredQuickModelMotors"
+                  :key="`qm-mot-${mot.id}`"
+                  type="button"
+                  @click="toggleQuickModelMotor(mot.id)"
+                  class="w-full px-2.5 py-1.5 text-left text-xs flex items-center justify-between gap-2 hover:bg-cyan-50/70 transition cursor-pointer"
+                  :class="quickModelMotorIds.includes(mot.id) ? 'bg-cyan-50/80 text-[#004B97] font-bold' : 'text-slate-700'"
+                >
+                  <div class="flex items-center gap-2 min-w-0 truncate">
+                    <span
+                      class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                      :class="quickModelMotorIds.includes(mot.id) ? 'bg-[#04C4D9] border-[#04C4D9] text-white' : 'border-slate-300 bg-white'"
+                    >
+                      <Check v-if="quickModelMotorIds.includes(mot.id)" class="w-3 h-3" />
+                    </span>
+                    <span class="font-mono font-bold">{{ mot.codigo }}</span>
+                    <span v-if="mot.denominacion_venta || mot.nombre_comercial" class="text-[10px] text-slate-500 truncate">
+                      — {{ mot.denominacion_venta || mot.nombre_comercial }}
+                    </span>
+                  </div>
+                  <span v-if="mot.cilindrada_texto || mot.cilindrada_cc" class="text-[10px] font-mono text-slate-400 shrink-0">
+                    {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+                  </span>
+                </button>
               </div>
             </div>
 

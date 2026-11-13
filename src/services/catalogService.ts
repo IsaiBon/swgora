@@ -1792,8 +1792,14 @@ export const catalogService = {
           fallbackMod.id = String(row.id)
           fallbackMod.fabricante_id = String(row.fabricante_id || fabricanteId)
           fallbackMod.nombre = String(row.nombre || limpio)
-          if (row.anio_inicio) fallbackMod.anio_inicio = Number(row.anio_inicio)
-          if (row.anio_fin) fallbackMod.anio_fin = Number(row.anio_fin)
+          if (anioInicio || anioFin) {
+            await supabase
+              .from('modelos')
+              .update({ anio_inicio: anioInicio ?? null, anio_fin: anioFin ?? null })
+              .eq('id', fallbackMod.id)
+          }
+          if (anioInicio || row.anio_inicio) fallbackMod.anio_inicio = Number(anioInicio || row.anio_inicio)
+          if (anioFin || row.anio_fin) fallbackMod.anio_fin = Number(anioFin || row.anio_fin)
         }
       } else {
         const { data: insData, error: insError } = await supabase
@@ -1905,6 +1911,57 @@ export const catalogService = {
     const { data: legacy } = await supabase.from('motores').select('modelo_id').eq('id', motorId).not('modelo_id', 'is', null)
     ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
     return [...ids]
+  },
+
+  /**
+   * Sincroniza los motores vinculados a un modelo en la tabla N:M modelo_motor
+   */
+  async syncModeloMotores(
+    modeloId: string,
+    selectedMotors: Array<{ id: string; codigo: string }>
+  ): Promise<void> {
+    if (!modeloId) return
+    const targetIds = new Set(selectedMotors.map(m => m.id))
+
+    try {
+      const existingIds = await this.getMotorIdsByModelo(modeloId)
+      const toRemove = existingIds.filter(id => !targetIds.has(id))
+
+      if (toRemove.length > 0) {
+        await supabase
+          .from('modelo_motor')
+          .delete()
+          .eq('modelo_id', modeloId)
+          .in('motor_id', toRemove)
+        await supabase
+          .from('motores')
+          .update({ modelo_id: null })
+          .eq('modelo_id', modeloId)
+          .in('id', toRemove)
+      }
+
+      if (selectedMotors.length > 0) {
+        const rows = selectedMotors.map(mot => ({
+          modelo_id: modeloId,
+          motor_id: mot.id,
+          motor_codigo: mot.codigo,
+          motor_codigo_normalizado: normalizeText(mot.codigo) || mot.codigo.trim().toLowerCase()
+        }))
+        await supabase
+          .from('modelo_motor')
+          .upsert(rows, { onConflict: 'modelo_id,motor_codigo_normalizado' })
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error sincronizando modelo_motor en Supabase:', err)
+    }
+
+    for (const m of mockMotores) {
+      if (targetIds.has(m.id) && !m.modelo_id) {
+        m.modelo_id = modeloId
+      } else if (!targetIds.has(m.id) && m.modelo_id === modeloId) {
+        m.modelo_id = undefined
+      }
+    }
   },
 
   /**

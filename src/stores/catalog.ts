@@ -161,6 +161,24 @@ export const useCatalogStore = defineStore('catalog', () => {
     return updated
   }
 
+  async function getMotorIdsByModelo(modeloId: string): Promise<string[]> {
+    return await catalogService.getMotorIdsByModelo(modeloId)
+  }
+
+  async function getMotoresForBrand(fabricanteId: string): Promise<Motor[]> {
+    return await catalogService.getMotores(fabricanteId, undefined, false)
+  }
+
+  async function syncModeloMotores(
+    modeloId: string,
+    selectedMotors: Array<{ id: string; codigo: string }>
+  ): Promise<void> {
+    await catalogService.syncModeloMotores(modeloId, selectedMotors)
+    if (selectedMotorId.value) {
+      modeloIdsDelMotor.value = await catalogService.getModeloIdsByMotor(selectedMotorId.value).catch(() => [])
+    }
+  }
+
   /**
    * Carga motores desde Supabase filtrados por fabricante o modelo
    */
@@ -720,6 +738,9 @@ export const useCatalogStore = defineStore('catalog', () => {
     loadAllRepuestos,
     createModelo,
     updateModelo,
+    getMotorIdsByModelo,
+    getMotoresForBrand,
+    syncModeloMotores,
     fetchGrupos,
     createGrupo,
     updateGrupo,
