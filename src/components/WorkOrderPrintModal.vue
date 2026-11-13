@@ -47,6 +47,9 @@ onUnmounted(() => {
 
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 
+// Modo de layout de la tabla: 'auto' (adaptable), 'single' (1 sección), 'double' (2 secciones)
+const selectedLayout = ref<'auto' | 'single' | 'double'>('auto')
+
 const handlePrint = () => {
   window.print()
 }
@@ -85,13 +88,46 @@ const handleDownload = async () => {
         class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-300 print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none my-auto"
       >
         <!-- 1. Barra superior fija (Sticky / Siempre visible) -->
-        <div class="px-5 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0 z-20 shadow-sm print:hidden">
+        <div class="px-5 py-3 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 shrink-0 z-20 shadow-sm print:hidden">
           <div class="flex items-center gap-2">
             <FileText class="w-4 h-4 text-cyan-400" />
             <span class="font-bold text-xs sm:text-sm tracking-tight">
               Vista Previa de Impresión - {{ isCotizacion ? 'Cotización' : 'Orden de Trabajo' }} {{ order.orderNumber }}
             </span>
           </div>
+
+          <!-- Selector de Modo de Layout (Adaptable, 1 Sección, 2 Secciones) -->
+          <div class="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-300">
+            <span class="px-2 text-slate-400 text-[10.5px] uppercase font-bold hidden sm:inline">Diseño:</span>
+            <button
+              type="button"
+              @click="selectedLayout = 'auto'"
+              :class="selectedLayout === 'auto' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
+              class="px-2 py-1 rounded transition text-xs"
+              title="Adaptable automáticamente según cantidad de operaciones"
+            >
+              Auto (Adaptable)
+            </button>
+            <button
+              type="button"
+              @click="selectedLayout = 'single'"
+              :class="selectedLayout === 'single' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
+              class="px-2 py-1 rounded transition text-xs"
+              title="Forzar 1 sección (ancho completo)"
+            >
+              1 Sección
+            </button>
+            <button
+              type="button"
+              @click="selectedLayout = 'double'"
+              :class="selectedLayout === 'double' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
+              class="px-2 py-1 rounded transition text-xs"
+              title="Forzar 2 secciones (doble columna paralela)"
+            >
+              2 Secciones
+            </button>
+          </div>
+
           <div class="flex items-center gap-2">
             <button
               type="button"
@@ -130,7 +166,7 @@ const handleDownload = async () => {
           class="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/70 print:p-0 print:bg-white print:overflow-visible"
         >
           <!-- Hoja física de la orden limpia -->
-          <WorkOrderDocument :order="order" />
+          <WorkOrderDocument :order="order" :layoutMode="selectedLayout" />
         </div>
 
         <!-- 3. Barra de pie informativa y salida rápida (oculta en impresión) -->

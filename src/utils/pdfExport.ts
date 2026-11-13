@@ -65,28 +65,28 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
   const imgHeight = canvas.height
   const printHeight = (imgHeight * printWidth) / imgWidth
 
-  // Ajuste inteligente: si cabe o excede hasta un 35%, aplicar ajuste de escala 'fit-to-page'
-  // para que quepa en 1 sola página completa, garantizando que NUNCA se corte la firma, el total o el pie del documento.
-  if (printHeight <= maxPageHeight) {
-    pdf.addImage(imgData, 'PNG', marginX, marginY, printWidth, printHeight)
-  } else if (printHeight <= maxPageHeight * 1.35) {
-    const scaleFactor = maxPageHeight / printHeight
+  // 4. Renderizado en el PDF:
+  // - Si cabe en 1 hoja (con tolerancia del 5% para ajuste suave), se coloca en 1 sola página.
+  // - Si la orden es más extensa (incluso con doble sección no cabe), pasa a otra página automáticamente.
+  if (printHeight <= maxPageHeight * 1.05) {
+    const scaleFactor = printHeight > maxPageHeight ? maxPageHeight / printHeight : 1
     const fittedWidth = printWidth * scaleFactor
+    const fittedHeight = printHeight * scaleFactor
     const xOffset = marginX + (printWidth - fittedWidth) / 2
-    pdf.addImage(imgData, 'PNG', xOffset, marginY, fittedWidth, maxPageHeight)
+    pdf.addImage(imgData, 'PNG', xOffset, marginY, fittedWidth, fittedHeight)
   } else {
-    // Si la orden es excepcionalmente kilométrica, paginar
+    // No cabe en una sola hoja -> Pasa a otra página de forma natural
     let heightLeft = printHeight
-    let position = marginY
-
-    pdf.addImage(imgData, 'PNG', marginX, position, printWidth, printHeight)
-    heightLeft -= maxPageHeight
+    let pageCount = 0
 
     while (heightLeft > 0) {
-      position = heightLeft - printHeight + marginY
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', marginX, position, printWidth, printHeight)
+      if (pageCount > 0) {
+        pdf.addPage()
+      }
+      const positionY = marginY - (pageCount * maxPageHeight)
+      pdf.addImage(imgData, 'PNG', marginX, positionY, printWidth, printHeight)
       heightLeft -= maxPageHeight
+      pageCount++
     }
   }
 
