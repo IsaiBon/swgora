@@ -212,6 +212,9 @@ export const useAuthStore = defineStore('auth', () => {
   const isPasswordRecovery = ref(false)
 
   const isAuthenticated = computed(() => user.value !== null)
+  const isVaultSession = computed(
+    () => Boolean(user.value?.isVaultSession) && !session.value
+  )
 
   const isGlobalAdmin = computed(() => {
     const norm = normalizeRole(user.value?.role)
@@ -386,23 +389,16 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
 
-    const perfil = await perfilesService.getPerfilById(sbUser.id)
-
-    if (!perfil) {
-      session.value = null
-      user.value = null
-      persistUser(null)
-
-      try {
-        await authService.signOutLocal()
-      } catch (err) {
-        console.error('[AuthStore] Error cerrando la sesión:', err)
-      }
-
-      throw new Error(
-        'Tu cuenta no tiene un perfil asignado. Contacta al administrador.'
-      )
-    }
+    const perfil = await perfilesService.ensurePerfilForAuthUser(sbUser, {
+      nombre:
+        typeof sbUser.user_metadata?.name === 'string'
+          ? sbUser.user_metadata.name
+          : undefined,
+      rol:
+        typeof sbUser.user_metadata?.role === 'string'
+          ? sbUser.user_metadata.role
+          : undefined,
+    })
 
     if (perfil.estado && perfil.estado !== 'Activo') {
       session.value = null
@@ -664,6 +660,53 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /**
+   * Inicia sesión directamente contra Supabase Auth sin recurrir al respaldo local
+   */
+  async function reautenticarEnSupabase(
+    email: string,
+    password: string
+  ): Promise<void> {
+    const cleanEmail = email.trim()
+    const cleanEmailLower = cleanEmail.toLowerCase()
+    if (!cleanEmail || !password) {
+      throw new Error('Ingresa el correo y la contraseña de Supabase Auth.')
+    }
+
+    loading.value = true
+    try {
+      const data = await authService.signIn(cleanEmail, password)
+      if (!data?.session || !data?.user) {
+        throw new Error(
+          'Supabase Auth no devolvió una sesión activa para esta cuenta.'
+        )
+      }
+      session.value = data.session
+      await syncUserWithProfile(data.user, true)
+      registrarCredencialUsuario({
+        id: data.user.id,
+        email: cleanEmailLower,
+        password,
+      })
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase()
+        if (
+          msg.includes('invalid login credentials') ||
+          msg.includes('invalid_credentials')
+        ) {
+          throw new Error(
+            'Correo o contraseña incorrectos en Supabase Auth. Verifica tus credenciales o actualiza la contraseña de esta cuenta en Supabase.'
+          )
+        }
+        throw err
+      }
+      throw new Error('No se pudo conectar la sesión con Supabase Auth.')
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function register(email: string, password: string, name?: string): Promise<void> {
     loading.value = true
     try {
@@ -801,6 +844,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     session,
     isAuthenticated,
+    isVaultSession,
     isGlobalAdmin,
     isIndependentAdmin,
     isSubAdmin,
@@ -816,6 +860,7 @@ export const useAuthStore = defineStore('auth', () => {
     canAccess,
     init,
     login,
+    reautenticarEnSupabase,
     setRole,
     setDemoUser,
     register,

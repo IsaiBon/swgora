@@ -339,7 +339,7 @@ const removePdfAt = (idx: number) => {
         <button
           type="button"
           @click="applyManualUrl"
-          class="px-3 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg transition"
+          class="px-3 py-1.5 bg-[#147488] hover:bg-[#105E6E] text-white text-xs font-bold rounded-lg transition cursor-pointer"
         >
           Agregar
         </button>
@@ -618,56 +618,56 @@ const removePdfAt = (idx: number) => {
     <!-- Modal Lightbox Preview Local con Carrusel -->
     <div
       v-if="isPreviewModalOpen && currentImages.length > 0"
-      class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4"
+      class="fixed inset-0 z-50 bg-[#09132B]/75 backdrop-blur-sm flex items-center justify-center p-4"
       @click.self="isPreviewModalOpen = false"
     >
-      <div class="bg-white rounded-2xl max-w-2xl w-full p-4 space-y-3 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+      <div class="studio-card bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[85vh] popover-pop-in">
+        <div class="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white">
           <div class="flex items-center gap-2">
-            <ImageIcon class="w-4 h-4 text-[#04C4D9]" />
-            <h4 class="text-xs font-bold text-slate-900 uppercase">
+            <ImageIcon class="w-4 h-4 text-[#BFEBF2]" />
+            <h4 class="text-xs font-bold font-display text-white uppercase tracking-wide">
               Galería Técnica ({{ previewIndex + 1 }} / {{ currentImages.length }})
             </h4>
           </div>
           <button
             type="button"
             @click="isPreviewModalOpen = false"
-            class="text-xs font-bold text-slate-400 hover:text-slate-800"
+            class="text-xs font-bold text-white/80 hover:text-white px-2.5 py-1 rounded-lg hover:bg-white/15 transition cursor-pointer"
           >
             Cerrar
           </button>
         </div>
 
-        <div class="relative flex-1 overflow-auto flex items-center justify-center bg-slate-50 rounded-xl p-2 min-h-[260px]">
+        <div class="relative flex-1 overflow-auto flex items-center justify-center bg-slate-50 p-3 min-h-[260px]">
           <button
             v-if="currentImages.length > 1"
             type="button"
             @click="previewIndex = (previewIndex - 1 + currentImages.length) % currentImages.length"
-            class="absolute left-2 p-2 rounded-full bg-white/90 hover:bg-white shadow border border-slate-200 text-slate-700"
+            class="absolute left-3 p-2 rounded-full bg-white/95 hover:bg-white shadow-md border border-slate-200 text-[#0D1B3E] transition cursor-pointer"
           >
             <ChevronLeft class="w-4 h-4" />
           </button>
           <img 
             :src="currentImages[previewIndex]" 
             alt="Plano / Foto" 
-            class="max-w-full max-h-[58vh] object-contain rounded-lg"
+            class="max-w-full max-h-[58vh] object-contain rounded-xl"
           />
           <button
             v-if="currentImages.length > 1"
             type="button"
             @click="previewIndex = (previewIndex + 1) % currentImages.length"
-            class="absolute right-2 p-2 rounded-full bg-white/90 hover:bg-white shadow border border-slate-200 text-slate-700"
+            class="absolute right-3 p-2 rounded-full bg-white/95 hover:bg-white shadow-md border border-slate-200 text-[#0D1B3E] transition cursor-pointer"
           >
             <ChevronRight class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="flex items-center justify-between text-xs pt-1">
+        <div class="flex items-center justify-between text-xs px-5 py-3.5 bg-white border-t border-slate-200">
           <a
             :href="currentImages[previewIndex]"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-[#038391] hover:underline flex items-center gap-1 text-[11px] font-semibold"
+            class="text-[#004B97] hover:underline flex items-center gap-1 text-[11px] font-bold"
           >
             <ExternalLink class="w-3.5 h-3.5" />
             <span>Abrir en pestaña nueva</span>
@@ -676,7 +676,7 @@ const removePdfAt = (idx: number) => {
           <button
             type="button"
             @click="isPreviewModalOpen = false"
-            class="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800"
+            class="px-4 py-1.5 bg-[#004B97] hover:bg-[#0D1B3E] text-white rounded-xl text-xs font-bold transition cursor-pointer"
           >
             Aceptar
           </button>

@@ -210,7 +210,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
     case 'Culata':
       return 'bg-rose-50 text-rose-700 border-rose-200'
     case 'Block':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      return 'bg-indigo-50 text-indigo-700 border-indigo-200'
     case 'Repuestos':
       return 'bg-purple-50 text-purple-700 border-purple-200'
     default:
@@ -220,25 +220,25 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+  <div class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div class="studio-card bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden popover-pop-in">
       
       <!-- Cabecera del Modal -->
-      <div class="px-5 py-4 border-b border-slate-200/80 bg-slate-50/60 flex items-center justify-between gap-4 shrink-0">
+      <div class="px-5 py-4 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-center justify-between gap-4 shrink-0">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-[#04c4d9] shrink-0">
+          <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-[#BFEBF2] shrink-0">
             <SlidersHorizontal class="w-5 h-5" />
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+              <h2 class="text-base sm:text-lg font-bold font-display text-white tracking-tight">
                 Catálogo de Operaciones y Servicios
               </h2>
-              <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-300">
+              <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/10 text-[#BFEBF2] border border-white/25">
                 {{ catalog.length }} Total
               </span>
             </div>
-            <p class="text-xs text-slate-500 mt-0.5">
+            <p class="text-xs text-sky-100/80 mt-0.5">
               Configura los servicios y operaciones de rectificación disponibles para las órdenes de trabajo.
             </p>
           </div>
@@ -247,7 +247,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         <button
           type="button"
           @click="emit('close')"
-          class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+          class="p-2 rounded-xl text-white/75 hover:text-white hover:bg-white/15 transition cursor-pointer"
           title="Cerrar ventana"
         >
           <X class="w-5 h-5" />
@@ -260,12 +260,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         :class="[
           'px-5 py-2.5 text-xs font-semibold flex items-center justify-between transition border-b',
           notification.type === 'success' 
-            ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+            ? 'bg-cyan-50 text-[#0D1B3E] border-cyan-300' 
             : 'bg-rose-50 text-rose-800 border-rose-200'
         ]"
       >
         <div class="flex items-center gap-2">
-          <CheckCircle2 v-if="notification.type === 'success'" class="w-4 h-4 text-emerald-600 shrink-0" />
+          <CheckCircle2 v-if="notification.type === 'success'" class="w-4 h-4 text-[#038391] shrink-0" />
           <AlertCircle v-else class="w-4 h-4 text-rose-600 shrink-0" />
           <span>{{ notification.message }}</span>
         </div>
@@ -285,24 +285,24 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         <div 
           id="operations-mini-form"
           :class="[
-            'p-4 rounded-xl border transition shadow-xs',
+            'p-4 rounded-2xl border transition shadow-xs',
             isEditing 
-              ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100' 
-              : 'bg-slate-50/70 border-slate-200'
+              ? 'bg-amber-50/60 border-amber-300 ring-2 ring-amber-100' 
+              : 'bg-sky-50/45 border-[#04C4D9]/25'
           ]"
         >
-          <div class="flex items-center justify-between mb-3 pb-2 border-b" :class="isEditing ? 'border-amber-200' : 'border-slate-200'">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b" :class="isEditing ? 'border-[#E6DAC2]' : 'border-[#CFE1F4]'">
             <div class="flex items-center gap-2">
               <span 
                 :class="[
                   'w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold',
-                  isEditing ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-[#038896]'
+                  isEditing ? 'bg-[#F6F0E4] text-[#6E5835]' : 'bg-[#1E446E] text-[#BFEBF2]'
                 ]"
               >
                 <Edit3 v-if="isEditing" class="w-3.5 h-3.5" />
                 <Plus v-else class="w-3.5 h-3.5" />
               </span>
-              <span class="text-xs sm:text-sm font-bold text-slate-900">
+              <span class="text-xs sm:text-sm font-bold font-display text-[#0D1B3E]">
                 {{ isEditing ? 'Editar Operación o Servicio' : 'Agregar Nueva Operación o Servicio al Catálogo' }}
               </span>
             </div>
@@ -311,7 +311,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               v-if="isEditing"
               type="button"
               @click="cancelEditing"
-              class="text-[11px] font-semibold text-slate-500 hover:text-slate-800 underline transition"
+              class="text-[11px] font-semibold text-slate-500 hover:text-slate-800 underline transition cursor-pointer"
             >
               Cancelar Edición
             </button>
@@ -323,12 +323,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <!-- Categoría / Componente -->
               <div class="sm:col-span-4 space-y-1">
                 <label class="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                  <Layers class="w-3 h-3 text-slate-400" />
+                  <Layers class="w-3 h-3 text-[#004B97]" />
                   Categoría / Bloque
                 </label>
                 <select
                   v-model="formState.category"
-                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
                 >
                   <option v-for="cat in CATEGORIES" :key="cat" :value="cat">
                     {{ cat }}
@@ -339,14 +339,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <!-- Nombre de la Operación -->
               <div class="sm:col-span-5 space-y-1">
                 <label class="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                  <Wrench class="w-3 h-3 text-slate-400" />
+                  <Wrench class="w-3 h-3 text-[#004B97]" />
                   Nombre de la Operación / Servicio *
                 </label>
                 <input
                   v-model="formState.operation"
                   type="text"
                   placeholder="Ej. Rectificar Asientos de Culata"
-                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
                 />
               </div>
 
@@ -357,7 +357,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 </label>
                 <select
                   v-model="formState.measureType"
-                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#04c4d9]"
+                  class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
                 >
                   <option value="none">Sin medida</option>
                   <option value="single">Medida STD/0.25...</option>
@@ -372,7 +372,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 v-if="isEditing"
                 type="button"
                 @click="cancelEditing"
-                class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition"
+                class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
               >
                 Cancelar
               </button>
@@ -380,10 +380,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <button
                 type="submit"
                 :class="[
-                  'px-4 py-2 text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition',
+                  'px-4 py-2 text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition cursor-pointer',
                   isEditing 
-                    ? 'bg-amber-600 hover:bg-amber-700 text-white' 
-                    : 'bg-[#04c4d9] hover:bg-[#03a9bc] text-white'
+                    ? 'bg-[#1B4978] hover:bg-[#14375C] text-white' 
+                    : 'studio-cta-primary text-white'
                 ]"
               >
                 <Edit3 v-if="isEditing" class="w-3.5 h-3.5" />
@@ -406,13 +406,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 v-model="searchQuery"
                 type="text"
                 placeholder="Buscar operación por nombre o categoría..."
-                class="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
+                class="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
               />
               <button
                 v-if="searchQuery"
                 type="button"
                 @click="searchQuery = ''"
-                class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600"
+                class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 ✕
               </button>
@@ -420,7 +420,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
             <!-- Cantidad de resultados -->
             <div class="text-[11px] font-semibold text-slate-500 whitespace-nowrap self-center">
-              Mostrando <span class="font-bold text-slate-900">{{ filteredCatalog.length }}</span> de {{ catalog.length }}
+              Mostrando <span class="font-bold text-[#0D1B3E]">{{ filteredCatalog.length }}</span> de {{ catalog.length }}
             </div>
           </div>
 
@@ -430,9 +430,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               type="button"
               @click="selectedCategory = 'Todos'"
               :class="[
-                'px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1',
+                'px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1 cursor-pointer',
                 selectedCategory === 'Todos'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#0D1B3E] text-white shadow-sm'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
               ]"
             >
@@ -446,9 +446,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               type="button"
               @click="selectedCategory = cat"
               :class="[
-                'px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1 border',
+                'px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1 border cursor-pointer',
                 selectedCategory === cat
-                  ? 'bg-cyan-50 border-[#04c4d9] text-[#038896]'
+                  ? 'bg-[#004B97] border-[#004B97] text-white shadow-sm'
                   : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600'
               ]"
             >
@@ -459,7 +459,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         </div>
 
         <!-- 3. Lista de Operaciones y Servicios -->
-        <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+        <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
           <div class="max-h-[380px] overflow-y-auto divide-y divide-slate-100">
             
             <div
@@ -475,14 +475,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               v-for="item in filteredCatalog"
               :key="item.id"
               :class="[
-                'p-3 sm:px-4 flex items-center justify-between gap-3 transition hover:bg-slate-50/80',
+                'p-3 sm:px-4 flex items-center justify-between gap-3 transition hover:bg-sky-50/50',
                 editingId === item.id ? 'bg-amber-50/60' : ''
               ]"
             >
               <div class="flex items-center gap-2.5 min-w-0">
                 <span 
                   :class="[
-                    'px-2 py-0.5 rounded text-[10px] font-bold border shrink-0',
+                    'px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0',
                     getCategoryBadgeClass(item.category)
                   ]"
                 >
@@ -490,7 +490,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 </span>
 
                 <div class="truncate">
-                  <span class="text-xs font-bold text-slate-900 truncate">
+                  <span class="text-xs font-bold text-[#0D1B3E] truncate">
                     {{ item.operation }}
                   </span>
                   
@@ -498,7 +498,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <div class="flex items-center gap-1.5 mt-0.5">
                     <span 
                       v-if="item.measureBanco !== undefined || item.measureBiela !== undefined"
-                      class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-100/70 text-[#038896] font-mono font-medium"
+                      class="text-[9px] px-1.5 py-0.2 rounded bg-[#04C4D9]/15 text-[#004B97] font-mono font-medium"
                     >
                       Banco / Biela
                     </span>
@@ -522,19 +522,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <div class="flex items-center gap-1 shrink-0">
                 
                 <!-- Modo confirmación de eliminación -->
-                <div v-if="confirmDeleteId === item.id" class="flex items-center gap-1.5 animate-in fade-in">
+                <div v-if="confirmDeleteId === item.id" class="flex items-center gap-1.5 popover-pop-in">
                   <span class="text-[11px] text-rose-600 font-bold hidden sm:inline">¿Eliminar?</span>
                   <button
                     type="button"
                     @click="handleDelete(item.id, item.operation)"
-                    class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded shadow-xs transition"
+                    class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded-lg shadow-xs transition cursor-pointer"
                   >
                     Sí, eliminar
                   </button>
                   <button
                     type="button"
                     @click="confirmDeleteId = null"
-                    class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded transition"
+                    class="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-lg transition cursor-pointer"
                   >
                     No
                   </button>
@@ -544,7 +544,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <button
                     type="button"
                     @click="startEditing(item)"
-                    class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                    class="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
                     title="Editar operación"
                   >
                     <Edit3 class="w-4 h-4" />
@@ -553,7 +553,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <button
                     type="button"
                     @click="confirmDeleteId = item.id"
-                    class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                    class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                     title="Eliminar operación del catálogo"
                   >
                     <Trash2 class="w-4 h-4" />
@@ -577,14 +577,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <button
               type="button"
               @click="handleReset"
-              class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition"
+              class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition cursor-pointer"
             >
               Confirmar
             </button>
             <button
               type="button"
               @click="confirmReset = false"
-              class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition"
+              class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer"
             >
               Cancelar
             </button>
@@ -594,7 +594,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             v-else
             type="button"
             @click="confirmReset = true"
-            class="text-xs text-slate-500 hover:text-rose-600 font-semibold flex items-center gap-1.5 transition"
+            class="text-xs text-slate-500 hover:text-rose-600 font-semibold flex items-center gap-1.5 transition cursor-pointer"
             title="Restaura los 55 servicios originales de rectificadora del Excel"
           >
             <RotateCcw class="w-3.5 h-3.5" />
@@ -605,7 +605,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         <button
           type="button"
           @click="emit('close')"
-          class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition shadow-xs w-full sm:w-auto"
+          class="px-5 py-2 bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold rounded-xl transition shadow-xs w-full sm:w-auto cursor-pointer"
         >
           Listo / Cerrar
         </button>

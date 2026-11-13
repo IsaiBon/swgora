@@ -157,64 +157,67 @@ const handleSubmit = async () => {
 
 <template>
   <div class="space-y-6 max-w-7xl mx-auto pb-12">
-    <!-- Encabezado de Página -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-2 mb-1">
-          <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
-            <Building2 class="w-3 h-3 text-cyan-700" />
-            Configuración Institucional
-          </span>
-          <span class="text-[11px] font-semibold text-slate-400">Exclusivo Administrador</span>
+    <!-- Encabezado Hero Studio -->
+    <div class="studio-hero-banner p-6 sm:p-7 text-white relative overflow-hidden">
+      <div class="pointer-events-none absolute -top-16 -right-12 w-56 h-56 rounded-full bg-[#04C4D9]/25 blur-3xl"></div>
+      <div class="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="space-y-1.5">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15">
+            <Building2 class="w-3.5 h-3.5 text-[#BFEBF2]" />
+            <span class="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#BFEBF2]">
+              IDENTIDAD · MEMBRETE CORPORATIVO Y PDF
+            </span>
+          </div>
+          <h1 class="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Módulo de Taller
+          </h1>
+          <p class="text-xs sm:text-sm text-sky-100/85 max-w-2xl">
+            Administra el logotipo y datos institucionales de la empresa rectificadora. Se refleja automáticamente en los encabezados de órdenes, cotizaciones y archivos PDF.
+          </p>
         </div>
-        <h1 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-          Módulo de Taller
-        </h1>
-        <p class="text-xs text-slate-500 mt-1 max-w-2xl">
-          Administra el logotipo y datos institucionales de la empresa rectificadora. Esta información se consulta y refleja automáticamente en los encabezados, membretes y totales de las órdenes de trabajo, cotizaciones y archivos PDF generados.
-        </p>
-      </div>
 
-      <div class="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          @click="resetForm"
-          :disabled="isSaving"
-          class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-xl shadow-xs transition disabled:opacity-50"
-          title="Deshacer cambios no guardados"
-        >
-          <RotateCcw class="w-3.5 h-3.5" />
-          Restablecer
-        </button>
+        <div class="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            @click="resetForm"
+            :disabled="isSaving"
+            class="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-white bg-white/12 hover:bg-white/20 active:scale-[0.97] border border-white/20 rounded-xl transition-all duration-150 disabled:opacity-50 cursor-pointer"
+            title="Deshacer cambios no guardados"
+          >
+            <RotateCcw class="w-3.5 h-3.5 text-[#BFEBF2]" />
+            Restablecer
+          </button>
 
-        <button
-          type="button"
-          @click="handleSubmit"
-          :disabled="isSaving"
-          class="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] active:bg-[#0296a6] rounded-xl shadow-sm transition disabled:opacity-50"
-        >
-          <Save class="w-4 h-4" />
-          <span>{{ isSaving ? 'Guardando...' : 'Guardar Cambios' }}</span>
-        </button>
+          <button
+            type="button"
+            @click="handleSubmit"
+            :disabled="isSaving"
+            class="studio-cta-primary inline-flex items-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl disabled:opacity-50 cursor-pointer"
+          >
+            <Save class="w-4 h-4" />
+            <span>{{ isSaving ? 'Guardando...' : 'Guardar Cambios' }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Layout en 2 Columnas: Formulario + Vista Previa en Vivo -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
       
       <!-- Columna Izquierda: Formulario de Edición (7 cols) -->
-      <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
-        <div class="border-b border-slate-100 pb-3 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center text-[#04c4d9]">
+      <div class="lg:col-span-7 studio-card overflow-hidden">
+        <div class="bg-[#F4F8FC] px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl bg-[#E8F1FA] text-[#1B4978] border border-[#CFE1F4] flex items-center justify-center">
               <Building2 class="w-4 h-4" />
-            </div>
+            </span>
             <div>
-              <h2 class="text-sm font-bold text-slate-900">Datos Generales y Logotipo</h2>
-              <p class="text-[11px] text-slate-400">Información sincronizada en la base de datos de Supabase</p>
+              <h2 class="font-display text-sm sm:text-base font-extrabold text-[#162436] tracking-tight">Datos Generales y Logotipo</h2>
+              <p class="text-[11px] text-slate-500">Información sincronizada en Supabase</p>
             </div>
           </div>
         </div>
+        <div class="p-5 sm:p-6 space-y-6">
 
         <!-- SECCIÓN DE LOGOTIPO -->
         <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4.5 space-y-3">
@@ -248,9 +251,9 @@ const handleSubmit = async () => {
                 <button
                   type="button"
                   @click="fileInputRef?.click()"
-                  class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 active:scale-95 rounded-xl shadow-xs transition"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#1E446E] hover:bg-[#19314D] active:scale-95 rounded-xl shadow-xs transition cursor-pointer"
                 >
-                  <Upload class="w-3.5 h-3.5 text-cyan-400" />
+                  <Upload class="w-3.5 h-3.5 text-[#BFEBF2]" />
                   Cambiar Logotipo
                 </button>
 
@@ -386,30 +389,34 @@ const handleSubmit = async () => {
             <button
               type="submit"
               :disabled="isSaving"
-              class="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] active:bg-[#0296a6] rounded-xl shadow-sm transition disabled:opacity-50"
+              class="studio-cta-primary inline-flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl disabled:opacity-50 cursor-pointer"
             >
               <Save class="w-4 h-4" />
               <span>{{ isSaving ? 'Guardando en Supabase...' : 'Guardar Información del Taller' }}</span>
             </button>
           </div>
         </form>
+        </div>
       </div>
 
       <!-- Columna Derecha: Vista Previa en Vivo (5 cols) -->
       <div class="lg:col-span-5 space-y-4">
-        <div class="bg-slate-900 text-white rounded-2xl p-4 shadow-md flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <Sparkles class="w-4 h-4 text-cyan-400" />
-            <span class="text-xs font-bold">Vista Previa del Encabezado</span>
+        <div class="studio-card overflow-hidden">
+          <div class="bg-[#F4F8FC] px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="w-8 h-8 rounded-xl bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center">
+                <Sparkles class="w-4 h-4" />
+              </span>
+              <span class="font-display text-sm font-extrabold text-[#0F1E2E] tracking-tight">Vista Previa del Encabezado</span>
+            </div>
+            <span class="text-[10px] bg-[#E8F1FA] border border-[#CFE1F4] text-[#1B4978] px-2.5 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider">
+              Tiempo Real
+            </span>
           </div>
-          <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono">
-            En Tiempo Real
-          </span>
-        </div>
 
-        <!-- Tarjeta de simulación exacta del documento PDF -->
-        <div class="bg-white rounded-2xl border-2 border-slate-300 shadow-sm p-5 space-y-4 font-sans text-slate-900">
-          <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-dashed border-slate-200 pb-2 flex items-center gap-1.5">
+          <!-- Tarjeta de simulación exacta del documento PDF -->
+          <div class="p-5 space-y-4 font-sans text-slate-900 bg-white">
+          <div class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest border-b border-dashed border-slate-200 pb-2 flex items-center gap-1.5">
             <FileText class="w-3.5 h-3.5 text-slate-400" />
             Encabezado de Orden / Cotización PDF
           </div>
@@ -453,11 +460,12 @@ const handleSubmit = async () => {
             </span>
           </div>
 
-          <div class="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-[11px] text-cyan-900 flex items-start gap-2">
+          <div class="bg-cyan-50 border border-cyan-200 rounded-md p-3 text-[11px] text-cyan-900 flex items-start gap-2">
             <CheckCircle2 class="w-4 h-4 text-cyan-600 shrink-0 mt-0.5" />
             <p>
               El logotipo y datos modificados aquí se reflejan de inmediato en todas las órdenes de trabajo, cotizaciones y documentos PDF descargados o impresos.
             </p>
+          </div>
           </div>
         </div>
       </div>
@@ -478,13 +486,13 @@ const handleSubmit = async () => {
         class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-xs font-semibold max-w-md backdrop-blur-md"
         :class="[
           toastMessage.type === 'success' 
-            ? 'bg-emerald-950/90 text-emerald-100 border-emerald-500/40 shadow-emerald-950/30' 
+            ? 'bg-[#0D1B3E]/95 text-[#BFEBF2] border-[#04C4D9]/50 shadow-[#0D1B3E]/30' 
             : 'bg-rose-950/90 text-rose-100 border-rose-500/40 shadow-rose-950/30'
         ]"
       >
         <div 
           class="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
-          :class="toastMessage.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'"
+          :class="toastMessage.type === 'success' ? 'bg-[#04C4D9]/20 text-[#04C4D9]' : 'bg-rose-500/20 text-rose-400'"
         >
           <CheckCircle2 v-if="toastMessage.type === 'success'" class="w-4 h-4" />
           <AlertCircle v-else class="w-4 h-4" />

@@ -185,7 +185,7 @@ export function buildNestedTableHeaders<T extends { id: string; etiqueta: string
 const OPTION_BADGE_PALETTE = [
   'bg-white text-slate-600 border-slate-200 font-bold',           // 1ª opción: Blanco sutil (sin resaltar)
   'bg-amber-100 text-amber-900 border-amber-300 font-bold',       // 2ª opción: Amarillo
-  'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold', // 3ª opción: Verde
+  'bg-indigo-100 text-indigo-900 border-indigo-300 font-bold', // 3ª opción: Azul índigo
   'bg-sky-100 text-sky-900 border-sky-300 font-bold',             // 4ª opción: Azul
   'bg-purple-100 text-purple-900 border-purple-300 font-bold',    // 5ª opción: Morado
   'bg-rose-100 text-rose-900 border-rose-300 font-bold',          // 6ª opción: Rosa

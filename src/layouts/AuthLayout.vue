@@ -2,27 +2,27 @@
 </script>
 
 <template>
-  <div class="auth-shell relative min-h-screen w-full flex flex-col items-center justify-between px-4 py-5 sm:px-6 sm:py-6 bg-[#0F172A] overflow-x-hidden font-sans selection:bg-[#04C4D9]/25 selection:text-white">
-    <!-- Imagen de fondo de taller con tratamiento arquitectónico de alto contraste -->
+  <div class="auth-shell relative min-h-screen w-full flex flex-col items-center justify-between px-4 py-5 sm:px-6 sm:py-6 bg-[#09132B] overflow-x-hidden font-sans selection:bg-[#BFEBF2]/35 selection:text-white">
+    <!-- Imagen de fondo de taller -->
     <div
       class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none"
       style="background-image: url('/images/workshop-bg.jpg');"
     ></div>
 
-    <!-- Capas de profundidad con la paleta corporativa oficial (#1A2234, #004B97, #04C4D9) -->
-    <div class="absolute inset-0 bg-gradient-to-b from-[#0F172A]/95 via-[#1A2234]/92 to-[#0F172A]/98 pointer-events-none"></div>
+    <!-- Capas de profundidad Zafiro + Halo Cian (sin naranja) -->
+    <div class="absolute inset-0 bg-gradient-to-br from-[#09132B]/95 via-[#0D1B3E]/90 to-[#004B97]/85 pointer-events-none"></div>
     <div
       class="absolute inset-0 pointer-events-none"
-      style="background: radial-gradient(circle at 50% 0%, rgba(0, 75, 151, 0.28) 0%, rgba(4, 196, 217, 0.08) 38%, transparent 70%);"
+      style="background: radial-gradient(circle at 22% 15%, rgba(4, 196, 217, 0.24) 0%, transparent 45%), radial-gradient(circle at 82% 82%, rgba(37, 99, 235, 0.18) 0%, transparent 45%);"
     ></div>
 
-    <!-- Línea superior de acento institucional -->
-    <div class="fixed top-0 inset-x-0 h-[3px] bg-gradient-to-r from-[#004B97] via-[#04C4D9] to-[#004B97] z-30"></div>
+    <!-- Línea superior de acento azul -->
+    <div class="fixed top-0 inset-x-0 h-[3px] bg-gradient-to-r from-[#04C4D9] via-[#2563EB] to-[#004B97] z-30"></div>
 
     <!-- Encabezado minimalista corporativo -->
     <header class="relative z-10 w-full max-w-5xl flex items-center justify-between py-2 px-1 text-xs">
       <div class="flex items-center gap-2.5">
-        <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-[#04C4D9] ring-4 ring-[#04C4D9]/15"></span>
+        <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-[#BFEBF2] ring-4 ring-[#BFEBF2]/15"></span>
         <span class="font-bold tracking-wider uppercase text-[11px] text-white">SWGORA</span>
         <span class="text-slate-600 hidden sm:inline">/</span>
         <span class="text-slate-300 hidden sm:inline text-[11px] font-medium">

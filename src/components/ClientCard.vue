@@ -11,8 +11,7 @@ import {
   User,
   ExternalLink,
   Ban,
-  RotateCcw,
-  DollarSign
+  RotateCcw
 } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
@@ -32,12 +31,6 @@ const emit = defineEmits<{
 
 const isTallerista = computed(() => props.client.tipo === 'Tallerista')
 const isActivo = computed(() => props.client.estado === 'Activo')
-
-const statusBadge = computed(() => {
-  return isActivo.value
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-    : 'bg-amber-50 text-amber-700 border-amber-300'
-})
 
 const mapsUrl = computed(() => {
   if (!props.client.direccion) return '#'
@@ -66,123 +59,128 @@ const handleToggleStatus = () => {
 <template>
   <div
     :class="[
-      'bg-white rounded-3xl border transition-all duration-200 flex flex-col justify-between overflow-hidden group shadow-sm hover:shadow-xl',
-      isActivo ? 'border-slate-200/90 hover:border-[#05C7F2]/60' : 'border-amber-200/70 bg-amber-50/20 opacity-90'
+      'studio-card studio-card-hover flex flex-col justify-between overflow-hidden group',
+      isActivo ? '' : 'border-amber-300 bg-amber-50/30 opacity-90'
     ]"
   >
-    <!-- Card Top Header -->
-    <div class="p-5 sm:p-6 pb-4">
-      <div class="flex items-start justify-between gap-2.5 mb-2">
-        <!-- Client Avatar / Type Icon -->
-        <div class="flex items-center gap-3">
-          <div
-            :class="[
-              'w-12 h-12 rounded-2xl border flex items-center justify-center transition-all shadow-inner',
-              isTallerista
-                ? 'bg-amber-50 border-amber-200 text-amber-600'
-                : 'bg-[#05C7F2]/10 border-[#05C7F2]/30 text-[#04C4D9]'
-            ]"
-          >
-            <Wrench v-if="isTallerista" class="w-6 h-6" />
-            <User v-else class="w-6 h-6" />
-          </div>
-          <div>
-            <h4 class="text-base font-bold text-slate-900 leading-tight group-hover:text-[#04C4D9] transition-colors">
-              {{ client.nombre }}
-            </h4>
-            <div v-if="workshopName" class="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
-              <Wrench class="w-3 h-3 text-amber-500 flex-shrink-0" />
-              <span>{{ workshopName }}</span>
-            </div>
-            <div class="flex items-center gap-1.5 mt-1">
-              <!-- Tipo Badge -->
-              <span
-                :class="[
-                  'text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border',
-                  isTallerista
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-sky-50 text-sky-700 border-sky-200'
-                ]"
-              >
-                {{ client.tipo }}
-              </span>
-
-              <!-- Código Único Badge -->
-              <span
-                v-if="client.codigo"
-                class="text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300"
-                title="Código único de cliente"
-              >
-                {{ client.codigo }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Estado Badge (Activo / Inactivo) -->
+    <!-- Top Dossier Strip -->
+    <div
+      :class="[
+        'px-4 py-2.5 flex items-center justify-between gap-2 border-b',
+        isActivo
+          ? 'bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white border-white/10'
+          : 'bg-[#F6F0E4] text-[#6E5835] border-[#E6DAC2]'
+      ]"
+    >
+      <div class="flex items-center gap-2 min-w-0">
+        <span
+          v-if="client.codigo"
+          class="text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded-lg shrink-0"
+          :class="isActivo ? 'bg-[#D5F2F6] text-[#133B5E]' : 'bg-[#EADEC6] text-[#6E5835]'"
+          title="Código único de cliente"
+        >
+          {{ client.codigo }}
+        </span>
         <span
           :class="[
-            'text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-1 rounded-full border flex items-center gap-1',
-            statusBadge,
+            'font-mono text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border shrink-0',
+            isActivo
+              ? isTallerista
+                ? 'bg-[#F6F0E4]/20 text-[#F4E6CE] border-[#F6F0E4]/35'
+                : 'bg-[#D5F2F6]/20 text-[#D5F2F6] border-[#BFEBF2]/35'
+              : 'bg-white/80 text-[#6E5835] border-[#DFD2B8]'
           ]"
         >
-          <span class="w-1.5 h-1.5 rounded-full" :class="isActivo ? 'bg-emerald-500' : 'bg-amber-500'"></span>
-          <span>{{ client.estado }}</span>
+          {{ client.tipo }}
         </span>
       </div>
 
-      <!-- Notas o Especificaciones Técnicas del Taller -->
-      <div v-if="technicalNotes" class="mt-3 p-2.5 rounded-2xl bg-[#F2F2F2] border border-slate-200/60 text-xs">
-        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-          Especialidad / Notas Técnicas:
+      <!-- Estado Badge (Activo / Inactivo) -->
+      <span
+        :class="[
+          'font-mono text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shrink-0',
+          isActivo
+            ? 'bg-[#04C4D9]/20 text-[#BFEBF2]'
+            : 'bg-[#EADEC6] text-[#6E5835]'
+        ]"
+      >
+        <span class="w-1.5 h-1.5 rounded-full" :class="isActivo ? 'bg-[#04C4D9] animate-pulse' : 'bg-[#8B7147]'"></span>
+        <span>{{ client.estado }}</span>
+      </span>
+    </div>
+
+    <!-- Card Body -->
+    <div class="p-4 sm:p-5 flex-1">
+      <div class="flex items-start gap-3">
+        <div
+          :class="[
+            'w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-105',
+            isTallerista
+              ? 'bg-[#E3F5F8] border-[#C1E8EF] text-[#12697A]'
+              : 'bg-[#E8F1FA] border-[#CFE1F4] text-[#1B4978]'
+          ]"
+        >
+          <Wrench v-if="isTallerista" class="w-4 h-4" />
+          <User v-else class="w-4 h-4" />
         </div>
-        <p class="font-medium text-slate-800 line-clamp-2">
+        <div class="min-w-0 flex-1">
+          <h4 class="font-display text-base font-extrabold text-[#162436] leading-tight group-hover:text-[#1B4978] transition-colors truncate">
+            {{ client.nombre }}
+          </h4>
+          <div v-if="workshopName" class="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
+            <Wrench class="w-3 h-3 text-[#147488] shrink-0" />
+            <span class="truncate">{{ workshopName }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notas o Especificaciones Técnicas del Taller -->
+      <div v-if="technicalNotes" class="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+        <div class="font-mono text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+          Especialidad / Notas Técnicas
+        </div>
+        <p class="font-medium text-[#162436] line-clamp-2">
           {{ technicalNotes }}
         </p>
       </div>
 
       <!-- Dirección Snippet -->
       <div class="mt-3 flex items-start gap-2 text-xs text-slate-600">
-        <MapPin class="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+        <MapPin class="w-3.5 h-3.5 text-[#147488] mt-0.5 shrink-0" />
         <span class="line-clamp-1">{{ client.direccion || 'Sin dirección registrada' }}</span>
       </div>
 
       <!-- Facturación Acumulada del Cliente -->
-      <div class="mt-3.5 p-3 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/70 border border-emerald-200/90 flex items-center justify-between shadow-2xs">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <div class="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold shadow-xs flex-shrink-0">
-            <DollarSign class="w-5 h-5" />
-          </div>
-          <div class="min-w-0">
-            <span class="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
-              Facturación Acumulada
-            </span>
-            <span class="text-[11px] text-emerald-700 font-semibold block truncate">
-              {{ (ordersCount || 0) === 0 ? 'Sin órdenes aún' : `${ordersCount} ${ordersCount === 1 ? 'orden registrada' : 'órdenes registradas'}` }}
-            </span>
-          </div>
+      <div class="mt-3.5 px-3.5 py-2.5 rounded-xl bg-[#EDF5FA] border border-[#CFE2F0] flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <span class="font-mono text-[9px] font-bold uppercase tracking-wider text-[#1B4978] block">
+            Facturación Acumulada
+          </span>
+          <span class="font-mono text-[10px] text-slate-600 font-semibold block truncate">
+            {{ (ordersCount || 0) === 0 ? 'Sin órdenes aún' : `${ordersCount} ${ordersCount === 1 ? 'orden registrada' : 'órdenes registradas'}` }}
+          </span>
         </div>
-        <div class="text-right flex-shrink-0 pl-2">
-          <span class="text-base sm:text-lg font-black text-emerald-950 block tracking-tight">
+        <div class="text-right shrink-0">
+          <span class="font-display tabular-nums text-base sm:text-lg font-extrabold text-[#038391] block tracking-tight">
             ${{ (totalBilled || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
           </span>
         </div>
       </div>
     </div>
 
-    <!-- Middle: Big Touch Action Shortcuts (Táctil de Taller) -->
-    <div class="px-5 sm:px-6 py-3 bg-slate-50/90 border-t border-b border-slate-100 flex items-center gap-2">
+    <!-- Middle: Touch Action Shortcuts (Táctil de Taller) -->
+    <div class="px-4 py-2.5 bg-slate-50/80 border-t border-b border-slate-100 flex items-center gap-2">
       <!-- Direct Call Button -->
       <a
         v-if="client.telefono"
         :href="'tel:' + client.telefono"
-        class="flex-1 min-h-[46px] inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl bg-[#0D0D0D] hover:bg-black text-white text-xs font-bold transition shadow-sm active:scale-95"
+        class="flex-1 min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1E446E] hover:bg-[#19314D] text-white text-xs font-bold transition-all duration-150 active:scale-[0.97] shadow-sm"
         title="Llamar al cliente"
       >
-        <PhoneCall class="w-4 h-4 text-[#05F2F2]" />
+        <PhoneCall class="w-3.5 h-3.5 text-[#BFEBF2]" />
         <span>Llamar</span>
       </a>
-      <div v-else class="flex-1 text-center text-xs text-slate-400 py-2.5">
+      <div v-else class="flex-1 text-center font-mono text-[11px] text-slate-400 py-1.5">
         Sin teléfono
       </div>
 
@@ -192,10 +190,10 @@ const handleToggleStatus = () => {
         :href="mapsUrl"
         target="_blank"
         rel="noopener noreferrer"
-        class="flex-1 min-h-[46px] inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white hover:bg-[#05C7F2]/10 border border-slate-200 hover:border-[#05C7F2] text-slate-800 hover:text-[#04C4D9] text-xs font-bold transition shadow-sm active:scale-95"
+        class="flex-1 min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-slate-200 hover:border-[#04C4D9] text-[#0D1B3E] hover:text-[#004B97] text-xs font-bold transition-all duration-150 active:scale-[0.97]"
         title="Abrir ubicación en Google Maps"
       >
-        <MapPin class="w-4 h-4 text-[#04C4D9]" />
+        <MapPin class="w-3.5 h-3.5 text-[#04C4D9]" />
         <span>Mapa</span>
         <ExternalLink class="w-3 h-3 opacity-60" />
       </a>
@@ -206,17 +204,17 @@ const handleToggleStatus = () => {
         :href="'https://wa.me/' + cleanPhoneForWa"
         target="_blank"
         rel="noopener noreferrer"
-        class="min-h-[46px] min-w-[46px] inline-flex items-center justify-center rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white transition shadow-sm active:scale-95"
+        class="min-h-[38px] min-w-[38px] inline-flex items-center justify-center rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white transition-all duration-150 active:scale-[0.97] shadow-sm"
         title="Enviar mensaje de WhatsApp"
       >
-        <MessageCircle class="w-5 h-5" />
+        <MessageCircle class="w-4 h-4" />
       </a>
 
       <!-- Edit Button -->
       <button
         type="button"
         @click="$emit('edit', client)"
-        class="min-h-[46px] min-w-[46px] inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition shadow-sm active:scale-95"
+        class="min-h-[38px] min-w-[38px] inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-200 text-slate-600 hover:text-[#004B97] transition-all duration-150 active:scale-[0.97] cursor-pointer"
         title="Editar información del cliente"
       >
         <Pencil class="w-4 h-4" />
@@ -224,21 +222,21 @@ const handleToggleStatus = () => {
     </div>
 
     <!-- Card Bottom Footer: Borrado Lógico, Órdenes & Fecha -->
-    <div class="px-5 sm:px-6 py-3 flex items-center justify-between text-xs text-slate-500 bg-white border-t border-slate-100">
+    <div class="px-4 py-2.5 flex items-center justify-between text-xs text-slate-500 bg-white">
       <!-- Botón de Borrado Lógico Rápido (Inactivar / Reactivar) -->
       <button
         type="button"
         @click="handleToggleStatus"
         :class="[
-          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition border',
+          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition-colors border cursor-pointer active:scale-[0.97]',
           isActivo
-            ? 'text-amber-700 bg-amber-50/80 hover:bg-amber-100 border-amber-200'
-            : 'text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 border-emerald-200'
+            ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-200'
+            : 'text-[#038391] bg-cyan-50 hover:bg-cyan-100 border-cyan-200'
         ]"
         :title="isActivo ? 'Inactivar cliente' : 'Reactivar cliente'"
       >
         <Ban v-if="isActivo" class="w-3 h-3 text-amber-600" />
-        <RotateCcw v-else class="w-3 h-3 text-emerald-600" />
+        <RotateCcw v-else class="w-3 h-3 text-[#038391]" />
         <span>{{ isActivo ? 'Inactivar' : 'Reactivar' }}</span>
       </button>
 
@@ -246,10 +244,10 @@ const handleToggleStatus = () => {
       <button
         type="button"
         @click="$emit('viewOrders', client)"
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-800 bg-slate-100 hover:bg-[#05C7F2]/15 hover:text-[#04C4D9] border border-slate-200 hover:border-[#05C7F2]/40 transition active:scale-95"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-[#004B97] bg-blue-50 hover:bg-[#004B97] hover:text-white border border-blue-200/70 transition-all duration-150 active:scale-[0.97] cursor-pointer"
         title="Consultar historial de órdenes de este cliente"
       >
-        <FileText class="w-3.5 h-3.5 text-[#04C4D9]" />
+        <FileText class="w-3.5 h-3.5" />
         <span>Ver Órdenes</span>
       </button>
     </div>

@@ -55,14 +55,14 @@ const copyText = async (text: string) => {
   <div class="space-y-5">
     
     <!-- Encabezado y Barra de Búsqueda Inversa -->
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl border border-slate-700/80 shadow-md">
+    <div class="studio-hero-banner text-white p-5 sm:p-6 rounded-3xl">
       <div class="max-w-3xl">
-        <span class="text-xs font-bold uppercase tracking-wider text-[#04c4d9] flex items-center gap-1.5 mb-1">
+        <span class="text-xs font-bold uppercase tracking-wider text-[#BFEBF2] flex items-center gap-1.5 mb-1">
           <Hash class="w-3.5 h-3.5" />
           Búsqueda Inversa de Repuestos y Equivalencias
         </span>
-        <h2 class="text-xl font-black text-white">Consulte cualquier código OEM o de Marca Alterna</h2>
-        <p class="text-xs text-slate-400 mt-1">
+        <h2 class="font-display text-xl font-black text-white">Consulte cualquier código OEM o de Marca Alterna</h2>
+        <p class="text-xs text-sky-100/85 mt-1">
           Ingrese un número de parte de Dokuro, Rik, Taiho, NDC, Ajusa o código original de concesionario para descubrir sus medidas físicas y todos los motores compatibles.
         </p>
 
@@ -74,7 +74,7 @@ const copyText = async (text: string) => {
               type="text"
               @keyup.enter="handleSearch"
               placeholder="Ej. 28006, 21-2856, MS-1140A, 13711-54020, 10074200..."
-              class="w-full pl-4 pr-10 py-3 text-sm bg-white/10 backdrop-blur-md border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:bg-white focus:text-slate-900 focus:ring-2 focus:ring-[#04c4d9] font-mono font-bold"
+              class="w-full pl-4 pr-10 py-3 text-sm bg-white/15 backdrop-blur-md border border-white/25 rounded-xl text-white placeholder-sky-100/65 focus:outline-none focus:bg-white focus:text-[#0D1B3E] focus:ring-2 focus:ring-[#04C4D9] font-mono font-bold transition"
             />
           </div>
 
@@ -82,7 +82,7 @@ const copyText = async (text: string) => {
             type="button"
             @click="handleSearch"
             :disabled="isSearching"
-            class="px-6 py-3 text-xs font-black text-white bg-[#04c4d9] hover:bg-[#03a9bc] rounded-xl shadow-sm transition flex items-center justify-center gap-2 shrink-0 min-h-[44px]"
+            class="studio-cta-primary px-6 py-3 text-xs font-black text-white rounded-xl transition flex items-center justify-center gap-2 shrink-0 min-h-[44px] cursor-pointer"
           >
             <Search class="w-4 h-4" />
             <span>{{ isSearching ? 'Buscando...' : 'Buscar Código' }}</span>
@@ -143,7 +143,7 @@ const copyText = async (text: string) => {
               </div>
               <div class="text-right">
                 <span class="text-lg font-black text-slate-900">${{ item.precio.toFixed(2) }}</span>
-                <span class="block text-[10px] text-emerald-600 font-semibold">{{ item.estado }}</span>
+                <span class="block text-[10px] text-[#038391] font-semibold">{{ item.estado }}</span>
               </div>
             </div>
 
@@ -159,7 +159,7 @@ const copyText = async (text: string) => {
                 class="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200 transition"
                 title="Copiar código OEM"
               >
-                <Check v-if="copiedCode === item.codigo_oem" class="w-4 h-4 text-emerald-600" />
+                <Check v-if="copiedCode === item.codigo_oem" class="w-4 h-4 text-[#038391]" />
                 <Copy v-else class="w-4 h-4" />
               </button>
             </div>
@@ -205,7 +205,7 @@ const copyText = async (text: string) => {
             </div>
 
             <!-- Motor Compatible -->
-            <div class="mt-2.5 flex items-center gap-1.5 text-xs text-cyan-800 font-semibold bg-cyan-50/70 p-2 rounded-lg">
+            <div class="mt-2.5 flex items-center gap-1.5 text-xs text-[#004B97] font-semibold bg-sky-50 border border-[#04C4D9]/25 p-2 rounded-xl">
               <Cpu class="w-3.5 h-3.5 text-[#04c4d9]" />
               <span>Aplicación: {{ getEngineInfo(item.motor_id) }}</span>
             </div>
@@ -216,7 +216,7 @@ const copyText = async (text: string) => {
             <button
               type="button"
               @click="emit('add-to-order', item)"
-              class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] rounded-xl shadow-xs transition"
+              class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#004B97] hover:bg-[#0D1B3E] rounded-xl shadow-xs transition cursor-pointer"
             >
               <Plus class="w-4 h-4" />
               <span>Agregar a Orden de Trabajo</span>

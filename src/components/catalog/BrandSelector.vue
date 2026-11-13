@@ -93,7 +93,7 @@ const handleSelectMotor = (motId: string) => {
           :class="[
             'relative flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all min-h-[64px]',
             selectedFabricanteId === brand.id
-              ? 'bg-gradient-to-b from-cyan-50 to-white border-[#04c4d9] text-[#038391] shadow-xs ring-2 ring-[#04c4d9]/20'
+              ? 'bg-[#E3F5F8] border-[#147488] text-[#12697A] shadow-xs ring-2 ring-[#147488]/15'
               : 'bg-white hover:bg-slate-50 border-slate-200/80 text-slate-700 hover:border-slate-300'
           ]"
         >

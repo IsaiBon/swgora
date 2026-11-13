@@ -703,7 +703,7 @@ const handleComponentKeydown = (e: KeyboardEvent) => {
 }
 
 /**
- * Resaltado visual reactivo: destaca en VERDE ESMERALDA las coincidencias exactas (diff <= 0.05)
+ * Resaltado visual reactivo: destaca en AZUL CELESTE las coincidencias exactas (diff <= 0.05)
  * y en AMARILLO las cotas que entran dentro del rango de tolerancia universal / individual.
  */
 function getMeasurementMatchClass(partValue: number | undefined | null, filterValue: number | undefined | null, tol: number = 1.0): string {
@@ -712,7 +712,7 @@ function getMeasurementMatchClass(partValue: number | undefined | null, filterVa
   }
   const diff = Math.abs(Number(partValue) - Number(filterValue))
   if (diff <= 0.05) {
-    return 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black ring-1 ring-emerald-500/60 shadow-2xs'
+    return 'bg-sky-100 text-[#0D1B3E] border-sky-400 font-black ring-1 ring-sky-500/60 shadow-2xs'
   }
   if (diff <= tol) {
     return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs'
@@ -795,7 +795,7 @@ function getPartParamValue(part: RepuestoTecnico, key: string): any {
 
 /**
  * Estilo y coloreado de coincidencia para badges de tipo y posición (Admisión/IN vs Escape/EX).
- * Verde en coincidencia exacta, Amarillo en coincidencia semántica/parcial.
+ * Azul celeste en coincidencia exacta, Amarillo en coincidencia semántica/parcial.
  */
 function getPositionOrTypeBadgeClass(partVal: any, filterVal: any, opciones?: string[]): string {
   const tokens = parseMultiOptionValues(partVal)
@@ -815,7 +815,7 @@ function getPositionOrTypeBadgeClass(partVal: any, filterVal: any, opciones?: st
 
   const strFilter = String(filterVal).trim().toLowerCase()
   if (strFilter === lower || tokens.some(t => t.toLowerCase() === strFilter)) {
-    return 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black ring-1 ring-emerald-500/60 text-[10px]'
+    return 'bg-sky-100 text-[#0D1B3E] border-sky-400 font-black ring-1 ring-sky-500/60 text-[10px]'
   }
 
   const matches = (isAdm && (strFilter === 'in' || strFilter.includes('admis'))) ||
@@ -2779,10 +2779,10 @@ const getBrandBadgeClass = (brand?: string | null): string => {
   const b = String(brand || '').toLowerCase().trim()
   if (b.includes('dokuro')) return 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
   if (b.includes('rik')) return 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold'
-  if (b.includes('ndc')) return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold'
+  if (b.includes('ndc')) return 'bg-cyan-100 text-cyan-800 border-cyan-300 font-bold'
   if (b.includes('taiho')) return 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
   if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
-  if (b.includes('mrk') || b.includes('mkr')) return 'bg-teal-100 text-teal-800 border-teal-300 font-bold'
+  if (b.includes('mrk') || b.includes('mkr')) return 'bg-sky-100 text-sky-800 border-sky-300 font-bold'
   if (b.includes('npr')) return 'bg-amber-100 text-amber-800 border-amber-300 font-bold'
   if (b === 'oem' || b.includes('oem')) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
   return 'bg-slate-100 text-slate-700 border-slate-200 font-bold'
@@ -3222,61 +3222,73 @@ onUnmounted(() => {
     >
       <div 
         v-if="toastMessage" 
-        class="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700/60 flex items-center gap-2.5"
+        class="fixed bottom-6 right-6 z-50 bg-[#19314D] text-white px-4 py-2.5 rounded-xl shadow-2xl border border-[#C1E8EF]/35 flex items-center gap-2.5 popover-pop-in"
       >
-        <CheckCircle2 class="w-4 h-4 text-[#04C4D9] shrink-0" />
+        <CheckCircle2 class="w-4 h-4 text-[#BFEBF2] shrink-0" />
         <span class="text-xs font-semibold">{{ toastMessage }}</span>
       </div>
     </Transition>
 
     <!-- ========================================================================= -->
-    <!-- HEADER SECTION (MINIMALISTA)                                              -->
+    <!-- HEADER SECTION (HORIZON GARAGE STUDIO)                                    -->
     <!-- ========================================================================= -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div>
-        <h1 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-          Catálogo
-        </h1>
-      </div>
+    <div class="studio-hero-banner p-6 sm:p-7 text-white relative overflow-hidden">
+      <div class="pointer-events-none absolute -top-16 -right-12 w-60 h-60 rounded-full bg-[#04C4D9]/25 blur-3xl"></div>
+      <div class="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="space-y-1.5">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm">
+            <span class="w-2 h-2 rounded-full bg-[#BFEBF2] animate-pulse"></span>
+            <span class="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#BFEBF2]">
+              CATÁLOGO · MOTORES, MEDIDAS Y REPUESTOS
+            </span>
+          </div>
+          <h1 class="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Catálogo Técnico
+          </h1>
+          <p class="text-xs sm:text-sm text-blue-100/90">
+            Consulta paramétrica de motores, tolerancias métricas y compatibilidad de repuestos.
+          </p>
+        </div>
 
-      <!-- Action Buttons -->
-      <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-        <button
-          type="button"
-          @click="openAdminCatalogModal('repuesto')"
-          class="px-3.5 py-2 rounded-xl bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs active:scale-95"
-          title="Dar de alta repuesto en catálogo"
-        >
-          <Plus class="w-4 h-4" />
-          <span>+ Repuesto</span>
-        </button>
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+          <button
+            type="button"
+            @click="openAdminCatalogModal('repuesto')"
+            class="studio-cta-primary px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer"
+            title="Dar de alta repuesto en catálogo"
+          >
+            <Plus class="w-4 h-4 stroke-[2.5]" />
+            <span>+ Repuesto</span>
+          </button>
 
-        <button
-          type="button"
-          @click="handleCreateNewGroup"
-          class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs active:scale-95"
-          title="Crear nueva familia de componentes paramétricos"
-        >
-          <FolderPlus class="w-3.5 h-3.5 text-[#04C4D9]" />
-          <span>+ Nueva Familia</span>
-        </button>
+          <button
+            type="button"
+            @click="handleCreateNewGroup"
+            class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
+            title="Crear nueva familia de componentes paramétricos"
+          >
+            <FolderPlus class="w-3.5 h-3.5 text-[#BFEBF2]" />
+            <span>+ Nueva Familia</span>
+          </button>
 
-        <button
-          type="button"
-          @click="handleResetAll"
-          class="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition flex items-center gap-1.5"
-          title="Restaurar registros y filtros"
-        >
-          <RotateCcw class="w-3.5 h-3.5 text-slate-400" />
-          <span>Restaurar</span>
-        </button>
+          <button
+            type="button"
+            @click="handleResetAll"
+            class="px-3.5 py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-sm transition-all duration-150 active:scale-[0.97] flex items-center gap-1.5 cursor-pointer"
+            title="Restaurar registros y filtros"
+          >
+            <RotateCcw class="w-3.5 h-3.5 text-[#BFEBF2]" />
+            <span>Restaurar</span>
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Banner de Error si falla la conexión -->
     <div 
       v-if="catalogStore.error || catalogStore.repuestosError" 
-      class="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center justify-between gap-3 text-rose-800 text-xs font-semibold"
+      class="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 text-rose-800 text-xs font-semibold"
     >
       <div class="flex items-center gap-2">
         <AlertTriangle class="w-4 h-4 text-rose-600 shrink-0" />
@@ -3285,7 +3297,7 @@ onUnmounted(() => {
       <button 
         type="button"
         @click="catalogStore.initCatalog()"
-        class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shrink-0"
+        class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shrink-0"
       >
         <RefreshCw class="w-3 h-3" />
         <span>Reintentar</span>
@@ -3294,9 +3306,8 @@ onUnmounted(() => {
 
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
-    <!-- Top-14 (56px) para despejar completamente el Navbar flotante al hacer scroll -->
     <!-- ========================================================================= -->
-    <div class="sticky top-14 z-30 bg-white/95 backdrop-blur-md p-2.5 sm:p-3.5 rounded-xl border border-slate-200/90 shadow-md transition-all duration-200 space-y-2 overflow-visible">
+    <div class="sticky top-[72px] z-20 studio-card bg-white/95 backdrop-blur-md p-3.5 sm:p-4 space-y-2 overflow-visible">
       
       <!-- Fila Superior: Buscador Universal + Botón Filtros Móvil -->
       <div class="flex items-center gap-2">
@@ -3329,15 +3340,15 @@ onUnmounted(() => {
           @click="isMobileFiltersOpen = !isMobileFiltersOpen"
           class="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 border shadow-2xs select-none active:scale-95"
           :class="isMobileFiltersOpen 
-            ? 'bg-slate-900 text-white border-slate-900' 
+            ? 'bg-[#004B97] text-white border-[#004B97]' 
             : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'"
           :title="isMobileFiltersOpen ? 'Ocultar filtros' : 'Mostrar filtros de vehículo y motor'"
         >
-          <SlidersHorizontal class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <SlidersHorizontal class="w-3.5 h-3.5 text-[#147488]" />
           <span>Filtros</span>
           <span 
             v-if="activeFilterCount > 0" 
-            class="w-4 h-4 rounded-full bg-[#04C4D9] text-white text-[10px] font-black flex items-center justify-center leading-none"
+            class="w-4 h-4 rounded-full bg-[#147488] text-white text-[10px] font-black flex items-center justify-center leading-none"
           >
             {{ activeFilterCount }}
           </span>
@@ -3455,7 +3466,7 @@ onUnmounted(() => {
               v-if="brandInput.trim().length > 0 && !catalogStore.fabricantes.some(f => f.nombre.toLowerCase() === brandInput.trim().toLowerCase())"
               type="button"
               @mousedown.prevent="openQuickCreateBrandModal(brandInput)"
-              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#12697A] bg-[#E3F5F8]/80 hover:bg-[#147488] hover:text-white transition flex items-center justify-between border-t border-[#C1E8EF] cursor-pointer"
             >
               <span class="flex items-center gap-1.5 truncate">
                 <Plus class="w-3.5 h-3.5 shrink-0" />
@@ -3484,7 +3495,7 @@ onUnmounted(() => {
                   :class="[
                     'px-1.5 py-0.2 rounded transition cursor-pointer',
                     motorMatchMode === 'startsWith'
-                      ? 'bg-[#004B97] text-white shadow-2xs'
+                      ? 'bg-[#1E446E] text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800'
                   ]"
                   title="Búsqueda ordenada: códigos que comienzan con lo escrito (ej. 8L -> 8L...)"
@@ -3497,7 +3508,7 @@ onUnmounted(() => {
                   :class="[
                     'px-1.5 py-0.2 rounded transition cursor-pointer',
                     motorMatchMode === 'contains'
-                      ? 'bg-[#04C4D9] text-white shadow-2xs'
+                      ? 'bg-[#147488] text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800'
                   ]"
                   title="Búsqueda flexible: códigos o nombres que contengan el texto"
@@ -3681,7 +3692,7 @@ onUnmounted(() => {
             <button
               type="button"
               @mousedown.prevent="openQuickCreateModelModal(modelInput)"
-              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#12697A] bg-[#E3F5F8]/80 hover:bg-[#147488] hover:text-white transition flex items-center justify-between border-t border-[#C1E8EF] cursor-pointer"
             >
               <span class="flex items-center gap-1.5 truncate">
                 <Plus class="w-3.5 h-3.5 shrink-0" />
@@ -3766,7 +3777,7 @@ onUnmounted(() => {
             <button
               type="button"
               @mousedown.prevent="yearInput.trim() && !availableYears.includes(yearInput.trim()) ? handleSaveQuickYear(yearInput) : openQuickCreateYearModal(yearInput)"
-              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#038391] bg-cyan-50/90 hover:bg-[#04C4D9] hover:text-white transition flex items-center justify-between border-t border-cyan-200 cursor-pointer"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#12697A] bg-[#E3F5F8]/80 hover:bg-[#147488] hover:text-white transition flex items-center justify-between border-t border-[#C1E8EF] cursor-pointer"
             >
               <span class="flex items-center gap-1.5 truncate">
                 <Plus class="w-3.5 h-3.5 shrink-0" />
@@ -3874,9 +3885,9 @@ onUnmounted(() => {
           <button
             type="button"
             @click="isMobileFiltersOpen = false"
-            class="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-98 shadow-sm"
+            class="w-full py-2 bg-[#1E446E] hover:bg-[#19314D] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-98 shadow-sm cursor-pointer"
           >
-            <ChevronUp class="w-3.5 h-3.5 text-[#04C4D9]" />
+            <ChevronUp class="w-3.5 h-3.5 text-[#BFEBF2]" />
             <span>Ocultar filtros y ver resultados</span>
           </button>
         </div>
@@ -3899,7 +3910,7 @@ onUnmounted(() => {
             </button>
           </span>
 
-          <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-xs">
+          <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#004B97] text-white font-mono font-bold text-xs">
             <span>{{ selectedMotor.codigo }}</span>
             <button type="button" @click="handleClearSelectedMotor" class="text-slate-400 hover:text-rose-400 ml-0.5">
               <X class="w-3 h-3" />
@@ -4029,14 +4040,14 @@ onUnmounted(() => {
       </div>
 
       <!-- TABLA TÉCNICA DE MOTORES -->
-      <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div class="studio-card bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         
         <!-- Barra de Estado / Paginación Resumen -->
-        <div class="bg-slate-900 text-white py-1.5 px-3.5 flex items-center justify-between text-xs font-medium">
-          <span class="text-slate-300 font-mono text-[11px]">
+        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white py-2 px-4 flex items-center justify-between text-xs font-medium">
+          <span class="text-sky-100 font-mono text-[11px]">
             Mostrando {{ motorStartIndex + 1 }}-{{ motorEndIndex }} de {{ brandMotorsList.length }} motores
           </span>
-          <span class="text-[11px] text-slate-400 font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
+          <span class="text-[11px] text-[#BFEBF2] font-semibold font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
         </div>
 
         <!-- Contenedor con scroll interno -->
@@ -4114,7 +4125,7 @@ onUnmounted(() => {
                     </span>
                     <span 
                       v-if="selectedMotor?.id === mot.id"
-                      class="text-[9px] px-1.5 py-0.2 rounded bg-[#04C4D9] text-white font-bold"
+                      class="text-[9px] px-1.5 py-0.2 rounded bg-[#147488] text-white font-bold"
                     >
                       Activo
                     </span>
@@ -4360,7 +4371,7 @@ onUnmounted(() => {
               :class="[
                 'px-2 py-0.5 rounded text-[11px] font-mono font-bold transition',
                 filterToleranciaMm === tolOption
-                  ? 'bg-[#04C4D9] text-white shadow-2xs'
+                  ? 'bg-[#147488] text-white shadow-2xs'
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
               ]"
             >
@@ -4402,7 +4413,7 @@ onUnmounted(() => {
                 type="button"
                 @click="filterAnilloTab = '1'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
-                :class="filterAnilloTab === '1' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+                :class="filterAnilloTab === '1' ? 'bg-[#147488] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
                 <span>Anillo 1</span>
                 <span v-if="filterAnilloGrosor1 !== undefined || filterAnilloRadial1 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
@@ -4412,7 +4423,7 @@ onUnmounted(() => {
                 type="button"
                 @click="filterAnilloTab = '2'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
-                :class="filterAnilloTab === '2' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+                :class="filterAnilloTab === '2' ? 'bg-[#147488] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
                 <span>Anillo 2</span>
                 <span v-if="filterAnilloGrosor2 !== undefined || filterAnilloRadial2 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
@@ -4421,7 +4432,7 @@ onUnmounted(() => {
                 type="button"
                 @click="filterAnilloTab = '3'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
-                :class="filterAnilloTab === '3' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+                :class="filterAnilloTab === '3' ? 'bg-[#147488] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
                 <span>Anillo 3</span>
                 <span v-if="filterAnilloGrosor3 !== undefined || filterAnilloRadial3 !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
@@ -4431,7 +4442,7 @@ onUnmounted(() => {
                 type="button"
                 @click="filterAnilloTab = 'aceite'"
                 class="px-2.5 py-1 rounded-md transition flex items-center gap-1"
-                :class="filterAnilloTab === 'aceite' ? 'bg-[#04C4D9] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
+                :class="filterAnilloTab === 'aceite' ? 'bg-[#147488] text-white shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'"
               >
                 <span>Anillo de aceite</span>
                 <span v-if="filterAnilloGrosorAceite !== undefined || filterAnilloRadialAceite !== undefined" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
@@ -5193,12 +5204,12 @@ onUnmounted(() => {
       </div>
 
       <!-- TABLA TÉCNICA DE REPUESTOS EN FORMATO MATRIZ (MINIMALISTA) -->
-      <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div class="studio-card bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         
-        <div class="bg-slate-900 text-white px-3.5 py-2 flex items-center justify-between gap-2 flex-wrap text-xs font-bold">
+        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap text-xs font-bold">
           <span class="flex items-center gap-1.5">
             <span>{{ selectedComponent?.title || 'Piezas Técnicas' }}</span>
-            <span class="font-normal text-slate-400 font-mono text-[11px]">({{ displayedParts.length }} registros)</span>
+            <span class="font-normal text-[#BFEBF2] font-mono text-[11px]">({{ displayedParts.length }} registros)</span>
           </span>
           <div class="flex items-center gap-2 ml-auto">
             <button
@@ -5442,7 +5453,7 @@ onUnmounted(() => {
                       </span>
                       <span 
                         v-else-if="getPartCatalogBrand(part) === 'MRK' || part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK' || (part.especificaciones_tecnicas as any)?.codigo_mrk"
-                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-300"
+                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-300"
                         title="Código oficial del catálogo MRK"
                       >
                         MRK
@@ -5483,7 +5494,7 @@ onUnmounted(() => {
                             class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
                             :title="`Copiar código ${oemCode}`"
                           >
-                            <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-emerald-600" />
+                            <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-[#038391]" />
                             <Copy v-else class="w-3.5 h-3.5 hover:text-slate-700" />
                           </button>
                         </div>
@@ -5544,7 +5555,7 @@ onUnmounted(() => {
                     <span
                       v-else-if="col.tipo_dato === 'booleano'"
                       class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
-                      :class="getPartParamValue(part, col.clave) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                      :class="getPartParamValue(part, col.clave) ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-500'"
                     >
                       {{ getPartParamValue(part, col.clave) ? 'Sí' : 'No' }}
                     </span>
@@ -5650,7 +5661,7 @@ onUnmounted(() => {
                               <span
                                 v-else-if="vRow.col.tipo_dato === 'booleano'"
                                 class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
-                                :class="getPartMiniTableCellRawValue(part, sf, vRow.col) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                                :class="getPartMiniTableCellRawValue(part, sf, vRow.col) ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-500'"
                               >
                                 {{ getPartMiniTableCellRawValue(part, sf, vRow.col) ? 'Sí' : 'No' }}
                               </span>
@@ -5795,7 +5806,7 @@ onUnmounted(() => {
                                 <span
                                   v-else-if="col.tipo_dato === 'booleano'"
                                   class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
-                                  :class="getPartMiniTableCellRawValue(part, sf, col) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                                  :class="getPartMiniTableCellRawValue(part, sf, col) ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-500'"
                                 >
                                   {{ getPartMiniTableCellRawValue(part, sf, col) ? 'Sí' : 'No' }}
                                 </span>
@@ -5861,7 +5872,7 @@ onUnmounted(() => {
                               <span
                                 v-else-if="vRow.col.tipo_dato === 'booleano'"
                                 class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
-                                :class="getPartParamValue(part, vRow.col.clave) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                                :class="getPartParamValue(part, vRow.col.clave) ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-500'"
                               >
                                 {{ getPartParamValue(part, vRow.col.clave) ? 'Sí' : 'No' }}
                               </span>
@@ -5908,13 +5919,13 @@ onUnmounted(() => {
                       <span
                         v-else-if="p.tipo_dato === 'booleano'"
                         class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
-                        :class="getPartParamValue(part, p.clave) ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold' : 'bg-slate-100 text-slate-600 border-slate-200'"
+                        :class="getPartParamValue(part, p.clave) ? 'bg-cyan-50 text-[#038391] border-cyan-200 font-bold' : 'bg-slate-100 text-slate-600 border-slate-200'"
                       >
                         <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
                         <strong>{{ getPartParamValue(part, p.clave) ? 'Sí' : 'No' }}</strong>
                       </span>
 
-                      <!-- Caso B: Parámetro Numérico con Unidad y Resaltado Verde / Amarillo -->
+                      <!-- Caso B: Parámetro Numérico con Unidad y Resaltado Azul / Amarillo -->
                       <span 
                         v-else-if="p.tipo_dato === 'numero' || (p.unidad && p.unidad !== '')"
                         class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
@@ -5974,8 +5985,8 @@ onUnmounted(() => {
                       :class="[
                         'px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1',
                         addedPartId === part.id
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-[#04C4D9] hover:bg-[#03a9bc] text-white shadow-2xs'
+                          ? 'bg-[#004B97] text-white'
+                          : 'bg-[#147488] hover:bg-[#105E6E] text-white shadow-2xs'
                       ]"
                     >
                       <Check v-if="addedPartId === part.id" class="w-3 h-3" />
@@ -6007,7 +6018,7 @@ onUnmounted(() => {
                       <button
                         type="button"
                         @click="openAddPartModal"
-                        class="px-2.5 py-1 rounded-lg bg-[#04C4D9] text-white text-xs font-bold"
+                        class="px-2.5 py-1 rounded-lg bg-[#147488] hover:bg-[#105E6E] text-white text-xs font-bold"
                       >
                         + Añadir Repuesto
                       </button>
@@ -6145,21 +6156,21 @@ onUnmounted(() => {
     >
       <div 
         v-if="selectedMotorInfoModal" 
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="closeMotorInfo"
       >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
-          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+        <div class="studio-card bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col popover-pop-in">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <Info class="w-4 h-4 text-[#04C4D9]" />
-              <h3 class="text-sm font-bold text-white">
+              <Info class="w-4 h-4 text-[#BFEBF2]" />
+              <h3 class="font-display text-sm font-bold text-white">
                 Ficha Motor: {{ getBrandName(selectedMotorInfoModal.fabricante_id) }} - {{ selectedMotorInfoModal.codigo }}
               </h3>
             </div>
             <button
               type="button"
               @click="closeMotorInfo"
-              class="p-1 text-slate-400 hover:text-white rounded-lg transition"
+              class="p-1.5 text-white/75 hover:text-white hover:bg-white/10 rounded-lg transition cursor-pointer"
             >
               <X class="w-4 h-4" />
             </button>
@@ -6202,18 +6213,18 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="bg-slate-50 px-4 py-2.5 border-t border-slate-200 flex items-center justify-between">
+          <div class="bg-slate-50/90 px-5 py-3 border-t border-slate-200/80 flex items-center justify-between">
             <button
               type="button"
               @click="closeMotorInfo"
-              class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-100"
+              class="px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold text-xs hover:bg-slate-100 transition cursor-pointer"
             >
               Cerrar
             </button>
             <button
               type="button"
               @click="handleSelectMotor(selectedMotorInfoModal); closeMotorInfo()"
-              class="px-3.5 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs"
+              class="studio-cta-primary px-4 py-2 rounded-xl text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
             >
               <Check class="w-3.5 h-3.5" />
               <span>Seleccionar Motor</span>
@@ -6236,15 +6247,15 @@ onUnmounted(() => {
     >
       <div 
         v-if="isTechnicalModalOpen && modalPart" 
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
+        class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
         @click.self="closeTechnicalSheet"
       >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="studio-card bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] popover-pop-in">
           
-          <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div>
               <div class="flex items-center gap-2">
-                <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#04C4D9] block">
+                <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#BFEBF2] block">
                   Ficha Técnica de Homologación
                 </span>
                 <span 
@@ -6288,7 +6299,7 @@ onUnmounted(() => {
                   :alt="modalPart.nombre"
                   class="max-h-48 object-contain rounded-lg"
                 />
-                <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 text-white text-[10px] font-bold group-hover:bg-[#04C4D9] transition shadow-xs">
+                <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1E446E] text-white text-[10px] font-bold group-hover:bg-[#147488] transition shadow-xs">
                   <Maximize2 class="w-3 h-3" />
                   <span>{{ getPartImagesList(modalPart).length > 1 ? `Ver Galería Completa (${getPartImagesList(modalPart).length})` : 'Ampliar Diagrama en Pantalla Completa' }}</span>
                 </div>
@@ -6460,7 +6471,7 @@ onUnmounted(() => {
                   :title="`Clic para copiar Código OEM: ${oemCode}`"
                 >
                   <strong class="font-bold">{{ oemCode }}</strong>
-                  <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-emerald-600" />
+                  <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-[#038391]" />
                   <Copy v-else class="w-3 h-3 text-slate-400" />
                 </button>
               </div>
@@ -6908,11 +6919,11 @@ onUnmounted(() => {
 
           </div>
 
-          <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex items-center justify-between">
+          <div class="bg-slate-50/90 px-5 py-3.5 border-t border-slate-200/80 flex items-center justify-between">
             <button
               type="button"
               @click="copyFullCross(modalPart)"
-              class="px-3.5 py-1.5 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 flex items-center gap-1.5"
+              class="px-3.5 py-2 border border-slate-200 bg-white text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 flex items-center gap-1.5 transition cursor-pointer"
             >
               <Copy class="w-3.5 h-3.5" />
               <span>Copiar Ficha</span>
@@ -6922,7 +6933,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="handleEditPart(modalPart); closeTechnicalSheet()"
-                class="px-3.5 py-1.5 border border-cyan-200 bg-cyan-50/60 hover:bg-cyan-100 text-[#038391] font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
+                class="px-3.5 py-2 border border-[#04C4D9]/35 bg-sky-50 hover:bg-sky-100 text-[#004B97] font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
                 title="Modificar especificaciones y equivalencias de este repuesto"
               >
                 <Edit3 class="w-3.5 h-3.5" />
@@ -6932,7 +6943,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="addToWorkOrder(modalPart); closeTechnicalSheet()"
-                class="px-4 py-1.5 bg-[#04C4D9] hover:bg-[#03a9bc] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition"
+                class="studio-cta-primary px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
               >
                 <Plus class="w-4 h-4" />
                 <span>Agregar a Orden</span>
@@ -6957,13 +6968,13 @@ onUnmounted(() => {
     >
       <div
         v-if="isQuickCreateBrandOpen"
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="isQuickCreateBrandOpen = false"
       >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
-          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+        <div class="studio-card bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden popover-pop-in">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <Sparkles class="w-4 h-4 text-[#04C4D9]" />
+              <Sparkles class="w-4 h-4 text-[#BFEBF2]" />
               <h3 class="text-sm font-bold text-white">{{ editingBrandId ? 'Editar Marca / Fabricante' : 'Registrar Nueva Marca / Fabricante' }}</h3>
             </div>
             <button
@@ -7051,7 +7062,7 @@ onUnmounted(() => {
                 <button
                   type="submit"
                   :disabled="isSavingQuickBrand || !quickBrandName.trim()"
-                  class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                  class="studio-cta-primary px-4 py-2 rounded-xl disabled:opacity-50 text-white font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check class="w-3.5 h-3.5" />
                   <span>{{ editingBrandId ? 'Guardar Cambios' : 'Guardar y Seleccionar' }}</span>
@@ -7076,13 +7087,13 @@ onUnmounted(() => {
     >
       <div
         v-if="isQuickCreateMotorOpen"
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="isQuickCreateMotorOpen = false"
       >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
-          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+        <div class="studio-card bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden popover-pop-in">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <Wrench class="w-4 h-4 text-[#04C4D9]" />
+              <Wrench class="w-4 h-4 text-[#BFEBF2]" />
               <h3 class="text-sm font-bold text-white">{{ editingMotorId ? 'Editar Motor en Catálogo' : 'Registrar Nuevo Motor en Catálogo' }}</h3>
             </div>
             <button
@@ -7248,7 +7259,7 @@ onUnmounted(() => {
                 <button
                   type="submit"
                   :disabled="isSavingQuickMotor || !quickMotorCode.trim()"
-                  class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                  class="studio-cta-primary px-4 py-2 rounded-xl disabled:opacity-50 text-white font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check class="w-3.5 h-3.5" />
                   <span>Guardar Motor</span>
@@ -7273,13 +7284,13 @@ onUnmounted(() => {
     >
       <div
         v-if="isQuickCreateModelOpen"
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="isQuickCreateModelOpen = false"
       >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
-          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+        <div class="studio-card bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden popover-pop-in">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <Sparkles class="w-4 h-4 text-[#04C4D9]" />
+              <Sparkles class="w-4 h-4 text-[#BFEBF2]" />
               <h3 class="text-sm font-bold text-white">{{ editingModelId ? 'Editar Modelo en Catálogo' : 'Registrar Nuevo Modelo en Catálogo' }}</h3>
             </div>
             <button
@@ -7357,7 +7368,7 @@ onUnmounted(() => {
                 <span
                   v-for="selId in quickModelMotorIds"
                   :key="`chip-mot-${selId}`"
-                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-[10px]"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#004B97] text-white font-mono font-bold text-[10px]"
                 >
                   <span>{{ quickModelAvailableMotors.find(m => m.id === selId)?.codigo || 'Motor' }}</span>
                   <button
@@ -7401,7 +7412,7 @@ onUnmounted(() => {
                   <div class="flex items-center gap-2 min-w-0 truncate">
                     <span
                       class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                      :class="quickModelMotorIds.includes(mot.id) ? 'bg-[#04C4D9] border-[#04C4D9] text-white' : 'border-slate-300 bg-white'"
+                      :class="quickModelMotorIds.includes(mot.id) ? 'bg-[#004B97] border-[#004B97] text-white' : 'border-slate-300 bg-white'"
                     >
                       <Check v-if="quickModelMotorIds.includes(mot.id)" class="w-3 h-3" />
                     </span>
@@ -7460,7 +7471,7 @@ onUnmounted(() => {
                 <button
                   type="submit"
                   :disabled="isSavingQuickModel || !quickModelName.trim()"
-                  class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                  class="studio-cta-primary px-4 py-2 rounded-xl disabled:opacity-50 text-white font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check class="w-3.5 h-3.5" />
                   <span>{{ editingModelId ? 'Guardar Cambios' : 'Guardar Modelo' }}</span>
@@ -7485,13 +7496,13 @@ onUnmounted(() => {
     >
       <div
         v-if="isQuickCreateYearOpen"
-        class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
         @click.self="isQuickCreateYearOpen = false"
       >
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden">
-          <div class="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+        <div class="studio-card bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden popover-pop-in">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <Sparkles class="w-4 h-4 text-[#04C4D9]" />
+              <Sparkles class="w-4 h-4 text-[#BFEBF2]" />
               <h3 class="text-sm font-bold text-white">Agregar Nuevo Año</h3>
             </div>
             <button
@@ -7528,7 +7539,7 @@ onUnmounted(() => {
               <button
                 type="submit"
                 :disabled="!quickYearValue.trim()"
-                class="px-4 py-1.5 rounded-lg bg-[#04C4D9] hover:bg-[#03a9bc] disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shadow-2xs"
+                class="studio-cta-primary px-4 py-2 rounded-xl disabled:opacity-50 text-white font-bold flex items-center gap-1.5 cursor-pointer"
               >
                 <Check class="w-3.5 h-3.5" />
                 <span>Guardar y Seleccionar</span>

@@ -813,7 +813,7 @@ const handleSave = () => {
         >
           <FilePlus class="w-3.5 h-3.5 text-[#04C4D9]" />
           <span>Plantilla en Blanco</span>
-          <span v-if="selectedSourceMode === 'blank'" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span v-if="selectedSourceMode === 'blank'" class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
         </button>
 
         <!-- BOTÓN 2: PLANTILLAS DE TALLER PRECONFIGURADAS -->
@@ -912,21 +912,21 @@ const handleSave = () => {
           :class="[
             'p-3.5 rounded-2xl border transition-all text-left cursor-pointer relative group flex flex-col justify-between shadow-2xs',
             currentTemplate.id === tpl.id
-              ? 'bg-cyan-50/90 border-[#04C4D9] ring-2 ring-[#04C4D9]/40'
-              : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/80'
+              ? 'bg-sky-50/90 border-[#004B97] ring-2 ring-[#04C4D9]/40'
+              : 'bg-white border-slate-200 hover:border-[#04C4D9]/45 hover:bg-slate-50/80'
           ]"
         >
           <div class="space-y-2">
             <div class="flex items-center justify-between">
               <div
                 class="w-8 h-8 rounded-xl flex items-center justify-center font-bold"
-                :class="currentTemplate.id === tpl.id ? 'bg-[#04C4D9] text-white shadow-2xs' : 'bg-slate-100 text-slate-700'"
+                :class="currentTemplate.id === tpl.id ? 'bg-[#004B97] text-white shadow-2xs' : 'bg-slate-100 text-slate-700'"
               >
                 <component :is="getIconComponent(tpl.icono)" class="w-4 h-4" />
               </div>
               <span
                 v-if="tpl.badge"
-                class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono"
+                class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-50 text-[#004B97] border border-[#04C4D9]/30 font-mono"
               >
                 {{ tpl.badge }}
               </span>
@@ -946,7 +946,7 @@ const handleSave = () => {
             <span class="text-slate-600 font-mono text-[10px]">
               {{ tpl.columnas.length }} columnas
             </span>
-            <span class="flex items-center gap-1 text-[#038391] font-black">
+            <span class="flex items-center gap-1 text-[#004B97] font-black">
               <span>Usar plantilla</span>
               <ChevronRight class="w-3.5 h-3.5" />
             </span>
@@ -1318,7 +1318,7 @@ const handleSave = () => {
                           >
                             <GripVertical class="w-3.5 h-3.5" />
                           </span>
-                          <span class="w-5 h-5 rounded-md bg-slate-900 text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
+                          <span class="w-5 h-5 rounded-md bg-[#004B97] text-white text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
                             {{ item.colIdx + 1 }}
                           </span>
                           <input
@@ -1372,7 +1372,7 @@ const handleSave = () => {
                             @click="setColumnType(item.col, 'booleano')"
                             :class="[
                               'flex-1 py-0.5 rounded-lg transition flex items-center justify-center gap-0.5 cursor-pointer',
-                              item.col.tipo_dato === 'booleano' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                              item.col.tipo_dato === 'booleano' ? 'bg-[#038391] text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
                             ]"
                             title="Estado Sí / No (ej. Cónico, Nitrurado, Ranurado)"
                           >
@@ -1417,8 +1417,8 @@ const handleSave = () => {
                           />
                         </div>
 
-                        <div v-else-if="item.col.tipo_dato === 'booleano'" class="bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1">
-                          <Check class="w-3 h-3 text-emerald-600 shrink-0" />
+                        <div v-else-if="item.col.tipo_dato === 'booleano'" class="bg-cyan-50 text-[#0D1B3E] border border-cyan-200 px-2 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1">
+                          <Check class="w-3 h-3 text-[#038391] shrink-0" />
                           <span>Estado Sí / No (ej. Cónico)</span>
                         </div>
 
@@ -1641,9 +1641,9 @@ const handleSave = () => {
                     >
                       <span
                         v-if="col.tipo_dato === 'booleano'"
-                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800"
                       >
-                        <Check class="w-3 h-3 text-emerald-600" />
+                        <Check class="w-3 h-3 text-[#038391]" />
                         <span>Sí</span>
                       </span>
                       <span
@@ -1676,7 +1676,7 @@ const handleSave = () => {
                         </span>
                         <span
                           v-else-if="col.tipo_dato === 'booleano'"
-                          class="px-2 py-0.5 rounded border text-[11px] bg-emerald-50 text-emerald-800 border-emerald-200 font-bold"
+                          class="px-2 py-0.5 rounded border text-[11px] bg-cyan-50 text-[#038391] border-cyan-200 font-bold"
                         >
                           {{ col.etiqueta || 'Estado' }}: Sí
                         </span>
@@ -1811,9 +1811,9 @@ const handleSave = () => {
                                 <span
                                   v-if="col.tipo_dato === 'booleano'"
                                   class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black"
-                                  :class="rIdx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'"
+                                  :class="rIdx === 0 ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-500'"
                                 >
-                                  <Check v-if="rIdx === 0" class="w-2.5 h-2.5 text-emerald-600" />
+                                  <Check v-if="rIdx === 0" class="w-2.5 h-2.5 text-[#038391]" />
                                   <span>{{ rIdx === 0 ? 'Sí' : 'No' }}</span>
                                 </span>
                                 <span
@@ -1846,7 +1846,7 @@ const handleSave = () => {
                       <span class="px-2 py-1 rounded-md border border-slate-200 text-slate-600 text-[10px] font-semibold">
                         Editar
                       </span>
-                      <span class="px-2 py-1 rounded-md bg-[#04C4D9] text-white text-[10px] font-bold">
+                      <span class="px-2 py-1 rounded-md bg-[#147488] text-white text-[10px] font-bold">
                         + A Orden
                       </span>
                     </div>
@@ -1914,7 +1914,7 @@ const handleSave = () => {
             type="button"
             @click="handleSave"
             :disabled="props.isSaving || props.isDeleting"
-            class="px-6 py-2.5 rounded-xl text-xs font-black bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-950 transition flex items-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer active:scale-95"
+            class="studio-cta-primary px-6 py-2.5 rounded-xl text-xs font-black text-white transition flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95"
           >
             <RefreshCw v-if="props.isSaving" class="w-4 h-4 animate-spin" />
             <Check v-else class="w-4 h-4" />

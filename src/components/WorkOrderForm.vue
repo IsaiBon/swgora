@@ -1098,7 +1098,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
     case 'Culata':
       return 'bg-cyan-50 text-cyan-700 border-cyan-200'
     case 'Block':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      return 'bg-indigo-50 text-indigo-700 border-indigo-200'
     case 'Repuestos':
       return 'bg-purple-50 text-purple-700 border-purple-200'
     default:
@@ -1137,11 +1137,11 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       v-if="notificationMessage"
       :class="[
         'p-4 rounded-xl flex items-center justify-between text-sm font-semibold transition shadow-md',
-        notificationMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-800 border border-rose-300'
+        notificationMessage.type === 'success' ? 'bg-cyan-50 text-[#0D1B3E] border border-cyan-300' : 'bg-rose-50 text-rose-800 border border-rose-300'
       ]"
     >
       <div class="flex items-center gap-2">
-        <CheckCircle2 v-if="notificationMessage.type === 'success'" class="w-5 h-5 text-emerald-600" />
+        <CheckCircle2 v-if="notificationMessage.type === 'success'" class="w-5 h-5 text-[#038391]" />
         <AlertCircle v-else class="w-5 h-5 text-rose-600" />
         <span>{{ notificationMessage.text }}</span>
       </div>
@@ -1149,26 +1149,26 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
     </div>
 
     <!-- Barra de cabecera y título -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
+    <div class="studio-hero-banner p-5 sm:p-6 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div class="flex items-center gap-3.5 relative z-10">
         <button
           type="button"
           @click="emit('close')"
-          class="p-2 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 text-slate-700 transition shadow-sm"
+          class="p-2.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-xl text-white transition shadow-sm backdrop-blur-sm cursor-pointer"
           title="Regresar al listado"
         >
           <ArrowLeft class="w-5 h-5" />
         </button>
         <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-2xl sm:text-3xl font-extrabold text-[#131523] tracking-tight">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 class="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
               {{ isEditing ? 'Editar Orden' : 'Nueva Orden de Trabajo' }}
             </h1>
-            <span class="text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wider bg-cyan-100 text-cyan-800 border border-cyan-300">
+            <span class="text-xs font-black px-2.5 py-1 rounded-full uppercase tracking-wider bg-white/15 text-[#BFEBF2] border border-white/25">
               Rectificadora
             </span>
           </div>
-          <p class="text-xs text-slate-500 mt-0.5">
+          <p class="text-xs text-sky-100/85 mt-1">
             Registro unificado de operaciones por componentes: Bielas, Bancadas, Cigüeñal, Culata y Block.
           </p>
         </div>
@@ -1181,45 +1181,45 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <div class="lg:col-span-7 xl:col-span-8 space-y-6">
         
         <!-- 1. Card Cabecera / Info de la Orden -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="studio-card p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div class="flex-1">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">N° de Orden</span>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N° de Orden</span>
             <div class="flex items-center gap-2 mt-1">
-              <span class="text-2xl font-black font-mono tracking-tight text-[#131523] bg-slate-100/90 border border-slate-200 px-3 py-1 rounded-xl select-all shadow-2xs">
+              <span class="text-2xl font-black font-mono tracking-tight text-[#0D1B3E] bg-[#004B97]/8 border border-[#004B97]/20 px-3.5 py-1 rounded-xl select-all shadow-2xs">
                 {{ orderNumber || 'Asignando...' }}
               </span>
-              <span class="text-[10px] font-bold text-cyan-800 bg-cyan-100 border border-cyan-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              <span class="text-[10px] font-bold text-[#12697A] bg-[#E3F5F8] border border-[#C1E8EF] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                 Fijo (Auto)
               </span>
             </div>
           </div>
 
-          <div class="hidden sm:block w-px h-12 bg-slate-200"></div>
+          <div class="hidden sm:block w-px h-12 bg-slate-200/80"></div>
 
           <div class="flex-1">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Fecha de Ingreso</span>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fecha de Ingreso</span>
             <div class="mt-1">
               <input
                 v-model="orderDate"
                 type="date"
-                class="text-base font-bold text-[#131523] bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                class="text-sm font-bold text-[#0D1B3E] bg-slate-50/90 border border-slate-300 rounded-xl px-3 py-1.5 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
           </div>
 
-          <div class="hidden sm:block w-px h-12 bg-slate-200"></div>
+          <div class="hidden sm:block w-px h-12 bg-slate-200/80"></div>
 
           <div class="flex-1">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Estado</span>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Estado</span>
             <div class="mt-1">
               <div class="relative inline-block w-full">
                 <select
                   v-model="orderStatus"
                   :class="[
-                    'w-full font-bold text-xs rounded-full px-3 py-1.5 appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2 transition',
+                    'w-full font-bold text-xs rounded-full px-3.5 py-1.5 appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2 transition',
                     orderStatus === 'Pendiente'
-                      ? 'bg-amber-100/70 border border-amber-300 text-amber-900 focus:ring-amber-400'
-                      : 'bg-cyan-100/70 border border-[#04c4d9] text-[#038896] focus:ring-[#04c4d9]'
+                      ? 'bg-[#F6F0E4] border border-[#E6DAC2] text-[#6E5835] focus:ring-[#D4C3A3]'
+                      : 'bg-[#E3F5F8] border border-[#9AD2DC] text-[#12697A] focus:ring-[#147488]'
                   ]"
                 >
                   <option value="Pendiente">Pendiente</option>
@@ -1227,29 +1227,29 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 </select>
                 <ChevronDown
                   :class="[
-                    'w-3.5 h-3.5 absolute right-2.5 top-2.5 pointer-events-none transition',
-                    orderStatus === 'Pendiente' ? 'text-amber-800' : 'text-[#038896]'
+                    'w-3.5 h-3.5 absolute right-3 top-2.5 pointer-events-none transition',
+                    orderStatus === 'Pendiente' ? 'text-[#6E5835]' : 'text-[#12697A]'
                   ]"
                 />
               </div>
             </div>
           </div>
 
-          <div class="hidden sm:block w-px h-12 bg-slate-200"></div>
+          <div class="hidden sm:block w-px h-12 bg-slate-200/80"></div>
 
           <div class="flex-1 min-w-[180px]">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-              <MapPin class="w-3 h-3 text-[#04C4D9]" />
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+              <MapPin class="w-3 h-3 text-[#147488]" />
               <span>Ruta / Sucursal</span>
             </span>
             <div class="mt-1">
               <!-- Si es Sub-Administrador de Ruta: ruta fija asignada -->
               <div
                 v-if="authStore.isSubAdmin"
-                class="inline-flex items-center gap-1.5 w-full rounded-full bg-[#0D0D0D] text-[#05F2F2] border border-[#05C7F2]/50 px-3 py-1.5 text-xs font-bold"
+                class="inline-flex items-center gap-1.5 w-full rounded-full bg-[#19314D] text-[#BFEBF2] border border-[#C1E8EF]/40 px-3 py-1.5 text-xs font-bold shadow-xs"
                 title="Esta orden pertenece automáticamente a tu ruta asignada"
               >
-                <MapPin class="w-3.5 h-3.5 text-[#05C7F2] shrink-0" />
+                <MapPin class="w-3.5 h-3.5 text-[#BFEBF2] shrink-0" />
                 <span class="truncate">
                   {{ authStore.activeRutaCodigo ? `${authStore.activeRutaCodigo} · ` : '' }}{{ authStore.activeRutaNombre || 'Ruta Asignada' }}
                 </span>
@@ -1259,7 +1259,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <div v-else class="relative inline-block w-full">
                 <select
                   v-model="selectedRutaId"
-                  class="w-full font-bold text-xs rounded-full px-3 py-1.5 appearance-none pr-8 cursor-pointer bg-[#05C7F2]/10 border border-[#04C4D9]/50 text-[#0D0D0D] focus:outline-none focus:ring-2 focus:ring-[#05C7F2] transition"
+                  class="w-full font-bold text-xs rounded-full px-3.5 py-1.5 appearance-none pr-8 cursor-pointer bg-[#004B97]/8 border border-[#004B97]/30 text-[#0D1B3E] focus:outline-none focus:ring-2 focus:ring-[#04C4D9] transition"
                 >
                   <option value="">General / Sin ruta específica</option>
                   <option
@@ -1270,28 +1270,28 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     {{ r.codigo }} · {{ r.nombre }}
                   </option>
                 </select>
-                <ChevronDown class="w-3.5 h-3.5 absolute right-2.5 top-2.5 pointer-events-none text-[#0D0D0D]" />
+                <ChevronDown class="w-3.5 h-3.5 absolute right-3 top-2.5 pointer-events-none text-[#004B97]" />
               </div>
             </div>
           </div>
         </div>
 
         <!-- 2. Card Información del Cliente (Búsqueda Rápida + Autocompletado) -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4">
+        <div class="studio-card p-5 sm:p-6 space-y-4">
           <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-            <h2 class="text-base font-bold text-[#131523] flex items-center gap-2">
-              <UserCheck class="w-4 h-4 text-[#04c4d9]" />
+            <h2 class="text-base font-bold font-display text-[#0D1B3E] flex items-center gap-2">
+              <UserCheck class="w-4 h-4 text-[#004B97]" />
               Información del Cliente / Taller
             </h2>
             <div v-if="selectedCustomerId || selectedCustomerCode" class="flex items-center gap-2">
-              <span class="text-xs text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200 flex items-center gap-1.5">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span class="text-xs text-[#038391] bg-cyan-50 px-2.5 py-0.5 rounded-full font-semibold border border-cyan-200 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#04C4D9]"></span>
                 Cliente Registrado: <span class="font-mono font-bold">{{ selectedCustomerCode }}</span>
               </span>
               <button 
                 type="button" 
                 @click="clearSelectedCustomer" 
-                class="text-[11px] text-slate-400 hover:text-rose-600 transition"
+                class="text-[11px] text-slate-400 hover:text-rose-600 transition cursor-pointer"
                 title="Desvincular cliente"
               >
                 (Cambiar)
@@ -1314,13 +1314,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 @keydown.esc="showClientDropdown = false"
                 type="text"
                 placeholder="Buscar por código (ej. CLI-001, TAL-001), nombre o taller (clic para ver todos)..."
-                class="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
+                class="w-full pl-9 pr-9 py-2.5 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
               <button
                 v-if="clientSearchQuery"
                 type="button"
                 @click.stop="clearClientSearch"
-                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition"
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
                 title="Limpiar búsqueda"
               >
                 <X class="w-3.5 h-3.5" />
@@ -1329,15 +1329,15 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <!-- Dropdown de resultados de búsqueda -->
               <div
                 v-if="showClientDropdown"
-                class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100"
+                class="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100 popover-pop-in"
               >
                 <!-- Cabecera de estado de la lista -->
-                <div class="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 sticky top-0 z-10">
+                <div class="px-3.5 py-2 bg-[#19314D] text-[10px] font-bold text-sky-100 uppercase tracking-wider flex items-center justify-between border-b border-white/10 sticky top-0 z-10">
                   <span>
                     {{ clientSearchQuery.trim() ? 'Resultados filtrados' : 'Todos los clientes registrados' }}
                     ({{ clientSearchResults.length }})
                   </span>
-                  <span class="text-[10px] text-slate-400 font-normal">
+                  <span class="text-[10px] text-[#BFEBF2] font-medium">
                     {{ isSearchingClients ? 'Cargando...' : 'Clic para seleccionar' }}
                   </span>
                 </div>
@@ -1355,21 +1355,21 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   v-for="c in clientSearchResults"
                   :key="c.id"
                   @mousedown.prevent="selectCustomer(c)"
-                  class="p-3 hover:bg-cyan-50/60 cursor-pointer transition flex items-center justify-between gap-3 group"
+                  class="p-3 hover:bg-sky-50/70 cursor-pointer transition flex items-center justify-between gap-3 group"
                 >
                   <div class="flex items-center gap-2.5 min-w-0">
                     <span 
                       :class="[
-                        'px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0',
+                        'px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0',
                         c.tipo === 'Tallerista' 
-                          ? 'bg-amber-100 text-amber-800 border border-amber-200' 
-                          : 'bg-cyan-100 text-[#038896] border border-cyan-200'
+                          ? 'bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2]' 
+                          : 'bg-[#E8F1FA] text-[#1B4978] border border-[#CFE1F4]'
                       ]"
                     >
                       {{ c.codigo || (c.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
                     </span>
                     <div class="truncate">
-                      <div class="text-xs font-bold text-slate-900 group-hover:text-[#04c4d9] transition truncate">
+                      <div class="text-xs font-bold text-slate-900 group-hover:text-[#004B97] transition truncate">
                         {{ c.nombre }}
                       </div>
                       <div class="text-[11px] text-slate-500 truncate">
@@ -1384,13 +1384,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </div>
                   </div>
                   <div class="text-right shrink-0 flex flex-col items-end gap-1">
-                    <span v-if="c.telefono" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">
+                    <span v-if="c.telefono" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded-md text-slate-600 font-mono">
                       {{ c.telefono }}
                     </span>
                     <span 
                       :class="[
                         'text-[9px] px-1.5 py-0.2 rounded font-semibold',
-                        c.estado === 'Inactivo' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+                        c.estado === 'Inactivo' ? 'bg-rose-50 text-rose-600' : 'bg-cyan-50 text-[#038391]'
                       ]"
                     >
                       {{ c.estado || 'Activo' }}
@@ -1412,9 +1412,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <button
               type="button"
               @click="showNewClientModal = true"
-              class="px-4 py-2 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition whitespace-nowrap"
+              class="px-4 py-2.5 bg-[#1E446E] hover:bg-[#19314D] text-white text-xs font-bold rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition whitespace-nowrap cursor-pointer"
             >
-              <Plus class="w-4 h-4" />
+              <Plus class="w-4 h-4 text-[#BFEBF2]" />
               Nuevo Cliente
             </button>
           </div>
@@ -1429,7 +1429,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 v-model="clientName"
                 type="text"
                 placeholder="Ej. Juan Pérez"
-                class="w-full px-3 py-1.5 rounded-md text-xs font-medium transition bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                class="w-full px-3 py-2 rounded-xl text-xs font-medium transition bg-slate-50/90 border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
               />
             </div>
             <div class="space-y-1">
@@ -1438,7 +1438,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 v-model="clientWorkshop"
                 type="text"
                 placeholder="Ej. Taller Mecánico Gómez"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                class="w-full px-3 py-2 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
             <div class="space-y-1">
@@ -1447,7 +1447,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 v-model="clientPhone"
                 type="text"
                 placeholder="Ej. +52 81 1234 5678"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                class="w-full px-3 py-2 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
             <div class="space-y-1">
@@ -1456,16 +1456,18 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 v-model="clientAddress"
                 type="text"
                 placeholder="Ej. Av. Madero 123"
-                class="w-full px-3 py-1.5 bg-[#f4f4f4] border border-slate-300 rounded-md text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]"
+                class="w-full px-3 py-2 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
           </div>
         </div>
 
         <!-- 3. Card Información del Vehículo / Motor -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 p-5 sm:p-6 space-y-4">
-          <h2 class="text-base font-bold text-[#131523] border-b pb-3 border-slate-100 flex items-center gap-2">
-            <Building class="w-4 h-4 text-[#04c4d9]" />
+        <div class="studio-card p-5 sm:p-6 space-y-4">
+          <h2 class="font-display text-base font-extrabold text-[#0D1B3E] border-b pb-3 border-slate-100 flex items-center gap-2">
+            <span class="w-7 h-7 rounded-lg bg-cyan-50 text-[#04C4D9] border border-cyan-100 flex items-center justify-center">
+              <Building class="w-4 h-4" />
+            </span>
             Información del Vehículo / Motor
           </h2>
 
@@ -1486,16 +1488,16 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   type="text"
                   placeholder="Ej. Toyota, Nissan, Cummins"
                   :class="[
-                    'w-full px-3 py-1.5 pr-7 rounded-md text-xs font-medium transition',
+                    'w-full px-3 py-2 pr-8 rounded-xl text-xs font-medium transition',
                     formErrors.vehicleBrand
                       ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
-                      : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                      : 'bg-slate-50 border border-slate-200 text-[#0D1B3E] focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20'
                   ]"
                 />
                 <button
                   type="button"
                   @click="isBrandSuggestionsOpen = !isBrandSuggestionsOpen"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 transition"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#004B97] p-0.5 transition"
                   tabindex="-1"
                 >
                   <ChevronDown class="w-3.5 h-3.5" />
@@ -1508,14 +1510,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <!-- Dropdown de Sugerencias de Marca -->
               <div
                 v-if="isBrandSuggestionsOpen && filteredBrandSuggestions.length > 0"
-                class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-slate-200 z-50 max-h-48 overflow-y-auto py-1 divide-y divide-slate-50"
+                class="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 z-30 max-h-48 overflow-y-auto py-1 divide-y divide-slate-100"
               >
                 <button
                   v-for="b in filteredBrandSuggestions"
                   :key="b"
                   type="button"
                   @click="selectBrandSuggestion(b)"
-                  class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-cyan-50 hover:text-[#038391] font-semibold transition flex items-center justify-between"
+                  class="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#004B97] font-semibold transition flex items-center justify-between"
                 >
                   <span>{{ b }}</span>
                   <span class="text-[10px] text-slate-400 font-normal">Marca</span>
@@ -1539,16 +1541,16 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   type="text"
                   placeholder="Ej. 3L, 22R, Z24, 1KD, ISX15"
                   :class="[
-                    'w-full px-3 py-1.5 pr-7 rounded-md text-xs font-medium transition',
+                    'w-full px-3 py-2 pr-8 rounded-xl text-xs font-medium transition',
                     formErrors.vehicleEngine
                       ? 'error-required-field bg-rose-50/90 border-2 border-rose-500 text-rose-900 placeholder-rose-300 ring-2 ring-rose-200 focus:outline-none focus:border-rose-600'
-                      : 'bg-[#f4f4f4] border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#04c4d9]'
+                      : 'bg-slate-50 border border-slate-200 text-[#0D1B3E] focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20'
                   ]"
                 />
                 <button
                   type="button"
                   @click="isEngineSuggestionsOpen = !isEngineSuggestionsOpen"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 transition"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#004B97] p-0.5 transition"
                   tabindex="-1"
                 >
                   <ChevronDown class="w-3.5 h-3.5" />
@@ -1561,14 +1563,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <!-- Dropdown de Sugerencias de Motor -->
               <div
                 v-if="isEngineSuggestionsOpen && filteredEngineSuggestions.length > 0"
-                class="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-slate-200 z-50 max-h-48 overflow-y-auto py-1 divide-y divide-slate-50"
+                class="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 z-30 max-h-48 overflow-y-auto py-1 divide-y divide-slate-100"
               >
                 <button
                   v-for="m in filteredEngineSuggestions"
                   :key="m"
                   type="button"
                   @click="selectEngineSuggestion(m)"
-                  class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-cyan-50 hover:text-[#038391] font-semibold transition flex items-center justify-between"
+                  class="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#004B97] font-semibold transition flex items-center justify-between"
                 >
                   <span class="font-mono font-bold">{{ m }}</span>
                   <span class="text-[10px] text-slate-400 font-normal">Código Motor</span>
@@ -1579,16 +1581,18 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         </div>
 
         <!-- 4. Card Formulario Unificado de Servicios de Rectificación (Todas las opciones en lista) -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <div class="studio-card overflow-hidden">
           <!-- Encabezado de la Sección -->
-          <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+          <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F4F8FC]">
             <div>
               <div class="flex items-center gap-2">
-                <h2 class="text-base font-bold text-[#131523] flex items-center gap-2">
-                  <Wrench class="w-4 h-4 text-[#04c4d9]" />
+                <span class="w-7 h-7 rounded-lg bg-[#E8F1FA] text-[#1B4978] border border-[#CFE1F4] flex items-center justify-center">
+                  <Wrench class="w-4 h-4" />
+                </span>
+                <h2 class="font-display text-base font-extrabold text-[#0F1E2E] flex items-center gap-2">
                   Servicios y Operaciones de Rectificación
                 </h2>
-                <span class="text-xs bg-cyan-50 text-cyan-800 font-bold px-2 py-0.5 rounded-full border border-cyan-200">
+                <span class="text-xs bg-[#E3F5F8] text-[#12697A] font-bold px-2.5 py-0.5 rounded-full border border-[#C1E8EF]">
                   {{ activeBilledOperations.length }} con datos
                 </span>
               </div>
@@ -1596,9 +1600,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 Todas las operaciones listadas tienen <strong>ingreso de precios 100% manual</strong> (sin costos automáticos). Ingresa cantidad y precio únicamente en las que se van a facturar.
               </p>
             </div>
-            <div class="text-right">
+            <div class="text-right shrink-0">
               <span class="text-xs text-slate-500">Subtotal Mano de Obra:</span>
-              <span class="text-lg font-black text-[#04c4d9] ml-2">${{ laborTotal.toFixed(2) }}</span>
+              <span class="font-display text-xl font-extrabold text-[#004B97] ml-2">${{ laborTotal.toFixed(2) }}</span>
             </div>
           </div>
 
@@ -1612,10 +1616,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           </div>
 
           <!-- Barra de Filtros y Búsqueda Rápida en la lista -->
-          <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3">
+          <div class="p-3.5 bg-slate-50/80 border-b border-slate-100 flex flex-col md:flex-row items-center justify-between gap-3">
             <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
               <span class="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
-                <Filter class="w-3 h-3" /> Ver:
+                <Filter class="w-3 h-3 text-[#04C4D9]" /> Ver:
               </span>
               <button
                 v-for="cat in ['Todos', 'Bielas', 'Bancadas', 'Cigüeñal', 'Culata', 'Block', 'Repuestos', 'ConDatos']"
@@ -1623,10 +1627,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 type="button"
                 @click="operationFilterCategory = cat"
                 :class="[
-                  'px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition',
+                  'px-2.5 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer active:scale-[0.97]',
                   operationFilterCategory === cat
-                    ? 'bg-[#04c4d9] text-white shadow-xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    ? 'bg-[#004B97] text-white shadow-sm'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-[#04C4D9] hover:text-[#0D1B3E]'
                 ]"
               >
                 {{ cat === 'ConDatos' ? `Solo con Datos (${activeBilledOperations.length})` : cat }}
@@ -1635,14 +1639,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
             <!-- Input de búsqueda en la lista de operaciones -->
             <div class="relative w-full md:w-56">
-              <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                 <Search class="w-3.5 h-3.5" />
               </div>
               <input
                 v-model="operationSearchQuery"
                 type="text"
                 placeholder="Filtrar operación..."
-                class="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                class="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-[#0D1B3E] placeholder-slate-400 focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
               />
             </div>
           </div>
@@ -1650,24 +1654,24 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <!-- Tabla Unificada de Todas las Operaciones de Rectificación -->
           <div class="overflow-x-auto max-h-[520px]">
             <table class="w-full text-xs">
-              <thead class="bg-slate-100/90 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider sticky top-0 z-10">
+              <thead class="studio-table-head font-mono text-[10px] font-bold uppercase tracking-wider sticky top-0 z-10">
                 <tr>
-                  <th class="px-3 py-2.5 text-center w-10">Act.</th>
-                  <th class="px-4 py-2.5 text-left w-24">Componente</th>
-                  <th class="px-4 py-2.5 text-left">
+                  <th class="px-3 py-3 text-center w-10">Act.</th>
+                  <th class="px-4 py-3 text-left w-24">Componente</th>
+                  <th class="px-4 py-3 text-left">
                     Operación de Rectificación
                     <span class="block text-[9px] font-normal text-slate-500 lowercase">editable en esta orden</span>
                   </th>
-                  <th class="px-3 py-2.5 text-center w-24">Cantidad</th>
-                  <th class="px-4 py-2.5 text-right w-28">
+                  <th class="px-3 py-3 text-center w-24">Cantidad</th>
+                  <th class="px-4 py-3 text-right w-28">
                     Precio U. ($)
                     <span class="block text-[9px] font-normal text-slate-500 lowercase">manual / auto</span>
                   </th>
-                  <th class="px-4 py-2.5 text-right w-28">
+                  <th class="px-4 py-3 text-right w-28">
                     Sub Total ($)
                     <span class="block text-[9px] font-normal text-slate-500 lowercase">manual / auto</span>
                   </th>
-                  <th class="px-2 py-2.5 text-center w-10"></th>
+                  <th class="px-2 py-3 text-center w-10"></th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
@@ -1677,8 +1681,8 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   :class="[
                     'transition',
                     op.selected && op.quantity !== null && Number(op.quantity) > 0 && ((op.unitPrice !== null && Number(op.unitPrice) > 0) || (op.subtotal !== null && Number(op.subtotal) > 0))
-                      ? 'bg-cyan-50/60 hover:bg-cyan-50'
-                      : 'hover:bg-slate-50/70'
+                      ? 'bg-blue-50/60 hover:bg-blue-50'
+                      : 'hover:bg-slate-50/80'
                   ]"
                 >
                   <!-- Checkbox de activación -->
@@ -1687,13 +1691,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       v-model="op.selected"
                       @change="handleRowToggle(op)"
                       type="checkbox"
-                      class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] cursor-pointer"
+                      class="w-4 h-4 accent-[#004B97] text-[#004B97] rounded border-slate-300 focus:ring-[#04C4D9] cursor-pointer"
                     />
                   </td>
 
                   <!-- Categoría / Componente -->
                   <td class="px-4 py-2.5 font-bold">
-                    <span :class="['inline-block px-2 py-0.5 rounded text-[10px] font-bold border', getCategoryBadgeClass(op.category)]">
+                    <span :class="['inline-block px-2 py-0.5 rounded-lg text-[10px] font-bold border', getCategoryBadgeClass(op.category)]">
                       {{ op.category }}
                     </span>
                   </td>
@@ -1706,33 +1710,33 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                         v-model="op.operation"
                         type="text"
                         placeholder="Descripción de la operación..."
-                        class="w-full px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        class="w-full px-2.5 py-1 text-xs rounded-lg border transition placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25"
                         :class="[
                           op.selected 
-                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
-                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                            ? 'bg-blue-50/70 border-blue-300 font-bold text-[#0D1B3E] focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04C4D9]'
                         ]"
                       />
                       <div class="flex flex-wrap items-center gap-2">
                         <!-- Selector Banco -->
-                        <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
+                        <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
                           <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Banco:</span>
                           <select
                             v-model="op.measureBanco"
                             @change="handleMeasureChange(op)"
-                            class="bg-white border border-slate-300 text-xs font-semibold text-slate-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04c4d9] cursor-pointer"
+                            class="bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04C4D9] cursor-pointer"
                           >
                             <option value="">Medida</option>
                             <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
                           </select>
                         </div>
                         <!-- Selector Biela -->
-                        <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs">
+                        <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
                           <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Biela:</span>
                           <select
                             v-model="op.measureBiela"
                             @change="handleMeasureChange(op)"
-                            class="bg-white border border-slate-300 text-xs font-semibold text-slate-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04c4d9] cursor-pointer"
+                            class="bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04C4D9] cursor-pointer"
                           >
                             <option value="">Medida</option>
                             <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
@@ -1747,19 +1751,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                         v-model="op.operation"
                         type="text"
                         placeholder="Descripción de la operación..."
-                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        class="flex-1 px-2.5 py-1 text-xs rounded-lg border transition placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25"
                         :class="[
                           op.selected 
-                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
-                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                            ? 'bg-blue-50/70 border-blue-300 font-bold text-[#0D1B3E] focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04C4D9]'
                         ]"
                       />
-                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
+                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
                         <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Tipo:</span>
                         <select
                           v-model="op.measure"
                           @change="handleMeasureChange(op)"
-                          class="bg-white border border-slate-300 text-xs font-semibold text-slate-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04c4d9] cursor-pointer"
+                          class="bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04C4D9] cursor-pointer"
                         >
                           <option value="">Tipo</option>
                           <option v-for="t in VALVE_TYPE_OPTIONS" :key="t" :value="t">{{ t }}</option>
@@ -1773,19 +1777,19 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                         v-model="op.operation"
                         type="text"
                         placeholder="Descripción de la operación..."
-                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        class="flex-1 px-2.5 py-1 text-xs rounded-lg border transition placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25"
                         :class="[
                           op.selected 
-                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
-                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                            ? 'bg-blue-50/70 border-blue-300 font-bold text-[#0D1B3E] focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04C4D9]'
                         ]"
                       />
-                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
+                      <div class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs shrink-0 self-start sm:self-auto">
                         <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Medida:</span>
                         <select
                           v-model="op.measure"
                           @change="handleMeasureChange(op)"
-                          class="bg-white border border-slate-300 text-xs font-semibold text-slate-800 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04c4d9] cursor-pointer"
+                          class="bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#04C4D9] cursor-pointer"
                         >
                           <option value="">Medida</option>
                           <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
@@ -1799,14 +1803,14 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                         v-model="op.operation"
                         type="text"
                         placeholder="Descripción de la operación..."
-                        class="flex-1 px-2.5 py-1 text-xs rounded-md border transition placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                        class="flex-1 px-2.5 py-1 text-xs rounded-lg border transition placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25"
                         :class="[
                           op.selected 
-                            ? 'bg-cyan-50/50 border-cyan-300 font-bold text-cyan-950 focus:bg-white' 
-                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04c4d9]'
+                            ? 'bg-blue-50/70 border-blue-300 font-bold text-[#0D1B3E] focus:bg-white' 
+                            : 'bg-slate-50/80 hover:bg-white border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04C4D9]'
                         ]"
                       />
-                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                      <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded-md text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
                         Especial
                       </span>
                     </div>
@@ -1820,7 +1824,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       type="number"
                       min="0"
                       placeholder="-"
-                      class="w-16 text-center border border-slate-300 rounded-md py-1 font-bold text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+                      class="w-16 text-center border border-slate-200 rounded-lg py-1 font-bold text-[#0D1B3E] bg-white focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
                     />
                   </td>
 
@@ -1834,10 +1838,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       min="0"
                       placeholder="$ 0.00"
                       :class="[
-                        'w-24 text-right rounded-md py-1 px-2 font-bold text-xs transition focus:outline-none focus:ring-1 focus:ring-[#04c4d9]',
+                        'w-24 text-right rounded-lg py-1 px-2 font-bold text-xs transition focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20',
                         op.selected && (!op.unitPrice || op.unitPrice <= 0)
                           ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900 placeholder-amber-400 ring-1 ring-amber-200'
-                          : 'border border-slate-300 bg-white text-slate-900'
+                          : 'border border-slate-200 bg-white text-[#0D1B3E]'
                       ]"
                       title="Ingresa precio unitario o escribe subtotal para cálculo automático"
                     />
@@ -1853,10 +1857,10 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                       min="0"
                       placeholder="$ 0.00"
                       :class="[
-                        'w-24 text-right rounded-md py-1 px-2 font-bold text-xs transition focus:outline-none focus:ring-1 focus:ring-[#04c4d9]',
+                        'w-24 text-right rounded-lg py-1 px-2 font-bold text-xs transition focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20',
                         op.selected && op.subtotal && op.subtotal > 0
-                          ? 'border border-cyan-400 bg-cyan-50/40 text-slate-900 font-black'
-                          : 'border border-slate-300 bg-white text-slate-900'
+                          ? 'border border-blue-300 bg-blue-50/60 text-[#004B97] font-black'
+                          : 'border border-slate-200 bg-white text-[#0D1B3E]'
                       ]"
                       title="Ingresa el subtotal directamente o se calculará automáticamente con cantidad y precio"
                     />
@@ -1895,8 +1899,8 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           </div>
 
           <!-- Pie: Agregar operación especial personalizada si el trabajo lo requiere -->
-          <div class="p-4 bg-slate-50 border-t border-slate-200">
-            <span class="text-[11px] font-bold text-slate-600 block mb-2">
+          <div class="p-4 bg-slate-50/80 border-t border-slate-100">
+            <span class="text-[11px] font-bold text-[#004B97] block mb-2">
               + ¿Requieres agregar una operación especial no listada?
             </span>
             <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
@@ -1904,7 +1908,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 <label class="block text-[10px] font-bold text-slate-500 mb-1">Componente:</label>
                 <select
                   v-model="customCategory"
-                  class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-semibold"
+                  class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
                 >
                   <option value="Bielas">Bielas</option>
                   <option value="Bancadas">Bancadas</option>
@@ -1920,7 +1924,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   v-model="customOpName"
                   type="text"
                   placeholder="Ej. Rectificar o adaptar pieza..."
-                  class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-md text-xs"
+                  class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
                   @keyup.enter="addCustomOperation"
                 />
               </div>
@@ -1932,7 +1936,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   type="number"
                   min="1"
                   placeholder="1"
-                  class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-center font-bold"
+                  class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-center font-bold text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
                   @keyup.enter="addCustomOperation"
                 />
               </div>
@@ -1945,13 +1949,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   step="0.01"
                   min="0"
                   placeholder="$ 0.00"
-                  class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md text-xs text-right font-medium"
+                  class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-right font-medium text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
                   @keyup.enter="addCustomOperation"
                   title="Ingresa precio unitario o escribe subtotal para cálculo automático"
                 />
               </div>
               <div class="sm:col-span-2">
-                <label class="block text-[10px] font-bold text-cyan-700 mb-1 text-right">Subtotal ($):</label>
+                <label class="block text-[10px] font-bold text-[#004B97] mb-1 text-right">Subtotal ($):</label>
                 <input
                   v-model.number="customOpSubtotal"
                   @input="handleCustomOpSubtotalChange"
@@ -1959,7 +1963,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   step="0.01"
                   min="0"
                   placeholder="$ 0.00"
-                  class="w-full px-2.5 py-1.5 bg-cyan-50/60 border border-cyan-300 rounded-md text-xs text-right font-bold text-slate-900"
+                  class="w-full px-2.5 py-1.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-right font-bold text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
                   @keyup.enter="addCustomOperation"
                   title="Ingresa subtotal manual y el precio unitario se calculará automáticamente"
                 />
@@ -1968,7 +1972,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 <button
                   type="button"
                   @click="addCustomOperation"
-                  class="w-full py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                  class="w-full py-1.5 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.97] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
                   title="Agregar servicio"
                 >
                   <Plus class="w-3.5 h-3.5" />
@@ -1985,28 +1989,30 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <div class="lg:col-span-5 xl:col-span-4 space-y-6">
 
         <!-- Card Materiales / Insumos de Taller (Solo nombre del material, sin precio $) -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
-          <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-            <h2 class="text-sm font-bold text-[#131523] flex items-center gap-1.5">
-              <Layers class="w-4 h-4 text-[#04c4d9]" />
+        <div class="studio-card overflow-hidden">
+          <div class="p-4 sm:p-5 border-b border-slate-100 bg-[#F4F8FC] flex items-center justify-between">
+            <h2 class="font-display text-sm font-extrabold text-[#0F1E2E] flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center">
+                <Layers class="w-3.5 h-3.5" />
+              </span>
               Materiales e Insumos
             </h2>
-            <span class="text-xs text-slate-400 font-semibold">{{ materials.length }} registrado(s)</span>
+            <span class="text-xs text-[#1B4978] font-mono font-bold">{{ materials.length }} registrado(s)</span>
           </div>
 
           <!-- Input rápido para agregar material (solo nombre) -->
-          <div class="p-3 bg-slate-50 border-b border-slate-200 flex gap-2 items-center">
+          <div class="p-3 bg-slate-50/80 border-b border-slate-100 flex gap-2 items-center">
             <input
               v-model="customMaterialName"
               type="text"
               placeholder="Nombre del material (ej. Desengrasante, sellador, lija...)"
-              class="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#04c4d9]"
+              class="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
               @keyup.enter="addMaterial"
             />
             <button
               type="button"
               @click="addMaterial"
-              class="px-3 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 transition cursor-pointer"
+              class="px-3 py-1.5 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.97] text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1 transition cursor-pointer"
             >
               <Plus class="w-3.5 h-3.5" /> Agregar
             </button>
@@ -2017,7 +2023,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <div
                 v-for="m in materials"
                 :key="m.id"
-                class="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 text-xs px-2.5 py-1 rounded-lg font-medium transition"
+                class="inline-flex items-center gap-2 bg-blue-50/70 hover:bg-blue-50 border border-blue-200/80 text-[#0D1B3E] text-xs px-2.5 py-1 rounded-xl font-medium transition"
               >
                 <span>{{ m.name }}</span>
                 <button
@@ -2037,12 +2043,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
         </div>
 
         <!-- Card Resumen de la Orden -->
-        <div class="bg-white rounded-xl shadow-md border border-slate-200/80 p-6 space-y-4">
+        <div class="studio-card p-6 space-y-4">
           <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-            <h2 class="text-base font-bold text-[#131523]">
+            <h2 class="font-display text-base font-extrabold text-[#0D1B3E]">
               Resumen de la Orden
             </h2>
-            <span class="text-xs text-slate-500 font-semibold">
+            <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#004B97] text-xs font-bold">
               {{ activeBilledOperations.length }} operaciones activas
             </span>
           </div>
@@ -2050,7 +2056,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <div class="space-y-2 text-xs text-slate-700">
             <div class="flex justify-between items-center">
               <span>Mano de Obra (Rectificación):</span>
-              <span class="font-bold text-slate-900">${{ laborTotal.toFixed(2) }}</span>
+              <span class="font-mono font-bold text-[#0D1B3E]">${{ laborTotal.toFixed(2) }}</span>
             </div>
             <div v-if="materials.length > 0" class="flex justify-between items-center text-slate-500">
               <span>Materiales Registrados:</span>
@@ -2059,20 +2065,20 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           </div>
 
           <!-- Opción de IVA (13%) -->
-          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+          <div class="p-3 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-2">
             <div class="flex items-center justify-between">
               <label for="toggle-iva" class="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   id="toggle-iva"
                   type="checkbox"
                   v-model="applyIva"
-                  class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] focus:ring-2 cursor-pointer"
+                  class="w-4 h-4 accent-[#004B97] text-[#004B97] rounded border-slate-300 focus:ring-[#04C4D9] focus:ring-2 cursor-pointer"
                 />
-                <span class="text-xs font-bold text-slate-800">
+                <span class="text-xs font-bold text-[#0D1B3E]">
                   Aplicar IVA ({{ ivaPercentage }}%)
                 </span>
               </label>
-              <span v-if="applyIva" class="text-xs font-extrabold text-[#04c4d9] font-mono">
+              <span v-if="applyIva" class="text-xs font-extrabold text-[#004B97] font-mono">
                 +${{ ivaAmount.toFixed(2) }}
               </span>
             </div>
@@ -2085,35 +2091,35 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <div v-if="applyIva" class="space-y-1.5 text-xs text-slate-700 pt-2 border-t border-slate-100">
             <div class="flex justify-between items-center">
               <span class="font-medium text-slate-600">Sub-Total (Mano de Obra):</span>
-              <span class="font-bold text-slate-900 font-mono">${{ laborTotal.toFixed(2) }}</span>
+              <span class="font-bold text-[#0D1B3E] font-mono">${{ laborTotal.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between items-center">
               <span class="font-medium text-slate-600">IVA ({{ ivaPercentage }}%):</span>
-              <span class="font-bold text-slate-900 font-mono">${{ ivaAmount.toFixed(2) }}</span>
+              <span class="font-bold text-[#0D1B3E] font-mono">${{ ivaAmount.toFixed(2) }}</span>
             </div>
           </div>
 
-          <div class="pt-3 border-t-2 border-slate-900 flex justify-between items-baseline">
-            <span class="text-base font-bold text-slate-900">
+          <div class="pt-3 border-t-2 border-[#0D1B3E] flex justify-between items-baseline">
+            <span class="font-display text-base font-extrabold text-[#0D1B3E]">
               {{ applyIva ? 'Total del Trabajo:' : 'Total General:' }}
             </span>
-            <span class="text-3xl font-black text-[#04c4d9]">
+            <span class="font-display tabular-nums text-3xl font-extrabold text-[#004B97]">
               ${{ totalOrder.toFixed(2) }}
             </span>
           </div>
 
           <!-- Selector Tipo: Orden de Taller vs Cotización B/N (Ubicado debajo de Total General) -->
-          <div class="pt-3 border-t border-slate-200">
+          <div class="pt-3 border-t border-slate-100">
             <label class="text-[11px] font-bold text-slate-600 block mb-1.5">
               Tipo de Documento:
             </label>
-            <div class="flex items-center gap-2 bg-slate-200/80 p-1 rounded-xl">
+            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/70">
               <button
                 type="button"
                 @click="docType = 'orden'"
                 :class="[
-                  'flex-1 px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5',
-                  docType === 'orden' ? 'bg-[#04c4d9] text-white shadow' : 'text-slate-700 hover:text-slate-900'
+                  'flex-1 px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer',
+                  docType === 'orden' ? 'bg-[#004B97] text-white shadow-sm' : 'text-slate-700 hover:text-[#0D1B3E]'
                 ]"
               >
                 <Wrench class="w-3.5 h-3.5" />
@@ -2123,8 +2129,8 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 type="button"
                 @click="docType = 'cotizacion'"
                 :class="[
-                  'flex-1 px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5',
-                  docType === 'cotizacion' ? 'bg-slate-800 text-white shadow' : 'text-slate-700 hover:text-slate-900'
+                  'flex-1 px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer',
+                  docType === 'cotizacion' ? 'bg-[#0D1B3E] text-white shadow-sm' : 'text-slate-700 hover:text-[#0D1B3E]'
                 ]"
               >
                 <Clock class="w-3.5 h-3.5" />
@@ -2139,7 +2145,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               type="button"
               @click="handleSaveOrder"
               :disabled="isSubmitting"
-              class="w-full py-3.5 bg-[#04c4d9] hover:bg-[#03a9bc] active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
+              class="studio-cta-primary w-full py-3.5 font-bold text-sm rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               <Save class="w-4 h-4" />
               <Printer class="w-4 h-4" />
@@ -2149,7 +2155,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <button
               type="button"
               @click="emit('close')"
-              class="w-full py-2.5 bg-transparent border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl transition"
+              class="w-full py-2.5 bg-transparent border border-slate-200 hover:bg-slate-50 text-slate-600 font-semibold text-xs rounded-xl transition cursor-pointer"
             >
               Cancelar
             </button>
@@ -2160,26 +2166,26 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
     </div>
 
     <!-- Modal para Agregar Repuesto del Catálogo -->
-    <div v-if="showCatalogModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 space-y-4 border border-slate-200">
-        <div class="flex justify-between items-center border-b pb-3">
-          <h3 class="font-bold text-base text-slate-900">Seleccionar Repuesto del Catálogo</h3>
-          <button @click="showCatalogModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+    <div v-if="showCatalogModal" class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="studio-card max-w-xl w-full overflow-hidden shadow-2xl">
+        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-6 py-4 flex justify-between items-center">
+          <h3 class="font-display font-extrabold text-base text-white">Seleccionar Repuesto del Catálogo</h3>
+          <button @click="showCatalogModal = false" class="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer">✕</button>
         </div>
 
-        <div class="space-y-4">
+        <div class="p-6 space-y-4">
           <!-- Repuestos frecuentes de rectificadora del Excel -->
           <div>
-            <label class="text-xs font-bold text-slate-700 block mb-2">
+            <label class="text-xs font-bold text-[#0D1B3E] block mb-2">
               Repuestos Frecuentes de Rectificadora (Excel):
             </label>
-            <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+            <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2.5 bg-slate-50 rounded-xl border border-slate-200">
               <button
                 v-for="ep in excelStandardParts"
                 :key="ep"
                 type="button"
                 @click="addExcelPart(ep)"
-                class="px-2.5 py-1 text-[11px] font-semibold bg-white hover:bg-cyan-500 hover:text-white text-slate-700 rounded-lg border border-slate-200 shadow-sm transition"
+                class="px-2.5 py-1 text-[11px] font-semibold bg-white hover:bg-[#004B97] hover:text-white text-[#0D1B3E] rounded-lg border border-slate-200 shadow-2xs transition cursor-pointer"
               >
                 + {{ ep }}
               </button>
@@ -2189,43 +2195,43 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
           <div>
             <label class="text-xs font-semibold text-slate-600 block mb-1.5">Repuestos Registrados en Catálogo:</label>
             <div class="max-h-36 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
-            <div
-              v-for="p in catalogProducts"
-              :key="p.id"
-              @click="addCatalogPart(p)"
-              class="p-3 hover:bg-cyan-50/60 cursor-pointer flex items-center justify-between text-xs transition"
-            >
-              <div>
-                <span class="font-bold text-slate-900">{{ p.name }}</span>
-                <span class="text-slate-400 ml-2">({{ p.code }})</span>
-                <div class="text-[10px] text-slate-500">{{ p.category }}</div>
+              <div
+                v-for="p in catalogProducts"
+                :key="p.id"
+                @click="addCatalogPart(p)"
+                class="p-3 hover:bg-blue-50/70 cursor-pointer flex items-center justify-between text-xs transition"
+              >
+                <div>
+                  <span class="font-bold text-[#0D1B3E]">{{ p.name }}</span>
+                  <span class="text-slate-400 ml-2">({{ p.code }})</span>
+                  <div class="text-[10px] text-slate-500">{{ p.category }}</div>
+                </div>
+                <span class="font-mono font-extrabold text-[#004B97]">${{ p.price.toFixed(2) }}</span>
               </div>
-              <span class="font-black text-slate-900">${{ p.price.toFixed(2) }}</span>
             </div>
           </div>
-          </div>
 
-          <div class="pt-2 border-t border-slate-200">
+          <div class="pt-3 border-t border-slate-100">
             <span class="text-xs font-semibold text-slate-600 block mb-2">O ingresa un repuesto manual:</span>
             <div class="grid grid-cols-3 gap-2">
               <input
                 v-model="customPartName"
                 type="text"
                 placeholder="Nombre del repuesto"
-                class="col-span-2 px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                class="col-span-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:border-[#04C4D9]"
               />
               <input
                 v-model.number="customPartPrice"
                 type="number"
                 step="0.5"
                 placeholder="Precio $"
-                class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs text-right"
+                class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-right focus:bg-white focus:outline-none focus:border-[#04C4D9]"
               />
             </div>
             <button
               type="button"
               @click="addCustomPart"
-              class="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition"
+              class="mt-2.5 w-full py-2.5 bg-[#004B97] hover:bg-[#0D1B3E] text-white rounded-xl text-xs font-bold transition cursor-pointer"
             >
               Agregar Repuesto Manual
             </button>
@@ -2235,20 +2241,20 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
     </div>
 
     <!-- Modal para Nuevo Cliente Rápido -->
-    <div v-if="showNewClientModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-slate-200">
-        <div class="flex justify-between items-center border-b pb-3">
-          <h3 class="font-bold text-base text-slate-900">Registrar Cliente / Taller</h3>
-          <button @click="showNewClientModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+    <div v-if="showNewClientModal" class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="studio-card max-w-md w-full overflow-hidden shadow-2xl">
+        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-6 py-4 flex justify-between items-center">
+          <h3 class="font-display font-extrabold text-base text-white">Registrar Cliente / Taller</h3>
+          <button @click="showNewClientModal = false" class="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer">✕</button>
         </div>
 
-        <div class="space-y-3">
+        <div class="p-6 space-y-3">
           <div>
             <label class="text-xs font-semibold text-slate-600">Nombre Completo *</label>
             <input
               v-model="newClientForm.nombre"
               type="text"
-              class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs mt-1"
+              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
               placeholder="Ej. Ing. Carlos Mendoza"
             />
           </div>
@@ -2257,7 +2263,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <input
               v-model="newClientForm.taller"
               type="text"
-              class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs mt-1"
+              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
               placeholder="Ej. Rectificadora del Norte"
             />
           </div>
@@ -2267,7 +2273,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <input
                 v-model="newClientForm.telefono"
                 type="text"
-                class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs mt-1"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                 placeholder="+52 81 8345 9912"
               />
             </div>
@@ -2277,24 +2283,24 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <input
               v-model="newClientForm.direccion"
               type="text"
-              class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs mt-1"
+              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
               placeholder="Calle, número, colonia..."
             />
           </div>
         </div>
 
-        <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+        <div class="px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex justify-end gap-2">
           <button
             type="button"
             @click="showNewClientModal = false"
-            class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            class="px-3.5 py-2 border border-slate-200 bg-white rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
           >
             Cancelar
           </button>
           <button
             type="button"
             @click="handleQuickCreateClient"
-            class="px-4 py-1.5 bg-[#04c4d9] hover:bg-[#03a9bc] text-white rounded-lg text-xs font-bold"
+            class="studio-cta-primary px-4 py-2 rounded-xl text-xs font-bold cursor-pointer"
           >
             Guardar y Seleccionar
           </button>

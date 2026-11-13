@@ -116,7 +116,7 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
     icono: 'CircleDot',
     tipo_vista: 'tabla',
     badge: 'Dinámica',
-    colorTag: 'emerald',
+    colorTag: 'sky',
     tabla_config: {
       titulo_primera_columna: 'Componente',
       modo_filas: 'subfilas',

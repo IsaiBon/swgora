@@ -6,6 +6,7 @@ import { useUiStore } from '@/stores/ui'
 import { useTallerStore } from '@/stores/taller'
 import { ordersService, type Order } from '@/services/ordersService'
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
+import { useAnimatedNumber } from '@/composables/useAnimatedNumber'
 import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
 import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
@@ -328,15 +329,15 @@ const getStatusBadge = (status: Order['status']) => {
   switch (status) {
     case 'Terminado':
     case 'Completada':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      return 'bg-cyan-50 text-[#038391] border-cyan-300'
     case 'En Proceso':
-      return 'bg-cyan-50 text-cyan-700 border-cyan-200'
+      return 'bg-sky-50 text-sky-700 border-sky-200'
     case 'Recibido':
       return 'bg-blue-50 text-blue-700 border-blue-200'
     case 'Diagnóstico':
       return 'bg-amber-50 text-amber-700 border-amber-200'
     case 'Pendiente':
-      return 'bg-orange-50 text-orange-700 border-orange-200'
+      return 'bg-[#F6F0E4] text-[#6E5835] border-[#E6DAC2]'
     case 'Entregado':
       return 'bg-purple-50 text-purple-700 border-purple-200'
     case 'Cancelada':
@@ -351,6 +352,11 @@ const totalOrdersCount = computed(() => scopedOrders.value.length)
 const activeOrdersCount = computed(() => scopedOrders.value.filter(o => o.status === 'En Proceso' || o.status === 'Diagnóstico' || o.status === 'Recibido').length)
 const completedOrdersCount = computed(() => scopedOrders.value.filter(o => o.status === 'Terminado' || o.status === 'Entregado' || o.status === 'Completada').length)
 const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc + (curr.total || 0), 0))
+
+const animatedTotalOrders = useAnimatedNumber(() => totalOrdersCount.value, 460)
+const animatedActiveOrders = useAnimatedNumber(() => activeOrdersCount.value, 460)
+const animatedCompletedOrders = useAnimatedNumber(() => completedOrdersCount.value, 460)
+const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
 </script>
 
 <template>
@@ -368,78 +374,121 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
 
     <!-- Vista 2: Listado de Órdenes y Cotizaciones -->
     <div v-else class="space-y-6">
-      <!-- Banner Exclusivo para Sub-Administrador de Ruta -->
-      <div
-        v-if="authStore.isSubAdmin"
-        class="rounded-2xl bg-[#0D0D0D] text-white border border-[#05C7F2]/50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
-      >
-        <div class="space-y-1">
-          <div class="inline-flex items-center gap-2 rounded-full bg-[#05C7F2]/20 border border-[#05F2F2]/40 px-3 py-0.5 text-[11px] font-bold text-[#05F2F2]">
-            <MapPin class="w-3.5 h-3.5 text-[#05F2F2]" />
-            <span>Panel Exclusivo de Sub-Administrador de Ruta</span>
+
+      <!-- Banner Hero de Órdenes -->
+      <section class="studio-hero-banner p-6 sm:p-7 text-white relative overflow-hidden">
+        <div class="pointer-events-none absolute -top-16 -right-12 w-60 h-60 rounded-full bg-[#04C4D9]/25 blur-3xl"></div>
+        <div class="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+          <div class="space-y-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15">
+              <span class="w-2 h-2 rounded-full bg-[#BFEBF2] animate-pulse"></span>
+              <span class="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#BFEBF2]">
+                ÓRDENES · TALLER DE RECTIFICACIÓN
+              </span>
+            </div>
+            <h1 class="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Órdenes de Trabajo y Cotizaciones
+            </h1>
+            <p class="text-xs sm:text-sm text-sky-100/85 max-w-xl">
+              Gestión y seguimiento de rectificación por componentes: Bielas, Bancadas, Cigüeñal, Culata y Block.
+            </p>
           </div>
-          <h2 class="text-lg sm:text-xl font-black text-white">
-            {{ authStore.activeRutaCodigo ? `${authStore.activeRutaCodigo} · ` : '' }}{{ authStore.activeRutaNombre || 'Ruta Asignada' }}
-          </h2>
-          <p class="text-xs text-[#F2F2F2]/75">
-            Estás viendo y administrando únicamente las órdenes de trabajo y cotizaciones pertenecientes a tu ruta asignada.
-          </p>
+
+          <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              @click="showOperationsModal = true"
+              class="inline-flex items-center px-3.5 py-2.5 text-xs font-bold text-white bg-white/12 hover:bg-white/20 active:scale-[0.97] border border-white/20 rounded-xl transition-all duration-150 cursor-pointer"
+              title="Editar y administrar la lista de operaciones y servicios del taller"
+            >
+              <SlidersHorizontal class="w-4 h-4 mr-1.5 text-[#BFEBF2]" />
+              Operaciones y Servicios
+            </button>
+
+            <button
+              type="button"
+              @click="openNewOrder"
+              class="studio-cta-primary inline-flex items-center px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl cursor-pointer"
+            >
+              <Plus class="w-4 h-4 mr-1.5 stroke-[2.5]" />
+              Nueva Orden de Trabajo
+            </button>
+          </div>
         </div>
-        <div class="shrink-0">
-          <button
-            type="button"
-            @click="openNewOrder"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-[#05C7F2] px-4 py-2.5 text-xs font-bold text-[#0D0D0D] hover:bg-[#05F2F2] transition cursor-pointer"
-          >
-            <Plus class="w-4 h-4 stroke-[2.5]" />
-            <span>Crear Orden en {{ authStore.activeRutaCodigo || 'mi Ruta' }}</span>
-          </button>
+
+        <!-- Banner Exclusivo para Sub-Administrador de Ruta -->
+        <div
+          v-if="authStore.isSubAdmin"
+          class="relative z-10 mt-5 bg-[#15365A] text-white border border-white/15 rounded-2xl px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div class="space-y-0.5">
+            <div class="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#BFEBF2]">
+              <MapPin class="w-3.5 h-3.5 text-[#BFEBF2]" />
+              <span>Ruta Asignada · {{ authStore.activeRutaCodigo ? `${authStore.activeRutaCodigo} · ` : '' }}{{ authStore.activeRutaNombre || 'Ruta' }}</span>
+            </div>
+            <p class="text-xs text-sky-100/90">
+              Visualizando y administrando únicamente las órdenes de trabajo y cotizaciones pertenecientes a tu ruta asignada.
+            </p>
+          </div>
+          <div class="shrink-0">
+            <button
+              type="button"
+              @click="openNewOrder"
+              class="studio-cta-primary inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold cursor-pointer"
+            >
+              <Plus class="w-4 h-4 stroke-[2.5]" />
+              <span>Crear Orden en {{ authStore.activeRutaCodigo || 'mi Ruta' }}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       <!-- Barra de Filtrado por Ruta / Sucursal para Administrador General -->
-      <div
-        v-else-if="authStore.isGlobalAdmin"
-        class="rounded-2xl bg-white border border-slate-200/80 p-4 shadow-xs space-y-3"
+      <section
+        v-if="authStore.isGlobalAdmin"
+        class="studio-card p-4 sm:p-5 space-y-3"
       >
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div class="flex items-center gap-2">
-            <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#0D0D0D] text-[#05F2F2]">
+            <span class="w-7 h-7 rounded-lg bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center">
               <MapPin class="w-4 h-4" />
             </span>
-            <div>
-              <h2 class="text-xs font-black uppercase tracking-wider text-[#0D0D0D]">
-                Filtrar Órdenes por Ruta / Sucursal
-              </h2>
-              <p class="text-[11px] text-slate-500">
-                Visualiza todas las órdenes del sistema o filtra por cada ruta y su Sub-Administrador.
-              </p>
-            </div>
+            <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-[#1B4978]">
+              Filtrar por Ruta / Sucursal
+            </span>
+            <span class="text-xs text-slate-500 hidden md:inline">
+              · Todas las órdenes o filtra por sucursal y Sub-Administrador
+            </span>
           </div>
 
           <button
             type="button"
             @click="router.push('/rutas')"
-            class="inline-flex items-center gap-1.5 rounded-xl bg-[#0D0D0D] px-3.5 py-2 text-xs font-bold text-[#05F2F2] hover:bg-[#05C7F2] hover:text-[#0D0D0D] transition cursor-pointer self-start sm:self-auto"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 hover:bg-[#004B97] text-[#004B97] hover:text-white border border-blue-200/80 px-3 py-1.5 text-[11px] font-bold active:scale-[0.98] transition-all duration-150 cursor-pointer self-start sm:self-auto"
           >
             <MapPin class="w-3.5 h-3.5" />
-            <span>Administrar Rutas y Sub-Admins ({{ rutas.length }})</span>
+            <span>Administrar Rutas ({{ rutas.length }})</span>
           </button>
         </div>
 
-        <div class="flex items-center gap-2 overflow-x-auto pb-1">
+        <div class="flex items-center gap-2 overflow-x-auto pb-0.5">
           <button
             type="button"
             @click="selectedRutaFilter = 'ALL'"
             :class="[
-              'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border',
+              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer border',
               selectedRutaFilter === 'ALL'
-                ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D] shadow-xs'
-                : 'bg-[#F2F2F2] text-[#0D0D0D]/80 border-transparent hover:border-[#04C4D9]'
+                ? 'bg-[#004B97] text-white border-[#004B97] shadow-sm'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-[#04C4D9] hover:bg-blue-50/40'
             ]"
           >
             <span>Todas las rutas</span>
-            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/15">{{ orders.length }}</span>
+            <span
+              class="font-mono px-1.5 py-0.5 rounded-md text-[10px]"
+              :class="selectedRutaFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-white text-slate-600 border border-slate-200'"
+            >
+              {{ orders.length }}
+            </span>
           </button>
 
           <button
@@ -448,15 +497,23 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
             type="button"
             @click="selectedRutaFilter = r.id"
             :class="[
-              'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border',
+              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer border',
               selectedRutaFilter === r.id
-                ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#05C7F2] shadow-xs'
-                : 'bg-white text-[#0D0D0D] border-slate-200 hover:border-[#04C4D9] hover:bg-[#05C7F2]/10'
+                ? 'bg-[#1E446E] text-white border-[#1E446E] shadow-sm'
+                : 'bg-slate-50 text-[#0F1E2E] border-slate-200 hover:border-[#9AD2DC] hover:bg-[#F4F8FC]'
             ]"
           >
-            <span class="font-mono text-[11px] font-black text-[#04C4D9]">{{ r.codigo }}</span>
+            <span
+              class="font-mono text-[11px] font-black"
+              :class="selectedRutaFilter === r.id ? 'text-[#BFEBF2]' : 'text-[#147488]'"
+            >
+              {{ r.codigo }}
+            </span>
             <span>{{ r.nombre }}</span>
-            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-[#0D0D0D] font-extrabold">
+            <span
+              class="font-mono px-1.5 py-0.5 rounded-md text-[10px] font-extrabold"
+              :class="selectedRutaFilter === r.id ? 'bg-white/20 text-white' : 'bg-white text-[#0D1B3E] border border-slate-200'"
+            >
               {{ countOrdersForRuta(r) }}
             </span>
           </button>
@@ -465,201 +522,198 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
             type="button"
             @click="selectedRutaFilter = 'UNASSIGNED'"
             :class="[
-              'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border',
+              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer border',
               selectedRutaFilter === 'UNASSIGNED'
-                ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D] shadow-xs'
-                : 'bg-[#F2F2F2] text-[#0D0D0D]/70 border-transparent hover:border-[#04C4D9]'
+                ? 'bg-[#004B97] text-white border-[#004B97] shadow-sm'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-[#04C4D9]'
             ]"
           >
             <span>General / Sin ruta</span>
-            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-black/10">{{ unassignedOrdersCount }}</span>
+            <span
+              class="font-mono px-1.5 py-0.5 rounded-md text-[10px]"
+              :class="selectedRutaFilter === 'UNASSIGNED' ? 'bg-white/20 text-white' : 'bg-white text-slate-600 border border-slate-200'"
+            >
+              {{ unassignedOrdersCount }}
+            </span>
           </button>
         </div>
-      </div>
+      </section>
 
-      <!-- Encabezado -->
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Órdenes de Trabajo y Cotizaciones</h1>
-            <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-300">
-              Taller de Rectificación
+      <!-- Tarjetas KPI Animadas -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        <div class="studio-kpi-card workshop-stagger-1 p-5 flex flex-col justify-between">
+          <div class="pointer-events-none absolute -top-8 -right-8 w-20 h-20 rounded-full bg-[#004B97]/12"></div>
+          <div class="relative z-10 flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Órdenes</span>
+            <span class="w-8 h-8 rounded-xl bg-blue-50 text-[#004B97] border border-blue-100 flex items-center justify-center shrink-0">
+              <FileText class="w-4 h-4" />
             </span>
           </div>
-          <p class="text-xs text-slate-500 mt-1">
-            Gestión y seguimiento de rectificación por componentes: Bielas, Bancadas, Cigüeñal, Culata y Block.
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            @click="showOperationsModal = true"
-            class="inline-flex items-center px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-xl shadow-xs transition"
-            title="Editar y administrar la lista de operaciones y servicios del taller"
-          >
-            <SlidersHorizontal class="w-4 h-4 mr-1.5 text-[#04c4d9]" />
-            Operaciones y Servicios
-          </button>
-
-          <button
-            type="button"
-            @click="openNewOrder"
-            class="inline-flex items-center px-4 py-2.5 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] active:bg-[#0296a6] rounded-xl shadow-sm transition"
-          >
-            <Plus class="w-4 h-4 mr-1.5" />
-            Nueva Orden de Trabajo
-          </button>
-        </div>
-      </div>
-
-      <!-- Tarjetas de Métricas Rápidas -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Órdenes</span>
-            <div class="text-2xl font-black text-slate-900 mt-0.5">{{ totalOrdersCount }}</div>
+          <div class="relative z-10 font-display tabular-nums text-2xl sm:text-3xl font-extrabold text-[#0D1B3E] mt-2">
+            {{ Math.round(animatedTotalOrders) }}
           </div>
-          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-            <FileText class="w-5 h-5" />
+          <div class="relative z-10 mt-3 pt-2.5 border-t border-slate-100 font-mono text-[10px] text-slate-500">
+            Registro total en sistema
           </div>
         </div>
 
-        <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span class="text-[11px] font-semibold text-cyan-600 uppercase tracking-wider">En Taller / Proceso</span>
-            <div class="text-2xl font-black text-cyan-700 mt-0.5">{{ activeOrdersCount }}</div>
+        <div class="studio-kpi-card workshop-stagger-2 p-5 flex flex-col justify-between">
+          <div class="pointer-events-none absolute -top-8 -right-8 w-20 h-20 rounded-full bg-[#E3F5F8]"></div>
+          <div class="relative z-10 flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] font-bold text-[#1B4978] uppercase tracking-wider">En Taller / Proceso</span>
+            <span class="w-8 h-8 rounded-xl bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center shrink-0">
+              <Wrench class="w-4 h-4" />
+            </span>
           </div>
-          <div class="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center text-[#04c4d9]">
-            <Wrench class="w-5 h-5" />
+          <div class="relative z-10 font-display tabular-nums text-2xl sm:text-3xl font-extrabold text-[#004B97] mt-2">
+            {{ Math.round(animatedActiveOrders) }}
           </div>
-        </div>
-
-        <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span class="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Terminadas</span>
-            <div class="text-2xl font-black text-emerald-700 mt-0.5">{{ completedOrdersCount }}</div>
-          </div>
-          <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-            <CheckCircle2 class="w-5 h-5" />
+          <div class="relative z-10 mt-3 pt-2.5 border-t border-slate-100 font-mono text-[10px] text-slate-500">
+            Órdenes activas en banco
           </div>
         </div>
 
-        <div v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+        <div class="studio-kpi-card workshop-stagger-3 p-5 flex flex-col justify-between">
+          <div class="pointer-events-none absolute -top-8 -right-8 w-20 h-20 rounded-full bg-[#04C4D9]/12"></div>
+          <div class="relative z-10 flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] font-bold text-[#038391] uppercase tracking-wider">Terminadas</span>
+            <span class="w-8 h-8 rounded-xl bg-[#E3F5F8] text-[#038391] border border-[#C1E8EF] flex items-center justify-center shrink-0">
+              <CheckCircle2 class="w-4 h-4" />
+            </span>
+          </div>
+          <div class="relative z-10 font-display tabular-nums text-2xl sm:text-3xl font-extrabold text-[#038391] mt-2">
+            {{ Math.round(animatedCompletedOrders) }}
+          </div>
+          <div class="relative z-10 mt-3 pt-2.5 border-t border-slate-100 font-mono text-[10px] text-slate-500">
+            Listas para entrega
+          </div>
+        </div>
+
+        <div v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="studio-kpi-card workshop-stagger-4 p-5 flex flex-col justify-between">
+          <div class="relative z-10 flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] font-bold text-[#6E5835] uppercase tracking-wider">
               {{ authStore.isSubAdmin ? 'Facturación de Ruta' : 'Facturación Total' }}
             </span>
-            <div class="text-2xl font-black text-slate-900 mt-0.5">${{ totalBilled.toLocaleString('es-MX', { minimumFractionDigits: 2 }) }}</div>
-          </div>
-          <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 font-bold">
-            $
-          </div>
-        </div>
-        <div v-else class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Control Operacional</span>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                <Lock class="w-3 h-3 text-slate-400" />
-                Montos Reservados
-              </span>
-            </div>
-            <p class="text-[10px] text-slate-400 mt-0.5">Acceso financiero exclusivo a Admin</p>
-          </div>
-          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-            <Lock class="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Filtros y Búsqueda -->
-      <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
-        <!-- Input de búsqueda -->
-        <div class="relative w-full md:w-96">
-          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-            <Search class="w-4 h-4" />
-          </div>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Buscar por N° de orden, cliente, taller o vehículo..."
-            class="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9]"
-          />
-        </div>
-
-        <!-- Filtros por Tipo y Estado -->
-        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto pb-1 md:pb-0">
-          <!-- Filtro por Tipo (Orden vs Cotización) -->
-          <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
-            <button
-              v-for="tOpt in [
-                { value: 'Todos', label: 'Todos' },
-                { value: 'orden', label: 'Órdenes' },
-                { value: 'cotizacion', label: 'Cotizaciones' }
-              ]"
-              :key="tOpt.value"
-              type="button"
-              @click="selectedType = tOpt.value"
-              :class="[
-                'px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap transition cursor-pointer',
-                selectedType === tOpt.value
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              ]"
-            >
-              {{ tOpt.label }}
-            </button>
-          </div>
-
-          <div class="flex items-center gap-1.5 overflow-x-auto">
-            <span class="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
-              <Filter class="w-3.5 h-3.5" /> Estado:
+            <span class="w-8 h-8 rounded-xl bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2] flex items-center justify-center font-mono text-xs font-black shrink-0">
+              $
             </span>
-            <button
-              v-for="status in ['Todos', 'En Proceso', 'Pendiente']"
-              :key="status"
-              type="button"
-              @click="selectedStatus = status"
-              :class="[
-                'px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition cursor-pointer',
-                selectedStatus === status
-                  ? 'bg-[#04c4d9] text-white shadow-xs'
-                  : 'text-slate-600 bg-slate-100 hover:bg-slate-200',
-              ]"
-            >
-              {{ status }}
-            </button>
+          </div>
+          <div class="relative z-10 font-display tabular-nums text-xl sm:text-2xl font-extrabold text-[#162436] mt-2 truncate">
+            ${{ animatedTotalBilled.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          </div>
+          <div class="relative z-10 mt-3 pt-2.5 border-t border-slate-100 font-mono text-[10px] text-slate-500">
+            Acumulado del filtro actual
+          </div>
+        </div>
+        <div v-else class="studio-kpi-card workshop-stagger-4 p-5 flex flex-col justify-between">
+          <div class="relative z-10 flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-wider">Control Operacional</span>
+            <span class="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 flex items-center justify-center shrink-0">
+              <Lock class="w-4 h-4" />
+            </span>
+          </div>
+          <div class="relative z-10 mt-3">
+            <span class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-xl bg-slate-100 text-[#162436] border border-slate-200">
+              <Lock class="w-3 h-3 text-slate-500" />
+              Montos Reservados
+            </span>
+          </div>
+          <div class="relative z-10 mt-3 pt-2.5 border-t border-slate-100 font-mono text-[10px] text-slate-400">
+            Acceso financiero exclusivo a Admin
           </div>
         </div>
       </div>
 
-      <!-- Tabla de Órdenes -->
-      <div class="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <!-- Tabla Elevada de Órdenes + Barra de Búsqueda y Filtros -->
+      <div class="studio-card overflow-hidden">
+        <!-- Barra de Herramientas Luminosa -->
+        <div class="bg-[#F4F8FC] border-b border-slate-100 px-4 py-3.5 sm:px-5 flex flex-col md:flex-row items-center justify-between gap-3">
+          <!-- Input de búsqueda -->
+          <div class="relative w-full md:w-96">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <Search class="w-4 h-4" />
+            </div>
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Buscar por N° de orden, cliente, taller o vehículo..."
+              class="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#0D1B3E] placeholder-slate-400 focus:bg-white focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 transition-all"
+            />
+          </div>
+
+          <!-- Filtros por Tipo y Estado -->
+          <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto pb-0.5 md:pb-0">
+            <!-- Filtro por Tipo (Orden vs Cotización) -->
+            <div class="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
+              <button
+                v-for="tOpt in [
+                  { value: 'Todos', label: 'Todos' },
+                  { value: 'orden', label: 'Órdenes' },
+                  { value: 'cotizacion', label: 'Cotizaciones' }
+                ]"
+                :key="tOpt.value"
+                type="button"
+                @click="selectedType = tOpt.value"
+                :class="[
+                  'px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
+                  selectedType === tOpt.value
+                    ? 'bg-[#004B97] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-[#0D1B3E] hover:bg-white/70'
+                ]"
+              >
+                {{ tOpt.label }}
+              </button>
+            </div>
+
+            <div class="flex items-center gap-1.5 overflow-x-auto">
+              <span class="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-0.5 flex items-center gap-1">
+                <Filter class="w-3.5 h-3.5 text-[#147488]" /> Estado:
+              </span>
+              <button
+                v-for="status in ['Todos', 'En Proceso', 'Pendiente']"
+                :key="status"
+                type="button"
+                @click="selectedStatus = status"
+                :class="[
+                  'px-2.5 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer border',
+                  selectedStatus === status
+                    ? 'bg-[#147488] text-white border-[#147488] shadow-sm'
+                    : 'text-slate-600 bg-slate-50 border-slate-200 hover:bg-white hover:border-[#9AD2DC]'
+                ]"
+              >
+                {{ status }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs min-w-[760px]">
-            <thead class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <thead class="studio-table-head font-mono text-[10px] font-bold uppercase tracking-wider">
               <tr>
-                <th class="px-5 py-3">N° Orden</th>
-                <th class="px-5 py-3">Ruta / Sucursal</th>
-                <th class="px-5 py-3">Cliente / Taller</th>
-                <th class="px-5 py-3">Vehículo / Motor</th>
-                <th class="px-5 py-3">Fecha</th>
-                <th class="px-5 py-3 text-center">Tipo</th>
-                <th class="px-5 py-3">Estado</th>
-                <th v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="px-5 py-3 text-right">Total ($)</th>
-                <th v-else class="px-5 py-3 text-center">Operación / Ítems</th>
-                <th class="px-5 py-3 text-center">Acciones</th>
+                <th class="px-5 py-3.5">N° Orden</th>
+                <th class="px-5 py-3.5">Ruta / Sucursal</th>
+                <th class="px-5 py-3.5">Cliente / Taller</th>
+                <th class="px-5 py-3.5">Vehículo / Motor</th>
+                <th class="px-5 py-3.5">Fecha</th>
+                <th class="px-5 py-3.5 text-center">Tipo</th>
+                <th class="px-5 py-3.5">Estado</th>
+                <th v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="px-5 py-3.5 text-right">Total ($)</th>
+                <th v-else class="px-5 py-3.5 text-center">Operación / Ítems</th>
+                <th class="px-5 py-3.5 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               <tr
                 v-for="order in filteredOrders"
                 :key="order.id"
-                class="hover:bg-slate-50/70 transition cursor-pointer"
+                class="hover:bg-blue-50/40 transition-colors cursor-pointer group"
                 @click="openEditOrder(order.id)"
               >
-                <td class="px-5 py-3.5 font-bold text-[#04c4d9]">
-                  {{ order.orderNumber }}
+                <td class="px-5 py-3.5">
+                  <span class="font-mono tabular-nums font-bold text-[#004B97] bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-lg inline-block group-hover:bg-[#004B97] group-hover:text-white transition-colors">
+                    {{ order.orderNumber }}
+                  </span>
                 </td>
                 <td class="px-5 py-3.5" @click.stop>
                   <!-- Si es Administrador General y hay rutas creadas: selector rápido de ruta -->
@@ -667,10 +721,10 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                     <select
                       :value="order.rutaId || ''"
                       @change="handleAssignOrderRuta(order, ($event.target as HTMLSelectElement).value)"
-                      class="rounded-full px-2.5 py-1 text-[11px] font-bold border transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#05C7F2]"
+                      class="rounded-full px-2.5 py-1 text-[11px] font-bold border transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#04C4D9]"
                       :class="
                         order.rutaId || order.rutaNombre
-                          ? 'bg-[#0D0D0D] text-[#05F2F2] border-[#0D0D0D]'
+                          ? 'bg-blue-50 text-[#004B97] border-blue-200 hover:border-[#04C4D9]'
                           : 'bg-slate-100 text-slate-600 border-slate-200 hover:border-[#04C4D9]'
                       "
                       title="Cambiar ruta asignada a esta orden"
@@ -689,37 +743,37 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                   <!-- Badge informativo de la ruta -->
                   <span
                     v-else-if="order.rutaNombre || order.rutaCodigo"
-                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#0D0D0D] text-[#05F2F2]"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-[#004B97] border border-blue-200"
                   >
-                    <MapPin class="w-3 h-3 text-[#05C7F2]" />
+                    <MapPin class="w-3 h-3 text-[#04C4D9]" />
                     <span>{{ order.rutaCodigo ? `${order.rutaCodigo} · ` : '' }}{{ order.rutaNombre }}</span>
                   </span>
                   <span
                     v-else
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200"
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200"
                   >
                     General
                   </span>
                 </td>
                 <td class="px-5 py-3.5">
-                  <div class="font-bold text-slate-900">{{ order.customer || '— Sin Asignar —' }}</div>
-                  <div v-if="order.workshop" class="text-[10px] text-slate-400">{{ order.workshop }}</div>
-                  <div v-else-if="!order.customer" class="text-[10px] text-amber-600 font-semibold">Cliente por asignar</div>
+                  <div class="font-bold text-[#0D1B3E]">{{ order.customer || '— Sin Asignar —' }}</div>
+                  <div v-if="order.workshop" class="text-[11px] text-[#004B97] font-medium">{{ order.workshop }}</div>
+                  <div v-else-if="!order.customer" class="text-[11px] text-amber-600 font-semibold">Cliente por asignar</div>
                 </td>
                 <td class="px-5 py-3.5 text-slate-700">
-                  <div class="font-medium">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Motor de banco' }}</div>
-                  <div v-if="order.engineType && order.engineType !== (order.vehicleModel || order.engine)" class="text-[10px] text-slate-400">{{ order.engineType }}</div>
+                  <div class="font-semibold text-[#0D1B3E]">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Motor de banco' }}</div>
+                  <div v-if="order.engineType && order.engineType !== (order.vehicleModel || order.engine)" class="text-[11px] text-slate-400">{{ order.engineType }}</div>
                 </td>
-                <td class="px-5 py-3.5 text-slate-500">
+                <td class="px-5 py-3.5 font-mono tabular-nums text-slate-500 text-[11px]">
                   {{ order.date }}
                 </td>
                 <td class="px-5 py-3.5 text-center">
                   <span
                     :class="[
-                      'inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider',
+                      'inline-block px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold uppercase tracking-wider',
                       order.type === 'cotizacion'
-                        ? 'bg-slate-100 text-slate-700 border border-slate-300'
-                        : 'bg-cyan-50 text-cyan-700 border border-cyan-200'
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                        : 'bg-cyan-50 text-[#004B97] border border-cyan-200'
                     ]"
                   >
                     {{ order.type === 'cotizacion' ? 'Cotización' : 'Orden' }}
@@ -728,19 +782,19 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                 <td class="px-5 py-3.5">
                   <span
                     :class="[
-                      'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border',
+                      'inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border',
                       getStatusBadge(order.status)
                     ]"
                   >
                     {{ order.status }}
                   </span>
                 </td>
-                <td v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="px-5 py-3.5 text-right font-black text-slate-900">
+                <td v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="px-5 py-3.5 text-right font-mono tabular-nums font-extrabold text-[#0D1B3E]">
                   ${{ order.total.toFixed(2) }}
                 </td>
                 <td v-else class="px-5 py-3.5 text-center">
                   <span
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200"
                     title="Visible solo para Administrador"
                   >
                     <Lock class="w-3.5 h-3.5 text-slate-400" />
@@ -748,11 +802,11 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                   </span>
                 </td>
                 <td class="px-5 py-3.5 text-center" @click.stop>
-                  <div class="flex items-center justify-center gap-1.5">
+                  <div class="flex items-center justify-center gap-1">
                     <button
                       type="button"
                       @click="openEditOrder(order.id)"
-                      class="p-1.5 text-slate-400 hover:text-[#04c4d9] hover:bg-cyan-50 rounded-lg transition"
+                      class="p-1.5 text-slate-400 hover:text-[#004B97] hover:bg-blue-50 rounded-xl transition active:scale-95"
                       title="Editar orden"
                     >
                       <Eye class="w-4 h-4" />
@@ -761,7 +815,7 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                       type="button"
                       @click="handleDuplicateOrder(order)"
                       :disabled="isDuplicating === order.id"
-                      class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition disabled:opacity-50"
+                      class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition active:scale-95 disabled:opacity-50"
                       title="Duplicar orden (nuevo número, cliente en blanco)"
                     >
                       <Copy class="w-4 h-4" :class="{ 'animate-pulse text-indigo-600': isDuplicating === order.id }" />
@@ -769,7 +823,7 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                     <button
                       type="button"
                       @click="openPrintOrder(order)"
-                      class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                      class="p-1.5 text-slate-400 hover:text-[#0D1B3E] hover:bg-slate-100 rounded-xl transition active:scale-95"
                       title="Imprimir (Clean Print)"
                     >
                       <Printer class="w-4 h-4" />
@@ -778,15 +832,15 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
                       type="button"
                       @click="handleDownloadOrder(order)"
                       :disabled="downloadingOrderId === order.id"
-                      class="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50"
+                      class="p-1.5 text-slate-400 hover:text-[#038391] hover:bg-cyan-50 rounded-xl transition active:scale-95 disabled:opacity-50"
                       :title="`Descargar ${order.type === 'cotizacion' ? 'cotización' : 'orden'} (PDF)`"
                     >
-                      <Download class="w-4 h-4" :class="{ 'animate-bounce text-emerald-600': downloadingOrderId === order.id }" />
+                      <Download class="w-4 h-4" :class="{ 'animate-bounce text-[#038391]': downloadingOrderId === order.id }" />
                     </button>
                     <button
                       type="button"
                       @click="handleDeleteOrder(order.id)"
-                      class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                      class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition active:scale-95"
                       title="Eliminar orden"
                     >
                       <Trash2 class="w-4 h-4" />
@@ -844,12 +898,12 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
         v-if="toastMessage" 
         class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold max-w-md backdrop-blur-md"
         :class="[
-          toastMessage.type === 'success' ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/50' : 
+          toastMessage.type === 'success' ? 'bg-[#0D1B3E]/95 text-[#BFEBF2] border-[#04C4D9]/50' : 
           toastMessage.type === 'error' ? 'bg-rose-950/90 text-rose-200 border-rose-500/50' : 
           'bg-slate-950/90 text-slate-200 border-slate-600'
         ]"
       >
-        <CheckCircle2 v-if="toastMessage.type === 'success'" class="w-5 h-5 text-emerald-400 flex-shrink-0" />
+        <CheckCircle2 v-if="toastMessage.type === 'success'" class="w-5 h-5 text-[#04C4D9] flex-shrink-0" />
         <AlertCircle v-else class="w-5 h-5 text-rose-400 flex-shrink-0" />
         <div class="flex-1">
           <span>{{ toastMessage.text }}</span>
@@ -857,7 +911,7 @@ const totalBilled = computed(() => scopedOrders.value.reduce((acc, curr) => acc 
             v-if="toastMessage.orderId" 
             type="button" 
             @click="openEditOrder(toastMessage.orderId!)"
-            class="block mt-1 text-xs font-bold text-[#05F2F2] hover:underline"
+            class="block mt-1 text-xs font-bold text-[#BFEBF2] hover:underline"
           >
             Abrir orden para asignar cliente &rarr;
           </button>

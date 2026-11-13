@@ -109,40 +109,40 @@ const applyPreset = (type: string) => {
   <div class="space-y-5">
     
     <!-- Encabezado del Modo Dimensional -->
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl border border-slate-700/80 shadow-md">
+    <div class="studio-hero-banner text-white p-5 sm:p-6 rounded-3xl">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <span class="text-xs font-bold uppercase tracking-wider text-[#04c4d9] flex items-center gap-1.5 mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider text-[#BFEBF2] flex items-center gap-1.5 mb-1">
             <Ruler class="w-3.5 h-3.5" />
             Módulo de Adaptaciones y Maquinado
           </span>
-          <h2 class="text-xl font-black text-white">Búsqueda Dimensional por Medidas Físicas (mm)</h2>
-          <p class="text-xs text-slate-400 mt-1 max-w-2xl">
+          <h2 class="font-display text-xl font-black text-white">Búsqueda Dimensional por Medidas Físicas (mm)</h2>
+          <p class="text-xs text-sky-100/85 mt-1 max-w-2xl">
             Identifique repuestos alternos compatibles cuando una pieza llega desgastada al mostrador, sin código de motor legible o para adaptaciones personalizadas.
           </p>
         </div>
 
         <!-- Presets Rápidos -->
         <div class="flex flex-wrap items-center gap-1.5">
-          <span class="text-[11px] text-slate-400 mr-1">Ejemplos:</span>
+          <span class="text-[11px] text-sky-100/75 mr-1">Ejemplos:</span>
           <button
             type="button"
             @click="applyPreset('toyota_valve')"
-            class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 transition"
+            class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 border border-white/15 text-[11px] font-semibold text-white transition cursor-pointer"
           >
             Válvula 42.5x8
           </button>
           <button
             type="button"
             @click="applyPreset('rings_96')"
-            class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 transition"
+            class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 border border-white/15 text-[11px] font-semibold text-white transition cursor-pointer"
           >
             Anillos Ø96mm
           </button>
           <button
             type="button"
             @click="applyPreset('bearing_ms')"
-            class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-slate-200 transition"
+            class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 border border-white/15 text-[11px] font-semibold text-white transition cursor-pointer"
           >
             Bancada Ø62mm
           </button>
@@ -151,7 +151,7 @@ const applyPreset = (type: string) => {
     </div>
 
     <!-- Panel de Formulario por Categoría -->
-    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
+    <div class="studio-card bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
       
       <!-- Pestañas de Tipo de Componente -->
       <div class="flex items-center gap-2 border-b border-slate-200 pb-3">
@@ -161,9 +161,9 @@ const applyPreset = (type: string) => {
           type="button"
           @click="activeTab = tab"
           :class="[
-            'px-4 py-2 rounded-xl text-xs font-black transition min-h-[40px]',
+            'px-4 py-2 rounded-xl text-xs font-black transition min-h-[40px] cursor-pointer',
             activeTab === tab
-              ? 'bg-[#04c4d9] text-white shadow-xs'
+              ? 'bg-[#004B97] text-white shadow-xs'
               : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
           ]"
         >
@@ -367,7 +367,7 @@ const applyPreset = (type: string) => {
           type="button"
           @click="handleSearch"
           :disabled="isSearching"
-          class="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] rounded-xl shadow-sm transition"
+          class="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-[#004B97] hover:bg-[#0D1B3E] rounded-xl shadow-sm transition cursor-pointer"
         >
           <Search class="w-4 h-4" />
           <span>{{ isSearching ? 'Buscando...' : 'Buscar Repuestos Compatibles' }}</span>
@@ -439,7 +439,7 @@ const applyPreset = (type: string) => {
                 <button
                   type="button"
                   @click="emit('add-to-order', res)"
-                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] rounded-lg transition shadow-xs"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-[#004B97] hover:bg-[#0D1B3E] rounded-lg transition shadow-xs cursor-pointer"
                 >
                   <Plus class="w-3.5 h-3.5" />
                   Agregar

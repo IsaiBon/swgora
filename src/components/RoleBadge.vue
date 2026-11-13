@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ShieldCheck, Wrench, Eye } from 'lucide-vue-next'
+import { ShieldCheck, Wrench, Eye, Building2, Users } from 'lucide-vue-next'
 import { normalizeRole, type UserRole } from '@/stores/auth'
 
 const props = withDefaults(
@@ -20,12 +20,12 @@ const normalized = computed(() => normalizeRole(props.role))
 const sizeClasses = computed(() => {
   switch (props.size) {
     case 'sm':
-      return 'px-2 py-0.5 text-[11px] gap-1'
+      return 'px-2 py-0.5 text-[10px] gap-1'
     case 'lg':
-      return 'px-3.5 py-1.5 text-sm gap-2'
+      return 'px-3.5 py-1.5 text-xs gap-2'
     case 'md':
     default:
-      return 'px-2.5 py-1 text-xs gap-1.5'
+      return 'px-2.5 py-1 text-[11px] gap-1.5'
   }
 })
 
@@ -44,13 +44,17 @@ const iconSize = computed(() => {
 const badgeClasses = computed(() => {
   switch (normalized.value) {
     case 'Administrador':
-      return 'bg-[#05C7F2]/15 text-sky-900 border-[#05C7F2]/50'
+      return 'bg-[#1E446E] text-white border-[#2B5C8F]/50 shadow-xs'
+    case 'Sub-Administrador':
+      return 'bg-[#2B5C8F] text-white border-[#3B6EA5]/50 shadow-xs'
+    case 'Taller Independiente':
+      return 'bg-[#E3F5F8] text-[#12697A] border-[#9AD2DC] shadow-xs'
     case 'Operador':
-      return 'bg-amber-50 text-amber-900 border-amber-300'
+      return 'bg-[#F6F0E4] text-[#6E5835] border-[#E6DAC2] shadow-xs'
     case 'Consultor':
-      return 'bg-indigo-50 text-indigo-900 border-indigo-200'
+      return 'bg-slate-600 text-white border-slate-500/40 shadow-xs'
     default:
-      return 'bg-slate-50 text-slate-800 border-slate-300'
+      return 'bg-slate-600 text-white border-slate-500/40 shadow-xs'
   }
 })
 
@@ -58,6 +62,10 @@ const iconComponent = computed(() => {
   switch (normalized.value) {
     case 'Administrador':
       return ShieldCheck
+    case 'Sub-Administrador':
+      return Users
+    case 'Taller Independiente':
+      return Building2
     case 'Operador':
       return Wrench
     case 'Consultor':
@@ -70,13 +78,17 @@ const iconComponent = computed(() => {
 const iconColorClass = computed(() => {
   switch (normalized.value) {
     case 'Administrador':
-      return 'text-[#04C4D9]'
+      return 'text-[#38BDF8]'
+    case 'Sub-Administrador':
+      return 'text-indigo-200'
+    case 'Taller Independiente':
+      return 'text-[#091430]'
     case 'Operador':
-      return 'text-amber-600'
+      return 'text-amber-100'
     case 'Consultor':
-      return 'text-indigo-600'
+      return 'text-slate-200'
     default:
-      return 'text-slate-500'
+      return 'text-slate-200'
   }
 })
 </script>
@@ -84,7 +96,7 @@ const iconColorClass = computed(() => {
 <template>
   <span
     :class="[
-      'inline-flex items-center font-medium rounded-full border transition-colors select-none shadow-sm',
+      'inline-flex items-center font-mono font-bold uppercase tracking-wider rounded-full border transition-colors duration-150 select-none',
       sizeClasses,
       badgeClasses,
     ]"

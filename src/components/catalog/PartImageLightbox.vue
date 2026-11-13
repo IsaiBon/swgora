@@ -147,30 +147,30 @@ onUnmounted(() => {
 <template>
   <div
     v-if="isOpen && part"
-    class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex flex-col justify-between p-3 sm:p-6 transition-all duration-200 select-none animate-in fade-in"
+    class="fixed inset-0 z-50 bg-[#09132B]/85 backdrop-blur-md flex flex-col justify-between p-3 sm:p-6 transition-all duration-200 select-none animate-in fade-in"
     @click.self="emit('close')"
   >
     <!-- BARRA SUPERIOR / CABECERA -->
-    <div class="flex items-center justify-between bg-slate-900/90 text-white px-4 py-3 rounded-2xl border border-slate-800 shadow-2xl backdrop-blur-md">
+    <div class="flex items-center justify-between bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-4 py-3.5 rounded-2xl border border-white/15 shadow-2xl backdrop-blur-md">
       <div class="flex items-center gap-3 min-w-0">
-        <div class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[#04C4D9] shrink-0">
+        <div class="w-9 h-9 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center text-[#BFEBF2] shrink-0">
           <Layers class="w-5 h-5" />
         </div>
 
         <div class="min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="font-mono text-xs font-black text-[#04C4D9] bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
+            <span class="font-mono text-xs font-black text-[#BFEBF2] bg-white/15 px-2.5 py-0.5 rounded-lg border border-white/20">
               OEM: {{ part.codigo_oem }}
             </span>
-            <span class="text-[11px] text-slate-400 font-medium">
+            <span class="text-[11px] text-sky-100/80 font-medium">
               {{ part.subsistema }} • {{ part.categoria }}
             </span>
-            <span v-if="part.catalogo_origen" class="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+            <span v-if="part.catalogo_origen" class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-md bg-white/10 text-sky-100 border border-white/15">
               {{ part.catalogo_origen }}
             </span>
           </div>
 
-          <h3 class="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
+          <h3 class="text-sm sm:text-base font-extrabold font-display text-white truncate mt-0.5">
             {{ part.nombre }}
           </h3>
         </div>
@@ -179,11 +179,11 @@ onUnmounted(() => {
       <!-- Controles de cabecera -->
       <div class="flex items-center gap-2">
         <!-- Control de Zoom -->
-        <div class="hidden sm:flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-xl border border-slate-700 text-xs text-slate-300">
+        <div class="hidden sm:flex items-center gap-1 bg-white/10 px-2 py-1 rounded-xl border border-white/20 text-xs text-sky-100">
           <button
             type="button"
             @click="handleZoomOut"
-            class="p-1 hover:text-white hover:bg-slate-700 rounded transition"
+            class="p-1 hover:text-white hover:bg-white/15 rounded-lg transition cursor-pointer"
             title="Alejar (-)"
           >
             <ZoomOut class="w-4 h-4" />
@@ -192,7 +192,7 @@ onUnmounted(() => {
           <button
             type="button"
             @click="handleZoomIn"
-            class="p-1 hover:text-white hover:bg-slate-700 rounded transition"
+            class="p-1 hover:text-white hover:bg-white/15 rounded-lg transition cursor-pointer"
             title="Acercar (+)"
           >
             <ZoomIn class="w-4 h-4" />
@@ -200,7 +200,7 @@ onUnmounted(() => {
           <button
             type="button"
             @click="handleResetZoom"
-            class="p-1 hover:text-white hover:bg-slate-700 rounded transition ml-1"
+            class="p-1 hover:text-white hover:bg-white/15 rounded-lg transition ml-1 cursor-pointer"
             title="Restablecer escala (0)"
           >
             <RotateCcw class="w-3.5 h-3.5" />
@@ -211,7 +211,7 @@ onUnmounted(() => {
         <button
           type="button"
           @click="emit('close')"
-          class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700"
+          class="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/85 hover:text-white transition border border-white/20 cursor-pointer"
           title="Cerrar lightbox (Esc)"
         >
           <X class="w-5 h-5" />
@@ -221,7 +221,7 @@ onUnmounted(() => {
 
     <!-- ÁREA CENTRAL: VISOR DE IMAGEN -->
     <div 
-      class="flex-1 my-3 overflow-hidden flex items-center justify-center relative rounded-2xl bg-slate-900/40 border border-slate-800/80 p-2 sm:p-6"
+      class="flex-1 my-3 overflow-hidden flex items-center justify-center relative rounded-2xl bg-[#0D1B3E]/55 border border-white/15 p-2 sm:p-6"
       @click.self="emit('close')"
     >
       <!-- Indicador de carga -->
@@ -254,7 +254,7 @@ onUnmounted(() => {
         v-if="galleryImages.length > 1"
         type="button"
         @click.stop="prevImage"
-        class="absolute left-3 z-10 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-lg transition"
+        class="absolute left-3 z-10 p-2.5 rounded-full bg-[#0D1B3E]/85 hover:bg-[#004B97] text-white border border-white/20 shadow-lg transition cursor-pointer"
         title="Foto anterior (←)"
       >
         <ChevronLeft class="w-5 h-5" />
@@ -277,7 +277,7 @@ onUnmounted(() => {
         v-if="galleryImages.length > 1"
         type="button"
         @click.stop="nextImage"
-        class="absolute right-3 z-10 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-lg transition"
+        class="absolute right-3 z-10 p-2.5 rounded-full bg-[#0D1B3E]/85 hover:bg-[#004B97] text-white border border-white/20 shadow-lg transition cursor-pointer"
         title="Foto siguiente (→)"
       >
         <ChevronRight class="w-5 h-5" />
@@ -286,14 +286,14 @@ onUnmounted(() => {
       <!-- Tira de miniaturas cuando hay múltiples fotos -->
       <div
         v-if="galleryImages.length > 1"
-        class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-slate-950/85 px-2.5 py-1.5 rounded-xl border border-slate-700/80 backdrop-blur-md max-w-[90%] overflow-x-auto"
+        class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#09132B]/85 px-2.5 py-1.5 rounded-xl border border-white/20 backdrop-blur-md max-w-[90%] overflow-x-auto"
       >
         <button
           v-for="(imgUrl, idx) in galleryImages"
           :key="`lb-thumb-${idx}`"
           type="button"
           @click.stop="activeIndex = idx"
-          class="w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 transition"
+          class="w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 transition cursor-pointer"
           :class="activeIndex === idx ? 'border-[#04C4D9] scale-105' : 'border-transparent opacity-60 hover:opacity-100'"
         >
           <img :src="imgUrl" :alt="`Miniatura ${idx + 1}`" class="w-full h-full object-cover" />
@@ -302,41 +302,41 @@ onUnmounted(() => {
     </div>
 
     <!-- BARRA INFERIOR / ACCIONES Y COTAS TÉCNICAS -->
-    <div class="bg-slate-900/90 text-white px-4 py-2.5 rounded-2xl border border-slate-800 shadow-2xl backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-3">
+    <div class="bg-[#19314D]/95 text-white px-4 py-3 rounded-2xl border border-white/15 shadow-2xl backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-3">
       <!-- Resumen de medidas clave y PDFs debajo del diagrama -->
-      <div class="flex items-center gap-2 flex-wrap text-xs font-mono text-slate-300">
-        <span v-if="galleryImages.length > 1" class="px-2 py-0.5 rounded bg-cyan-950 text-[#04C4D9] border border-cyan-800 font-bold text-[10px]">
+      <div class="flex items-center gap-2 flex-wrap text-xs font-mono text-sky-100">
+        <span v-if="galleryImages.length > 1" class="px-2 py-0.5 rounded-md bg-white/15 text-[#BFEBF2] border border-white/20 font-bold text-[10px]">
           Foto {{ activeIndex + 1 }} / {{ galleryImages.length }}
         </span>
-        <span class="text-[10px] uppercase font-sans font-bold text-slate-400">Cotas Rápidas:</span>
+        <span class="text-[10px] uppercase font-sans font-bold text-sky-200/75">Cotas Rápidas:</span>
 
-        <span v-if="part.diametro_interior_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.diametro_interior_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Ø Int: <strong>{{ part.diametro_interior_mm }}mm</strong>
         </span>
-        <span v-if="part.diametro_exterior_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.diametro_exterior_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Ø Ext: <strong>{{ part.diametro_exterior_mm }}mm</strong>
         </span>
-        <span v-if="part.altura_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.altura_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Alt: <strong>{{ part.altura_mm }}mm</strong>
         </span>
 
-        <span v-if="part.diametro_cabeza_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.diametro_cabeza_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Hongo: <strong>{{ part.diametro_cabeza_mm }}mm</strong>
         </span>
-        <span v-if="part.diametro_vastago_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.diametro_vastago_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Vástago: <strong>{{ part.diametro_vastago_mm }}mm</strong>
         </span>
-        <span v-if="part.longitud_total_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.longitud_total_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Largo: <strong>{{ part.longitud_total_mm }}mm</strong>
         </span>
 
-        <span v-if="part.diametro_cilindro_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.diametro_cilindro_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           Ø Cil: <strong>{{ part.diametro_cilindro_mm }}mm</strong>
         </span>
-        <span v-if="part.espesor_anillo1_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.espesor_anillo1_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           1°: <strong>{{ part.espesor_anillo1_mm }}mm</strong>
         </span>
-        <span v-if="part.espesor_anillo2_mm" class="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+        <span v-if="part.espesor_anillo2_mm" class="bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
           2°: <strong>{{ part.espesor_anillo2_mm }}mm</strong>
         </span>
 
@@ -346,10 +346,10 @@ onUnmounted(() => {
           :href="doc.url"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-800 text-[10px] font-sans font-bold transition"
+          class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 border border-rose-400/40 text-[10px] font-sans font-bold transition"
           :title="`Abrir PDF: ${doc.nombre}`"
         >
-          <FileText class="w-3 h-3 text-rose-400" />
+          <FileText class="w-3 h-3 text-rose-300" />
           <span class="truncate max-w-[140px]">{{ doc.nombre }}</span>
         </a>
       </div>
@@ -359,21 +359,21 @@ onUnmounted(() => {
         <button
           type="button"
           @click="downloadImage"
-          class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-1.5 border border-slate-700"
+          class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition flex items-center gap-1.5 border border-white/20 cursor-pointer"
           title="Descargar diagrama"
         >
-          <Download class="w-3.5 h-3.5 text-slate-400" />
+          <Download class="w-3.5 h-3.5 text-[#BFEBF2]" />
           <span>Descargar</span>
         </button>
 
         <button
           type="button"
           @click="copyImageUrl"
-          class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-1.5 border border-slate-700"
+          class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition flex items-center gap-1.5 border border-white/20 cursor-pointer"
           title="Copiar enlace de la imagen"
         >
-          <Check v-if="isCopied" class="w-3.5 h-3.5 text-emerald-400" />
-          <Copy v-else class="w-3.5 h-3.5 text-slate-400" />
+          <Check v-if="isCopied" class="w-3.5 h-3.5 text-[#04C4D9]" />
+          <Copy v-else class="w-3.5 h-3.5 text-[#BFEBF2]" />
           <span>{{ isCopied ? 'Enlace Copiado' : 'Copiar URL' }}</span>
         </button>
 
@@ -382,17 +382,17 @@ onUnmounted(() => {
           :href="currentImageUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-1.5 border border-slate-700"
+          class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition flex items-center gap-1.5 border border-white/20"
           title="Abrir imagen en nueva pestaña"
         >
-          <ExternalLink class="w-3.5 h-3.5 text-slate-400" />
+          <ExternalLink class="w-3.5 h-3.5 text-[#BFEBF2]" />
           <span>Abrir Original</span>
         </a>
 
         <button
           type="button"
           @click="emit('close')"
-          class="px-4 py-1.5 rounded-xl bg-[#04C4D9] hover:bg-[#03a9bc] text-white text-xs font-bold transition shadow-md"
+          class="px-4 py-1.5 rounded-xl studio-cta-primary text-white text-xs font-bold transition shadow-md cursor-pointer"
         >
           Listo
         </button>

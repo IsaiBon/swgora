@@ -135,32 +135,32 @@ const handleToggleStatus = () => {
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm overflow-y-auto"
+    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-[#09132B]/65 backdrop-blur-sm overflow-y-auto"
     @click.self="$emit('close')"
   >
     <div
-      class="bg-white w-full max-w-2xl rounded-[2rem] sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+      class="studio-card bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[92vh] flex flex-col popover-pop-in"
     >
       <!-- Modal Header -->
-      <div class="px-6 py-4 sm:py-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+      <div class="px-6 py-4 sm:py-5 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-11 h-11 rounded-2xl bg-[#05C7F2]/15 text-[#04C4D9] flex items-center justify-center shadow-inner">
+          <div class="w-11 h-11 rounded-2xl bg-white/15 border border-white/20 text-[#BFEBF2] flex items-center justify-center shadow-inner">
             <User v-if="!clientToEdit" class="w-6 h-6" />
-            <Wrench v-else class="w-6 h-6 text-slate-800" />
+            <Wrench v-else class="w-6 h-6 text-[#BFEBF2]" />
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <h3 class="text-lg font-bold text-slate-900 leading-tight">
+              <h3 class="text-lg font-bold font-display text-white leading-tight">
                 {{ clientToEdit ? 'Editar Información del Cliente' : 'Nuevo Cliente / Tallerista' }}
               </h3>
               <span
                 v-if="clientToEdit?.codigo"
-                class="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-[#0D0D0D] text-[#05F2F2] border border-slate-700"
+                class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg bg-white/15 text-[#BFEBF2] border border-white/25"
               >
                 {{ clientToEdit.codigo }}
               </span>
             </div>
-            <p class="text-xs text-slate-500 mt-0.5">
+            <p class="text-xs text-sky-100/80 mt-0.5">
               {{ clientToEdit ? 'Edición de datos y estado operativo' : 'Código generado automáticamente • Estado Activo' }}
             </p>
           </div>
@@ -170,7 +170,7 @@ const handleToggleStatus = () => {
         <button
           type="button"
           @click="$emit('close')"
-          class="min-w-[44px] min-h-[44px] rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 flex items-center justify-center transition active:scale-95"
+          class="min-w-[44px] min-h-[44px] rounded-xl text-white/75 hover:text-white hover:bg-white/15 flex items-center justify-center transition active:scale-95 cursor-pointer"
           aria-label="Cerrar modal"
         >
           <X class="w-6 h-6" />
@@ -191,28 +191,28 @@ const handleToggleStatus = () => {
               type="button"
               @click="tipo = t"
               :class="[
-                'min-h-[48px] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 border active:scale-95',
+                'min-h-[48px] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 border active:scale-95 cursor-pointer',
                 tipo === t
-                  ? 'bg-[#0D0D0D] text-white border-[#0D0D0D] shadow-md shadow-slate-300'
+                  ? 'bg-[#1E446E] text-white border-[#1E446E] shadow-sm'
                   : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100',
               ]"
             >
-              <User v-if="t === 'Cliente'" class="w-4 h-4 text-[#05F2F2]" />
-              <Wrench v-else class="w-4 h-4 text-amber-400" />
+              <User v-if="t === 'Cliente'" :class="['w-4 h-4', tipo === t ? 'text-[#BFEBF2]' : 'text-[#1B4978]']" />
+              <Wrench v-else :class="['w-4 h-4', tipo === t ? 'text-[#F6EBD8]' : 'text-[#6E5835]']" />
               <span>{{ t }}</span>
             </button>
           </div>
         </div>
 
         <!-- Código Único del Cliente (Automático) -->
-        <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
+        <div class="p-3.5 bg-[#F4F8FC] border border-[#CFE1F4] rounded-2xl flex items-center justify-between text-xs">
           <div class="flex items-center gap-2">
-            <span class="font-bold text-slate-700">Código Único:</span>
-            <span class="font-mono font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-xs">
+            <span class="font-bold text-[#0D1B3E]">Código Único:</span>
+            <span class="font-mono font-bold text-[#004B97] bg-white px-2.5 py-1 rounded-lg border border-[#004B97]/20 shadow-xs">
               {{ previewCode }}
             </span>
           </div>
-          <span class="text-[11px] text-slate-500 font-medium">
+          <span class="text-[11px] text-slate-600 font-medium">
             {{ clientToEdit ? 'Identificador en sistema' : 'Asignado automáticamente según el tipo' }}
           </span>
         </div>
@@ -235,7 +235,7 @@ const handleToggleStatus = () => {
                 'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                 errors.nombre
                   ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                  : 'border-slate-200 focus:border-[#05C7F2] focus:ring-[#05C7F2]/30'
+                  : 'border-slate-200 focus:border-[#04C4D9] focus:ring-[#04C4D9]/30'
               ]"
             />
           </div>
@@ -258,7 +258,7 @@ const handleToggleStatus = () => {
               v-model="taller"
               type="text"
               :placeholder="tipo === 'Tallerista' ? 'Ej. Taller Mecánico Especializado Ramos' : 'Ej. Transportes del Norte (si aplica)'"
-              class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/30"
+              class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
             />
           </div>
         </div>
@@ -283,7 +283,7 @@ const handleToggleStatus = () => {
                   'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm font-mono text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                   errors.telefono
                     ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                    : 'border-slate-200 focus:border-[#05C7F2] focus:ring-[#05C7F2]/30'
+                    : 'border-slate-200 focus:border-[#04C4D9] focus:ring-[#04C4D9]/30'
                 ]"
               />
             </div>
@@ -306,7 +306,7 @@ const handleToggleStatus = () => {
                 v-model="direccion"
                 type="text"
                 placeholder="Ej. Av. Hidalgo 123, Col. Centro"
-                class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/30"
+                class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
               />
             </div>
           </div>
@@ -324,10 +324,10 @@ const handleToggleStatus = () => {
               type="button"
               @click="estado = s"
               :class="[
-                'flex-1 min-h-[44px] py-2 px-3 rounded-2xl text-xs font-bold transition border active:scale-95 flex items-center justify-center gap-1.5',
+                'flex-1 min-h-[44px] py-2 px-3 rounded-2xl text-xs font-bold transition border active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer',
                 estado === s
                   ? s === 'Activo'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    ? 'bg-[#038391] text-white border-[#038391] shadow-sm'
                     : 'bg-amber-600 text-white border-amber-600 shadow-sm'
                   : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100',
               ]"
@@ -348,7 +348,7 @@ const handleToggleStatus = () => {
             v-model="notas"
             rows="2"
             placeholder="Ej. Motores diésel Cummins, rectificación de culatas, especificaciones de apriete..."
-            class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/30"
+            class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
           ></textarea>
         </div>
 
@@ -359,14 +359,14 @@ const handleToggleStatus = () => {
               type="button"
               @click="handleToggleStatus"
               :class="[
-                'w-full sm:w-auto min-h-[48px] px-4 py-3 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 border',
+                'w-full sm:w-auto min-h-[48px] px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 border cursor-pointer',
                 clientToEdit.estado === 'Activo'
                   ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-300'
-                  : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-300',
+                  : 'text-[#038391] bg-cyan-50 hover:bg-cyan-100 border-cyan-300',
               ]"
             >
               <Ban v-if="clientToEdit.estado === 'Activo'" class="w-4 h-4 text-amber-600" />
-              <RotateCcw v-else class="w-4 h-4 text-emerald-600" />
+              <RotateCcw v-else class="w-4 h-4 text-[#038391]" />
               <span>{{ clientToEdit.estado === 'Activo' ? 'Inactivar Cliente' : 'Reactivar Cliente' }}</span>
             </button>
           </div>
@@ -376,16 +376,16 @@ const handleToggleStatus = () => {
             <button
               type="button"
               @click="$emit('close')"
-              class="flex-1 sm:flex-initial min-h-[48px] px-6 py-3 rounded-full border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-semibold transition active:scale-95"
+              class="flex-1 sm:flex-initial min-h-[48px] px-6 py-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-semibold transition active:scale-95 cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               :disabled="isSubmitting"
-              class="flex-1 sm:flex-initial min-h-[48px] px-8 py-3 rounded-full bg-[#0D0D0D] hover:bg-black text-white text-xs sm:text-sm font-bold shadow-lg transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
+              class="flex-1 sm:flex-initial min-h-[48px] px-8 py-3 rounded-xl studio-cta-primary text-white text-xs sm:text-sm font-bold shadow-lg transition active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
             >
-              <CheckCircle2 class="w-4 h-4 text-[#05F2F2]" />
+              <CheckCircle2 class="w-4 h-4 text-white" />
               <span>{{ isSubmitting ? 'Guardando...' : clientToEdit ? 'Guardar Cambios' : 'Registrar' }}</span>
             </button>
           </div>

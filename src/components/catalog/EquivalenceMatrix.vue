@@ -105,7 +105,7 @@ const copyFullCross = async (rep: RepuestoTecnico) => {
           :class="[
             'px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition min-h-[36px]',
             selectedSubsystem === sub
-              ? 'bg-[#04c4d9] text-white shadow-xs'
+              ? 'bg-[#147488] text-white shadow-xs'
               : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
           ]"
         >
@@ -175,7 +175,7 @@ const copyFullCross = async (rep: RepuestoTecnico) => {
                     class="p-1 text-slate-400 hover:text-cyan-700 hover:bg-cyan-100 rounded transition"
                     title="Copiar código OEM"
                   >
-                    <Check v-if="copiedCode === rep.codigo_oem" class="w-3.5 h-3.5 text-emerald-600" />
+                    <Check v-if="copiedCode === rep.codigo_oem" class="w-3.5 h-3.5 text-[#038391]" />
                     <Copy v-else class="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -355,7 +355,7 @@ const copyFullCross = async (rep: RepuestoTecnico) => {
                   <button
                     type="button"
                     @click="emit('add-to-order', rep)"
-                    class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-[#04c4d9] hover:bg-[#03a9bc] rounded-lg shadow-xs transition"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-[#004B97] hover:bg-[#0D1B3E] rounded-lg shadow-xs transition cursor-pointer"
                     title="Agregar a Orden de Trabajo"
                   >
                     <Plus class="w-3 h-3" />

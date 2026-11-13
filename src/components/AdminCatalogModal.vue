@@ -2095,27 +2095,27 @@ onUnmounted(() => {
 <template>
   <div 
     v-if="isOpen" 
-    class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+    class="fixed inset-0 z-50 overflow-y-auto bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
     @click.self="emit('close')"
   >
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div class="studio-card bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-7xl max-h-[92vh] flex flex-col overflow-hidden popover-pop-in">
       
       <!-- ===================================================================== -->
       <!-- MODAL HEADER CON PESTAÑAS SEGMENTADAS                                 -->
       <!-- ===================================================================== -->
-      <div class="px-5 sm:px-7 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+      <div class="px-5 sm:px-7 py-4 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 relative">
         <div>
-          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
-            <SlidersHorizontal class="w-5 h-5 text-[#04C4D9] shrink-0" />
+          <h2 class="text-lg sm:text-xl font-extrabold font-display text-white tracking-tight flex items-center gap-2 flex-wrap">
+            <SlidersHorizontal class="w-5 h-5 text-[#BFEBF2] shrink-0" />
             <template v-if="isEditPartMode">
               <span>Editar Repuesto:</span>
-              <span class="font-mono text-xs sm:text-sm bg-cyan-50 text-[#004B97] border border-cyan-200 px-2.5 py-0.5 rounded-lg">
+              <span class="font-mono text-xs sm:text-sm bg-white/15 text-[#BFEBF2] border border-white/25 px-2.5 py-0.5 rounded-lg">
                 {{ partCodigoOem || props.editPart?.codigo_oem || 'Repuesto' }}
               </span>
             </template>
             <template v-else-if="props.editGroupId || (isEditMode && activeTab === 'grupo')">
               <span>Editar Familia:</span>
-              <span class="text-xs sm:text-sm bg-cyan-50 text-[#004B97] border border-cyan-200 px-2.5 py-0.5 rounded-lg">
+              <span class="text-xs sm:text-sm bg-white/15 text-[#BFEBF2] border border-white/25 px-2.5 py-0.5 rounded-lg">
                 {{ groupNombre || 'Familia' }}
               </span>
             </template>
@@ -2126,27 +2126,27 @@ onUnmounted(() => {
         </div>
 
         <!-- Indicador contextual exclusivo si se está editando una pieza o una familia (sin pestañas distractoras) -->
-        <div v-if="isEditPartMode" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs font-bold text-[#038391] shrink-0">
-          <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
+        <div v-if="isEditPartMode" class="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 border border-white/25 rounded-xl text-xs font-bold text-[#BFEBF2] shrink-0">
+          <Edit3 class="w-3.5 h-3.5 text-[#BFEBF2]" />
           <span>Edición de Repuesto</span>
         </div>
-        <div v-else-if="props.editGroupId || (isEditMode && activeTab === 'grupo')" class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-50 border border-cyan-200 rounded-xl text-xs font-bold text-[#038391] shrink-0">
-          <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
+        <div v-else-if="props.editGroupId || (isEditMode && activeTab === 'grupo')" class="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 border border-white/25 rounded-xl text-xs font-bold text-[#BFEBF2] shrink-0">
+          <Edit3 class="w-3.5 h-3.5 text-[#BFEBF2]" />
           <span>Edición de Familia Técnica</span>
         </div>
         <!-- Selector de pestañas segmentado (solo en creación general) -->
-        <div v-else class="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-2xl shrink-0 self-start sm:self-auto">
+        <div v-else class="flex items-center gap-1.5 p-1 bg-white/10 border border-white/15 rounded-2xl shrink-0 self-start sm:self-auto backdrop-blur-sm">
           <button
             type="button"
             @click="activeTab = 'repuesto'"
             :class="[
-              'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
+              'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer',
               activeTab === 'repuesto' 
-                ? 'bg-white text-slate-900 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-[#0F1E2E] shadow-xs' 
+                : 'text-sky-100/80 hover:text-white'
             ]"
           >
-            <PackagePlus class="w-4 h-4 text-[#04C4D9]" />
+            <PackagePlus class="w-4 h-4" :class="activeTab === 'repuesto' ? 'text-[#1B4978]' : 'text-[#BFEBF2]'" />
             <span>Repuesto</span>
           </button>
 
@@ -2154,13 +2154,13 @@ onUnmounted(() => {
             type="button"
             @click="openFamilyTabForCurrentContext"
             :class="[
-              'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5',
+              'px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer',
               activeTab === 'grupo' 
-                ? 'bg-white text-slate-900 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-[#0F1E2E] shadow-xs' 
+                : 'text-sky-100/80 hover:text-white'
             ]"
           >
-            <FolderPlus class="w-4 h-4 text-[#04C4D9]" />
+            <FolderPlus class="w-4 h-4" :class="activeTab === 'grupo' ? 'text-[#1B4978]' : 'text-[#BFEBF2]'" />
             <span>Familia</span>
           </button>
         </div>
@@ -2169,7 +2169,7 @@ onUnmounted(() => {
         <button
           type="button"
           @click="emit('close')"
-          class="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition absolute sm:relative top-4 right-4 sm:top-0 sm:right-0"
+          class="p-2 rounded-xl text-white/75 hover:text-white hover:bg-white/15 transition absolute sm:relative top-4 right-4 sm:top-0 sm:right-0 cursor-pointer"
           title="Cerrar modal (Esc)"
         >
           <X class="w-5 h-5" />
@@ -2683,11 +2683,11 @@ onUnmounted(() => {
                           :class="[
                             'px-2 py-0.5 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
                             ring.extra[extParam.clave]
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                              ? 'bg-cyan-100 text-cyan-800 border border-cyan-300 shadow-2xs'
                               : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
                           ]"
                         >
-                          <Check v-if="ring.extra[extParam.clave]" class="w-3 h-3 text-emerald-600" />
+                          <Check v-if="ring.extra[extParam.clave]" class="w-3 h-3 text-[#038391]" />
                           <X v-else class="w-3 h-3 text-slate-400" />
                           <span>{{ ring.extra[extParam.clave] ? 'Sí' : 'No' }}</span>
                         </button>
@@ -2985,11 +2985,11 @@ onUnmounted(() => {
                               :class="[
                                 'px-2.5 py-1 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 mx-auto cursor-pointer select-none',
                                 sf.medidas[param.clave]
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                                  ? 'bg-cyan-100 text-cyan-800 border border-cyan-300 shadow-2xs'
                                   : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
                               ]"
                             >
-                              <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-emerald-600" />
+                              <Check v-if="sf.medidas[param.clave]" class="w-3 h-3 text-[#038391]" />
                               <X v-else class="w-3 h-3 text-slate-400" />
                               <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
                             </button>
@@ -3150,11 +3150,11 @@ onUnmounted(() => {
                         :class="[
                           'px-3 py-1 rounded-lg text-xs font-black transition flex items-center gap-1.5 cursor-pointer',
                           paramValues[param.clave]
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                            ? 'bg-cyan-100 text-cyan-800 border border-cyan-300 shadow-2xs'
                             : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
                         ]"
                       >
-                        <Check v-if="paramValues[param.clave]" class="w-3.5 h-3.5 text-emerald-600" />
+                        <Check v-if="paramValues[param.clave]" class="w-3.5 h-3.5 text-[#038391]" />
                         <X v-else class="w-3.5 h-3.5 text-slate-400" />
                         <span>{{ paramValues[param.clave] ? 'Sí' : 'No' }}</span>
                       </button>
@@ -3223,22 +3223,22 @@ onUnmounted(() => {
                   <button
                     type="button"
                     @click="addCustomRingDesignChip"
-                    class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold transition"
+                    class="px-3 py-1 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-[11px] font-bold transition cursor-pointer"
                   >
                     + Agregar
                   </button>
                 </div>
               </div>
 
-              <div class="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
-                <label class="block text-[11px] font-black uppercase tracking-wider text-slate-800">
+              <div class="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                <label class="block text-[11px] font-black uppercase tracking-wider text-[#0D1B3E]">
                   Descripción Técnica / Notas de Aplicación
                 </label>
                 <textarea
                   v-model="partDescripcionTecnica"
                   rows="2"
                   placeholder="Ej. Juego de anillos para pistón diésel turbo, ranura 1ra keystone, holguras o notas de montaje en taller..."
-                  class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9] resize-y"
+                  class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/30 focus:border-[#04C4D9] resize-y"
                 ></textarea>
               </div>
             </div>
@@ -3249,14 +3249,14 @@ onUnmounted(() => {
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
               <div class="flex items-center gap-1.5">
                 <span class="w-1.5 h-1.5 rounded-full bg-[#004B97]"></span>
-                <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">
+                <h3 class="text-xs font-black uppercase tracking-wider text-[#0D1B3E]">
                   Equivalencias Multimarca Alternas
                 </h3>
               </div>
               <button
                 type="button"
                 @click="addEquivalenceRow"
-                class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-cyan-200 shadow-2xs transition shrink-0 cursor-pointer"
+                class="text-[10px] font-extrabold text-[#004B97] hover:text-[#0D1B3E] flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-[#04C4D9]/40 shadow-2xs transition shrink-0 cursor-pointer"
               >
                 <Plus class="w-3 h-3 text-[#04C4D9]" />
                 <span>+ Agregar Marca</span>
@@ -3295,7 +3295,7 @@ onUnmounted(() => {
                 <button
                   type="button"
                   @click="removeEquivalenceRow(idx)"
-                  class="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                  class="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
                   title="Eliminar fila"
                 >
                   <Trash2 class="w-3.5 h-3.5" />
@@ -3307,7 +3307,7 @@ onUnmounted(() => {
                   v-if="!showNewBrandInput"
                   type="button"
                   @click="showNewBrandInput = true"
-                  class="text-[10px] text-slate-500 hover:text-[#038391] font-bold flex items-center gap-1 transition cursor-pointer"
+                  class="text-[10px] text-slate-500 hover:text-[#004B97] font-bold flex items-center gap-1 transition cursor-pointer"
                 >
                   <Plus class="w-3 h-3 text-[#04C4D9]" />
                   <span>+ Otra marca</span>
@@ -3317,20 +3317,20 @@ onUnmounted(() => {
                     v-model="newBrandInputName"
                     type="text"
                     placeholder="Nombre de la marca..."
-                    class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-cyan-300 rounded-lg focus:outline-none"
+                    class="flex-1 px-2.5 py-1 text-xs font-bold bg-white border border-[#04C4D9]/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/30"
                     @keydown.enter.prevent="handleAddNewAltBrand"
                   />
                   <button
                     type="button"
                     @click="handleAddNewAltBrand"
-                    class="px-2.5 py-1 rounded-lg bg-[#04C4D9] text-white text-xs font-bold hover:bg-[#038896] transition"
+                    class="px-2.5 py-1 rounded-lg bg-[#004B97] text-white text-xs font-bold hover:bg-[#0D1B3E] transition cursor-pointer"
                   >
                     Agregar
                   </button>
                   <button
                     type="button"
                     @click="showNewBrandInput = false"
-                    class="px-2 py-1 text-xs text-slate-400 hover:text-slate-600 font-bold transition"
+                    class="px-2 py-1 text-xs text-slate-400 hover:text-slate-600 font-bold transition cursor-pointer"
                   >
                     Cancelar
                   </button>
@@ -3387,7 +3387,7 @@ onUnmounted(() => {
           <button
             type="button"
             @click="emit('close')"
-            class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition"
+            class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition cursor-pointer"
           >
             Cancelar
           </button>
@@ -3398,7 +3398,7 @@ onUnmounted(() => {
               v-if="!showDeleteConfirm"
               type="button"
               @click="showDeleteConfirm = true"
-              class="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
+              class="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
               title="Eliminar permanentemente este repuesto"
             >
               <Trash2 class="w-3.5 h-3.5 text-rose-600" />
@@ -3412,7 +3412,7 @@ onUnmounted(() => {
                 type="button"
                 @click="handleDeletePart"
                 :disabled="isDeletingPart"
-                class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black flex items-center gap-1"
+                class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black flex items-center gap-1 cursor-pointer"
               >
                 <Loader2 v-if="isDeletingPart" class="w-3 h-3 animate-spin" />
                 <span v-else>Sí</span>
@@ -3420,7 +3420,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="showDeleteConfirm = false"
-                class="px-2 py-1 text-slate-600 hover:text-slate-900 text-xs font-bold"
+                class="px-2 py-1 text-slate-600 hover:text-slate-900 text-xs font-bold cursor-pointer"
               >
                 No
               </button>
@@ -3435,7 +3435,7 @@ onUnmounted(() => {
             type="button"
             @click="handleSavePart"
             :disabled="isSubmittingPart"
-            class="px-5 py-2.5 rounded-xl bg-[#04C4D9] hover:bg-[#03a9bc] disabled:bg-slate-300 text-white text-xs font-extrabold flex items-center gap-2 transition shadow-sm active:scale-95"
+            class="px-5 py-2.5 rounded-xl studio-cta-primary disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-2 transition shadow-sm active:scale-95 cursor-pointer"
           >
             <Loader2 v-if="isSubmittingPart" class="w-4 h-4 animate-spin" />
             <Save v-else class="w-4 h-4" />

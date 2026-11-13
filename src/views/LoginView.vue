@@ -124,14 +124,14 @@ const passwordStrengthMeta = computed(() => {
   if (score === 3) {
     return {
       label: 'Buena',
-      textColor: 'text-[#004B97]',
-      barColor: 'bg-[#04C4D9]',
+      textColor: 'text-[#1B4978]',
+      barColor: 'bg-[#147488]',
     }
   }
   return {
     label: 'Fuerte',
-    textColor: 'text-emerald-600',
-    barColor: 'bg-emerald-500',
+    textColor: 'text-[#038391]',
+    barColor: 'bg-[#04C4D9]',
   }
 })
 
@@ -363,16 +363,16 @@ const handleLogoError = (e: Event) => {
   <div class="w-full max-w-[420px] mx-auto">
     <!-- Tarjeta Principal Minimalista Corporativa -->
     <div
-      class="auth-card relative bg-white rounded-2xl shadow-[0_24px_48px_-12px_rgba(15,23,42,0.5)] border border-slate-200/90 overflow-hidden"
+      class="auth-card relative bg-white rounded-3xl shadow-[0_28px_60px_-14px_rgba(9,19,43,0.6)] border border-white/80 overflow-hidden"
     >
-      <!-- Barra superior de identidad (#004B97 -> #04C4D9) -->
-      <div class="h-1.5 w-full bg-gradient-to-r from-[#004B97] via-[#04C4D9] to-[#004B97]"></div>
+      <!-- Barra superior de identidad -->
+      <div class="h-1.5 w-full bg-gradient-to-r from-[#0D1B3E] via-[#004B97] to-[#04C4D9]"></div>
 
       <div class="p-6 sm:p-8">
         <!-- Cabecera de Marca JR Blanco -->
         <div class="flex flex-col items-center text-center mb-6">
           <div
-            class="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-2xl bg-[#1A2234] p-2 shadow-md ring-1 ring-[#04C4D9]/40 flex items-center justify-center overflow-hidden mb-3.5"
+            class="w-16 h-16 sm:w-[74px] sm:h-[74px] rounded-2xl bg-gradient-to-br from-[#0D1B3E] to-[#004B97] p-2 shadow-md ring-1 ring-[#BFEBF2]/50 flex items-center justify-center overflow-hidden mb-3.5 animate-soft-float"
           >
             <img
               src="/logo-taller.png"
@@ -382,10 +382,10 @@ const handleLogoError = (e: Event) => {
             />
           </div>
 
-          <h1 class="text-lg sm:text-xl font-bold text-[#0F172A] tracking-tight">
+          <h1 class="font-display text-xl sm:text-2xl font-extrabold text-[#0D1B3E] tracking-tight">
             {{ viewMode === 'login' ? 'JR Blanco' : 'Restablecer Contraseña' }}
           </h1>
-          <p class="text-xs font-semibold text-[#004B97] mt-0.5">
+          <p class="text-[11px] font-bold uppercase tracking-wider text-[#004B97] mt-1">
             {{
               viewMode === 'login'
                 ? 'Taller Industrial y Rectificado de Motores'
@@ -561,7 +561,7 @@ const handleLogoError = (e: Event) => {
             <!-- Estado de Éxito al Actualizar Contraseña -->
             <div v-if="resetSuccess" class="py-4 text-center space-y-4 animate-feedback">
               <div
-                class="w-12 h-12 mx-auto rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center"
+                class="w-12 h-12 mx-auto rounded-2xl bg-cyan-50 border border-cyan-200 text-[#038391] flex items-center justify-center"
               >
                 <CheckCircle2 class="w-6 h-6" />
               </div>
@@ -694,7 +694,7 @@ const handleLogoError = (e: Event) => {
                       class="flex items-center gap-1.5 text-[11px] rule-item"
                       :class="
                         rule.met
-                          ? 'text-emerald-700 font-medium'
+                          ? 'text-[#038391] font-medium'
                           : 'text-slate-500'
                       "
                     >
@@ -702,7 +702,7 @@ const handleLogoError = (e: Event) => {
                         class="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 rule-badge"
                         :class="
                           rule.met
-                            ? 'bg-emerald-100 text-emerald-600'
+                            ? 'bg-cyan-100 text-[#038391]'
                             : 'bg-slate-200/80 text-slate-400'
                         "
                       >
@@ -742,7 +742,7 @@ const handleLogoError = (e: Event) => {
                     :class="{
                       'border-rose-400 focus:border-rose-500 focus:ring-rose-500/20':
                         showPasswordMismatch,
-                      'border-emerald-400 focus:border-emerald-500':
+                      'border-[#04C4D9] focus:border-[#038391]':
                         passwordsMatch,
                     }"
                   />
@@ -765,7 +765,7 @@ const handleLogoError = (e: Event) => {
                 </p>
                 <p
                   v-else-if="passwordsMatch"
-                  class="mt-1 text-[11px] font-medium text-emerald-600 flex items-center gap-1"
+                  class="mt-1 text-[11px] font-medium text-[#038391] flex items-center gap-1"
                 >
                   <Check class="w-3 h-3 stroke-[2.5]" />
                   <span>Las contraseñas coinciden.</span>
@@ -814,14 +814,14 @@ const handleLogoError = (e: Event) => {
     <Transition name="modal-fade">
       <div
         v-if="isRecoveryOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F172A]/70 backdrop-blur-xs"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#09132B]/70 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
         aria-labelledby="recovery-modal-title"
         @click.self="closeRecoveryModal"
       >
         <div
-          class="modal-card bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden relative"
+          class="modal-card studio-card bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative popover-pop-in"
         >
           <!-- Barra superior de acento -->
           <div class="h-1 w-full bg-gradient-to-r from-[#004B97] via-[#04C4D9] to-[#004B97]"></div>

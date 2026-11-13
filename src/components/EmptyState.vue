@@ -16,33 +16,30 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 sm:p-12 text-center max-w-lg mx-auto shadow-sm">
-    <!-- Icon Container -->
-    <div class="relative w-20 h-20 mx-auto mb-5">
-      <div class="absolute inset-0 rounded-full bg-[#05C7F2]/15 animate-ping opacity-30"></div>
-      <div class="relative w-20 h-20 rounded-full bg-gradient-to-tr from-[#05C7F2]/20 to-[#05F2F2]/10 border border-[#05C7F2]/30 flex items-center justify-center text-[#04C4D9] shadow-inner">
-        <component :is="icon" v-if="icon" class="w-9 h-9" />
-        <FolderSearch v-else class="w-9 h-9" />
-      </div>
+  <div class="studio-card p-8 sm:p-12 text-center max-w-lg mx-auto border-dashed border-2 border-[#C7DCEB]">
+    <!-- Contenedor Icono Pastel con Levitación Sutil -->
+    <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-[#E8F3FA] border border-[#CBE2F2] flex items-center justify-center text-[#1E446E] shadow-xs animate-soft-float">
+      <component :is="icon" v-if="icon" class="w-7 h-7" />
+      <FolderSearch v-else class="w-7 h-7" />
     </div>
 
-    <!-- Title & Description -->
-    <h3 class="text-lg sm:text-xl font-bold text-slate-900 mb-2">
+    <!-- Título y Descripción -->
+    <h3 class="font-display text-lg sm:text-xl font-extrabold text-[#162436] tracking-tight mb-2">
       {{ title }}
     </h3>
     <p class="text-sm text-slate-500 mb-6 leading-relaxed max-w-sm mx-auto">
       {{ description }}
     </p>
 
-    <!-- Action Buttons -->
+    <!-- Botones de Acción -->
     <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
       <button
         v-if="actionText"
         type="button"
         @click="$emit('action')"
-        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#0D0D0D] hover:bg-black text-white text-xs sm:text-sm font-semibold shadow-md active:scale-95 transition"
+        class="studio-cta-primary w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold cursor-pointer"
       >
-        <Plus class="w-4 h-4 text-[#05C7F2]" />
+        <Plus class="w-4 h-4 stroke-[2.5]" />
         <span>{{ actionText }}</span>
       </button>
 
@@ -50,9 +47,9 @@ defineEmits<{
         v-if="secondaryActionText"
         type="button"
         @click="$emit('secondaryAction')"
-        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium transition"
+        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-[#EFF5FB] hover:border-[#BFD7EC] text-slate-700 text-xs sm:text-sm font-semibold active:scale-[0.98] transition-colors transition-transform duration-150 cursor-pointer"
       >
-        <RotateCcw class="w-3.5 h-3.5 text-slate-500" />
+        <RotateCcw class="w-3.5 h-3.5 text-[#1E446E]" />
         <span>{{ secondaryActionText }}</span>
       </button>
     </div>

@@ -17,6 +17,8 @@ import {
   Building2,
   Sparkles,
   Pencil,
+  LogIn,
+  RefreshCw,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -25,6 +27,7 @@ import {
   cambiarRolUsuario,
   obtenerCredencialUsuario,
   cambiarPasswordUsuario,
+  sincronizarPerfilesPendientes,
   type NuevoUsuario,
 } from '@/services/usuariosService'
 
@@ -41,9 +44,11 @@ import {
   type RutaSucursal,
 } from '@/services/rutasService'
 import { tallerService } from '@/services/tallerService'
+import { useRouter } from 'vue-router'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 
 const auth = useAuthStore()
+const router = useRouter()
 const esTallerIndependiente = computed(() => Boolean(auth.user?.isIndependent))
 
 const modalAbierto = ref(false)
@@ -253,8 +258,17 @@ async function guardarUsuario() {
         ? `Sistema Independiente (${tallerNombreIndependiente})`
         : roles.value.find((opcion) => opcion.valor === datos.rol)?.nombre
 
-    mensajeExito.value =
-      `La cuenta de ${datos.nombre.trim()} fue creada con rol ${nombreRolSeleccionado}.`
+    if (creado.restoredExisting) {
+      mensajeExito.value = creado.persistedInDb
+        ? `La cuenta de ${datos.nombre.trim()} ya existía en Supabase Auth y su perfil fue restaurado y sincronizado (${nombreRolSeleccionado}).`
+        : `La cuenta de ${datos.nombre.trim()} ya existía en Supabase Auth y fue recuperada en este dispositivo (${nombreRolSeleccionado}). Inicia sesión real en Supabase para sincronizarla en la nube.`
+    } else if (!creado.persistedInDb) {
+      mensajeExito.value =
+        `La cuenta de ${datos.nombre.trim()} (${nombreRolSeleccionado}) se creó en Auth y se guardó en este dispositivo, pero tu sesión actual es solo local y RLS no permitió sincronizarla en la nube.`
+    } else {
+      mensajeExito.value =
+        `La cuenta de ${datos.nombre.trim()} fue creada con rol ${nombreRolSeleccionado}.`
+    }
 
     guardando.value = false
     await cerrarModal()
@@ -269,6 +283,7 @@ async function guardarUsuario() {
 }
 
 const usuarios = ref<Perfil[]>([])
+const sesionSinTokenSupabase = ref(false)
 const busqueda = ref('')
 
 function normalizarBusqueda(texto: string): string {
@@ -319,15 +334,15 @@ function fechaCreacion(valor?: string | null): string {
 function claseRol(rol: string): string {
   switch (normalizeRole(rol)) {
     case 'Administrador':
-      return 'bg-[#0D0D0D] text-[#05F2F2] ring-[#0D0D0D] font-semibold'
+      return 'bg-[#19314D] text-[#BFEBF2] ring-[#19314D] font-semibold'
     case 'Taller Independiente':
-      return 'bg-[#05C7F2]/20 text-[#0D0D0D] ring-[#04C4D9] font-bold'
+      return 'bg-[#E8F1FA] text-[#1B4978] ring-[#CFE1F4] font-bold'
     case 'Sub-Administrador':
-      return 'bg-[#05F2F2]/25 text-[#0D0D0D] ring-[#04C4D9] font-semibold'
+      return 'bg-[#1E446E] text-white ring-[#1E446E] font-semibold'
     case 'Operador':
-      return 'bg-[#05C7F2]/15 text-[#0D0D0D] ring-[#04C4D9]/50 font-semibold'
+      return 'bg-[#E3F5F8] text-[#12697A] ring-[#C1E8EF] font-semibold'
     default:
-      return 'bg-[#F2F2F2] text-[#0D0D0D]/80 ring-[#0D0D0D]/15 font-semibold'
+      return 'bg-slate-100 text-slate-700 ring-slate-200 font-semibold'
   }
 }
 
@@ -396,11 +411,63 @@ function puedeConfirmar(perfil: Perfil): boolean {
     (accion.value === 'eliminar' ? puedeEliminar(perfil) : puedeDesactivar(perfil))
 }
 
+const mostrarReauthSupabase = ref(false)
+const reauthEmail = ref(auth.user?.email || '')
+const reauthPassword = ref('')
+const reautenticando = ref(false)
+const errorReauth = ref('')
+
+function toggleReauthSupabase() {
+  mostrarReauthSupabase.value = !mostrarReauthSupabase.value
+  errorReauth.value = ''
+  if (mostrarReauthSupabase.value && !reauthEmail.value.trim()) {
+    reauthEmail.value = auth.user?.email || ''
+  }
+}
+
+async function conectarSesionSupabase() {
+  errorReauth.value = ''
+  const correo = reauthEmail.value.trim()
+  const clave = reauthPassword.value
+  if (!correo || !clave) {
+    errorReauth.value = 'Ingresa tu correo y contraseña de Supabase Auth.'
+    return
+  }
+  reautenticando.value = true
+  try {
+    await auth.reautenticarEnSupabase(correo, clave)
+    mostrarReauthSupabase.value = false
+    reauthPassword.value = ''
+    await cargarUsuarios()
+    mensajeExito.value =
+      'Sesión conectada con Supabase Auth y perfiles sincronizados en la nube.'
+  } catch (err: unknown) {
+    errorReauth.value =
+      err instanceof Error
+        ? err.message
+        : 'No se pudo conectar con Supabase Auth.'
+  } finally {
+    reautenticando.value = false
+  }
+}
+
+async function cerrarSesionYReconectar() {
+  await auth.logout()
+  await router.push('/login')
+}
+
 async function cargarUsuarios() {
   if (cargandoUsuarios.value) return
   cargandoUsuarios.value = true
   errorLista.value = ''
   try {
+    const hasLiveSession = await perfilesService.hasLiveSupabaseSession()
+    sesionSinTokenSupabase.value = !hasLiveSession || auth.isVaultSession
+
+    if (hasLiveSession && !auth.isVaultSession && esAdministrador.value) {
+      await sincronizarPerfilesPendientes().catch(() => undefined)
+    }
+
     const [perfilesData, rutasData] = await Promise.all([
       perfilesService.getPerfiles(),
       rutasService.getRutas().catch(() => [] as RutaSucursal[]),
@@ -468,6 +535,31 @@ async function cargarUsuarios() {
           updated_at: ruta.createdAt,
         })
       }
+    }
+
+    if (
+      auth.isVaultSession &&
+      auth.user?.id &&
+      !combinados.some(
+        (u) =>
+          u.id === auth.user?.id ||
+          (!!u.email &&
+            !!auth.user?.email &&
+            u.email.trim().toLowerCase() === auth.user.email.trim().toLowerCase())
+      )
+    ) {
+      const nowIso = new Date().toISOString()
+      combinados.push({
+        id: auth.user.id,
+        nombre: auth.user.name,
+        email: auth.user.email,
+        rol: auth.user.rawRole || auth.user.role,
+        estado: 'Activo',
+        avatar_url: auth.user.avatar,
+        created_at: nowIso,
+        updated_at: nowIso,
+        localOnly: true,
+      })
     }
 
     combinados.sort((a, b) =>
@@ -603,7 +695,7 @@ async function confirmarDesactivacion() {
           assignSubAdmin: null,
         })
       } else {
-        await eliminarUsuario(perfil.id)
+        await eliminarUsuario(perfil.id, perfil.email)
         const rutasVinculadas = rutas.value.filter(
           (r) =>
             r.subAdminId === perfil.id ||
@@ -621,7 +713,7 @@ async function confirmarDesactivacion() {
       usuarios.value = usuarios.value.filter((usuario) => usuario.id !== perfil.id)
       mensajeExito.value = `La cuenta de ${perfil.nombre} fue eliminada.`
     } else {
-      await desactivarUsuario(perfil.id)
+      await desactivarUsuario(perfil.id, perfil.email)
       const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
       if (fila) fila.estado = 'Inactivo'
       mensajeExito.value = `La cuenta de ${perfil.nombre} fue desactivada.`
@@ -1080,10 +1172,10 @@ async function guardarCredencialVisible() {
     versionCredenciales.value++
     credencialesVisibles[perfil.id] = true
     mostrarPasswordEnModal.value = true
-    tipoMensajeModalCredencial.value = 'ok'
+    tipoMensajeModalCredencial.value = res.updatedInAuth ? 'ok' : 'error'
     mensajeModalCredencial.value = res.updatedInAuth
-      ? 'Contraseña actualizada en el acceso del usuario y guardada en la bóveda.'
-      : 'Contraseña actualizada para iniciar sesión y guardada en la bóveda.'
+      ? 'Contraseña actualizada en Supabase Auth y guardada en la bóveda.'
+      : 'Solo se guardó en la bóveda local de este navegador, NO se pudo actualizar en Supabase Auth (la Edge Function no está disponible o no coincide la contraseña previa).'
   } catch (err: unknown) {
     tipoMensajeModalCredencial.value = 'error'
     mensajeModalCredencial.value =
@@ -1103,67 +1195,161 @@ onMounted(() => {
 
 <template>
   <section class="space-y-6" :inert="modalAbierto || !!seleccionado || !!usuarioRol || !!usuarioCredencial">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-[#0D0D0D] tracking-tight">
-          Administración de usuarios
-        </h1>
+    <div class="studio-hero-banner p-6 sm:p-7 text-white relative overflow-hidden">
+      <div class="pointer-events-none absolute -top-16 -right-12 w-56 h-56 rounded-full bg-[#04C4D9]/25 blur-3xl"></div>
+      <div class="relative z-10 flex flex-wrap items-center justify-between gap-4">
+        <div class="space-y-1.5">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm">
+            <span class="w-2 h-2 rounded-full bg-[#BFEBF2] animate-pulse"></span>
+            <span class="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#BFEBF2]">
+              USUARIOS · CREDENCIALES Y ROLES
+            </span>
+          </div>
+          <h1 class="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Administración de usuarios
+          </h1>
+          <p class="text-xs sm:text-sm text-blue-100/90">
+            Gestiona los usuarios, credenciales y permisos de acceso a SWGORA.
+          </p>
+        </div>
 
-        <p class="mt-1 text-sm text-[#0D0D0D]/60">
-          Gestiona los usuarios, credenciales y permisos de acceso.
-        </p>
+        <button
+          ref="botonNuevo"
+          type="button"
+          class="studio-cta-primary flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold cursor-pointer"
+          @click="abrirModal"
+        >
+          <UserPlus class="h-4 w-4 stroke-[2.5]" />
+          Nuevo usuario
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-if="sesionSinTokenSupabase || auth.isVaultSession"
+      role="alert"
+      class="rounded-2xl border border-amber-300/80 bg-amber-50/90 px-4 py-3.5 text-xs font-medium text-amber-950 shadow-sm space-y-3"
+    >
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="max-w-3xl">
+          <p class="font-bold text-amber-900">
+            Sesión local sin token activo de Supabase Auth
+          </p>
+          <p class="mt-0.5 leading-relaxed text-amber-800">
+            Iniciaste sesión con el respaldo local (bóveda), por lo que Supabase oculta los usuarios globales por seguridad RLS y solo se muestran los perfiles guardados en este navegador. Conecta una cuenta y contraseña válidas de Supabase Auth para sincronizar y administrar todos los usuarios en la nube.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-[#0D1B3E] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#004B97] cursor-pointer"
+            @click="toggleReauthSupabase"
+          >
+            <RefreshCw class="h-3.5 w-3.5" />
+            {{ mostrarReauthSupabase ? 'Ocultar conexión' : 'Conectar con Supabase Auth' }}
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 transition hover:bg-amber-100/70 cursor-pointer"
+            @click="cerrarSesionYReconectar"
+          >
+            <LogIn class="h-3.5 w-3.5" />
+            Ir al Login
+          </button>
+        </div>
       </div>
 
-      <button
-        ref="botonNuevo"
-        type="button"
-        class="flex items-center gap-2 rounded-full bg-[#0D0D0D] px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-black active:scale-95 cursor-pointer"
-        @click="abrirModal"
+      <form
+        v-if="mostrarReauthSupabase"
+        class="rounded-xl border border-amber-200/90 bg-white/90 p-3.5 space-y-3"
+        @submit.prevent="conectarSesionSupabase"
       >
-        <UserPlus class="h-4 w-4 text-[#05F2F2]" />
-        Nuevo usuario
-      </button>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label
+              for="reauth-supabase-email"
+              class="mb-1 block text-[11px] font-bold text-[#0D1B3E]"
+            >
+              Correo en Supabase Auth
+            </label>
+            <input
+              id="reauth-supabase-email"
+              v-model="reauthEmail"
+              type="email"
+              required
+              autocomplete="email"
+              :disabled="reautenticando"
+              placeholder="correo@ejemplo.com"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
+            />
+          </div>
+          <div>
+            <label
+              for="reauth-supabase-password"
+              class="mb-1 block text-[11px] font-bold text-[#0D1B3E]"
+            >
+              Contraseña exacta de Supabase Auth
+            </label>
+            <input
+              id="reauth-supabase-password"
+              v-model="reauthPassword"
+              type="password"
+              required
+              autocomplete="current-password"
+              :disabled="reautenticando"
+              placeholder="Contraseña en Supabase Auth"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
+            />
+          </div>
+        </div>
+        <p
+          v-if="errorReauth"
+          role="alert"
+          class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800"
+        >
+          {{ errorReauth }}
+        </p>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p class="text-[11px] text-slate-600">
+            Al conectarte se sincronizarán automáticamente los perfiles locales pendientes hacia Supabase.
+          </p>
+          <button
+            type="submit"
+            :disabled="reautenticando"
+            class="studio-cta-primary inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw class="h-3.5 w-3.5" :class="reautenticando ? 'animate-spin' : ''" />
+            {{ reautenticando ? 'Conectando…' : 'Conectar sesión ahora' }}
+          </button>
+        </div>
+      </form>
     </div>
 
     <p
       v-if="mensajeExito"
       role="status"
-      class="rounded-2xl border border-[#04C4D9]/50 bg-[#05C7F2]/10 p-4 text-sm font-medium text-[#0D0D0D]"
+      class="rounded-2xl border border-[#04C4D9]/50 bg-cyan-50/80 p-3.5 text-xs font-semibold text-[#0D1B3E]"
     >
       {{ mensajeExito }}
     </p>
 
-    <div class="rounded-2xl border border-[#0D0D0D]/10 bg-white p-6 shadow-sm">
-      <div class="flex items-center gap-3.5">
-        <div class="rounded-xl bg-[#0D0D0D] p-3 text-[#05F2F2] ring-1 ring-[#05C7F2]/40">
-          <ShieldCheck class="h-6 w-6 text-[#05F2F2]" />
+    <div class="overflow-hidden studio-card">
+      <div class="bg-[#F4F8FC] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div class="flex items-center gap-3">
+          <span class="w-9 h-9 rounded-xl bg-[#E8F1FA] text-[#1B4978] border border-[#CFE1F4] flex items-center justify-center">
+            <ShieldCheck class="h-4 w-4" />
+          </span>
+          <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0D1B3E] tracking-tight">Usuarios registrados</h2>
         </div>
-
-        <div>
-          <h2 class="font-bold text-[#0D0D0D]">
-            Acceso de administrador
-          </h2>
-
-          <p class="mt-1 text-sm text-[#0D0D0D]/60">
-            Crea cuentas, consulta las credenciales registradas y administra los permisos de acceso a SWGORA.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <div class="overflow-hidden rounded-2xl border border-[#0D0D0D]/10 bg-white shadow-sm">
-      <div class="h-1.5 w-full bg-gradient-to-r from-[#05C7F2] via-[#04C4D9] to-[#05F2F2]"></div>
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#F2F2F2] p-5">
-        <h2 class="font-bold text-[#0D0D0D]">Usuarios registrados</h2>
-        <div class="flex flex-wrap items-center gap-2.5">
+        <div class="flex flex-wrap items-center gap-2">
           <button
             v-if="esAdministrador && usuariosFiltrados.length"
             type="button"
-            class="inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-bold transition cursor-pointer"
+            class="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition active:scale-[0.97] cursor-pointer"
             :class="
               mostrarTodasCredenciales
-                ? 'border-[#0D0D0D] bg-[#0D0D0D] text-[#05F2F2]'
-                : 'border-[#04C4D9]/50 bg-[#05C7F2]/10 text-[#0D0D0D] hover:bg-[#04C4D9]'
+                ? 'border-[#147488] bg-[#147488] text-white shadow-sm'
+                : 'border-slate-200 bg-slate-50 text-[#1B4978] hover:bg-[#E8F1FA] hover:border-[#CFE1F4]'
             "
             @click="mostrarTodasCredenciales = !mostrarTodasCredenciales"
           >
@@ -1181,7 +1367,7 @@ onMounted(() => {
           <button
             type="button"
             :disabled="cargandoUsuarios || desactivando"
-            class="rounded-full border border-[#0D0D0D]/15 bg-[#F2F2F2] px-4 py-2 text-xs font-bold text-[#0D0D0D] transition hover:border-[#04C4D9] hover:bg-[#05C7F2]/15 disabled:opacity-50 cursor-pointer"
+            class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-[#0D1B3E] transition hover:bg-blue-50 hover:text-[#004B97] hover:border-blue-200 disabled:opacity-50 cursor-pointer"
             @click="cargarUsuarios"
           >
             {{ cargandoUsuarios ? 'Cargando…' : 'Actualizar' }}
@@ -1189,18 +1375,18 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="space-y-4 border-b border-[#F2F2F2] p-5">
+      <div class="space-y-4 border-b border-slate-100 bg-slate-50/70 p-5">
         <div
           v-if="!esTallerIndependiente"
           class="flex flex-wrap items-center gap-2"
         >
           <button
             type="button"
-            class="rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+            class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all active:scale-[0.97] cursor-pointer border"
             :class="
               filtroTipoCuenta === 'todos'
-                ? 'bg-[#0D0D0D] text-[#05F2F2]'
-                : 'bg-[#F2F2F2] text-[#0D0D0D]/75 hover:bg-[#05C7F2]/15'
+                ? 'bg-[#1E446E] text-white border-[#1E446E] shadow-sm'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-[#9AD2DC] hover:text-[#0F1E2E]'
             "
             @click="filtroTipoCuenta = 'todos'"
           >
@@ -1208,11 +1394,11 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            class="rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+            class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all active:scale-[0.97] cursor-pointer border"
             :class="
               filtroTipoCuenta === 'internos'
-                ? 'bg-[#0D0D0D] text-[#05F2F2]'
-                : 'bg-[#F2F2F2] text-[#0D0D0D]/75 hover:bg-[#05C7F2]/15'
+                ? 'bg-[#1E446E] text-white border-[#1E446E] shadow-sm'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-[#9AD2DC] hover:text-[#0F1E2E]'
             "
             @click="filtroTipoCuenta = 'internos'"
           >
@@ -1220,11 +1406,11 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+            class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all active:scale-[0.97] cursor-pointer border"
             :class="
               filtroTipoCuenta === 'independientes'
-                ? 'bg-[#0D0D0D] text-[#05F2F2]'
-                : 'border border-[#04C4D9]/45 bg-[#05C7F2]/10 text-[#0D0D0D] hover:bg-[#05C7F2]/25'
+                ? 'bg-[#147488] text-white border-[#147488] shadow-sm'
+                : 'bg-[#E3F5F8] text-[#12697A] border-[#C1E8EF] hover:bg-[#D5F2F6]'
             "
             @click="filtroTipoCuenta = 'independientes'"
           >
@@ -1235,9 +1421,9 @@ onMounted(() => {
 
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div class="w-full sm:max-w-sm">
-            <label for="buscar-usuarios" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Buscar usuarios</label>
+            <label for="buscar-usuarios" class="mb-1.5 block text-xs font-bold text-[#0D1B3E]">Buscar usuarios</label>
             <div class="relative group">
-              <Search aria-hidden="true" class="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#0D0D0D]/40 transition-colors group-focus-within:text-[#04C4D9]" />
+              <Search aria-hidden="true" class="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400 transition-colors group-focus-within:text-[#004B97]" />
               <input
                 id="buscar-usuarios"
                 v-model="busqueda"
@@ -1245,66 +1431,66 @@ onMounted(() => {
                 autocomplete="off"
                 placeholder="Nombre, correo, ruta o taller"
                 aria-controls="tabla-usuarios"
-                class="w-full rounded-full border border-[#0D0D0D]/15 bg-[#F2F2F2] py-2.5 pl-10 pr-4 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
               />
             </div>
           </div>
-          <p v-if="!cargandoUsuarios && !errorLista" role="status" class="text-xs font-medium text-[#0D0D0D]/60 tabular-nums">
+          <p v-if="!cargandoUsuarios && !errorLista" role="status" class="text-xs font-medium text-slate-500 tabular-nums">
             {{ usuariosFiltrados.length }} de {{ usuarios.length }} usuarios cargados
           </p>
         </div>
       </div>
 
-      <p v-if="errorLista" role="alert" class="m-5 rounded-xl border border-[#0D0D0D]/20 bg-[#F2F2F2] p-3 text-sm font-medium text-[#0D0D0D]">
+      <p v-if="errorLista" role="alert" class="m-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">
         {{ errorLista }}
       </p>
-      <p v-if="cargandoUsuarios && !usuarios.length" role="status" class="p-5 text-sm text-[#0D0D0D]/60">
+      <p v-if="cargandoUsuarios && !usuarios.length" role="status" class="p-5 text-sm text-slate-500">
         Cargando usuarios…
       </p>
-      <p v-else-if="!usuarios.length && !errorLista" class="p-5 text-sm text-[#0D0D0D]/60">
+      <p v-else-if="!usuarios.length && !errorLista" class="p-5 text-sm text-slate-500">
         No hay usuarios para mostrar.
       </p>
 
-      <div v-if="!cargandoUsuarios && usuarios.length && !usuariosFiltrados.length && !errorLista" class="p-5 text-sm text-[#0D0D0D]/60">
+      <div v-if="!cargandoUsuarios && usuarios.length && !usuariosFiltrados.length && !errorLista" class="p-5 text-sm text-slate-500">
         <p>No se encontraron usuarios con esa búsqueda.</p>
-        <button type="button" class="mt-2 font-bold text-[#04C4D9] hover:text-[#05C7F2] hover:underline cursor-pointer" @click="busqueda = ''">Limpiar búsqueda</button>
+        <button type="button" class="mt-2 font-bold text-[#004B97] hover:text-[#04C4D9] hover:underline cursor-pointer" @click="busqueda = ''">Limpiar búsqueda</button>
       </div>
 
       <div v-if="usuariosFiltrados.length" class="overflow-x-auto" :aria-busy="cargandoUsuarios">
         <table id="tabla-usuarios" class="w-full text-left text-sm">
           <caption class="sr-only">Usuarios, credenciales, roles y acciones de administración</caption>
-          <thead class="bg-[#F2F2F2] text-[#0D0D0D] border-b border-[#0D0D0D]/10">
+          <thead class="studio-table-head">
             <tr>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Usuario</th>
-              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Credenciales</th>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Rol</th>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Estado</th>
-              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Sesión</th>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Fecha de creación</th>
-              <th scope="col" class="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">Acciones</th>
+              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Usuario</th>
+              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Credenciales</th>
+              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Rol</th>
+              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Estado</th>
+              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Sesión</th>
+              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Fecha de creación</th>
+              <th scope="col" class="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider">Acciones</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-[#F2F2F2]">
-            <tr v-for="usuario in usuariosFiltrados" :key="usuario.id" class="transition-colors hover:bg-[#F2F2F2]/50">
+          <tbody class="divide-y divide-slate-100">
+            <tr v-for="usuario in usuariosFiltrados" :key="usuario.id" class="transition-colors hover:bg-sky-50/45">
               <td class="px-5 py-4">
-                <p class="font-bold text-[#0D0D0D]">{{ usuario.nombre }}</p>
-                <p class="mt-0.5 text-xs text-[#0D0D0D]/60">{{ usuario.email }}</p>
+                <p class="font-bold text-[#0D1B3E]">{{ usuario.nombre }}</p>
+                <p class="mt-0.5 text-xs text-slate-500">{{ usuario.email }}</p>
               </td>
 
               <!-- Columna de Credenciales (Solo Administrador) -->
               <td v-if="esAdministrador" class="whitespace-nowrap px-5 py-4">
-                <div class="inline-flex items-center gap-2 rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/80 px-3 py-1.5">
-                  <KeyRound class="h-3.5 w-3.5 shrink-0 text-[#04C4D9]" />
+                <div class="inline-flex items-center gap-2 rounded-xl border border-[#004B97]/15 bg-sky-50/60 px-3 py-1.5">
+                  <KeyRound class="h-3.5 w-3.5 shrink-0 text-[#004B97]" />
                   <div class="text-xs">
                     <span
                       v-if="esCredencialVisible(usuario.id)"
-                      class="font-mono font-bold text-[#0D0D0D]"
+                      class="font-mono font-bold text-[#0D1B3E]"
                     >
                       {{ credencialDeUsuario(usuario) || 'Sin registrar' }}
                     </span>
                     <span
                       v-else
-                      class="font-mono tracking-widest text-[#0D0D0D]/55"
+                      class="font-mono tracking-widest text-slate-400"
                     >
                       ••••••••
                     </span>
@@ -1312,7 +1498,7 @@ onMounted(() => {
 
                   <button
                     type="button"
-                    class="rounded-lg p-1 text-[#0D0D0D]/55 transition hover:bg-white hover:text-[#0D0D0D] cursor-pointer"
+                    class="rounded-lg p-1 text-slate-500 transition hover:bg-white hover:text-[#004B97] cursor-pointer"
                     :title="esCredencialVisible(usuario.id) ? 'Ocultar contraseña' : 'Ver contraseña'"
                     :aria-label="esCredencialVisible(usuario.id) ? `Ocultar contraseña de ${usuario.nombre}` : `Ver contraseña de ${usuario.nombre}`"
                     @click="alternarVisibilidadCredencial(usuario.id)"
@@ -1324,18 +1510,18 @@ onMounted(() => {
                   <button
                     v-if="credencialDeUsuario(usuario)"
                     type="button"
-                    class="rounded-lg p-1 text-[#0D0D0D]/55 transition hover:bg-white hover:text-[#04C4D9] cursor-pointer"
+                    class="rounded-lg p-1 text-slate-500 transition hover:bg-white hover:text-[#004B97] cursor-pointer"
                     title="Copiar contraseña"
                     :aria-label="`Copiar contraseña de ${usuario.nombre}`"
                     @click="copiarTexto(credencialDeUsuario(usuario)!, `pwd-${usuario.id}`)"
                   >
-                    <Check v-if="copiadoId === `pwd-${usuario.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
+                    <Check v-if="copiadoId === `pwd-${usuario.id}`" class="h-3.5 w-3.5 text-[#038391]" />
                     <Copy v-else class="h-3.5 w-3.5" />
                   </button>
 
                   <button
                     type="button"
-                    class="rounded-lg bg-[#0D0D0D] px-2 py-0.5 text-[11px] font-bold text-[#05F2F2] transition hover:bg-black cursor-pointer"
+                    class="rounded-lg bg-[#004B97] px-2.5 py-0.5 text-[11px] font-bold text-white transition hover:bg-[#0D1B3E] cursor-pointer"
                     :title="`Ver o gestionar credenciales de ${usuario.nombre}`"
                     @click="abrirModalCredenciales(usuario, $event)"
                   >
@@ -1352,11 +1538,11 @@ onMounted(() => {
               <td class="px-5 py-4">
                 <span
                   class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset"
-                  :class="usuario.estado === 'Activo' ? 'bg-[#05F2F2]/20 text-[#0D0D0D] ring-[#04C4D9]/50' : 'bg-[#F2F2F2] text-[#0D0D0D]/55 ring-[#0D0D0D]/15'"
+                  :class="usuario.estado === 'Activo' ? 'bg-cyan-50 text-[#038391] ring-cyan-200' : 'bg-slate-100 text-slate-500 ring-slate-200'"
                 >
                   <span
                     class="h-1.5 w-1.5 rounded-full"
-                    :class="usuario.estado === 'Activo' ? 'bg-[#04C4D9]' : 'bg-[#0D0D0D]/40'"
+                    :class="usuario.estado === 'Activo' ? 'bg-[#04C4D9]' : 'bg-slate-400'"
                   ></span>
                   {{ usuario.estado }}
                 </span>
@@ -1369,8 +1555,8 @@ onMounted(() => {
                     :title="usuario.sesion_unica ? 'Solo 1 dispositivo activo a la vez (clic para permitir multi-dispositivo)' : 'Múltiples dispositivos permitidos (clic para restringir a 1 dispositivo)'"
                     class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset transition cursor-pointer disabled:opacity-50"
                     :class="usuario.sesion_unica
-                      ? 'bg-[#0D0D0D] text-[#05F2F2] ring-[#0D0D0D] hover:bg-black'
-                      : 'bg-[#F2F2F2] text-[#0D0D0D]/75 ring-[#0D0D0D]/15 hover:bg-[#05C7F2]/15 hover:text-[#0D0D0D]'"
+                      ? 'bg-[#004B97] text-white ring-[#004B97] hover:bg-[#0D1B3E]'
+                      : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-sky-50 hover:text-[#004B97]'"
                     @click="alternarSesionUnica(usuario)"
                   >
                     <Smartphone v-if="usuario.sesion_unica" class="h-3.5 w-3.5 shrink-0" />
@@ -1390,13 +1576,13 @@ onMounted(() => {
                   </button>
                 </div>
               </td>
-              <td class="whitespace-nowrap px-5 py-4 text-[#0D0D0D]/70 font-mono text-xs tabular-nums">{{ fechaCreacion(usuario.created_at) }}</td>
+              <td class="whitespace-nowrap px-5 py-4 text-slate-600 font-mono text-xs tabular-nums">{{ fechaCreacion(usuario.created_at) }}</td>
               <td class="whitespace-nowrap px-5 py-4 text-right">
                 <button
                   v-if="esAdministrador"
                   type="button"
                   :aria-label="`Ver credenciales de ${usuario.nombre}`"
-                  class="mr-2 rounded-full border border-[#0D0D0D]/20 bg-[#F2F2F2] px-3.5 py-1.5 text-xs font-bold text-[#0D0D0D] transition hover:border-[#04C4D9] hover:bg-[#05C7F2]/15 cursor-pointer"
+                  class="mr-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0D1B3E] transition hover:border-[#04C4D9] hover:bg-sky-50 cursor-pointer"
                   @click="abrirModalCredenciales(usuario, $event)"
                 >
                   Credenciales
@@ -1406,7 +1592,7 @@ onMounted(() => {
                   type="button"
                   :disabled="cargandoUsuarios || guardandoRol || desactivando || !!errorLista"
                   :aria-label="`Cambiar rol de ${usuario.nombre}`"
-                  class="mr-2 rounded-full border border-[#04C4D9]/50 bg-[#05C7F2]/10 px-3.5 py-1.5 text-xs font-bold text-[#0D0D0D] transition hover:bg-[#04C4D9] hover:text-[#0D0D0D] disabled:opacity-50 cursor-pointer"
+                  class="mr-2 rounded-xl border border-[#04C4D9]/50 bg-sky-50 px-3 py-1.5 text-xs font-bold text-[#004B97] transition hover:bg-[#004B97] hover:text-white disabled:opacity-50 cursor-pointer"
                   @click="abrirCambioRol(usuario, $event)"
                 >Cambiar rol</button>
                 <button
@@ -1414,7 +1600,7 @@ onMounted(() => {
                   type="button"
                   :disabled="cargandoUsuarios || desactivando || !!errorLista"
                   :aria-label="`Desactivar a ${usuario.nombre}`"
-                  class="rounded-full border border-[#0D0D0D]/20 bg-[#F2F2F2] px-3.5 py-1.5 text-xs font-bold text-[#0D0D0D] transition hover:bg-[#0D0D0D]/10 disabled:opacity-50 cursor-pointer"
+                  class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50 cursor-pointer"
                   @click="pedirDesactivacion(usuario, $event)"
                 >Desactivar</button>
                 <button
@@ -1422,10 +1608,10 @@ onMounted(() => {
                   type="button"
                   :disabled="cargandoUsuarios || desactivando || !!errorLista"
                   :aria-label="`Eliminar a ${usuario.nombre}`"
-                  class="ml-2 rounded-full bg-[#0D0D0D] px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-black disabled:opacity-50 cursor-pointer"
+                  class="ml-2 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
                   @click="pedirEliminacion(usuario, $event)"
                 >Eliminar</button>
-                <span v-if="!puedeEliminar(usuario)" class="text-xs font-medium text-[#0D0D0D]/45">
+                <span v-if="!puedeEliminar(usuario)" class="text-xs font-medium text-slate-400">
                   {{ usuario.id === auth.user?.id ? 'Tu cuenta' : usuario.estado === 'Inactivo' ? 'Desactivado' : 'Cuenta protegida' }}
                 </span>
               </td>
@@ -1438,7 +1624,7 @@ onMounted(() => {
     <Teleport to="body">
       <div
         v-if="modalAbierto"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#0D0D0D]/70 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#09132B]/70 backdrop-blur-sm p-4"
         @click.self="cerrarModal"
         @keydown="manejarTeclado"
       >
@@ -1448,38 +1634,36 @@ onMounted(() => {
           aria-modal="true"
           aria-labelledby="titulo-nuevo-usuario"
           :aria-busy="guardando"
-          class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[#0D0D0D]/15 bg-white shadow-2xl overflow-hidden"
+          class="studio-card max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden popover-pop-in"
           @submit.prevent="guardarUsuario"
         >
-          <div class="h-1.5 w-full bg-gradient-to-r from-[#05C7F2] via-[#04C4D9] to-[#05F2F2]"></div>
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] px-6 py-4 text-white flex items-center justify-between gap-3">
+            <h2
+              id="titulo-nuevo-usuario"
+              class="text-lg font-extrabold font-display text-white"
+            >
+              {{
+                datos.rol === 'independiente'
+                  ? 'Compartir sistema independiente'
+                  : 'Nuevo usuario'
+              }}
+            </h2>
+
+            <button
+              type="button"
+              aria-label="Cerrar formulario"
+              :disabled="guardando"
+              class="rounded-xl p-2 text-white/75 transition hover:bg-white/15 hover:text-white disabled:opacity-50 cursor-pointer"
+              @click="cerrarModal"
+            >
+              <X class="h-5 w-5" />
+            </button>
+          </div>
           <div class="p-6">
-            <div class="mb-5 flex items-center justify-between gap-3">
-              <h2
-                id="titulo-nuevo-usuario"
-                class="text-lg font-bold text-[#0D0D0D]"
-              >
-                {{
-                  datos.rol === 'independiente'
-                    ? 'Compartir sistema independiente'
-                    : 'Nuevo usuario'
-                }}
-              </h2>
-
-              <button
-                type="button"
-                aria-label="Cerrar formulario"
-                :disabled="guardando"
-                class="rounded-xl p-2 text-[#0D0D0D]/50 transition hover:bg-[#F2F2F2] hover:text-[#0D0D0D] disabled:opacity-50 cursor-pointer"
-                @click="cerrarModal"
-              >
-                <X class="h-5 w-5" />
-              </button>
-            </div>
-
             <div class="space-y-4">
               <div
                 v-if="!esTallerIndependiente"
-                class="grid grid-cols-2 gap-1.5 rounded-xl bg-[#F2F2F2] p-1"
+                class="grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100 p-1"
               >
                 <button
                   type="button"
@@ -1487,8 +1671,8 @@ onMounted(() => {
                   class="rounded-lg px-2.5 py-2 text-xs font-bold transition cursor-pointer"
                   :class="
                     datos.rol !== 'independiente'
-                      ? 'bg-[#0D0D0D] text-[#05F2F2] shadow-sm'
-                      : 'text-[#0D0D0D]/70 hover:text-[#0D0D0D]'
+                      ? 'bg-[#004B97] text-white shadow-sm'
+                      : 'text-slate-600 hover:text-[#0D1B3E]'
                   "
                   @click="datos.rol = datos.rol === 'independiente' ? 'operador' : datos.rol"
                 >
@@ -1500,8 +1684,8 @@ onMounted(() => {
                   class="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-2 text-xs font-bold transition cursor-pointer"
                   :class="
                     datos.rol === 'independiente'
-                      ? 'bg-[#0D0D0D] text-[#05F2F2] shadow-sm'
-                      : 'text-[#0D0D0D]/70 hover:text-[#0D0D0D]'
+                      ? 'bg-[#004B97] text-white shadow-sm'
+                      : 'text-slate-600 hover:text-[#0D1B3E]'
                   "
                   @click="datos.rol = 'independiente'"
                 >
@@ -1512,7 +1696,7 @@ onMounted(() => {
               <div>
                 <label
                   for="usuario-nombre"
-                  class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
+                  class="mb-1.5 block text-xs font-bold text-[#0D1B3E]"
                 >
                   Nombre
                 </label>
@@ -1526,7 +1710,7 @@ onMounted(() => {
                   maxlength="120"
                   autocomplete="name"
                   :disabled="guardando"
-                  class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                   placeholder="Nombre completo"
                 />
               </div>
@@ -1534,7 +1718,7 @@ onMounted(() => {
               <div>
                 <label
                   for="usuario-email"
-                  class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
+                  class="mb-1.5 block text-xs font-bold text-[#0D1B3E]"
                 >
                   Correo electrónico
                 </label>
@@ -1547,7 +1731,7 @@ onMounted(() => {
                   maxlength="254"
                   autocomplete="email"
                   :disabled="guardando"
-                  class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                   placeholder="usuario@ejemplo.com"
                 />
               </div>
@@ -1555,7 +1739,7 @@ onMounted(() => {
               <div>
                 <label
                   for="usuario-password"
-                  class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
+                  class="mb-1.5 block text-xs font-bold text-[#0D1B3E]"
                 >
                   Contraseña inicial
                 </label>
@@ -1571,12 +1755,12 @@ onMounted(() => {
                     autocomplete="new-password"
                     aria-describedby="ayuda-password"
                     :disabled="guardando"
-                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] pl-3.5 pr-10 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                    class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-3.5 pr-10 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                     placeholder="Mínimo 8 caracteres"
                   />
                   <button
                     type="button"
-                    class="absolute inset-y-0 right-0 flex items-center pr-3 text-[#0D0D0D]/50 hover:text-[#0D0D0D] cursor-pointer"
+                    class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-[#0D1B3E] cursor-pointer"
                     :aria-label="mostrarPasswordNuevo ? 'Ocultar contraseña' : 'Mostrar contraseña'"
                     @click="mostrarPasswordNuevo = !mostrarPasswordNuevo"
                   >
@@ -1585,7 +1769,7 @@ onMounted(() => {
                   </button>
                 </div>
 
-                <p id="ayuda-password" class="mt-1 text-xs text-[#0D0D0D]/60">
+                <p id="ayuda-password" class="mt-1 text-xs text-slate-500">
                   Mínimo 8 caracteres. Quedará visible en el panel de credenciales del administrador.
                 </p>
               </div>
@@ -1593,7 +1777,7 @@ onMounted(() => {
               <div v-if="datos.rol !== 'independiente'">
                 <label
                   for="usuario-rol"
-                  class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
+                  class="mb-1.5 block text-xs font-bold text-[#0D1B3E]"
                 >
                   Rol del usuario
                 </label>
@@ -1603,7 +1787,7 @@ onMounted(() => {
                   v-model="datos.rol"
                   required
                   :disabled="guardando"
-                  class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                 >
                   <option
                     v-for="opcion in rolesEquipo"
@@ -1617,7 +1801,7 @@ onMounted(() => {
                 <div v-if="datos.rol === 'subadmin'" class="mt-3">
                   <label
                     for="usuario-ruta-asignada"
-                    class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
+                    class="mb-1.5 block text-xs font-bold text-[#0D1B3E]"
                   >
                     Ruta asignada
                   </label>
@@ -1626,7 +1810,7 @@ onMounted(() => {
                     v-model="rutaNuevoUsuarioId"
                     required
                     :disabled="guardando"
-                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                    class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                   >
                     <option
                       v-for="ruta in rutas"
@@ -1638,7 +1822,7 @@ onMounted(() => {
                   </select>
                 </div>
 
-                <p class="mt-1 text-xs text-[#0D0D0D]/60">
+                <p class="mt-1 text-xs text-slate-500">
                   {{
                     datos.rol === 'subadmin'
                       ? 'Solo podrá ver y gestionar órdenes de la ruta seleccionada.'
@@ -1651,9 +1835,9 @@ onMounted(() => {
                 <div>
                   <label
                     for="usuario-taller-independiente"
-                    class="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-[#0D0D0D]"
+                    class="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-[#0D1B3E]"
                   >
-                    <Building2 class="h-3.5 w-3.5 text-[#04C4D9]" />
+                    <Building2 class="h-3.5 w-3.5 text-[#004B97]" />
                     <span>Nombre del taller independiente</span>
                   </label>
                   <input
@@ -1662,17 +1846,17 @@ onMounted(() => {
                     type="text"
                     maxlength="120"
                     :disabled="guardando"
-                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                    class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                     placeholder="Ej. Taller Mecánico El Rayo (opcional)"
                   />
                 </div>
 
-                <div class="rounded-xl border border-[#04C4D9]/45 bg-[#05C7F2]/10 p-3 text-xs text-[#0D0D0D] space-y-1.5">
+                <div class="rounded-xl border border-[#04C4D9]/45 bg-sky-50/70 p-3 text-xs text-[#0D1B3E] space-y-1.5">
                   <div class="flex items-center gap-1.5 font-bold">
-                    <Sparkles class="h-3.5 w-3.5 text-[#04C4D9] shrink-0" />
+                    <Sparkles class="h-3.5 w-3.5 text-[#004B97] shrink-0" />
                     <span>Sistema independiente desde cero + Catálogo compartido</span>
                   </div>
-                  <ul class="list-disc pl-4 space-y-0.5 text-[#0D0D0D]/80">
+                  <ul class="list-disc pl-4 space-y-0.5 text-slate-600">
                     <li>Iniciará vacío: 0 órdenes, 0 clientes y configuración de su propio taller para PDFs.</li>
                     <li>Solo compartirá el <strong>Catálogo técnico</strong>.</li>
                     <li>Aislamiento total: él no verá tus datos y tú tampoco verás los suyos.</li>
@@ -1683,7 +1867,7 @@ onMounted(() => {
               <p
                 v-if="error"
                 role="alert"
-                class="rounded-xl border border-[#0D0D0D]/20 bg-[#F2F2F2] p-3 text-sm font-medium text-[#0D0D0D]"
+                class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800"
               >
                 {{ error }}
               </p>
@@ -1693,7 +1877,7 @@ onMounted(() => {
               <button
                 type="button"
                 :disabled="guardando"
-                class="rounded-full border border-[#0D0D0D]/20 bg-[#F2F2F2] px-4 py-2.5 text-sm font-bold text-[#0D0D0D] transition hover:bg-[#0D0D0D]/10 disabled:opacity-50 cursor-pointer"
+                class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
                 @click="cerrarModal"
               >
                 Cancelar
@@ -1702,7 +1886,7 @@ onMounted(() => {
               <button
                 type="submit"
                 :disabled="guardando"
-                class="rounded-full bg-[#0D0D0D] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                class="rounded-xl studio-cta-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >
                 {{ guardando ? 'Creando…' : 'Crear usuario' }}
               </button>
@@ -1712,7 +1896,7 @@ onMounted(() => {
       </div>
       <div
         v-if="seleccionado"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#0D0D0D]/70 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#09132B]/70 backdrop-blur-sm p-4"
         @click.self="cerrarConfirmacion"
         @keydown="tecladoConfirmacion"
       >
@@ -1724,41 +1908,46 @@ onMounted(() => {
           aria-describedby="descripcion-desactivar"
           :aria-busy="desactivando"
           tabindex="-1"
-          class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[#0D0D0D]/15 bg-white p-6 shadow-2xl outline-none"
+          class="studio-card max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl outline-none overflow-hidden popover-pop-in"
         >
-          <h2 id="titulo-desactivar" class="text-lg font-bold text-[#0D0D0D]">{{ accion === 'eliminar' ? 'Eliminar usuario definitivamente' : 'Desactivar usuario' }}</h2>
-          <div id="descripcion-desactivar" class="mt-3 space-y-2 text-sm text-[#0D0D0D]/75">
-            <p>¿Quieres {{ accion === 'eliminar' ? 'eliminar' : 'desactivar' }} la cuenta de <strong class="text-[#0D0D0D]">{{ seleccionado.nombre }}</strong>?</p>
-            <p class="break-all">{{ seleccionado.email }}</p>
-            <p v-if="accion === 'eliminar'" class="rounded-xl border border-[#0D0D0D]/20 bg-[#F2F2F2] p-3 font-medium text-[#0D0D0D]">
-              Se eliminarán permanentemente la cuenta de acceso y su perfil. Esta acción no se puede deshacer.
-            </p>
-            <p v-else>Se bloquearán nuevos inicios de sesión. Sus datos se conservarán.</p>
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] px-6 py-4 text-white">
+            <h2 id="titulo-desactivar" class="text-lg font-extrabold font-display text-white">{{ accion === 'eliminar' ? 'Eliminar usuario definitivamente' : 'Desactivar usuario' }}</h2>
           </div>
-          <p v-if="errorDesactivar" role="alert" class="mt-4 rounded-xl border border-[#0D0D0D]/20 bg-[#F2F2F2] p-3 text-sm font-medium text-[#0D0D0D]">
-            {{ errorDesactivar }}
-          </p>
-          <p v-if="desactivando" role="status" class="mt-4 text-sm text-[#0D0D0D]/60">{{ accion === 'eliminar' ? 'Eliminando cuenta…' : 'Desactivando cuenta…' }}</p>
-          <div class="mt-6 flex flex-wrap justify-end gap-3">
-            <button
-              ref="botonCancelar"
-              type="button"
-              :disabled="desactivando"
-              class="rounded-full border border-[#0D0D0D]/20 bg-[#F2F2F2] px-4 py-2.5 text-sm font-bold text-[#0D0D0D] transition hover:bg-[#0D0D0D]/10 disabled:opacity-50 cursor-pointer"
-              @click="cerrarConfirmacion"
-            >Cancelar</button>
-            <button
-              type="button"
-              :disabled="desactivando || !puedeConfirmar(seleccionado)"
-              class="rounded-full bg-[#0D0D0D] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-black disabled:opacity-50 cursor-pointer"
-              @click="confirmarDesactivacion"
-            >{{ desactivando ? (accion === 'eliminar' ? 'Eliminando…' : 'Desactivando…') : (accion === 'eliminar' ? 'Sí, eliminar definitivamente' : 'Sí, desactivar') }}</button>
+          <div class="p-6">
+            <div id="descripcion-desactivar" class="space-y-2 text-sm text-slate-600">
+              <p>¿Quieres {{ accion === 'eliminar' ? 'eliminar' : 'desactivar' }} la cuenta de <strong class="text-[#0D1B3E]">{{ seleccionado.nombre }}</strong>?</p>
+              <p class="break-all font-mono text-xs text-slate-500">{{ seleccionado.email }}</p>
+              <p v-if="accion === 'eliminar'" class="rounded-xl border border-rose-200 bg-rose-50 p-3 font-medium text-rose-800">
+                Se eliminarán permanentemente la cuenta de acceso y su perfil. Esta acción no se puede deshacer.
+              </p>
+              <p v-else>Se bloquearán nuevos inicios de sesión. Sus datos se conservarán.</p>
+            </div>
+            <p v-if="errorDesactivar" role="alert" class="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">
+              {{ errorDesactivar }}
+            </p>
+            <p v-if="desactivando" role="status" class="mt-4 text-sm text-slate-500">{{ accion === 'eliminar' ? 'Eliminando cuenta…' : 'Desactivando cuenta…' }}</p>
+            <div class="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                ref="botonCancelar"
+                type="button"
+                :disabled="desactivando"
+                class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
+                @click="cerrarConfirmacion"
+              >Cancelar</button>
+              <button
+                type="button"
+                :disabled="desactivando || !puedeConfirmar(seleccionado)"
+                class="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition disabled:opacity-50 cursor-pointer"
+                :class="accion === 'eliminar' ? 'bg-rose-600 hover:bg-rose-700' : 'studio-cta-primary'"
+                @click="confirmarDesactivacion"
+              >{{ desactivando ? (accion === 'eliminar' ? 'Eliminando…' : 'Desactivando…') : (accion === 'eliminar' ? 'Sí, eliminar definitivamente' : 'Sí, desactivar') }}</button>
+            </div>
           </div>
         </div>
       </div>
       <div
         v-if="usuarioRol"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#0D0D0D]/70 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#09132B]/70 backdrop-blur-sm p-4"
         @click.self="cerrarCambioRol"
         @keydown="tecladoCambioRol"
       >
@@ -1770,36 +1959,37 @@ onMounted(() => {
           aria-describedby="descripcion-cambiar-rol"
           :aria-busy="guardandoRol"
           tabindex="-1"
-          class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[#0D0D0D]/15 bg-white shadow-2xl outline-none overflow-hidden"
+          class="studio-card max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl outline-none overflow-hidden popover-pop-in"
           @submit.prevent="guardarCambioRol"
         >
-          <div class="h-1.5 w-full bg-gradient-to-r from-[#05C7F2] via-[#04C4D9] to-[#05F2F2]"></div>
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] px-6 py-4 text-white">
+            <h2 id="titulo-cambiar-rol" class="text-lg font-extrabold font-display text-white">Cambiar rol</h2>
+          </div>
           <div class="p-6">
-            <h2 id="titulo-cambiar-rol" class="text-lg font-bold text-[#0D0D0D]">Cambiar rol</h2>
-            <div id="descripcion-cambiar-rol" class="mt-3 text-sm text-[#0D0D0D]/75">
-              <p class="font-bold text-[#0D0D0D]">{{ usuarioRol.nombre }}</p>
-              <p class="mt-0.5 break-all text-xs text-[#0D0D0D]/60">{{ usuarioRol.email }}</p>
-              <p class="mt-3">Rol actual: <strong class="text-[#04C4D9]">{{ nombreRol(usuarioRol.rol) }}</strong></p>
+            <div id="descripcion-cambiar-rol" class="text-sm text-slate-600">
+              <p class="font-bold text-[#0D1B3E]">{{ usuarioRol.nombre }}</p>
+              <p class="mt-0.5 break-all text-xs font-mono text-slate-500">{{ usuarioRol.email }}</p>
+              <p class="mt-3">Rol actual: <strong class="text-[#004B97]">{{ nombreRol(usuarioRol.rol) }}</strong></p>
             </div>
-            <label for="nuevo-rol-usuario" class="mb-1.5 mt-4 block text-xs font-bold text-[#0D0D0D]">Nuevo rol</label>
+            <label for="nuevo-rol-usuario" class="mb-1.5 mt-4 block text-xs font-bold text-[#0D1B3E]">Nuevo rol</label>
             <select
               id="nuevo-rol-usuario"
               ref="selectorRol"
               v-model="rolElegido"
               required
               :disabled="guardandoRol"
-              class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+              class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
             >
               <option v-for="opcion in roles" :key="opcion.valor" :value="opcion.valor">{{ opcion.nombre }}</option>
             </select>
             <div v-if="rolElegido === 'subadmin'" class="mt-3">
-              <label for="cambiar-ruta-usuario" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Ruta asignada</label>
+              <label for="cambiar-ruta-usuario" class="mb-1.5 block text-xs font-bold text-[#0D1B3E]">Ruta asignada</label>
               <select
                 id="cambiar-ruta-usuario"
                 v-model="rutaCambioRolId"
                 required
                 :disabled="guardandoRol"
-                class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
               >
                 <option v-for="ruta in rutas" :key="ruta.id" :value="ruta.id">
                   {{ ruta.codigo }} · {{ ruta.nombre }}{{ ruta.subAdminNombre && ruta.subAdminId !== usuarioRol?.id ? ` (Actual: ${ruta.subAdminNombre})` : '' }}
@@ -1807,7 +1997,7 @@ onMounted(() => {
               </select>
             </div>
             <div v-else-if="rolElegido === 'independiente'" class="mt-3">
-              <label for="cambiar-taller-independiente" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Nombre del taller independiente</label>
+              <label for="cambiar-taller-independiente" class="mb-1.5 block text-xs font-bold text-[#0D1B3E]">Nombre del taller independiente</label>
               <input
                 id="cambiar-taller-independiente"
                 v-model="nombreTallerCambioRol"
@@ -1815,40 +2005,40 @@ onMounted(() => {
                 maxlength="120"
                 :disabled="guardandoRol"
                 placeholder="Ej. Taller Mecánico El Rayo"
-                class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
               />
             </div>
-            <p v-if="rolElegido === 'admin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-[#05C7F2]/10 p-3 text-sm font-medium text-[#0D0D0D]">
+            <p v-if="rolElegido === 'admin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-sky-50/75 p-3 text-sm font-medium text-[#0D1B3E]">
               Administrador permite gestionar usuarios y acceder a todas las secciones del sistema.
             </p>
-            <p v-else-if="rolElegido === 'independiente'" class="mt-3 rounded-xl border border-[#04C4D9]/45 bg-[#05C7F2]/15 p-3 text-sm font-medium text-[#0D0D0D]">
+            <p v-else-if="rolElegido === 'independiente'" class="mt-3 rounded-xl border border-[#04C4D9]/45 bg-sky-50/85 p-3 text-sm font-medium text-[#0D1B3E]">
               Sistema propio vacío (0 órdenes y 0 clientes propios) compartiendo únicamente el Catálogo técnico.
             </p>
-            <p v-else-if="rolElegido === 'subadmin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-[#05F2F2]/15 p-3 text-sm font-medium text-[#0D0D0D]">
+            <p v-else-if="rolElegido === 'subadmin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-sky-50/75 p-3 text-sm font-medium text-[#0D1B3E]">
               Sub-Administrador de Ruta administra únicamente las órdenes y clientes de su ruta asignada.
             </p>
-            <p v-else-if="rolElegido === 'consultor'" class="mt-3 rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2] p-3 text-sm text-[#0D0D0D]/75">
+            <p v-else-if="rolElegido === 'consultor'" class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               Consultor tiene acceso a la sección Catálogo.
             </p>
-            <p v-else class="mt-3 rounded-xl border border-[#04C4D9]/35 bg-[#05F2F2]/15 p-3 text-sm text-[#0D0D0D]">
+            <p v-else class="mt-3 rounded-xl border border-[#04C4D9]/35 bg-sky-50/75 p-3 text-sm text-[#0D1B3E]">
               Tallerista tiene acceso a las secciones Órdenes y Catálogo.
             </p>
-            <p v-if="usuarioRol.estado !== 'Activo'" class="mt-3 text-sm text-[#0D0D0D]/60">
+            <p v-if="usuarioRol.estado !== 'Activo'" class="mt-3 text-sm text-slate-500">
               Cambiar el rol no reactiva esta cuenta.
             </p>
-            <p v-if="errorRol" role="alert" class="mt-4 rounded-xl border border-[#0D0D0D]/20 bg-[#F2F2F2] p-3 text-sm font-medium text-[#0D0D0D]">{{ errorRol }}</p>
-            <p v-if="guardandoRol" role="status" class="mt-3 text-sm text-[#0D0D0D]/60">Guardando cambio de rol…</p>
+            <p v-if="errorRol" role="alert" class="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">{{ errorRol }}</p>
+            <p v-if="guardandoRol" role="status" class="mt-3 text-sm text-slate-500">Guardando cambio de rol…</p>
             <div class="mt-6 flex flex-wrap justify-end gap-3">
               <button
                 type="button"
                 :disabled="guardandoRol"
-                class="rounded-full border border-[#0D0D0D]/20 bg-[#F2F2F2] px-4 py-2.5 text-sm font-bold text-[#0D0D0D] transition hover:bg-[#0D0D0D]/10 disabled:opacity-50 cursor-pointer"
+                class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
                 @click="cerrarCambioRol"
               >Cancelar</button>
               <button
                 type="submit"
                 :disabled="guardandoRol || !puedeCambiarRol(usuarioRol) || sinCambiosRol"
-                class="rounded-full bg-[#0D0D0D] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                class="rounded-xl studio-cta-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >{{ guardandoRol ? 'Guardando…' : 'Confirmar cambio' }}</button>
             </div>
           </div>
@@ -1858,7 +2048,7 @@ onMounted(() => {
       <!-- Modal Mejorado de Ficha de Usuario y Cambio de Contraseña -->
       <div
         v-if="usuarioCredencial"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#0D0D0D]/75 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#09132B]/70 backdrop-blur-sm p-4"
         @click.self="cerrarModalCredenciales"
         @keydown.esc="cerrarModalCredenciales"
       >
@@ -1868,41 +2058,40 @@ onMounted(() => {
           aria-modal="true"
           aria-labelledby="titulo-credenciales-usuario"
           tabindex="-1"
-          class="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#0D0D0D]/15 bg-white shadow-2xl outline-none overflow-hidden"
+          class="studio-card max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl outline-none overflow-hidden popover-pop-in"
         >
           <!-- Cabecera oscura de Ficha de Usuario -->
-          <div class="relative bg-[#0D0D0D] px-6 py-5 text-white">
-            <div class="h-1 w-full bg-gradient-to-r from-[#05C7F2] via-[#04C4D9] to-[#05F2F2] absolute top-0 left-0"></div>
+          <div class="relative bg-gradient-to-r from-[#0D1B3E] to-[#004B97] px-6 py-5 text-white">
             <div class="flex items-start justify-between gap-3">
               <div class="flex items-center gap-3.5 min-w-0">
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#05C7F2] to-[#04C4D9] text-sm font-black text-[#0D0D0D] shadow-lg shadow-[#05C7F2]/20">
+                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15 border border-white/25 text-sm font-black text-[#BFEBF2] shadow-inner">
                   {{ inicialesFicha(usuarioCredencial.nombre) }}
                 </div>
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <h2 id="titulo-credenciales-usuario" class="truncate text-base font-bold text-white">
+                    <h2 id="titulo-credenciales-usuario" class="truncate text-base font-bold font-display text-white">
                       {{ usuarioCredencial.nombre }}
                     </h2>
                     <span
                       class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
                       :class="
                         usuarioCredencial.estado === 'Inactivo'
-                          ? 'bg-white/10 text-white/60'
-                          : 'bg-[#05F2F2]/20 text-[#05F2F2] ring-1 ring-[#05F2F2]/40'
+                          ? 'bg-white/15 text-white/75'
+                          : 'bg-white/15 text-[#BFEBF2] ring-1 ring-white/25'
                       "
                     >
                       {{ usuarioCredencial.estado || 'Activo' }}
                     </span>
                   </div>
-                  <p class="mt-0.5 truncate font-mono text-xs text-white/65">
+                  <p class="mt-0.5 truncate font-mono text-xs text-sky-100/80">
                     {{ usuarioCredencial.email }}
                   </p>
                   <div class="mt-2 flex flex-wrap items-center gap-2">
-                    <span class="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#05C7F2]">
+                    <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-semibold text-[#BFEBF2]">
                       <ShieldCheck class="h-3 w-3" />
                       {{ nombreRol(usuarioCredencial.rol) }}
                     </span>
-                    <span class="text-[11px] text-white/45">
+                    <span class="text-[11px] text-sky-100/65">
                       Alta: {{ fechaCreacion(usuarioCredencial.created_at) }}
                     </span>
                   </div>
@@ -1912,7 +2101,7 @@ onMounted(() => {
               <button
                 type="button"
                 aria-label="Cerrar ficha de usuario"
-                class="rounded-xl p-2 text-white/60 transition hover:bg-white/10 hover:text-white cursor-pointer"
+                class="rounded-xl p-2 text-white/75 transition hover:bg-white/15 hover:text-white cursor-pointer"
                 @click="cerrarModalCredenciales"
               >
                 <X class="h-5 w-5" />
@@ -1922,10 +2111,10 @@ onMounted(() => {
 
           <div class="p-6 space-y-5">
             <!-- 1. Editar nombre y configuración rápida de ficha -->
-            <div class="rounded-2xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/60 p-4 space-y-3.5">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50/75 p-4 space-y-3.5">
               <div class="flex items-center justify-between gap-2">
-                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">
-                  <Pencil class="h-3.5 w-3.5 text-[#04C4D9]" />
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
+                  <Pencil class="h-3.5 w-3.5 text-[#004B97]" />
                   <span>Ficha del usuario</span>
                 </span>
                 <div class="flex items-center gap-1.5">
@@ -1936,8 +2125,8 @@ onMounted(() => {
                     class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition cursor-pointer disabled:opacity-50"
                     :class="
                       usuarioCredencial.sesion_unica
-                        ? 'bg-[#0D0D0D] text-[#05F2F2]'
-                        : 'border border-[#0D0D0D]/15 bg-white text-[#0D0D0D]/75 hover:border-[#04C4D9]'
+                        ? 'bg-[#004B97] text-white'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#04C4D9]'
                     "
                     @click="alternarSesionUnica(usuarioCredencial)"
                   >
@@ -1954,7 +2143,7 @@ onMounted(() => {
                   <button
                     v-if="puedeCambiarRol(usuarioCredencial)"
                     type="button"
-                    class="rounded-full border border-[#04C4D9]/45 bg-white px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] transition hover:bg-[#05C7F2]/15 cursor-pointer"
+                    class="rounded-full border border-[#04C4D9]/50 bg-white px-2.5 py-1 text-[11px] font-bold text-[#004B97] transition hover:bg-sky-50 cursor-pointer"
                     @click="(e) => { const target = usuarioCredencial!; void cerrarModalCredenciales().then(() => abrirCambioRol(target, e)) }"
                   >
                     Cambiar rol
@@ -1970,12 +2159,12 @@ onMounted(() => {
                   maxlength="120"
                   :disabled="guardandoNombreFicha"
                   placeholder="Nombre completo del usuario"
-                  class="flex-1 rounded-xl border border-[#0D0D0D]/15 bg-white px-3.5 py-2 text-xs font-semibold text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  class="flex-1 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                 />
                 <button
                   type="submit"
                   :disabled="guardandoNombreFicha || nombreEditableFicha.trim() === usuarioCredencial.nombre"
-                  class="rounded-xl bg-[#0D0D0D] px-4 py-2 text-xs font-bold text-[#05F2F2] transition hover:bg-black disabled:opacity-40 cursor-pointer"
+                  class="rounded-xl bg-[#004B97] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0D1B3E] disabled:opacity-40 cursor-pointer"
                 >
                   {{ guardandoNombreFicha ? 'Guardando…' : 'Guardar nombre' }}
                 </button>
@@ -1983,19 +2172,19 @@ onMounted(() => {
             </div>
 
             <!-- 2. Credenciales actuales y copiar ficha -->
-            <div class="space-y-3 rounded-2xl border border-[#0D0D0D]/10 bg-white p-4 shadow-xs">
+            <div class="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
               <div class="flex items-center justify-between gap-2">
-                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0D0D0D]/70">
-                  <KeyRound class="h-3.5 w-3.5 text-[#04C4D9]" />
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
+                  <KeyRound class="h-3.5 w-3.5 text-[#004B97]" />
                   <span>Credenciales actuales</span>
                 </span>
                 <button
                   type="button"
-                  class="inline-flex items-center gap-1.5 rounded-full bg-[#0D0D0D] px-3 py-1.5 text-[11px] font-bold text-[#05F2F2] transition hover:bg-black cursor-pointer"
+                  class="inline-flex items-center gap-1.5 rounded-full bg-[#1E446E] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#19314D] cursor-pointer"
                   @click="copiarFichaAcceso(usuarioCredencial)"
                 >
-                  <Check v-if="copiadoId === `ficha-${usuarioCredencial.id}`" class="h-3.5 w-3.5" />
-                  <Copy v-else class="h-3.5 w-3.5" />
+                  <Check v-if="copiadoId === `ficha-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#BFEBF2]" />
+                  <Copy v-else class="h-3.5 w-3.5 text-[#BFEBF2]" />
                   <span>
                     {{
                       copiadoId === `ficha-${usuarioCredencial.id}`
@@ -2007,32 +2196,32 @@ onMounted(() => {
               </div>
 
               <div class="grid gap-2.5 sm:grid-cols-2">
-                <div class="rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/70 px-3 py-2">
-                  <span class="block text-[10px] font-bold uppercase tracking-wider text-[#0D0D0D]/50">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     Correo de acceso
                   </span>
                   <div class="mt-1 flex items-center justify-between gap-1.5">
-                    <span class="truncate font-mono text-xs font-bold text-[#0D0D0D]" :title="usuarioCredencial.email">
+                    <span class="truncate font-mono text-xs font-bold text-[#0D1B3E]" :title="usuarioCredencial.email">
                       {{ usuarioCredencial.email }}
                     </span>
                     <button
                       type="button"
-                      class="shrink-0 rounded-lg bg-white p-1.5 text-[#0D0D0D] shadow-xs transition hover:bg-[#05C7F2]/20 cursor-pointer"
+                      class="shrink-0 rounded-lg bg-white p-1.5 text-[#0D1B3E] shadow-xs transition hover:bg-sky-100 hover:text-[#004B97] cursor-pointer"
                       title="Copiar correo"
                       @click="copiarTexto(usuarioCredencial.email, `modal-email-${usuarioCredencial.id}`)"
                     >
-                      <Check v-if="copiadoId === `modal-email-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
+                      <Check v-if="copiadoId === `modal-email-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#038391]" />
                       <Copy v-else class="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
 
-                <div class="rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2]/70 px-3 py-2">
-                  <span class="block text-[10px] font-bold uppercase tracking-wider text-[#0D0D0D]/50">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     Contraseña actual
                   </span>
                   <div class="mt-1 flex items-center justify-between gap-1.5">
-                    <span class="truncate font-mono text-xs font-bold text-[#0D0D0D]">
+                    <span class="truncate font-mono text-xs font-bold text-[#0D1B3E]">
                       {{
                         mostrarPasswordEnModal
                           ? credencialDeUsuario(usuarioCredencial) || 'No guardada'
@@ -2042,7 +2231,7 @@ onMounted(() => {
                     <div class="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        class="rounded-lg bg-white p-1.5 text-[#0D0D0D]/70 shadow-xs transition hover:text-[#0D0D0D] cursor-pointer"
+                        class="rounded-lg bg-white p-1.5 text-slate-600 shadow-xs transition hover:text-[#004B97] cursor-pointer"
                         :title="mostrarPasswordEnModal ? 'Ocultar' : 'Mostrar'"
                         @click="mostrarPasswordEnModal = !mostrarPasswordEnModal"
                       >
@@ -2052,11 +2241,11 @@ onMounted(() => {
                       <button
                         v-if="credencialDeUsuario(usuarioCredencial)"
                         type="button"
-                        class="rounded-lg bg-white p-1.5 text-[#0D0D0D] shadow-xs transition hover:bg-[#05C7F2]/20 cursor-pointer"
+                        class="rounded-lg bg-white p-1.5 text-[#0D1B3E] shadow-xs transition hover:bg-sky-100 hover:text-[#004B97] cursor-pointer"
                         title="Copiar contraseña"
                         @click="copiarTexto(credencialDeUsuario(usuarioCredencial)!, `modal-pwd-${usuarioCredencial.id}`)"
                       >
-                        <Check v-if="copiadoId === `modal-pwd-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#04C4D9]" />
+                        <Check v-if="copiadoId === `modal-pwd-${usuarioCredencial.id}`" class="h-3.5 w-3.5 text-[#038391]" />
                         <Copy v-else class="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -2067,17 +2256,17 @@ onMounted(() => {
 
             <!-- 3. Cambiar contraseña -->
             <form
-              class="rounded-2xl border border-[#04C4D9]/35 bg-[#05C7F2]/[0.06] p-4 space-y-3"
+              class="rounded-2xl border border-[#04C4D9]/35 bg-sky-50/55 p-4 space-y-3"
               @submit.prevent="guardarCredencialVisible"
             >
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <label for="input-credencial-visible" class="text-xs font-bold uppercase tracking-wider text-[#0D0D0D]">
+                <label for="input-credencial-visible" class="text-xs font-bold uppercase tracking-wider text-[#0D1B3E]">
                   Cambiar contraseña de acceso
                 </label>
                 <button
                   type="button"
                   :disabled="guardandoCredencial"
-                  class="inline-flex items-center gap-1 rounded-full border border-[#04C4D9]/50 bg-white px-2.5 py-1 text-[11px] font-bold text-[#0D0D0D] transition hover:bg-[#05C7F2]/20 cursor-pointer disabled:opacity-50"
+                  class="inline-flex items-center gap-1 rounded-full border border-[#04C4D9]/50 bg-white px-2.5 py-1 text-[11px] font-bold text-[#004B97] transition hover:bg-sky-100 cursor-pointer disabled:opacity-50"
                   @click="generarPasswordSeguraModal"
                 >
                   <Sparkles class="h-3 w-3 text-[#04C4D9]" />
@@ -2092,11 +2281,11 @@ onMounted(() => {
                   :type="esNuevaPasswordVisible ? 'text' : 'password'"
                   :disabled="guardandoCredencial"
                   placeholder="Nueva contraseña (mínimo 6 caracteres)"
-                  class="w-full rounded-xl border border-[#0D0D0D]/15 bg-white pl-3.5 pr-10 py-2.5 text-xs font-mono font-bold text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  class="w-full rounded-xl border border-slate-300 bg-white pl-3.5 pr-10 py-2.5 text-xs font-mono font-bold text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                 />
                 <button
                   type="button"
-                  class="absolute right-2.5 top-2 rounded-lg p-1 text-[#0D0D0D]/55 transition hover:bg-[#F2F2F2] hover:text-[#0D0D0D] cursor-pointer"
+                  class="absolute right-2.5 top-2 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-[#0D1B3E] cursor-pointer"
                   :title="esNuevaPasswordVisible ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'"
                   @click="esNuevaPasswordVisible = !esNuevaPasswordVisible"
                 >
@@ -2106,13 +2295,13 @@ onMounted(() => {
               </div>
 
               <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                <span class="text-[11px] font-medium text-[#0D0D0D]/60">
+                <span class="text-[11px] font-medium text-slate-500">
                   Mínimo 6 caracteres · Aplica de inmediato al iniciar sesión
                 </span>
                 <button
                   type="submit"
                   :disabled="guardandoCredencial || credencialEditable.trim().length < 6"
-                  class="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#05C7F2] to-[#04C4D9] px-4 py-2 text-xs font-bold text-[#0D0D0D] shadow-sm transition hover:brightness-95 disabled:opacity-45 cursor-pointer"
+                  class="inline-flex items-center gap-1.5 rounded-xl studio-cta-primary px-4 py-2 text-xs font-bold text-white shadow-sm transition disabled:opacity-45 cursor-pointer"
                 >
                   <KeyRound class="h-3.5 w-3.5" />
                   <span>{{ guardandoCredencial ? 'Actualizando…' : 'Actualizar contraseña' }}</span>
@@ -2127,7 +2316,7 @@ onMounted(() => {
               :class="
                 tipoMensajeModalCredencial === 'error'
                   ? 'border-red-300 bg-red-50 text-red-700'
-                  : 'border-[#04C4D9]/50 bg-[#05C7F2]/15 text-[#0D0D0D]'
+                  : 'border-[#04C4D9]/50 bg-sky-50 text-[#0D1B3E]'
               "
             >
               {{ mensajeModalCredencial }}
@@ -2136,7 +2325,7 @@ onMounted(() => {
             <div class="flex justify-end pt-1">
               <button
                 type="button"
-                class="rounded-full bg-[#0D0D0D] px-5 py-2 text-xs font-bold text-white transition hover:bg-black cursor-pointer"
+                class="rounded-xl bg-[#004B97] px-5 py-2 text-xs font-bold text-white transition hover:bg-[#0D1B3E] cursor-pointer"
                 @click="cerrarModalCredenciales"
               >
                 Cerrar

@@ -12,6 +12,7 @@ export interface Perfil {
   active_session_token?: string | null
   created_at: string
   updated_at: string
+  localOnly?: boolean
 }
 
 export type PerfilUpdate = Partial<
@@ -41,6 +42,83 @@ function writePerfilesCache(lista: Perfil[]): void {
   }
 }
 
+function splitTenantSuffixFromRole(raw?: string | null): {
+  base: string
+  tenantKey: string
+} {
+  if (!raw) return { base: '', tenantKey: '' }
+  const trimmed = raw.trim()
+  const lower = trimmed.toLowerCase()
+  const idx = lower.indexOf('||tenant|')
+  if (idx === -1) return { base: trimmed, tenantKey: '' }
+  const base = trimmed.slice(0, idx).trim()
+  const rest = trimmed.slice(idx + '||tenant|'.length)
+  const tenantKey = (rest.split('|')[0] || '').trim().toLowerCase()
+  return { base, tenantKey }
+}
+
+function normalizeBaseRoleFamily(raw?: string | null): string {
+  if (!raw) return ''
+  const lower = raw.trim().toLowerCase()
+  if (!lower) return ''
+  if (
+    lower.startsWith('independiente|') ||
+    lower === 'independiente' ||
+    lower.includes('taller independiente')
+  ) {
+    return 'independiente'
+  }
+  if (lower.startsWith('subadmin|')) {
+    const rutaId = (lower.split('|')[1] || '').trim()
+    return rutaId ? `subadmin:${rutaId}` : 'subadmin'
+  }
+  if (lower.includes('sub-admin') || lower.includes('subadmin')) return 'subadmin'
+  if (lower.includes('admin')) return 'admin'
+  if (lower.includes('consult')) return 'consultor'
+  if (
+    lower.includes('oper') ||
+    lower.includes('taller') ||
+    lower.includes('tecnic')
+  ) {
+    return 'operador'
+  }
+  return lower
+}
+
+/**
+ * Devuelve variante alterna ('administrador') si el rol base es 'admin'
+ */
+export function buildAdminAlternateRole(rawRole?: string | null): string | null {
+  if (!rawRole) return null
+  const trimmed = rawRole.trim()
+  const lower = trimmed.toLowerCase()
+  const idx = lower.indexOf('||tenant|')
+  if (idx !== -1) {
+    const base = trimmed.slice(0, idx).trim().toLowerCase()
+    if (base === 'admin') {
+      return `administrador${trimmed.slice(idx)}`
+    }
+    return null
+  }
+  if (lower === 'admin') return 'administrador'
+  return null
+}
+
+/**
+ * Compara si dos cadenas de rol representan exactamente el mismo nivel y tenant
+ */
+export function rolesMatchEquivalent(
+  a?: string | null,
+  b?: string | null
+): boolean {
+  const left = splitTenantSuffixFromRole(a)
+  const right = splitTenantSuffixFromRole(b)
+  if (left.tenantKey !== right.tenantKey) return false
+  const leftFamily = normalizeBaseRoleFamily(left.base)
+  const rightFamily = normalizeBaseRoleFamily(right.base)
+  return Boolean(leftFamily) && leftFamily === rightFamily
+}
+
 function isRichEncodedRole(rol?: string | null): boolean {
   if (!rol) return false
   const lower = rol.trim().toLowerCase()
@@ -51,31 +129,158 @@ function isRichEncodedRole(rol?: string | null): boolean {
   )
 }
 
-function mergePerfilesIntoCache(entradas: Perfil[]): Perfil[] {
+interface MergeCacheOptions {
+  markLocalOnly?: boolean
+  replaceSyncedRows?: boolean
+}
+
+function mergePerfilesIntoCache(
+  entradas: Perfil[],
+  options: MergeCacheOptions = {}
+): Perfil[] {
   const actuales = readPerfilesCache()
-  if (!entradas.length) return []
-  const mapa = new Map<string, Perfil>()
-  for (const item of actuales) {
-    if (item?.id) mapa.set(item.id, item)
+  if (!entradas.length) {
+    return actuales
   }
+  const prevById = new Map<string, Perfil>()
+  for (const item of actuales) {
+    if (item?.id) prevById.set(item.id, item)
+  }
+
+  const nextMap = new Map<string, Perfil>()
+  if (!options.replaceSyncedRows) {
+    for (const item of actuales) {
+      if (item?.id) nextMap.set(item.id, item)
+    }
+  } else {
+    // Al recibir filas reales de Supabase, conservar entradas pendientes de sincronización local
+    const incomingIds = new Set(entradas.map((e) => e.id).filter(Boolean))
+    const incomingEmails = new Set(
+      entradas.map((e) => (e.email || '').trim().toLowerCase()).filter(Boolean)
+    )
+    for (const item of actuales) {
+      const emailKey = (item.email || '').trim().toLowerCase()
+      if (
+        item?.id &&
+        item.localOnly &&
+        !incomingIds.has(item.id) &&
+        (!emailKey || !incomingEmails.has(emailKey))
+      ) {
+        nextMap.set(item.id, item)
+      }
+    }
+  }
+
   const mergedResultados: Perfil[] = []
   for (const item of entradas) {
     if (!item?.id) continue
-    const prev = mapa.get(item.id)
+    const prev = prevById.get(item.id)
     const incomingGeneric =
       !item.rol || item.rol.trim().toLowerCase() === 'operador'
     const resolvedRol =
       incomingGeneric && isRichEncodedRole(prev?.rol) ? prev!.rol : item.rol
+    const resolvedLocalOnly =
+      options.markLocalOnly !== undefined
+        ? options.markLocalOnly
+        : item.localOnly !== undefined
+          ? item.localOnly
+          : prev?.localOnly
     const merged: Perfil = {
       ...prev,
       ...item,
       rol: resolvedRol,
+      ...(resolvedLocalOnly !== undefined
+        ? { localOnly: resolvedLocalOnly }
+        : {}),
     }
-    mapa.set(item.id, merged)
+    nextMap.set(item.id, merged)
     mergedResultados.push(merged)
   }
-  writePerfilesCache(Array.from(mapa.values()))
-  return mergedResultados
+  const allValues = Array.from(nextMap.values())
+  writePerfilesCache(allValues)
+  return options.replaceSyncedRows ? allValues : mergedResultados
+}
+
+/**
+ * Persiste o actualiza la fila en `public.perfiles` manejando tolerancia de columnas/constraints
+ */
+export async function upsertPerfilSafely(
+  client: typeof supabase,
+  params: {
+    id: string
+    nombre: string
+    email: string
+    rol: string
+    avatar_url?: string | null
+  }
+): Promise<boolean> {
+  const now = new Date().toISOString()
+  const roleCandidates: string[] = [params.rol]
+  const adminAlt = buildAdminAlternateRole(params.rol)
+  if (adminAlt && !roleCandidates.includes(adminAlt)) {
+    roleCandidates.push(adminAlt)
+  }
+  const allowOperadorFallback = isRichEncodedRole(params.rol)
+  if (allowOperadorFallback && !roleCandidates.includes('operador')) {
+    roleCandidates.push('operador')
+  }
+
+  for (const candidateRol of roleCandidates) {
+    const basePayload = {
+      id: params.id,
+      nombre: params.nombre,
+      email: params.email,
+      rol: candidateRol,
+      updated_at: now,
+      ...(params.avatar_url ? { avatar_url: params.avatar_url } : {}),
+    }
+
+    const { error: primaryError } = await client
+      .from('perfiles')
+      .upsert({ ...basePayload, estado: 'Activo' }, { onConflict: 'id' })
+
+    let upsertOk = !primaryError
+    if (!upsertOk) {
+      // Reintentar sin `estado` por compatibilidad con esquemas sin esa columna
+      const { error: withoutEstadoError } = await client
+        .from('perfiles')
+        .upsert(basePayload, { onConflict: 'id' })
+      upsertOk = !withoutEstadoError
+    }
+
+    if (!upsertOk) continue
+
+    const isLastResortOperador =
+      candidateRol === 'operador' && !rolesMatchEquivalent(candidateRol, params.rol)
+    if (isLastResortOperador) {
+      return true
+    }
+
+    // Verificar que un trigger o constraint en DB no haya degradado el rol (ej. admin -> consultor)
+    try {
+      const { data: verified, error: checkError } = await client
+        .from('perfiles')
+        .select('id, rol')
+        .eq('id', params.id)
+        .maybeSingle()
+
+      if (!checkError && verified?.id === params.id) {
+        if (rolesMatchEquivalent(verified.rol, params.rol)) {
+          return true
+        }
+        // Si la DB sobrescribió el rol solicitado (p. ej. 'admin' rechazado), probar variante alterna
+        continue
+      }
+    } catch {
+      // Si el cliente aislado no tiene SELECT pero el upsert no falló, aceptar equivalente
+    }
+
+    if (rolesMatchEquivalent(candidateRol, params.rol)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 function isMissingSessionColumnError(err: unknown): boolean {
@@ -91,8 +296,53 @@ function isMissingSessionColumnError(err: unknown): boolean {
 }
 
 export const perfilesService = {
-  cachePerfilesList(perfiles: Perfil[]): void {
-    mergePerfilesIntoCache(perfiles)
+  getCachedPerfiles(): Perfil[] {
+    return readPerfilesCache()
+  },
+
+  cachePerfilesList(
+    perfiles: Perfil[],
+    options?: { markLocalOnly?: boolean }
+  ): void {
+    mergePerfilesIntoCache(perfiles, {
+      markLocalOnly: options?.markLocalOnly,
+    })
+  },
+
+  removePerfilFromCache(id: string): void {
+    if (!id) return
+    const actuales = readPerfilesCache()
+    const filtrados = actuales.filter((p) => p.id !== id)
+    if (filtrados.length !== actuales.length) {
+      writePerfilesCache(filtrados)
+    }
+  },
+
+  updatePerfilInCache(id: string, updates: Partial<Perfil>): void {
+    if (!id) return
+    const actuales = readPerfilesCache()
+    let updated = false
+    const lista = actuales.map((p) => {
+      if (p.id !== id) return p
+      updated = true
+      return {
+        ...p,
+        ...updates,
+        updated_at: new Date().toISOString(),
+      }
+    })
+    if (updated) {
+      writePerfilesCache(lista)
+    }
+  },
+
+  async hasLiveSupabaseSession(): Promise<boolean> {
+    try {
+      const { data } = await supabase.auth.getSession()
+      return Boolean(data?.session?.access_token)
+    } catch {
+      return false
+    }
   },
 
   getCachedPerfilByEmailOrId(params: {
@@ -131,7 +381,9 @@ export const perfilesService = {
         throw error
       }
       if (data) {
-        const merged = mergePerfilesIntoCache([data as Perfil])
+        const merged = mergePerfilesIntoCache([data as Perfil], {
+          markLocalOnly: false,
+        })
         return merged[0] ?? (data as Perfil)
       }
       return this.getCachedPerfilByEmailOrId({ id })
@@ -143,20 +395,176 @@ export const perfilesService = {
   },
 
   /**
-   * Obtiene todos los perfiles de usuarios (solo para roles autorizados)
+   * Obtiene o autorrepara el perfil en `public.perfiles` para un usuario ya autenticado en Supabase Auth.
+   * Evita rechazar logins legítimos si el trigger no creó la fila o fue borrada de `public.perfiles`.
+   */
+  async ensurePerfilForAuthUser(
+    sbUser: {
+      id: string
+      email?: string | null
+      created_at?: string | null
+      user_metadata?: Record<string, unknown> | null
+    },
+    extraFallback?: { nombre?: string; rol?: string }
+  ): Promise<Perfil> {
+    const cleanEmail = (sbUser.email || '').trim().toLowerCase()
+    const cached = this.getCachedPerfilByEmailOrId({
+      id: sbUser.id,
+      email: cleanEmail || undefined,
+    })
+
+    const metaName =
+      typeof sbUser.user_metadata?.name === 'string'
+        ? sbUser.user_metadata.name.trim()
+        : ''
+    const metaRole =
+      typeof sbUser.user_metadata?.role === 'string'
+        ? sbUser.user_metadata.role.trim()
+        : ''
+    const metaAvatar =
+      typeof sbUser.user_metadata?.avatar_url === 'string'
+        ? sbUser.user_metadata.avatar_url
+        : null
+
+    let dbError: unknown = null
+    try {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .select('*')
+        .eq('id', sbUser.id)
+        .maybeSingle()
+
+      if (error) {
+        dbError = error
+      } else if (data) {
+        const dbPerfil = data as Perfil
+        if (!dbPerfil.rol || !dbPerfil.rol.trim()) {
+          const rescuedRol =
+            (cached?.rol && isRichEncodedRole(cached.rol) ? cached.rol : '') ||
+            metaRole ||
+            cached?.rol ||
+            extraFallback?.rol ||
+            'operador'
+          const rescuedNombre =
+            dbPerfil.nombre?.trim() ||
+            metaName ||
+            cached?.nombre ||
+            extraFallback?.nombre ||
+            (cleanEmail ? cleanEmail.split('@')[0] : '') ||
+            'Usuario'
+          await upsertPerfilSafely(supabase, {
+            id: dbPerfil.id,
+            nombre: rescuedNombre,
+            email: dbPerfil.email || cleanEmail || cached?.email || '',
+            rol: rescuedRol,
+            avatar_url: dbPerfil.avatar_url || metaAvatar || cached?.avatar_url || null,
+          })
+          const repairedRow: Perfil = {
+            ...dbPerfil,
+            nombre: rescuedNombre,
+            rol: rescuedRol,
+          }
+          const mergedRepaired = mergePerfilesIntoCache([repairedRow], {
+            markLocalOnly: false,
+          })
+          return mergedRepaired[0] ?? repairedRow
+        }
+        const merged = mergePerfilesIntoCache([dbPerfil], {
+          markLocalOnly: false,
+        })
+        return merged[0] ?? dbPerfil
+      }
+    } catch (err) {
+      dbError = err
+    }
+
+    const nombre =
+      metaName ||
+      cached?.nombre ||
+      extraFallback?.nombre ||
+      (cleanEmail ? cleanEmail.split('@')[0] : '') ||
+      'Usuario'
+    const rol =
+      (cached?.rol && isRichEncodedRole(cached.rol) ? cached.rol : '') ||
+      metaRole ||
+      cached?.rol ||
+      extraFallback?.rol ||
+      'operador'
+    const now = new Date().toISOString()
+
+    // Intentar restaurar la fila faltante en `public.perfiles` (RLS `auth.uid() = id` lo permite)
+    const repaired = !dbError
+      ? await upsertPerfilSafely(supabase, {
+          id: sbUser.id,
+          nombre,
+          email: cleanEmail || cached?.email || '',
+          rol,
+          avatar_url: metaAvatar || cached?.avatar_url || null,
+        })
+      : false
+
+    if (repaired) {
+      const { data: reloaded } = await supabase
+        .from('perfiles')
+        .select('*')
+        .eq('id', sbUser.id)
+        .maybeSingle()
+      if (reloaded) {
+        const merged = mergePerfilesIntoCache(
+          [{ ...(reloaded as Perfil), rol }],
+          { markLocalOnly: false }
+        )
+        return merged[0] ?? ({ ...(reloaded as Perfil), rol })
+      }
+    }
+
+    const synthesized: Perfil = {
+      id: sbUser.id,
+      nombre,
+      email: cleanEmail || cached?.email || '',
+      rol,
+      estado: cached?.estado || 'Activo',
+      avatar_url: metaAvatar || cached?.avatar_url || null,
+      sesion_unica: cached?.sesion_unica,
+      active_session_token: cached?.active_session_token,
+      created_at: cached?.created_at || sbUser.created_at || now,
+      updated_at: now,
+      localOnly: !repaired,
+    }
+    mergePerfilesIntoCache([synthesized], { markLocalOnly: !repaired })
+    return synthesized
+  },
+
+  /**
+   * Obtiene todos los perfiles de usuarios (conservando respaldo local si RLS oculta filas sin sesión Auth)
    */
   async getPerfiles(): Promise<Perfil[]> {
-    const { data, error } = await supabase
-      .from('perfiles')
-      .select('*')
-      .order('nombre', { ascending: true })
+    const cached = readPerfilesCache()
+    try {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .select('*')
+        .order('nombre', { ascending: true })
 
-    if (error) {
-      throw error
+      if (error) {
+        if (cached.length > 0) return cached
+        throw error
+      }
+
+      const lista = (data as Perfil[]) || []
+      if (lista.length === 0) {
+        return cached
+      }
+
+      const merged = mergePerfilesIntoCache(lista, {
+        markLocalOnly: false,
+        replaceSyncedRows: true,
+      })
+      return merged.length > 0 ? merged : lista
+    } catch (err) {
+      if (cached.length > 0) return cached
+      throw err
     }
-    const lista = (data as Perfil[]) || []
-    const merged = mergePerfilesIntoCache(lista)
-    return merged.length > 0 ? merged : lista
   },
 
   /**
@@ -177,7 +585,7 @@ export const perfilesService = {
       throw error
     }
     if (data) {
-      mergePerfilesIntoCache([data as Perfil])
+      mergePerfilesIntoCache([data as Perfil], { markLocalOnly: false })
     }
     return data as Perfil
   },
