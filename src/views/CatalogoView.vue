@@ -15,6 +15,7 @@ import {
   buildRowSpanMeta,
   normalizeLegacyRingDesign,
   normalizeText,
+  parseMultiOptionValues,
   resolveOptionBadgeClass,
   resolveSubfilaColumnValue,
   sanitizeGroupParams,
@@ -797,14 +798,15 @@ function getPartParamValue(part: RepuestoTecnico, key: string): any {
  * Verde en coincidencia exacta, Amarillo en coincidencia semántica/parcial.
  */
 function getPositionOrTypeBadgeClass(partVal: any, filterVal: any, opciones?: string[]): string {
-  const strPart = String(partVal || '').trim()
+  const tokens = parseMultiOptionValues(partVal)
+  const strPart = tokens.join(', ')
   const lower = strPart.toLowerCase()
   const isAdm = lower === 'in' || lower.includes('admis') || lower.includes('intake')
   const isEsc = lower === 'ex' || lower.includes('escap') || lower.includes('exhaust')
 
   if (!filterVal || filterVal === '') {
-    if (opciones && opciones.length > 0 && strPart) {
-      return `${resolveOptionBadgeClass(strPart, opciones)} font-bold text-[10px]`
+    if (opciones && opciones.length > 0 && tokens.length > 0) {
+      return `${resolveOptionBadgeClass(tokens[0], opciones)} font-bold text-[10px]`
     }
     if (isAdm) return 'bg-cyan-100 text-[#038391] border-cyan-300 font-bold uppercase text-[10px]'
     if (isEsc) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold uppercase text-[10px]'
@@ -812,13 +814,13 @@ function getPositionOrTypeBadgeClass(partVal: any, filterVal: any, opciones?: st
   }
 
   const strFilter = String(filterVal).trim().toLowerCase()
-  if (strFilter === lower) {
+  if (strFilter === lower || tokens.some(t => t.toLowerCase() === strFilter)) {
     return 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black ring-1 ring-emerald-500/60 text-[10px]'
   }
 
   const matches = (isAdm && (strFilter === 'in' || strFilter.includes('admis'))) ||
                   (isEsc && (strFilter === 'ex' || strFilter.includes('escap'))) ||
-                  lower.includes(strFilter) || strFilter.includes(lower)
+                  tokens.some(t => t.toLowerCase().includes(strFilter) || strFilter.includes(t.toLowerCase()))
 
   if (matches) {
     return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 text-[10px]'
@@ -1032,7 +1034,12 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
         medidas: esCentral
           ? {}
           : (sf.medidas?.tipo_diseno !== undefined
-            ? { ...sf.medidas, tipo_diseno: normalizeLegacyRingDesign([sf.medidas.tipo_diseno]) }
+            ? {
+                ...sf.medidas,
+                tipo_diseno: Array.isArray(sf.medidas.tipo_diseno)
+                  ? sf.medidas.tipo_diseno.map((x: unknown) => normalizeLegacyRingDesign([x]))
+                  : normalizeLegacyRingDesign([sf.medidas.tipo_diseno])
+              }
             : (sf.medidas || {}))
       }
     })
@@ -1347,6 +1354,10 @@ const formatMetricNum = (num: number, unit?: string, decimals = 2): string => {
 
 const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion): string => {
   if (val == null || val === '') return '—'
+  if (Array.isArray(val)) {
+    const joined = val.map(v => String(v ?? '').trim()).filter(Boolean).join(', ')
+    return joined || '—'
+  }
   if (col.tipo_dato === 'booleano') return val ? 'Sí' : 'No'
   if (typeof val === 'number') {
     return formatMetricNum(val, col.unidad, 2)
@@ -2560,11 +2571,15 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
                 if (sf.es_fila_central) return false
                 const sfVal = resolveSubfilaColumnValue(sf.medidas, paramDef)
                 if (sfVal === undefined || sfVal === null || sfVal === '') return false
-                if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
+                if (typeof filterVal === 'number' || (!Array.isArray(sfVal) && !isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
                   return Math.abs(Number(sfVal) - Number(filterVal)) <= tolParam
                 }
-                const strSf = String(sfVal).toLowerCase().trim()
                 const strFlt = String(filterVal).toLowerCase().trim()
+                const tokens = parseMultiOptionValues(sfVal).map(s => s.toLowerCase())
+                if (tokens.some(t => t === strFlt || t.includes(strFlt) || strFlt.includes(t))) {
+                  return true
+                }
+                const strSf = String(sfVal).toLowerCase().trim()
                 return strSf.includes(strFlt) || strFlt.includes(strSf)
               })
               if (matchedInRow) return true
@@ -2575,25 +2590,26 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
             if (partVal === undefined || partVal === null) return false
 
             // Comparación numérica con tolerancia individual de este parámetro
-            if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(partVal)))) {
+            if (typeof filterVal === 'number' || (!Array.isArray(partVal) && !isNaN(Number(filterVal)) && !isNaN(Number(partVal)))) {
               const numPart = Number(partVal)
               const numFilter = Number(filterVal)
               return Math.abs(numPart - numFilter) <= tolParam
             }
 
-            // Comparación de texto / selección inteligente
-            const strPart = String(partVal).toLowerCase().trim()
+            // Comparación de texto / selección inteligente (soporta múltiples opciones)
+            const partTokens = parseMultiOptionValues(partVal).map(s => s.toLowerCase())
+            const strPart = partTokens.join(', ') || String(partVal).toLowerCase().trim()
             const strFilter = String(filterVal).toLowerCase().trim()
 
             // Manejo especial de posiciones automotrices (Admisión/IN vs Escape/EX)
             if (strFilter === 'in' || strFilter.includes('admis')) {
-              return strPart === 'in' || strPart.includes('admis')
+              return partTokens.some(t => t === 'in' || t.includes('admis')) || strPart === 'in' || strPart.includes('admis')
             }
             if (strFilter === 'ex' || strFilter.includes('escap')) {
-              return strPart === 'ex' || strPart.includes('escap')
+              return partTokens.some(t => t === 'ex' || t.includes('escap')) || strPart === 'ex' || strPart.includes('escap')
             }
 
-            return strPart.includes(strFilter) || strFilter.includes(strPart)
+            return partTokens.some(t => t === strFilter || t.includes(strFilter) || strFilter.includes(t)) || strPart.includes(strFilter) || strFilter.includes(strPart)
           })
         }
       }
@@ -5512,13 +5528,19 @@ onUnmounted(() => {
                     class="py-2 px-2 text-center align-middle border-b border-r border-slate-100 font-mono font-bold text-xs"
                     :class="getMeasurementMatchClass(getPartParamValue(part, col.clave), dynamicParamFilters[col.clave], getTol(col.clave))"
                   >
-                    <span
-                      v-if="col.tipo_dato === 'seleccion' && getPartParamValue(part, col.clave)"
-                      class="inline-flex items-center px-2 py-0.5 rounded-md border font-sans font-extrabold text-[11px]"
-                      :class="resolveOptionBadgeClass(String(getPartParamValue(part, col.clave)), col.opciones)"
+                    <div
+                      v-if="col.tipo_dato === 'seleccion' && parseMultiOptionValues(getPartParamValue(part, col.clave)).length > 0"
+                      class="flex flex-wrap items-center justify-center gap-1"
                     >
-                      {{ formatPartParamColValue(getPartParamValue(part, col.clave), col) }}
-                    </span>
+                      <span
+                        v-for="optItem in parseMultiOptionValues(getPartParamValue(part, col.clave))"
+                        :key="`sc-${part.id}-${col.id}-${optItem}`"
+                        class="inline-flex items-center px-2 py-0.5 rounded-md border font-sans font-extrabold text-[11px]"
+                        :class="resolveOptionBadgeClass(optItem, col.opciones)"
+                      >
+                        {{ optItem }}
+                      </span>
+                    </div>
                     <span
                       v-else-if="col.tipo_dato === 'booleano'"
                       class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
@@ -5612,13 +5634,19 @@ onUnmounted(() => {
                                 getMeasurementMatchClass(getPartMiniTableCellRawValue(part, sf, vRow.col) as any, dynamicParamFilters[vRow.col.clave], getTol(vRow.col.clave))
                               ]"
                             >
-                              <span
-                                v-if="vRow.col.tipo_dato === 'seleccion' && getPartMiniTableCellRawValue(part, sf, vRow.col)"
-                                class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
-                                :class="resolveOptionBadgeClass(String(getPartMiniTableCellRawValue(part, sf, vRow.col)), vRow.col.opciones)"
+                              <div
+                                v-if="vRow.col.tipo_dato === 'seleccion' && parseMultiOptionValues(getPartMiniTableCellRawValue(part, sf, vRow.col)).length > 0"
+                                class="flex flex-wrap items-center justify-center gap-1"
                               >
-                                {{ getPartMiniTableCellValue(part, sf, vRow.col) }}
-                              </span>
+                                <span
+                                  v-for="optItem in parseMultiOptionValues(getPartMiniTableCellRawValue(part, sf, vRow.col))"
+                                  :key="`mv-${part.id}-${vIdx}-${sfValIdx}-${optItem}`"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                  :class="resolveOptionBadgeClass(optItem, vRow.col.opciones)"
+                                >
+                                  {{ optItem }}
+                                </span>
+                              </div>
                               <span
                                 v-else-if="vRow.col.tipo_dato === 'booleano'"
                                 class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
@@ -5751,13 +5779,19 @@ onUnmounted(() => {
                                   getMeasurementMatchClass(getPartMiniTableCellRawValue(part, sf, col) as any, dynamicParamFilters[col.clave], getTol(col.clave))
                                 ]"
                               >
-                                <span
-                                  v-if="col.tipo_dato === 'seleccion' && getPartMiniTableCellRawValue(part, sf, col)"
-                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
-                                  :class="resolveOptionBadgeClass(String(getPartMiniTableCellRawValue(part, sf, col)), col.opciones)"
+                                <div
+                                  v-if="col.tipo_dato === 'seleccion' && parseMultiOptionValues(getPartMiniTableCellRawValue(part, sf, col)).length > 0"
+                                  class="flex flex-wrap items-center justify-center gap-1"
                                 >
-                                  {{ getPartMiniTableCellValue(part, sf, col) }}
-                                </span>
+                                  <span
+                                    v-for="optItem in parseMultiOptionValues(getPartMiniTableCellRawValue(part, sf, col))"
+                                    :key="`mh-${part.id}-${sfIdx}-${col.id}-${optItem}`"
+                                    class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                    :class="resolveOptionBadgeClass(optItem, col.opciones)"
+                                  >
+                                    {{ optItem }}
+                                  </span>
+                                </div>
                                 <span
                                   v-else-if="col.tipo_dato === 'booleano'"
                                   class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
@@ -5811,13 +5845,19 @@ onUnmounted(() => {
                               class="px-2.5 py-1 text-right font-bold whitespace-nowrap"
                               :class="getMeasurementMatchClass(getPartParamValue(part, vRow.col.clave), dynamicParamFilters[vRow.col.clave], getTol(vRow.col.clave))"
                             >
-                              <span
-                                v-if="vRow.col.tipo_dato === 'seleccion' && getPartParamValue(part, vRow.col.clave)"
-                                class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
-                                :class="resolveOptionBadgeClass(String(getPartParamValue(part, vRow.col.clave)), vRow.col.opciones)"
+                              <div
+                                v-if="vRow.col.tipo_dato === 'seleccion' && parseMultiOptionValues(getPartParamValue(part, vRow.col.clave)).length > 0"
+                                class="flex flex-wrap items-center justify-end gap-1"
                               >
-                                {{ formatPartParamColValue(getPartParamValue(part, vRow.col.clave), vRow.col) }}
-                              </span>
+                                <span
+                                  v-for="optItem in parseMultiOptionValues(getPartParamValue(part, vRow.col.clave))"
+                                  :key="`fv-${part.id}-${vIdx}-${optItem}`"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                  :class="resolveOptionBadgeClass(optItem, vRow.col.opciones)"
+                                >
+                                  {{ optItem }}
+                                </span>
+                              </div>
                               <span
                                 v-else-if="vRow.col.tipo_dato === 'booleano'"
                                 class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black"
@@ -5843,14 +5883,26 @@ onUnmounted(() => {
                       v-for="p in currentGroupDefinition.parametros.filter(p => p.requerido !== false || getPartParamValue(part, p.clave) != null)" 
                       :key="p.clave"
                     >
-                      <!-- Caso A: Posición / Tipo de Válvula / Selección -->
-                      <span 
-                        v-if="p.tipo_dato === 'seleccion' || p.clave === 'posicion' || p.clave === 'tipo_valvula' || p.clave === 'tipo'"
-                        class="px-1.5 py-0.5 rounded border transition"
-                        :class="getPositionOrTypeBadgeClass(getPartParamValue(part, p.clave), dynamicParamFilters[p.clave], p.opciones)"
-                      >
-                        {{ getPartParamValue(part, p.clave) || p.etiqueta_corta || p.etiqueta }}
-                      </span>
+                      <!-- Caso A: Posición / Tipo de Válvula / Selección (soporta múltiples opciones) -->
+                      <template v-if="p.tipo_dato === 'seleccion' || p.clave === 'posicion' || p.clave === 'tipo_valvula' || p.clave === 'tipo'">
+                        <template v-if="parseMultiOptionValues(getPartParamValue(part, p.clave)).length > 0">
+                          <span
+                            v-for="optItem in parseMultiOptionValues(getPartParamValue(part, p.clave))"
+                            :key="`flat-sel-${part.id}-${p.clave}-${optItem}`"
+                            class="px-1.5 py-0.5 rounded border transition"
+                            :class="getPositionOrTypeBadgeClass(optItem, dynamicParamFilters[p.clave], p.opciones)"
+                          >
+                            {{ optItem }}
+                          </span>
+                        </template>
+                        <span
+                          v-else
+                          class="px-1.5 py-0.5 rounded border transition"
+                          :class="getPositionOrTypeBadgeClass(getPartParamValue(part, p.clave), dynamicParamFilters[p.clave], p.opciones)"
+                        >
+                          {{ p.etiqueta_corta || p.etiqueta }}
+                        </span>
+                      </template>
 
                       <!-- Caso A2: Estado booleano (Sí / No) -->
                       <span
@@ -6640,7 +6692,22 @@ onUnmounted(() => {
                         :key="`modal-vv-${vIdx}-${sfValIdx}`"
                         class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900"
                       >
-                        {{ getPartMiniTableCellValue(modalPart, sf, vRow.col) }}
+                        <div
+                          v-if="vRow.col.tipo_dato === 'seleccion' && parseMultiOptionValues(getPartMiniTableCellRawValue(modalPart, sf, vRow.col)).length > 0"
+                          class="flex flex-wrap items-center justify-center gap-1"
+                        >
+                          <span
+                            v-for="optItem in parseMultiOptionValues(getPartMiniTableCellRawValue(modalPart, sf, vRow.col))"
+                            :key="`mod-vv-${vIdx}-${sfValIdx}-${optItem}`"
+                            class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                            :class="resolveOptionBadgeClass(optItem, vRow.col.opciones)"
+                          >
+                            {{ optItem }}
+                          </span>
+                        </div>
+                        <template v-else>
+                          {{ getPartMiniTableCellValue(modalPart, sf, vRow.col) }}
+                        </template>
                       </td>
                     </tr>
                   </tbody>
@@ -6693,7 +6760,22 @@ onUnmounted(() => {
                           :key="`m-sfv-${sfIdx}-${col.id}`"
                           class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900"
                         >
-                          {{ getPartMiniTableCellValue(modalPart, sf, col) }}
+                          <div
+                            v-if="col.tipo_dato === 'seleccion' && parseMultiOptionValues(getPartMiniTableCellRawValue(modalPart, sf, col)).length > 0"
+                            class="flex flex-wrap items-center justify-center gap-1"
+                          >
+                            <span
+                              v-for="optItem in parseMultiOptionValues(getPartMiniTableCellRawValue(modalPart, sf, col))"
+                              :key="`mod-vh-${sfIdx}-${col.id}-${optItem}`"
+                              class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                              :class="resolveOptionBadgeClass(optItem, col.opciones)"
+                            >
+                              {{ optItem }}
+                            </span>
+                          </div>
+                          <template v-else>
+                            {{ getPartMiniTableCellValue(modalPart, sf, col) }}
+                          </template>
                         </td>
                       </template>
                     </tr>

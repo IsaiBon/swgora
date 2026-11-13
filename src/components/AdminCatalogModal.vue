@@ -16,9 +16,11 @@ import {
   buildNormalRowSegmentMeta,
   buildRowSpanMeta,
   getOptionBadgeClassByIndex,
+  isOptionSelectedInValue,
   normalizeLegacyRingDesign,
   resolveSubfilaColumnValue,
-  sanitizeGroupParams
+  sanitizeGroupParams,
+  toggleMultiOptionValue
 } from '@/services/catalogService'
 import { 
   X, 
@@ -1172,7 +1174,9 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   const hydrateSubfilaMedidas = (rawMedidas: Record<string, any>): Record<string, any> => {
     const out: Record<string, any> = { ...rawMedidas }
     if (out.tipo_diseno !== undefined) {
-      out.tipo_diseno = normalizeLegacyRingDesign([out.tipo_diseno])
+      out.tipo_diseno = Array.isArray(out.tipo_diseno)
+        ? out.tipo_diseno.map((x: unknown) => normalizeLegacyRingDesign([x]))
+        : normalizeLegacyRingDesign([out.tipo_diseno])
     }
     for (const p of (matchedGroup?.parametros || [])) {
       if (out[p.clave] === undefined || out[p.clave] === null || out[p.clave] === '') {
@@ -1354,7 +1358,10 @@ const handleSavePart = async () => {
           const rawDiam = readRingDiam(sf.medidas)
           const rawH1 = readRingGrosor(sf.medidas)
           const rawA1 = readRingAltura(sf.medidas)
-          const design = String(readRingDesign(sf.medidas) || '').trim()
+          const rawDesignVal = readRingDesign(sf.medidas)
+          const design = Array.isArray(rawDesignVal)
+            ? rawDesignVal.map(x => String(x ?? '').trim()).filter(Boolean).join(', ')
+            : String(rawDesignVal || '').trim()
           return {
             ...sf.medidas,
             posicion: sf.nombre || `Anillo ${idx + 1}`,
@@ -1676,7 +1683,7 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
 const propagateSharedSubfilaValue = (clave: string, val: unknown) => {
   for (const row of subfilasRows.value) {
     if (!row.es_fila_central) {
-      row.medidas[clave] = val
+      row.medidas[clave] = Array.isArray(val) ? [...val] : val
     }
   }
 }
@@ -1697,11 +1704,22 @@ const toggleSubfilaBool = (sf: SubfilaFormRow, param: ParametroTecnicoDefinicion
 }
 
 const selectSubfilaOption = (sf: SubfilaFormRow, param: ParametroTecnicoDefinicion, opt: string) => {
-  const nextVal = sf.medidas[param.clave] === opt ? '' : opt
-  sf.medidas[param.clave] = nextVal
+  const nextList = toggleMultiOptionValue(sf.medidas[param.clave], opt, param.opciones)
+  const nextVal: string[] | string = nextList.length > 0 ? nextList : ''
+  sf.medidas[param.clave] = Array.isArray(nextVal) ? [...nextVal] : nextVal
   if (param.compartido_filas) {
     propagateSharedSubfilaValue(param.clave, nextVal)
   }
+}
+
+const toggleRingExtraOption = (ring: RingFormRow, extParam: ParametroTecnicoDefinicion, opt: string) => {
+  const nextList = toggleMultiOptionValue(ring.extra[extParam.clave], opt, extParam.opciones)
+  ring.extra[extParam.clave] = nextList.length > 0 ? nextList : ''
+}
+
+const toggleParamOption = (param: ParametroTecnicoDefinicion, opt: string) => {
+  const nextList = toggleMultiOptionValue(paramValues.value[param.clave], opt, param.opciones)
+  paramValues.value[param.clave] = nextList.length > 0 ? nextList : ''
 }
 
 const addFormSubfila = () => {
@@ -2678,15 +2696,16 @@ onUnmounted(() => {
                             v-for="(opt, optIdx) in (extParam.opciones || [])"
                             :key="opt"
                             type="button"
-                            @click="ring.extra[extParam.clave] = ring.extra[extParam.clave] === opt ? '' : opt"
+                            @click="toggleRingExtraOption(ring, extParam, opt)"
                             :class="[
-                              'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer',
-                              ring.extra[extParam.clave] === opt
+                              'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer inline-flex items-center gap-1',
+                              isOptionSelectedInValue(ring.extra[extParam.clave], opt)
                                 ? `${getOptionBadgeClassByIndex(optIdx)} ring-1 ring-offset-1 ring-slate-400 shadow-2xs`
                                 : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
                             ]"
                           >
-                            {{ opt }}
+                            <Check v-if="isOptionSelectedInValue(ring.extra[extParam.clave], opt)" class="w-2.5 h-2.5 shrink-0" />
+                            <span>{{ opt }}</span>
                           </button>
                         </div>
                         <input
@@ -2974,7 +2993,7 @@ onUnmounted(() => {
                               <X v-else class="w-3 h-3 text-slate-400" />
                               <span>{{ sf.medidas[param.clave] ? 'Sí' : 'No' }}</span>
                             </button>
-                            <!-- Selección (Opciones con color por posición) -->
+                            <!-- Selección múltiple (Opciones con color por posición) -->
                             <div
                               v-else-if="param.tipo_dato === 'seleccion'"
                               class="flex flex-wrap items-center justify-center gap-1 min-w-[110px]"
@@ -2985,13 +3004,14 @@ onUnmounted(() => {
                                 type="button"
                                 @click="selectSubfilaOption(sf, param, opt)"
                                 :class="[
-                                  'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer',
-                                  sf.medidas[param.clave] === opt
+                                  'px-2 py-0.5 rounded-md text-[10px] font-sans font-extrabold border transition cursor-pointer inline-flex items-center gap-1',
+                                  isOptionSelectedInValue(sf.medidas[param.clave], opt)
                                     ? `${getOptionBadgeClassByIndex(optIdx)} ring-1 ring-offset-1 ring-slate-400 shadow-2xs`
                                     : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
                                 ]"
                               >
-                                {{ opt }}
+                                <Check v-if="isOptionSelectedInValue(sf.medidas[param.clave], opt)" class="w-2.5 h-2.5 shrink-0" />
+                                <span>{{ opt }}</span>
                               </button>
                             </div>
                             <input
@@ -3110,15 +3130,16 @@ onUnmounted(() => {
                         v-for="(opt, optIdx) in (param.opciones || [])"
                         :key="opt"
                         type="button"
-                        @click="paramValues[param.clave] = paramValues[param.clave] === opt ? '' : opt"
+                        @click="toggleParamOption(param, opt)"
                         :class="[
-                          'px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer',
-                          paramValues[param.clave] === opt
+                          'px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer inline-flex items-center gap-1',
+                          isOptionSelectedInValue(paramValues[param.clave], opt)
                             ? `${getOptionBadgeClassByIndex(optIdx)} ring-2 ring-offset-1 ring-slate-400 shadow-2xs`
                             : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
                         ]"
                       >
-                        {{ opt }}
+                        <Check v-if="isOptionSelectedInValue(paramValues[param.clave], opt)" class="w-3 h-3 shrink-0" />
+                        <span>{{ opt }}</span>
                       </button>
                     </div>
 

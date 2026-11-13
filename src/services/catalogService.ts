@@ -207,6 +207,65 @@ export function resolveOptionBadgeClass(value: unknown, opciones?: string[], isF
   return isFilteredMatch ? `${base} ring-2 ring-offset-1 ring-slate-900/30` : base
 }
 
+/** Normaliza un valor de parámetro tipo selección (string único, lista separada por comas o array) a string[]. */
+export function parseMultiOptionValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const item of value) {
+      const clean = String(item ?? '').trim()
+      if (!clean) continue
+      const key = clean.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push(clean)
+      }
+    }
+    return out
+  }
+  const str = String(value ?? '').trim()
+  if (!str) return []
+  const parts = str.split(',').map(s => s.trim()).filter(Boolean)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const part of parts) {
+    const key = part.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      out.push(part)
+    }
+  }
+  return out
+}
+
+/** Verifica si una opción está activa dentro de un valor único o múltiple. */
+export function isOptionSelectedInValue(current: unknown, option: string): boolean {
+  const target = option.trim().toLowerCase()
+  if (!target) return false
+  return parseMultiOptionValues(current).some(v => v.toLowerCase() === target)
+}
+
+/** Alterna una opción dentro de un campo multi-selección manteniendo el orden definido cuando existe. */
+export function toggleMultiOptionValue(current: unknown, option: string, orderedOptions?: string[]): string[] {
+  const cleanOpt = option.trim()
+  const list = parseMultiOptionValues(current)
+  const existsIdx = list.findIndex(v => v.toLowerCase() === cleanOpt.toLowerCase())
+  if (existsIdx >= 0) {
+    list.splice(existsIdx, 1)
+  } else {
+    list.push(cleanOpt)
+  }
+  if (Array.isArray(orderedOptions) && orderedOptions.length > 0) {
+    const orderMap = new Map(orderedOptions.map((o, i) => [o.trim().toLowerCase(), i]))
+    list.sort((a, b) => {
+      const ia = orderMap.get(a.toLowerCase()) ?? Number.MAX_SAFE_INTEGER
+      const ib = orderMap.get(b.toLowerCase()) ?? Number.MAX_SAFE_INTEGER
+      return ia - ib
+    })
+  }
+  return list
+}
+
 /** Normaliza perfiles legados de catálogos RIK/OEM (ej. RECTANGULAR, ESTÁNDAR) hacia las opciones unificadas de Diseño / Perfil. */
 export function normalizeLegacyRingDesign(candidates: Array<unknown>, isConicalFallback = false): string {
   const raw = candidates.map(c => String(c ?? '').trim()).find(Boolean) || ''
@@ -236,7 +295,7 @@ export function resolveSubfilaColumnValue(
   col: Pick<ParametroTecnicoDefinicion, 'clave' | 'etiqueta' | 'etiqueta_corta' | 'columna_padre'>
 ): unknown {
   if (!medidas) return undefined
-  const isSet = (v: unknown) => v !== undefined && v !== null && v !== ''
+  const isSet = (v: unknown) => v !== undefined && v !== null && v !== '' && (!Array.isArray(v) || v.length > 0)
   if (isSet(medidas[col.clave])) return medidas[col.clave]
 
   const noSuffix = col.clave.replace(/_\d+$/, '')
