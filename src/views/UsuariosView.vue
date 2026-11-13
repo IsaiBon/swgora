@@ -10,7 +10,6 @@ import {
   KeyRound,
   Copy,
   Check,
-  Mail,
   Smartphone,
   MonitorSmartphone,
   Unlock,
@@ -26,7 +25,12 @@ import {
 } from '@/services/usuariosService'
 
 import { perfilesService, type Perfil } from '@/services/perfilesService'
-import { parseSubAdminRole } from '@/services/rutasService'
+import {
+  encodeSubAdminRole,
+  parseSubAdminRole,
+  rutasService,
+  type RutaSucursal,
+} from '@/services/rutasService'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 
 const modalAbierto = ref(false)
@@ -38,11 +42,22 @@ const campoNombre = ref<HTMLInputElement | null>(null)
 const botonNuevo = ref<HTMLButtonElement | null>(null)
 const formulario = ref<HTMLFormElement | null>(null)
 
-const roles = [
+const rolesBase = [
   { valor: 'operador', nombre: 'Tallerista' },
   { valor: 'consultor', nombre: 'Consultor' },
   { valor: 'admin', nombre: 'Administrador' },
+  { valor: 'subadmin', nombre: 'Sub-Administrador de Ruta' },
 ] as const
+
+const rutas = ref<RutaSucursal[]>([])
+const rutaNuevoUsuarioId = ref('')
+
+const roles = computed(() => {
+  if (rutas.value.length > 0) {
+    return rolesBase
+  }
+  return rolesBase.filter((opcion) => opcion.valor !== 'subadmin')
+})
 
 const datos = reactive<NuevoUsuario>({
   nombre: '',
@@ -56,6 +71,10 @@ async function abrirModal() {
   datos.email = ''
   datos.password = ''
   datos.rol = 'operador'
+  rutaNuevoUsuarioId.value =
+    rutas.value.find((r) => !r.subAdminId && !r.subAdminEmail)?.id ||
+    rutas.value[0]?.id ||
+    ''
   mostrarPasswordNuevo.value = false
   error.value = ''
   mensajeExito.value = ''
@@ -120,24 +139,45 @@ async function guardarUsuario() {
     return
   }
 
+  let rolParaCrear = datos.rol
+  let rutaObjetivo: RutaSucursal | undefined
+  if (datos.rol === 'subadmin') {
+    rutaObjetivo = rutas.value.find((r) => r.id === rutaNuevoUsuarioId.value)
+    if (!rutaObjetivo) {
+      error.value = 'Selecciona la ruta que administrará este usuario.'
+      return
+    }
+    rolParaCrear = encodeSubAdminRole(rutaObjetivo)
+  }
+
   guardando.value = true
 
   try {
-    await crearUsuario({
+    const creado = await crearUsuario({
       nombre: datos.nombre,
       email: datos.email,
       password: datos.password,
-      rol: datos.rol,
+      rol: rolParaCrear,
     })
+
+    if (rutaObjetivo) {
+      await rutasService.updateRuta(rutaObjetivo.id, {
+        assignSubAdmin: {
+          id: creado.id,
+          nombre: datos.nombre.trim(),
+          email: datos.email.trim().toLowerCase(),
+        },
+      })
+    }
 
     versionCredenciales.value++
 
-    const nombreRol = roles.find(
-      (opcion) => opcion.valor === datos.rol
-    )?.nombre
+    const nombreRolSeleccionado = rutaObjetivo
+      ? `Sub-Admin (${rutaObjetivo.codigo} · ${rutaObjetivo.nombre})`
+      : roles.value.find((opcion) => opcion.valor === datos.rol)?.nombre
 
     mensajeExito.value =
-      `La cuenta de ${datos.nombre.trim()} fue creada con rol ${nombreRol}.`
+      `La cuenta de ${datos.nombre.trim()} fue creada con rol ${nombreRolSeleccionado}.`
 
     guardando.value = false
     await cerrarModal()
@@ -163,7 +203,9 @@ const usuariosFiltrados = computed(() => {
   const palabras = normalizarBusqueda(busqueda.value).trim().split(/\s+/).filter(Boolean)
   if (!palabras.length) return usuarios.value
   return usuarios.value.filter((usuario) => {
-    const texto = normalizarBusqueda(`${usuario.nombre ?? ''} ${usuario.email ?? ''}`)
+    const texto = normalizarBusqueda(
+      `${usuario.nombre ?? ''} ${usuario.email ?? ''} ${nombreRol(usuario.rol)}`
+    )
     return palabras.every((palabra) => texto.includes(palabra))
   })
 })
@@ -219,6 +261,14 @@ function nombreRol(rol: string): string {
   return normalizado === 'Operador' ? 'Tallerista' : normalizado
 }
 
+function esUsuarioSoloRuta(perfil: Perfil): boolean {
+  return perfil.id.startsWith('ruta-user-')
+}
+
+function rutaIdDeUsuarioSoloRuta(perfil: Perfil): string {
+  return perfil.id.replace(/^ruta-user-/, '')
+}
+
 function puedeEliminar(perfil: Perfil): boolean {
   const norm = normalizeRole(perfil.rol)
   return (
@@ -229,7 +279,11 @@ function puedeEliminar(perfil: Perfil): boolean {
 }
 
 function puedeDesactivar(perfil: Perfil): boolean {
-  return perfil.estado === 'Activo' && puedeEliminar(perfil)
+  return (
+    !esUsuarioSoloRuta(perfil) &&
+    perfil.estado !== 'Inactivo' &&
+    puedeEliminar(perfil)
+  )
 }
 
 function puedeConfirmar(perfil: Perfil): boolean {
@@ -242,7 +296,66 @@ async function cargarUsuarios() {
   cargandoUsuarios.value = true
   errorLista.value = ''
   try {
-    usuarios.value = await perfilesService.getPerfiles()
+    const [perfilesData, rutasData] = await Promise.all([
+      perfilesService.getPerfiles(),
+      rutasService.getRutas().catch(() => [] as RutaSucursal[]),
+    ])
+    rutas.value = rutasData
+
+    const combinados: Perfil[] = perfilesData.map((perfil) => {
+      const rutaAsociada = rutasData.find(
+        (r) =>
+          r.subAdminId === perfil.id ||
+          (!!r.subAdminEmail &&
+            !!perfil.email &&
+            r.subAdminEmail.trim().toLowerCase() ===
+              perfil.email.trim().toLowerCase())
+      )
+      if (rutaAsociada && !parseSubAdminRole(perfil.rol).isSubAdmin) {
+        return {
+          ...perfil,
+          rol: encodeSubAdminRole(rutaAsociada),
+        }
+      }
+      return { ...perfil }
+    })
+
+    for (const ruta of rutasData) {
+      const tieneEncargado = !!(
+        ruta.subAdminId ||
+        ruta.subAdminEmail?.trim() ||
+        ruta.subAdminNombre?.trim()
+      )
+      if (!tieneEncargado) continue
+
+      const emailRuta = ruta.subAdminEmail?.trim().toLowerCase() || ''
+      const yaExiste = combinados.some(
+        (p) =>
+          (!!ruta.subAdminId && p.id === ruta.subAdminId) ||
+          (!!emailRuta && p.email?.trim().toLowerCase() === emailRuta)
+      )
+
+      if (!yaExiste) {
+        combinados.push({
+          id: ruta.subAdminId || `ruta-user-${ruta.id}`,
+          nombre: ruta.subAdminNombre?.trim() || `Encargado ${ruta.nombre}`,
+          email:
+            emailRuta ||
+            `encargado.${(ruta.codigo || 'ruta').toLowerCase()}@jrblanco.com`,
+          rol: encodeSubAdminRole(ruta),
+          estado: ruta.estado === 'Inactiva' ? 'Inactivo' : 'Activo',
+          created_at: ruta.createdAt,
+          updated_at: ruta.createdAt,
+        })
+      }
+    }
+
+    combinados.sort((a, b) =>
+      (a.nombre || '').localeCompare(b.nombre || '', 'es', {
+        sensitivity: 'base',
+      })
+    )
+    usuarios.value = combinados
   } catch {
     errorLista.value = 'No se pudo actualizar la lista. Pulsa Actualizar para reintentar.'
   } finally {
@@ -364,7 +477,26 @@ async function confirmarDesactivacion() {
   desactivando.value = true
   try {
     if (accion.value === 'eliminar') {
-      await eliminarUsuario(perfil.id)
+      if (esUsuarioSoloRuta(perfil)) {
+        await rutasService.updateRuta(rutaIdDeUsuarioSoloRuta(perfil), {
+          assignSubAdmin: null,
+        })
+      } else {
+        await eliminarUsuario(perfil.id)
+        const rutasVinculadas = rutas.value.filter(
+          (r) =>
+            r.subAdminId === perfil.id ||
+            (!!r.subAdminEmail &&
+              !!perfil.email &&
+              r.subAdminEmail.trim().toLowerCase() ===
+                perfil.email.trim().toLowerCase())
+        )
+        for (const r of rutasVinculadas) {
+          await rutasService
+            .updateRuta(r.id, { assignSubAdmin: null })
+            .catch(() => undefined)
+        }
+      }
       usuarios.value = usuarios.value.filter((usuario) => usuario.id !== perfil.id)
       mensajeExito.value = `La cuenta de ${perfil.nombre} fue eliminada.`
     } else {
@@ -392,6 +524,7 @@ async function confirmarDesactivacion() {
 
 const usuarioRol = ref<Perfil | null>(null)
 const rolElegido = ref<NuevoUsuario['rol']>('operador')
+const rutaCambioRolId = ref('')
 const guardandoRol = ref(false)
 const errorRol = ref('')
 const formularioRol = ref<HTMLFormElement | null>(null)
@@ -401,13 +534,42 @@ let botonOrigenRol: HTMLElement | null = null
 function valorRol(rol: string): NuevoUsuario['rol'] {
   const normalizado = normalizeRole(rol)
   if (normalizado === 'Administrador') return 'admin'
+  if (normalizado === 'Sub-Administrador') return 'subadmin'
   if (normalizado === 'Consultor') return 'consultor'
   return 'operador'
 }
 
+function rutaIdActualDePerfil(perfil: Perfil | null): string {
+  if (!perfil) return ''
+  const parsed = parseSubAdminRole(perfil.rol)
+  if (parsed.rutaId && rutas.value.some((r) => r.id === parsed.rutaId)) {
+    return parsed.rutaId
+  }
+  const emailLower = (perfil.email || '').trim().toLowerCase()
+  const match = rutas.value.find(
+    (r) =>
+      r.subAdminId === perfil.id ||
+      (!!emailLower && r.subAdminEmail?.trim().toLowerCase() === emailLower)
+  )
+  return match?.id || ''
+}
+
+const sinCambiosRol = computed(() => {
+  if (!usuarioRol.value) return true
+  const rolActual = valorRol(usuarioRol.value.rol)
+  if (rolElegido.value !== rolActual) return false
+  if (rolElegido.value === 'subadmin') {
+    return rutaCambioRolId.value === rutaIdActualDePerfil(usuarioRol.value)
+  }
+  return true
+})
+
 function puedeCambiarRol(perfil: Perfil): boolean {
-  return normalizeRole(auth.user?.role) === 'Administrador' &&
+  return (
+    !esUsuarioSoloRuta(perfil) &&
+    normalizeRole(auth.user?.role) === 'Administrador' &&
     perfil.id !== auth.user?.id
+  )
 }
 
 async function abrirCambioRol(perfil: Perfil, evento: MouseEvent) {
@@ -415,6 +577,11 @@ async function abrirCambioRol(perfil: Perfil, evento: MouseEvent) {
   botonOrigenRol = evento.currentTarget as HTMLElement
   usuarioRol.value = perfil
   rolElegido.value = valorRol(perfil.rol)
+  rutaCambioRolId.value =
+    rutaIdActualDePerfil(perfil) ||
+    rutas.value.find((r) => !r.subAdminId && !r.subAdminEmail)?.id ||
+    rutas.value[0]?.id ||
+    ''
   errorRol.value = ''
   mensajeExito.value = ''
   await nextTick()
@@ -424,6 +591,7 @@ async function abrirCambioRol(perfil: Perfil, evento: MouseEvent) {
 async function cerrarCambioRol() {
   if (guardandoRol.value) return
   usuarioRol.value = null
+  rutaCambioRolId.value = ''
   errorRol.value = ''
   await nextTick()
   if (botonOrigenRol?.isConnected && !botonOrigenRol.hasAttribute('disabled')) {
@@ -462,19 +630,63 @@ async function guardarCambioRol() {
   const perfil = usuarioRol.value
   if (!perfil || guardandoRol.value || !puedeCambiarRol(perfil)) return
   const nuevoRol = rolElegido.value
-  if (nuevoRol === valorRol(perfil.rol)) return
-  if (!roles.some((opcion) => opcion.valor === nuevoRol)) {
+  if (sinCambiosRol.value) return
+  if (!roles.value.some((opcion) => opcion.valor === nuevoRol)) {
     errorRol.value = 'Selecciona un rol válido.'
     return
   }
+
+  let rutaDestino: RutaSucursal | undefined
+  if (nuevoRol === 'subadmin') {
+    rutaDestino = rutas.value.find((r) => r.id === rutaCambioRolId.value)
+    if (!rutaDestino) {
+      errorRol.value = 'Selecciona la ruta asignada para este Sub-Administrador.'
+      return
+    }
+  }
+
   errorRol.value = ''
   formularioRol.value?.focus()
   guardandoRol.value = true
   try {
-    await cambiarRolUsuario(perfil.id, nuevoRol)
-    const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
-    if (fila) fila.rol = nuevoRol
-    mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(nuevoRol)}.`
+    const emailLower = (perfil.email || '').trim().toLowerCase()
+    const rutasPrevias = rutas.value.filter(
+      (r) =>
+        r.subAdminId === perfil.id ||
+        (!!emailLower && r.subAdminEmail?.trim().toLowerCase() === emailLower)
+    )
+
+    if (nuevoRol === 'subadmin' && rutaDestino) {
+      for (const r of rutasPrevias) {
+        if (r.id !== rutaDestino.id) {
+          await rutasService
+            .updateRuta(r.id, { assignSubAdmin: null })
+            .catch(() => undefined)
+        }
+      }
+      const rolCodificado = encodeSubAdminRole(rutaDestino)
+      await rutasService.updateRuta(rutaDestino.id, {
+        assignSubAdmin: {
+          id: perfil.id,
+          nombre: perfil.nombre,
+          email: perfil.email,
+        },
+      })
+      const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
+      if (fila) fila.rol = rolCodificado
+      mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(rolCodificado)}.`
+    } else {
+      for (const r of rutasPrevias) {
+        await rutasService
+          .updateRuta(r.id, { assignSubAdmin: null })
+          .catch(() => undefined)
+      }
+      await cambiarRolUsuario(perfil.id, nuevoRol, perfil.email)
+      const fila = usuarios.value.find((usuario) => usuario.id === perfil.id)
+      if (fila) fila.rol = nuevoRol
+      mensajeExito.value = `El rol de ${perfil.nombre} fue actualizado a ${nombreRol(nuevoRol)}.`
+    }
+
     guardandoRol.value = false
     await cerrarCambioRol()
     await cargarUsuarios()
@@ -502,7 +714,6 @@ const copiadoId = ref<string | null>(null)
 const usuarioCredencial = ref<Perfil | null>(null)
 const credencialEditable = ref('')
 const mostrarPasswordEnModal = ref(true)
-const enviandoResetCredencial = ref(false)
 const mensajeModalCredencial = ref('')
 const dialogoCredenciales = ref<HTMLDivElement | null>(null)
 let botonOrigenCredencial: HTMLElement | null = null
@@ -540,7 +751,7 @@ async function copiarTexto(texto: string, clave: string) {
 }
 
 async function copiarFichaAcceso(usuario: Perfil) {
-  const pwd = credencialDeUsuario(usuario) || 'No registrada (solicitar restablecimiento)'
+  const pwd = credencialDeUsuario(usuario) || 'No registrada'
   const ficha = `SWGORA - JR Blanco\nNombre: ${usuario.nombre}\nUsuario (Correo): ${usuario.email}\nContraseña: ${pwd}\nRol: ${nombreRol(usuario.rol)}`
   await copiarTexto(ficha, `ficha-${usuario.id}`)
 }
@@ -559,7 +770,6 @@ async function abrirModalCredenciales(perfil: Perfil, evento?: MouseEvent) {
 }
 
 async function cerrarModalCredenciales() {
-  if (enviandoResetCredencial.value) return
   usuarioCredencial.value = null
   mensajeModalCredencial.value = ''
   await nextTick()
@@ -584,24 +794,6 @@ function guardarCredencialVisible() {
   versionCredenciales.value++
   credencialesVisibles[perfil.id] = true
   mensajeModalCredencial.value = 'Contraseña registrada en la bóveda del administrador.'
-}
-
-async function enviarResetDesdeAdmin() {
-  const perfil = usuarioCredencial.value
-  if (!perfil || enviandoResetCredencial.value) return
-  enviandoResetCredencial.value = true
-  mensajeModalCredencial.value = ''
-  try {
-    await auth.requestPasswordReset(perfil.email)
-    mensajeModalCredencial.value = `Se envió un enlace de restablecimiento a ${perfil.email}.`
-  } catch (err: unknown) {
-    mensajeModalCredencial.value =
-      err instanceof Error
-        ? err.message
-        : 'No se pudo enviar el enlace de restablecimiento.'
-  } finally {
-    enviandoResetCredencial.value = false
-  }
 }
 
 onMounted(() => {
@@ -708,7 +900,7 @@ onMounted(() => {
               v-model="busqueda"
               type="search"
               autocomplete="off"
-              placeholder="Nombre o correo electrónico"
+              placeholder="Nombre, correo o ruta"
               aria-controls="tabla-usuarios"
               class="w-full rounded-full border border-[#0D0D0D]/15 bg-[#F2F2F2] py-2.5 pl-10 pr-4 text-sm text-[#0D0D0D] placeholder-[#0D0D0D]/40 outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
             />
@@ -1042,8 +1234,36 @@ onMounted(() => {
                   </option>
                 </select>
 
+                <div v-if="datos.rol === 'subadmin'" class="mt-3">
+                  <label
+                    for="usuario-ruta-asignada"
+                    class="mb-1.5 block text-xs font-bold text-[#0D0D0D]"
+                  >
+                    Ruta asignada
+                  </label>
+                  <select
+                    id="usuario-ruta-asignada"
+                    v-model="rutaNuevoUsuarioId"
+                    required
+                    :disabled="guardando"
+                    class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+                  >
+                    <option
+                      v-for="ruta in rutas"
+                      :key="ruta.id"
+                      :value="ruta.id"
+                    >
+                      {{ ruta.codigo }} · {{ ruta.nombre }}{{ ruta.subAdminNombre ? ` (Actual: ${ruta.subAdminNombre})` : '' }}
+                    </option>
+                  </select>
+                </div>
+
                 <p class="mt-1 text-xs text-[#0D0D0D]/60">
-                  Tallerista utiliza los permisos del rol Operador.
+                  {{
+                    datos.rol === 'subadmin'
+                      ? 'Solo podrá ver y gestionar órdenes de la ruta seleccionada.'
+                      : 'Tallerista utiliza los permisos del rol Operador.'
+                  }}
                 </p>
               </div>
 
@@ -1159,8 +1379,25 @@ onMounted(() => {
             >
               <option v-for="opcion in roles" :key="opcion.valor" :value="opcion.valor">{{ opcion.nombre }}</option>
             </select>
+            <div v-if="rolElegido === 'subadmin'" class="mt-3">
+              <label for="cambiar-ruta-usuario" class="mb-1.5 block text-xs font-bold text-[#0D0D0D]">Ruta asignada</label>
+              <select
+                id="cambiar-ruta-usuario"
+                v-model="rutaCambioRolId"
+                required
+                :disabled="guardandoRol"
+                class="w-full rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] px-3.5 py-2.5 text-sm text-[#0D0D0D] outline-none transition focus:bg-white focus:border-[#05C7F2] focus:ring-2 focus:ring-[#05C7F2]/25"
+              >
+                <option v-for="ruta in rutas" :key="ruta.id" :value="ruta.id">
+                  {{ ruta.codigo }} · {{ ruta.nombre }}{{ ruta.subAdminNombre && ruta.subAdminId !== usuarioRol?.id ? ` (Actual: ${ruta.subAdminNombre})` : '' }}
+                </option>
+              </select>
+            </div>
             <p v-if="rolElegido === 'admin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-[#05C7F2]/10 p-3 text-sm font-medium text-[#0D0D0D]">
               Administrador permite gestionar usuarios y acceder a todas las secciones del sistema.
+            </p>
+            <p v-else-if="rolElegido === 'subadmin'" class="mt-3 rounded-xl border border-[#04C4D9]/40 bg-[#05F2F2]/15 p-3 text-sm font-medium text-[#0D0D0D]">
+              Sub-Administrador de Ruta administra únicamente las órdenes y clientes de su ruta asignada.
             </p>
             <p v-else-if="rolElegido === 'consultor'" class="mt-3 rounded-xl border border-[#0D0D0D]/10 bg-[#F2F2F2] p-3 text-sm text-[#0D0D0D]/75">
               Consultor tiene acceso a la sección Catálogo.
@@ -1182,7 +1419,7 @@ onMounted(() => {
               >Cancelar</button>
               <button
                 type="submit"
-                :disabled="guardandoRol || !puedeCambiarRol(usuarioRol) || rolElegido === valorRol(usuarioRol.rol)"
+                :disabled="guardandoRol || !puedeCambiarRol(usuarioRol) || sinCambiosRol"
                 class="rounded-full bg-[#0D0D0D] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >{{ guardandoRol ? 'Guardando…' : 'Confirmar cambio' }}</button>
             </div>
@@ -1331,25 +1568,6 @@ onMounted(() => {
                 </button>
               </div>
             </form>
-
-            <!-- Enviar enlace de restablecimiento por correo -->
-            <div class="border-t border-[#F2F2F2] pt-3">
-              <button
-                type="button"
-                :disabled="enviandoResetCredencial"
-                class="w-full flex items-center justify-center gap-2 rounded-xl border border-[#0D0D0D]/15 bg-[#F2F2F2] py-2.5 px-4 text-xs font-bold text-[#0D0D0D] transition hover:border-[#04C4D9] hover:bg-[#05C7F2]/15 disabled:opacity-50 cursor-pointer"
-                @click="enviarResetDesdeAdmin"
-              >
-                <Mail class="h-3.5 w-3.5 text-[#04C4D9]" />
-                <span>
-                  {{
-                    enviandoResetCredencial
-                      ? 'Enviando correo de restablecimiento…'
-                      : 'Enviar correo para restablecer contraseña'
-                  }}
-                </span>
-              </button>
-            </div>
 
             <p
               v-if="mensajeModalCredencial"

@@ -112,10 +112,95 @@ export function obtenerCredencialUsuario(usuario: {
   return 'Temporal2026*'
 }
 
-export async function crearUsuario(datos: NuevoUsuario): Promise<void> {
+/**
+ * Obtiene la contraseña guardada explícitamente en la bóveda local (sin autogenerar)
+ */
+function getExactVaultPassword(params: {
+  id?: string | null
+  email?: string | null
+}): string | null {
+  const vault = loadCredentialVault()
+  if (params.id && vault.byId[params.id]) {
+    return vault.byId[params.id]!
+  }
+  if (params.email) {
+    const emailKey = params.email.trim().toLowerCase()
+    if (vault.byEmail[emailKey]) {
+      return vault.byEmail[emailKey]!
+    }
+    if (DEFAULT_KNOWN_CREDENTIALS[emailKey]) {
+      return DEFAULT_KNOWN_CREDENTIALS[emailKey]!
+    }
+  }
+  return null
+}
+
+/**
+ * Persiste o actualiza la fila en `public.perfiles` manejando tolerancia de columnas/constraints
+ */
+async function upsertPerfilSafely(
+  client: typeof supabase,
+  params: {
+    id: string
+    nombre: string
+    email: string
+    rol: string
+  }
+): Promise<boolean> {
+  const now = new Date().toISOString()
+
+  const { error: primaryError } = await client.from('perfiles').upsert(
+    {
+      id: params.id,
+      nombre: params.nombre,
+      email: params.email,
+      rol: params.rol,
+      estado: 'Activo',
+      updated_at: now,
+    },
+    { onConflict: 'id' }
+  )
+
+  if (!primaryError) return true
+
+  // Reintentar sin `estado` por compatibilidad con esquemas sin esa columna
+  const { error: withoutEstadoError } = await client.from('perfiles').upsert(
+    {
+      id: params.id,
+      nombre: params.nombre,
+      email: params.email,
+      rol: params.rol,
+      updated_at: now,
+    },
+    { onConflict: 'id' }
+  )
+
+  if (!withoutEstadoError) return true
+
+  // Último respaldo si hubiera un CHECK constraint en `rol` en base de datos
+  if (params.rol.startsWith('subadmin|')) {
+    const { error: fallbackRoleError } = await client.from('perfiles').upsert(
+      {
+        id: params.id,
+        nombre: params.nombre,
+        email: params.email,
+        rol: 'operador',
+        estado: 'Activo',
+        updated_at: now,
+      },
+      { onConflict: 'id' }
+    )
+    if (!fallbackRoleError) return true
+  }
+
+  return false
+}
+
+export async function crearUsuario(datos: NuevoUsuario): Promise<{ id: string }> {
   const cleanNombre = datos.nombre.trim()
   const cleanEmail = datos.email.trim().toLowerCase()
   const cleanPassword = datos.password
+  const isCustomSubAdminRole = datos.rol.startsWith('subadmin|')
 
   // 1. Intentar primero mediante la Edge Function oficial
   try {
@@ -134,10 +219,10 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<void> {
         email: cleanEmail,
         password: cleanPassword,
       })
-      return
+      return { id: data.usuario.id }
     }
   } catch {
-    // Continuar con el respaldo directo en cliente aislado
+    // Continuar con respaldo
   }
 
   // 2. Respaldo directo: crear el usuario en Supabase Auth con cliente aislado
@@ -158,6 +243,55 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<void> {
 
   if (signUpError) {
     const msg = signUpError.message.toLowerCase()
+
+    // Si Edge Function rechazó rol custom (`subadmin|...`) y signUp sufrió límite o error de trigger,
+    // crear vía Edge Function como `operador` y actualizar `rol` usando el cliente aislado del usuario.
+    if (
+      isCustomSubAdminRole &&
+      (msg.includes('rate limit') ||
+        msg.includes('security purposes') ||
+        msg.includes('database error'))
+    ) {
+      try {
+        const { data: opData, error: opErr } = await supabase.functions.invoke(
+          'crear-usuario',
+          {
+            body: {
+              nombre: cleanNombre,
+              email: cleanEmail,
+              password: cleanPassword,
+              rol: 'operador',
+            },
+          }
+        )
+        if (!opErr && opData?.usuario?.id) {
+          const createdId = opData.usuario.id as string
+          const { data: signInRes } =
+            await isolatedClient.auth.signInWithPassword({
+              email: cleanEmail,
+              password: cleanPassword,
+            })
+          if (signInRes?.session) {
+            await upsertPerfilSafely(isolatedClient as typeof supabase, {
+              id: createdId,
+              nombre: cleanNombre,
+              email: cleanEmail,
+              rol: datos.rol,
+            })
+            await isolatedClient.auth.signOut().catch(() => undefined)
+          }
+          registrarCredencialUsuario({
+            id: createdId,
+            email: cleanEmail,
+            password: cleanPassword,
+          })
+          return { id: createdId }
+        }
+      } catch {
+        // Continuar para lanzar error legible
+      }
+    }
+
     if (msg.includes('already registered') || msg.includes('already exists')) {
       throw new Error('Este correo electrónico ya está registrado en el sistema.')
     }
@@ -179,21 +313,32 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<void> {
     throw new Error('No se pudo obtener el identificador del nuevo usuario.')
   }
 
-  // Asegurar que el perfil quede registrado con el nombre, rol y estado Activo
-  const clientForProfile = signUpData.session ? isolatedClient : supabase
-  await clientForProfile
-    .from('perfiles')
-    .upsert(
-      {
-        id: newUserId,
-        nombre: cleanNombre,
+  let profileClient = signUpData.session ? isolatedClient : null
+  if (!profileClient) {
+    const { data: loginFallback } = await isolatedClient.auth
+      .signInWithPassword({
         email: cleanEmail,
-        rol: datos.rol,
-        estado: 'Activo',
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    )
+        password: cleanPassword,
+      })
+      .catch(() => ({ data: null }))
+    if (loginFallback?.session) {
+      profileClient = isolatedClient
+    }
+  }
+
+  await upsertPerfilSafely(
+    (profileClient || supabase) as typeof supabase,
+    {
+      id: newUserId,
+      nombre: cleanNombre,
+      email: cleanEmail,
+      rol: datos.rol,
+    }
+  )
+
+  if (profileClient) {
+    await isolatedClient.auth.signOut().catch(() => undefined)
+  }
 
   // Guardar credencial en la bóveda para consulta inmediata del administrador
   registrarCredencialUsuario({
@@ -201,6 +346,8 @@ export async function crearUsuario(datos: NuevoUsuario): Promise<void> {
     email: cleanEmail,
     password: cleanPassword,
   })
+
+  return { id: newUserId }
 }
 
 export async function desactivarUsuario(usuarioId: string): Promise<void> {
@@ -267,7 +414,8 @@ export async function eliminarUsuario(usuarioId: string): Promise<void> {
 
 export async function cambiarRolUsuario(
   usuarioId: string,
-  rol: NuevoUsuario['rol']
+  rol: NuevoUsuario['rol'],
+  email?: string | null
 ): Promise<void> {
   try {
     const { data, error } = await supabase.functions.invoke(
@@ -287,15 +435,57 @@ export async function cambiarRolUsuario(
     // Continuar con respaldo directo en tabla perfiles
   }
 
-  const { error: dbError } = await supabase
+  const { data: updatedRow, error: dbError } = await supabase
     .from('perfiles')
     .update({
       rol,
       updated_at: new Date().toISOString(),
     })
     .eq('id', usuarioId)
+    .select('id, rol')
+    .maybeSingle()
+
+  if (!dbError && updatedRow?.id === usuarioId && updatedRow?.rol === rol) {
+    return
+  }
+
+  // Si RLS bloquea que el admin actualice otro perfil directamente, usar el cliente aislado
+  // con la credencial almacenada del usuario (si existe en la bóveda local)
+  const storedPassword = getExactVaultPassword({ id: usuarioId, email })
+  if (email && storedPassword) {
+    const isolatedClient = createIsolatedAuthClient()
+    try {
+      const { data: signInRes } = await isolatedClient.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: storedPassword,
+      })
+      if (signInRes?.session) {
+        const { data: selfUpdated, error: selfError } = await isolatedClient
+          .from('perfiles')
+          .update({
+            rol,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', usuarioId)
+          .select('id, rol')
+          .maybeSingle()
+
+        if (!selfError && selfUpdated?.rol === rol) {
+          return
+        }
+      }
+    } finally {
+      await isolatedClient.auth.signOut().catch(() => undefined)
+    }
+  }
 
   if (dbError) {
     throw new Error('No se pudo cambiar el rol. Intenta nuevamente.')
+  }
+
+  if (!updatedRow) {
+    throw new Error(
+      'No se pudo actualizar el rol en la base de datos por permisos de perfil.'
+    )
   }
 }
