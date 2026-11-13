@@ -559,8 +559,14 @@ const getDefaultRowPosition = (idx: number, totalRows: number, cfg?: TablaConfig
   if (isLast && conf.etiqueta_ultima_fila && conf.etiqueta_ultima_fila.trim()) {
     return conf.etiqueta_ultima_fila.trim()
   }
-  if (Array.isArray(conf.subfilas) && conf.subfilas[idx]?.trim()) {
-    return conf.subfilas[idx]!.trim()
+  const tplLabel = Array.isArray(conf.subfilas) ? conf.subfilas[idx]?.trim() : ''
+  const isOilTemplateLabel = tplLabel.toLowerCase().includes('aceite') ||
+    (conf.etiqueta_ultima_fila ? tplLabel.toLowerCase() === conf.etiqueta_ultima_fila.trim().toLowerCase() : false)
+  if (tplLabel && (isLast || !isOilTemplateLabel)) {
+    return tplLabel
+  }
+  if (isRingsGroup.value || titulo.toLowerCase().includes('anillo')) {
+    return `Anillo ${idx + 1}`
   }
   if (conf.modo_filas === 'incremental') {
     return usarPref ? `${titulo} ${idx + 1}` : `${idx + 1}`
@@ -1704,7 +1710,7 @@ const addFormSubfila = () => {
     r => !r.es_fila_central && !r.nombre.toLowerCase().includes('aceite')
   )
   const nextLabel = isAnillosActiveGroup.value
-    ? `${nonOilNormalRows.length + 1}° Anillo (Compresión)`
+    ? `Anillo ${nonOilNormalRows.length + 1}`
     : buildNextAutoRowLabel(
         subfilasRows.value.filter(r => !r.es_fila_central).map(r => r.nombre),
         activeTablaConfig.value.titulo_primera_columna
