@@ -17,7 +17,7 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
   }
 
   // 2. Breve espera para estabilizar el layout y renderizado de imágenes
-  await new Promise((resolve) => setTimeout(resolve, 120))
+  await new Promise((resolve) => setTimeout(resolve, 150))
 
   // 3. Captura mediante html2canvas con clonación limpia (sin bordes de modal ni sombras)
   const canvas = await html2canvas(element, {
@@ -33,12 +33,13 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
         clonedEl.style.border = 'none'
         clonedEl.style.borderRadius = '0'
         clonedEl.style.margin = '0'
-        clonedEl.style.padding = '20px 24px'
+        clonedEl.style.padding = '14px 18px'
         clonedEl.style.width = '760px'
         clonedEl.style.maxWidth = '760px'
         clonedEl.style.boxSizing = 'border-box'
         clonedEl.style.fontFamily = 'Arial, Helvetica, sans-serif'
         clonedEl.style.backgroundColor = '#ffffff'
+        clonedEl.style.overflow = 'visible'
       }
     }
   })
@@ -55,29 +56,37 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
   const pageWidth = pdf.internal.pageSize.getWidth()   // 215.9 mm
   const pageHeight = pdf.internal.pageSize.getHeight() // 279.4 mm
 
-  // Margen de 8 mm
-  const margin = 8
-  const printWidth = pageWidth - margin * 2
+  // Márgenes seguros
+  const marginX = 7
+  const marginY = 7
+  const printWidth = pageWidth - marginX * 2           // 201.9 mm
+  const maxPageHeight = pageHeight - marginY * 2       // 265.4 mm
   const imgWidth = canvas.width
   const imgHeight = canvas.height
   const printHeight = (imgHeight * printWidth) / imgWidth
 
-  if (printHeight <= pageHeight - margin * 2) {
-    // Cabe en una única página (formato clean print oficial)
-    pdf.addImage(imgData, 'PNG', margin, margin, printWidth, printHeight)
+  // Ajuste inteligente: si cabe o excede hasta un 35%, aplicar ajuste de escala 'fit-to-page'
+  // para que quepa en 1 sola página completa, garantizando que NUNCA se corte la firma, el total o el pie del documento.
+  if (printHeight <= maxPageHeight) {
+    pdf.addImage(imgData, 'PNG', marginX, marginY, printWidth, printHeight)
+  } else if (printHeight <= maxPageHeight * 1.35) {
+    const scaleFactor = maxPageHeight / printHeight
+    const fittedWidth = printWidth * scaleFactor
+    const xOffset = marginX + (printWidth - fittedWidth) / 2
+    pdf.addImage(imgData, 'PNG', xOffset, marginY, fittedWidth, maxPageHeight)
   } else {
-    // Si la orden tiene un volumen muy alto de operaciones, paginar con márgenes continuos
+    // Si la orden es excepcionalmente kilométrica, paginar
     let heightLeft = printHeight
-    let position = margin
+    let position = marginY
 
-    pdf.addImage(imgData, 'PNG', margin, position, printWidth, printHeight)
-    heightLeft -= pageHeight - margin * 2
+    pdf.addImage(imgData, 'PNG', marginX, position, printWidth, printHeight)
+    heightLeft -= maxPageHeight
 
     while (heightLeft > 0) {
-      position = heightLeft - printHeight + margin
+      position = heightLeft - printHeight + marginY
       pdf.addPage()
-      pdf.addImage(imgData, 'PNG', margin, position, printWidth, printHeight)
-      heightLeft -= pageHeight - margin * 2
+      pdf.addImage(imgData, 'PNG', marginX, position, printWidth, printHeight)
+      heightLeft -= maxPageHeight
     }
   }
 

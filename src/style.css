@@ -142,13 +142,11 @@ html, body, #app {
   }
 
   #printable-work-order {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
-    height: 100% !important;
-    max-height: 268mm !important; /* Altura máxima carta con márgenes */
+    height: auto !important;
+    max-height: none !important;
     box-sizing: border-box !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -156,7 +154,7 @@ html, body, #app {
     break-inside: avoid !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
-    overflow: hidden !important;
+    overflow: visible !important;
   }
 
   .no-break {
