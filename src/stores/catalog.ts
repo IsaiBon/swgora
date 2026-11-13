@@ -555,6 +555,26 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Elimina una familia / grupo de repuestos de Supabase y la retira de la lista reactiva
+   */
+  async function deleteGrupo(idOrCode: string) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const target = grupos.value.find(g => g.id === idOrCode || g.codigo === idOrCode)
+      await catalogService.deleteGrupo(target?.id || idOrCode, target?.codigo)
+      grupos.value = grupos.value.filter(g => g.id !== idOrCode && g.codigo !== idOrCode)
+      return true
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar la familia'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
    * Registra un nuevo fabricante/marca y lo selecciona reactivamente
    */
   async function createFabricante(fabData: { nombre: string; pais_origen?: string }) {
@@ -688,6 +708,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     fetchGrupos,
     createGrupo,
     updateGrupo,
+    deleteGrupo,
     createFabricante,
     updateFabricante,
     createMotor,

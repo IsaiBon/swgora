@@ -46,10 +46,12 @@ const props = defineProps<{
   existingGroups: GrupoRepuesto[]
   editingGroup?: GrupoRepuesto | null
   isSaving?: boolean
+  isDeleting?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'save', payload: { data: GrupoRepuestoInsert; originalId?: string }): void
+  (e: 'delete', id: string): void
   (e: 'cancel'): void
 }>()
 
@@ -680,8 +682,29 @@ const previewSampleRows = computed<string[]>(() => {
   return ['Fila 1']
 })
 
-// Validación y Guardado
+// Validación, Borrado y Guardado
 const validationError = ref<string>('')
+const showDeleteConfirm = ref<boolean>(false)
+const showCloneDeleteConfirm = ref<boolean>(false)
+
+const handleDeleteCurrentFamily = () => {
+  if (!props.editingGroup) return
+  const targetId = props.editingGroup.id || props.editingGroup.codigo
+  if (!targetId) return
+  showDeleteConfirm.value = false
+  emit('delete', targetId)
+}
+
+const handleDeleteSelectedCloneFamily = () => {
+  if (!selectedCloneGroupId.value) return
+  const target = props.existingGroups.find(
+    g => g.codigo === selectedCloneGroupId.value || g.id === selectedCloneGroupId.value
+  )
+  const targetId = target?.id || selectedCloneGroupId.value
+  showCloneDeleteConfirm.value = false
+  selectedCloneGroupId.value = ''
+  emit('delete', targetId)
+}
 
 const handleSave = () => {
   if (!editNombre.value.trim()) {
@@ -765,18 +788,51 @@ const handleSave = () => {
         </button>
       </div>
 
-      <!-- Selector desplegable si está en modo copiar de existente -->
-      <div v-if="selectedSourceMode === 'clone'" class="flex items-center gap-2">
+      <!-- Selector desplegable si está en modo copiar / gestionar existente -->
+      <div v-if="selectedSourceMode === 'clone'" class="flex flex-wrap items-center gap-2">
         <select
           v-model="selectedCloneGroupId"
-          @change="handleCloneExisting"
+          @change="showCloneDeleteConfirm = false; handleCloneExisting()"
           class="px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] shadow-2xs"
         >
-          <option value="" disabled>Selecciona una familia para clonar...</option>
+          <option value="" disabled>Selecciona una familia existente...</option>
           <option v-for="grp in existingGroups" :key="grp.id" :value="grp.codigo">
             {{ grp.nombre }} ({{ grp.parametros.length }} medidas)
           </option>
         </select>
+
+        <template v-if="selectedCloneGroupId">
+          <button
+            v-if="!showCloneDeleteConfirm"
+            type="button"
+            @click="showCloneDeleteConfirm = true"
+            :disabled="props.isDeleting"
+            class="px-2.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+            title="Borrar esta familia del catálogo"
+          >
+            <Trash2 class="w-3.5 h-3.5 text-rose-600" />
+            <span>Borrar</span>
+          </button>
+
+          <div v-else class="flex items-center gap-1.5 bg-rose-100 border border-rose-300 px-2 py-1 rounded-xl">
+            <span class="text-[11px] font-bold text-rose-900">¿Borrar familia?</span>
+            <button
+              type="button"
+              @click="handleDeleteSelectedCloneFamily"
+              :disabled="props.isDeleting"
+              class="px-2.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-black cursor-pointer disabled:opacity-50"
+            >
+              Sí
+            </button>
+            <button
+              type="button"
+              @click="showCloneDeleteConfirm = false"
+              class="px-2 py-0.5 text-slate-600 hover:text-slate-900 text-[11px] font-bold cursor-pointer"
+            >
+              No
+            </button>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -1680,25 +1736,63 @@ const handleSave = () => {
       </div>
 
       <!-- BOTONES DE ACCIÓN -->
-      <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-        <button
-          type="button"
-          @click="emit('cancel')"
-          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
-        >
-          Cancelar
-        </button>
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+        <div>
+          <template v-if="props.editingGroup">
+            <button
+              v-if="!showDeleteConfirm"
+              type="button"
+              @click="showDeleteConfirm = true"
+              :disabled="props.isDeleting || props.isSaving"
+              class="px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Eliminar permanentemente esta familia del catálogo"
+            >
+              <Trash2 class="w-3.5 h-3.5 text-rose-600" />
+              <span>Eliminar Familia</span>
+            </button>
 
-        <button
-          type="button"
-          @click="handleSave"
-          :disabled="props.isSaving"
-          class="px-6 py-2.5 rounded-xl text-xs font-black bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-950 transition flex items-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer active:scale-95"
-        >
-          <RefreshCw v-if="props.isSaving" class="w-4 h-4 animate-spin" />
-          <Check v-else class="w-4 h-4" />
-          <span>{{ props.editingGroup ? 'Guardar Cambios de Familia' : 'Guardar y Crear Familia' }}</span>
-        </button>
+            <div v-else class="flex items-center gap-1.5 bg-rose-100 border border-rose-300 p-1 rounded-xl">
+              <span class="text-[11px] font-bold text-rose-900 px-2">¿Eliminar esta familia?</span>
+              <button
+                type="button"
+                @click="handleDeleteCurrentFamily"
+                :disabled="props.isDeleting"
+                class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw v-if="props.isDeleting" class="w-3 h-3 animate-spin" />
+                <span v-else>Sí, borrar</span>
+              </button>
+              <button
+                type="button"
+                @click="showDeleteConfirm = false"
+                class="px-2 py-1 text-slate-600 hover:text-slate-900 text-xs font-bold cursor-pointer"
+              >
+                No
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <div class="flex items-center gap-3 ml-auto">
+          <button
+            type="button"
+            @click="emit('cancel')"
+            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            @click="handleSave"
+            :disabled="props.isSaving || props.isDeleting"
+            class="px-6 py-2.5 rounded-xl text-xs font-black bg-[#04C4D9] hover:bg-[#03a9bc] text-slate-950 transition flex items-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer active:scale-95"
+          >
+            <RefreshCw v-if="props.isSaving" class="w-4 h-4 animate-spin" />
+            <Check v-else class="w-4 h-4" />
+            <span>{{ props.editingGroup ? 'Guardar Cambios de Familia' : 'Guardar y Crear Familia' }}</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

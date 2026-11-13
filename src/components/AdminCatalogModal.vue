@@ -52,6 +52,7 @@ const emit = defineEmits<{
   (e: 'part-deleted', partId: string): void
   (e: 'group-created', group: GrupoRepuesto): void
   (e: 'group-updated', group: GrupoRepuesto): void
+  (e: 'group-deleted', groupId: string): void
 }>()
 
 const catalogStore = useCatalogStore()
@@ -1400,6 +1401,7 @@ const isEditMode = ref<boolean>(false)
 const editingGroupId = ref<string | null>(null)
 const selectedEditGroupId = ref<string>('')
 const isSubmittingGroup = ref<boolean>(false)
+const isDeletingGroup = ref<boolean>(false)
 
 const currentEditingGroup = computed<GrupoRepuesto | null>(() => {
   const targetId = editingGroupId.value || props.editGroupId || selectedEditGroupId.value
@@ -1578,6 +1580,22 @@ const handleFamilyTemplateSave = async (payload: { data: GrupoRepuestoInsert; or
     saveErrorMessage.value = 'Ocurrió un error al guardar la familia en la base de datos.'
   } finally {
     isSubmittingGroup.value = false
+  }
+}
+
+const handleFamilyTemplateDelete = async (groupId: string) => {
+  if (!groupId) return
+  isDeletingGroup.value = true
+  saveErrorMessage.value = ''
+  try {
+    await catalogStore.deleteGrupo(groupId)
+    emit('group-deleted', groupId)
+    emit('close')
+  } catch (err: unknown) {
+    console.error('Error al eliminar familia:', err)
+    saveErrorMessage.value = 'Ocurrió un error al eliminar la familia del catálogo.'
+  } finally {
+    isDeletingGroup.value = false
   }
 }
 
@@ -2855,7 +2873,9 @@ onUnmounted(() => {
             :existing-groups="catalogStore.grupos"
             :editing-group="currentEditingGroup"
             :is-saving="isSubmittingGroup"
+            :is-deleting="isDeletingGroup"
             @save="handleFamilyTemplateSave"
+            @delete="handleFamilyTemplateDelete"
             @cancel="emit('close')"
           />
         </div>

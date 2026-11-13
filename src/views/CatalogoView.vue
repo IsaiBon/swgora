@@ -902,15 +902,6 @@ const partHasRowGroups = (part: RepuestoTecnico): boolean => {
   return getPartSubfilaRowSpans(part).some(m => m.label.length > 0)
 }
 
-const partHasDistinctSubrowCodes = (part: RepuestoTecnico): boolean => {
-  const rows = getPartSubfilas(part)
-  const nonEmpty = rows.map(r => String(r.codigo || '').trim().toUpperCase()).filter(Boolean)
-  if (nonEmpty.length === 0) return false
-  const mainOem = String(part.codigo_oem || '').trim().toUpperCase()
-  const uniqueCodes = new Set(nonEmpty)
-  return uniqueCodes.size > 1 || (uniqueCodes.size === 1 && !uniqueCodes.has(mainOem))
-}
-
 const getPartDisplayOemCodes = (part: RepuestoTecnico): string[] => {
   const baseCodes = getPartOemCodes(part)
   const dims = part.dimensiones as any
@@ -2683,6 +2674,21 @@ const onGroupUpdated = async (updatedGroup: GrupoRepuesto) => {
     selectedComponent.value = found
     await catalogStore.fetchRepuestosByGrupo(found.category, undefined, selectedBrand.value?.id)
   }
+}
+
+const onGroupDeleted = async (deletedGroupId?: string) => {
+  isAdminModalOpen.value = false
+  adminModalEditGroupId.value = null
+  const currentId = selectedComponent.value?.id
+  await catalogStore.fetchGrupos()
+  if (
+    currentId &&
+    (currentId === deletedGroupId || !componentGroups.value.some(g => g.id === currentId))
+  ) {
+    selectedComponent.value = null
+    componentInput.value = ''
+  }
+  showToast('✓ Familia eliminada del catálogo')
 }
 
 const onPartDeleted = (_deletedPartId?: string) => {
@@ -4869,13 +4875,6 @@ onUnmounted(() => {
                             <th rowspan="2" class="px-2.5 py-1 border-r border-slate-200 text-left align-middle">
                               {{ tableColFirstHeader }}
                             </th>
-                            <th
-                              v-if="partHasDistinctSubrowCodes(part)"
-                              rowspan="2"
-                              class="px-2.5 py-1 border-r border-slate-200 text-center align-middle"
-                            >
-                              Código
-                            </th>
                             <template v-for="item in groupSubcolumnsHeaders.tier1" :key="`mt-t1-${part.id}-${item.id}`">
                               <th
                                 v-if="item.isGroup"
@@ -4904,12 +4903,6 @@ onUnmounted(() => {
                               </th>
                               <th class="px-2.5 py-1 border-r border-slate-200 text-left whitespace-nowrap">
                                 {{ tableColFirstHeader }}
-                              </th>
-                              <th
-                                v-if="partHasDistinctSubrowCodes(part)"
-                                class="px-2.5 py-1 border-r border-slate-200 text-center whitespace-nowrap"
-                              >
-                                Código
                               </th>
                             </template>
                             <template
@@ -4952,14 +4945,6 @@ onUnmounted(() => {
                                 ></span>
                                 <span>{{ sf.nombre }}</span>
                               </div>
-                            </td>
-
-                            <!-- Código específico de sub-fila si difiere entre filas -->
-                            <td
-                              v-if="partHasDistinctSubrowCodes(part)"
-                              class="px-2 py-1 border-r border-slate-200 font-mono text-[10px] font-bold text-slate-700 whitespace-nowrap"
-                            >
-                              {{ sf.codigo || '—' }}
                             </td>
 
                             <!-- Columnas de medidas / booleanos / opciones -->
@@ -6184,6 +6169,7 @@ onUnmounted(() => {
       @part-deleted="onPartDeleted"
       @group-created="onGroupCreated"
       @group-updated="onGroupUpdated"
+      @group-deleted="onGroupDeleted"
     />
 
   </div>

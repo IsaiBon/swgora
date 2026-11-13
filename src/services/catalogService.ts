@@ -756,6 +756,45 @@ export const mockGruposRepuestos: GrupoRepuesto[] = [
   }
 ]
 
+const LOCAL_DELETED_GROUPS_KEY = 'swgora_deleted_groups_v1'
+
+function getLocalDeletedGroupKeys(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(LOCAL_DELETED_GROUPS_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(arr) ? arr.map(String) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function markLocalGroupDeleted(keys: Array<string | undefined | null>): void {
+  if (typeof window === 'undefined') return
+  try {
+    const set = getLocalDeletedGroupKeys()
+    for (const k of keys) {
+      if (k && String(k).trim()) set.add(String(k).trim())
+    }
+    localStorage.setItem(LOCAL_DELETED_GROUPS_KEY, JSON.stringify(Array.from(set)))
+  } catch {
+    // Silencioso
+  }
+}
+
+function unmarkLocalGroupDeleted(keys: Array<string | undefined | null>): void {
+  if (typeof window === 'undefined') return
+  try {
+    const set = getLocalDeletedGroupKeys()
+    for (const k of keys) {
+      if (k) set.delete(String(k).trim())
+    }
+    localStorage.setItem(LOCAL_DELETED_GROUPS_KEY, JSON.stringify(Array.from(set)))
+  } catch {
+    // Silencioso
+  }
+}
+
 function getLocalDynamicGrupos(): GrupoRepuesto[] {
   if (typeof window === 'undefined') return []
   try {
@@ -770,6 +809,7 @@ function getLocalDynamicGrupos(): GrupoRepuesto[] {
 function saveLocalDynamicGrupo(grupo: GrupoRepuesto): void {
   if (typeof window === 'undefined') return
   try {
+    unmarkLocalGroupDeleted([grupo.id, grupo.codigo])
     const list = getLocalDynamicGrupos()
     const idx = list.findIndex(g => g.codigo === grupo.codigo || g.id === grupo.id)
     if (idx >= 0) {
@@ -780,6 +820,16 @@ function saveLocalDynamicGrupo(grupo: GrupoRepuesto): void {
     localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(list))
   } catch (e) {
     console.error('Error guardando grupo en localStorage:', e)
+  }
+}
+
+function removeLocalDynamicGrupo(idOrCode: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const list = getLocalDynamicGrupos().filter(g => g.id !== idOrCode && g.codigo !== idOrCode)
+    localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(list))
+  } catch (e) {
+    console.error('Error eliminando grupo de localStorage:', e)
   }
 }
 
@@ -2497,6 +2547,7 @@ export const catalogService = {
    */
   async getGrupos(): Promise<GrupoRepuesto[]> {
     const localGrupos = getLocalDynamicGrupos()
+    const deletedKeys = getLocalDeletedGroupKeys()
 
     const normalizeTableGroup = (grp: GrupoRepuesto): GrupoRepuesto => {
       const isTable = grp.tipo_vista === 'tabla' || grp.codigo === 'anillos_motor'
@@ -2684,7 +2735,7 @@ export const catalogService = {
             merged.push(loc)
           }
         }
-        return merged
+        return merged.filter(g => !deletedKeys.has(g.id) && !deletedKeys.has(g.codigo))
       }
     } catch (e) {
       console.warn('[CatalogService] Error consultando grupos_repuestos en Supabase, usando respaldo:', e)
@@ -2704,7 +2755,7 @@ export const catalogService = {
         merged.push(loc)
       }
     }
-    return merged
+    return merged.filter(g => !deletedKeys.has(g.id) && !deletedKeys.has(g.codigo))
   },
 
   /**
@@ -2854,6 +2905,49 @@ export const catalogService = {
     // Persistir en cache local para disponibilidad inmediata
     saveLocalDynamicGrupo(updated)
     return updated
+  },
+
+  /**
+   * Elimina (o desactiva si hay restricciones de FK/RLS) una familia / grupo del catálogo
+   */
+  async deleteGrupo(idOrCode: string, codigoHint?: string): Promise<boolean> {
+    const cleanId = String(idOrCode || '').trim()
+    if (!cleanId) return false
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)
+    const codeTarget = codigoHint?.trim() || (!isUuid ? cleanId : '')
+
+    try {
+      let query = supabase.from('grupos_repuestos').delete()
+      if (isUuid && codeTarget) {
+        query = query.or(`id.eq.${cleanId},codigo.eq.${codeTarget}`)
+      } else if (isUuid) {
+        query = query.eq('id', cleanId)
+      } else {
+        query = query.eq('codigo', codeTarget)
+      }
+      const { error } = await query
+
+      if (error) {
+        // Fallback: desactivar en BD si existen restricciones referenciales o políticas de DELETE
+        let soft = supabase.from('grupos_repuestos').update({ activo: false, updated_at: new Date().toISOString() })
+        if (isUuid && codeTarget) {
+          soft = soft.or(`id.eq.${cleanId},codigo.eq.${codeTarget}`)
+        } else if (isUuid) {
+          soft = soft.eq('id', cleanId)
+        } else {
+          soft = soft.eq('codigo', codeTarget)
+        }
+        await soft
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error eliminando familia en Supabase:', err)
+    }
+
+    removeLocalDynamicGrupo(cleanId)
+    if (codeTarget && codeTarget !== cleanId) removeLocalDynamicGrupo(codeTarget)
+    markLocalGroupDeleted([cleanId, codeTarget])
+    return true
   },
 
   /**
