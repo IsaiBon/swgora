@@ -148,6 +148,18 @@ const selectEngineSuggestion = (engine: string) => {
   vehicleEngine.value = engine
   formErrors.value.vehicleEngine = false
   isEngineSuggestionsOpen.value = false
+  if (!vehicleBrand.value.trim()) {
+    const matchedMot = (catalogStore.motores || []).find(
+      m => m.codigo.toLowerCase() === engine.trim().toLowerCase()
+    )
+    if (matchedMot?.fabricante_id) {
+      const fab = (catalogStore.fabricantes || []).find(f => f.id === matchedMot.fabricante_id)
+      if (fab) {
+        vehicleBrand.value = fab.nombre
+        formErrors.value.vehicleBrand = false
+      }
+    }
+  }
 }
 
 const handleClickOutsideVehicleDropdowns = (e: MouseEvent) => {

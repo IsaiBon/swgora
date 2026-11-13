@@ -271,8 +271,34 @@ const selectedMotor = computed<Motor | null>(() => {
 
 const filteredMotoresList = computed<Motor[]>(() => {
   const query = motorSearchQuery.value.trim().toLowerCase()
-  const all = catalogStore.motores || []
-  
+  let all = catalogStore.motores || []
+
+  // Cascada: filtrar motores por Marca y Modelo escritos en el modal si coinciden con el catálogo
+  const brandClean = partMarca.value.trim().toLowerCase()
+  if (brandClean) {
+    const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === brandClean)
+    if (fab) {
+      all = all.filter(m => m.fabricante_id === fab.id)
+    }
+  }
+
+  const modelClean = partModelo.value.trim().toLowerCase()
+  if (modelClean) {
+    const matchingMod = availableModalModelos.value.find(mod => mod.nombre.toLowerCase() === modelClean)
+    if (matchingMod) {
+      const byModel = all.filter(
+        m =>
+          m.modelo_id === matchingMod.id ||
+          m.modelo?.id === matchingMod.id ||
+          (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(modelClean)) ||
+          (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(modelClean))
+      )
+      if (byModel.length > 0) {
+        all = byModel
+      }
+    }
+  }
+
   if (!query) {
     return all.slice(0, 30)
   }
@@ -313,6 +339,19 @@ const selectMotor = (mot: Motor | null) => {
     partMotorId.value = mot.id
     const brand = getBrandName(mot.fabricante_id)
     motorSearchQuery.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : (brand ? ` (${brand})` : '')}`
+    // Cascada inversa: sincronizar Marca, Modelo y Año si el motor ya los tiene asociados
+    if (mot.fabricante_id && brand) {
+      partMarca.value = brand.toUpperCase()
+    }
+    const resolvedModName =
+      mot.modelo?.nombre ||
+      (mot.modelo_id ? catalogStore.modelos.find(m => m.id === mot.modelo_id)?.nombre : undefined)
+    if (resolvedModName) {
+      partModelo.value = resolvedModName.toUpperCase()
+    }
+    if (!partAno.value && mot.anios) {
+      partAno.value = mot.anios
+    }
   }
   isMotorDropdownOpen.value = false
 }

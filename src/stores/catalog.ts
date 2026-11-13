@@ -74,19 +74,19 @@ export const useCatalogStore = defineStore('catalog', () => {
     if (selectedFabricanteId.value) {
       list = list.filter(m => m.fabricante_id === selectedFabricanteId.value)
     }
-    // Si hay un motor seleccionado y no se ha fijado modelo, priorizar o filtrar los modelos compatibles
+    // Si hay un motor seleccionado, mostrar estrictamente solo los modelos compatibles con ese motor
     if (selectedMotorId.value) {
       const mot = motores.value.find(m => m.id === selectedMotorId.value)
       if (mot) {
-        const matching = list.filter(m => 
+        const denom = (mot.denominacion_venta || '').toLowerCase()
+        const comm = (mot.nombre_comercial || '').toLowerCase()
+        return list.filter(m =>
           m.id === mot.modelo_id ||
+          m.id === mot.modelo?.id ||
           modeloIdsDelMotor.value.includes(m.id) ||
-          (mot.denominacion_venta && mot.denominacion_venta.toLowerCase().includes(m.nombre.toLowerCase())) ||
-          (mot.nombre_comercial && mot.nombre_comercial.toLowerCase().includes(m.nombre.toLowerCase()))
+          (denom.length > 0 && denom.includes(m.nombre.toLowerCase())) ||
+          (comm.length > 0 && comm.includes(m.nombre.toLowerCase()))
         )
-        if (matching.length > 0) {
-          return matching
-        }
       }
     }
     return list
@@ -332,6 +332,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     selectedFabricanteId.value = fabricanteId
     selectedModeloId.value = null
     selectedMotorId.value = null
+    modeloIdsDelMotor.value = []
     repuestos.value = []
 
     if (fabricanteId) {
@@ -353,12 +354,14 @@ export const useCatalogStore = defineStore('catalog', () => {
   async function selectModelo(modeloId: string | null) {
     selectedModeloId.value = modeloId
     selectedMotorId.value = null
+    modeloIdsDelMotor.value = []
     repuestos.value = []
 
     if (modeloId) {
       const mod = modelos.value.find(m => m.id === modeloId)
       if (mod && mod.fabricante_id && selectedFabricanteId.value !== mod.fabricante_id) {
         selectedFabricanteId.value = mod.fabricante_id
+        await fetchModelos(mod.fabricante_id)
       }
       await fetchMotores(selectedFabricanteId.value || undefined, modeloId)
     } else if (selectedFabricanteId.value) {
@@ -382,14 +385,24 @@ export const useCatalogStore = defineStore('catalog', () => {
 
     const mot = motores.value.find(m => m.id === motorId)
     if (mot) {
-      // Auto-completar fabricante si estaba vacío
-      if (!selectedFabricanteId.value && mot.fabricante_id) {
+      // Sincronizar fabricante acorde al motor seleccionado
+      if (mot.fabricante_id && selectedFabricanteId.value !== mot.fabricante_id) {
         selectedFabricanteId.value = mot.fabricante_id
         await fetchModelos(mot.fabricante_id)
       }
-      // Auto-completar modelo si estaba vacío
-      if (!selectedModeloId.value && mot.modelo_id) {
-        selectedModeloId.value = mot.modelo_id
+      // Si el motor ya trae modelo asignado (o único compatible), auto-seleccionarlo
+      const matchingMods = availableModelos.value
+      const explicitModelId = mot.modelo_id || mot.modelo?.id || null
+      if (explicitModelId && matchingMods.some(m => m.id === explicitModelId)) {
+        selectedModeloId.value = explicitModelId
+      } else if (selectedModeloId.value && matchingMods.some(m => m.id === selectedModeloId.value)) {
+        // Mantener el modelo actual si es compatible con el motor
+      } else if (modeloIdsDelMotor.value.length === 1 && matchingMods.some(m => m.id === modeloIdsDelMotor.value[0])) {
+        selectedModeloId.value = modeloIdsDelMotor.value[0]
+      } else if (matchingMods.length === 1) {
+        selectedModeloId.value = matchingMods[0].id
+      } else {
+        selectedModeloId.value = explicitModelId
       }
     }
 
@@ -403,6 +416,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     selectedFabricanteId.value = null
     selectedModeloId.value = null
     selectedMotorId.value = null
+    modeloIdsDelMotor.value = []
     selectedComponentId.value = null
     searchQuery.value = ''
     activeBrandFilter.value = 'Todas las marcas'
@@ -669,6 +683,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     grupos,
     selectedFabricanteId,
     selectedModeloId,
+    modeloIdsDelMotor,
     selectedMotorId,
     selectedComponentId,
     onlyMotorsWithParts,
