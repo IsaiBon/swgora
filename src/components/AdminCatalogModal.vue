@@ -10,10 +10,12 @@ import {
   type TablaConfiguracion,
   type RepuestoTecnico,
   type Motor,
+  buildNextAutoRowLabel,
   buildNestedTableHeaders,
   buildRowSpanMeta,
   getOptionBadgeClassByIndex,
   normalizeLegacyRingDesign,
+  resolveSubfilaColumnValue,
   sanitizeGroupParams
 } from '@/services/catalogService'
 import { 
@@ -161,8 +163,10 @@ watch(() => props.initialTab, (newTab) => {
 watch(() => props.editPart, (newPart) => {
   if (newPart) {
     loadPartForEditing(newPart)
+  } else if (props.isOpen && !props.editGroupId && props.initialTab !== 'grupo') {
+    resetPartForm()
   }
-}, { immediate: true })
+})
 
 watch(() => props.isOpen, (open) => {
   if (open) {
@@ -205,13 +209,13 @@ watch(() => props.isOpen, (open) => {
       editingPartId.value = null
       isEditMode.value = false
       editingGroupId.value = null
-      resetPartForm()
       const resolvedPre = resolveGroupByTarget(props.preselectedGroupId)
       if (resolvedPre) {
         selectedGroupCode.value = resolvedPre.codigo
       } else if (!selectedGroupCode.value && catalogStore.grupos.length > 0) {
         selectedGroupCode.value = catalogStore.grupos[0].codigo
       }
+      resetPartForm()
     }
 
     if (!props.editPart && props.preselectedMotorId) {
@@ -242,6 +246,7 @@ watch(() => props.isOpen, (open) => {
     isEditMode.value = false
     editingGroupId.value = null
     selectedEditGroupId.value = ''
+    resetPartForm()
   }
 })
 
@@ -660,6 +665,42 @@ const getActiveGroupParamLabel = (clave: string, fallback: string): string => {
   return found.unidad ? `${base} (${found.unidad})` : base
 }
 
+const initSubfilasForGroup = (grp: GrupoRepuesto | null) => {
+  if (!grp || grp.tipo_vista !== 'tabla') {
+    const firstCol = (grp?.tabla_config?.titulo_primera_columna || '').trim() || 'Componente'
+    subfilasRows.value = [{
+      id: `sf-0-${Date.now()}`,
+      tipo: 'fila_1',
+      nombre: `${firstCol} 1`,
+      codigo: '',
+      grupo: '',
+      medidas: {}
+    }]
+    return
+  }
+  const padres = grp.tabla_config?.subfila_padres || []
+  if (grp.tabla_config?.subfilas && grp.tabla_config.subfilas.length > 0) {
+    subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => ({
+      id: `sf-${idx}-${Date.now()}`,
+      tipo: name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      nombre: name,
+      codigo: '',
+      grupo: (padres[idx] || '').trim(),
+      medidas: {}
+    }))
+  } else {
+    const firstCol = (grp.tabla_config?.titulo_primera_columna || '').trim() || 'Componente'
+    subfilasRows.value = [{
+      id: `sf-0-${Date.now()}`,
+      tipo: 'fila_1',
+      nombre: `${firstCol} 1`,
+      codigo: '',
+      grupo: '',
+      medidas: {}
+    }]
+  }
+}
+
 // Al cambiar de grupo, inicializar los campos de parámetros técnicos y subsistema
 watch(activeGroup, (grp) => {
   if (grp) {
@@ -670,25 +711,13 @@ watch(activeGroup, (grp) => {
       hasThirdRing.value = false
       ringRows.value = createDefaultRingRows(grp.tabla_config, isRingsGroup.value)
       if (isSubfilasGroup.value) {
-        if (grp.tabla_config?.subfilas && grp.tabla_config.subfilas.length > 0) {
-          const padres = grp.tabla_config.subfila_padres || []
-          subfilasRows.value = grp.tabla_config.subfilas.map((name, idx) => ({
-            id: `sf-${idx}-${Date.now()}`,
-            tipo: name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
-            nombre: name,
-            codigo: '',
-            grupo: (padres[idx] || '').trim(),
-            medidas: {}
-          }))
-        } else {
-          subfilasRows.value = [
-            { id: 'sf-biela', tipo: 'biela', nombre: 'Biela', codigo: '', grupo: '', medidas: {} },
-            { id: 'sf-bancada', tipo: 'bancada', nombre: 'Bancada', codigo: '', grupo: '', medidas: {} }
-          ]
-        }
+        initSubfilasForGroup(grp)
         if (selectedMotor.value) {
           subfilasMarcaBanner.value = getBrandName(selectedMotor.value.fabricante_id)
           subfilasAplicacionBanner.value = `${selectedMotor.value.codigo}${selectedMotor.value.nombre_comercial ? ` - ${selectedMotor.value.nombre_comercial}` : ''}`
+        } else {
+          subfilasMarcaBanner.value = ''
+          subfilasAplicacionBanner.value = ''
         }
       }
     }
@@ -1016,21 +1045,30 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   // Cargar sub-filas multilínea si existen (incluyendo familias migradas como anillos_motor)
   const partSubfilas = (part.dimensiones as any)?.subfilas
   const padres = matchedGroup?.tabla_config?.subfila_padres || []
+  const hydrateSubfilaMedidas = (rawMedidas: Record<string, any>): Record<string, any> => {
+    const out: Record<string, any> = { ...rawMedidas }
+    if (out.tipo_diseno !== undefined) {
+      out.tipo_diseno = normalizeLegacyRingDesign([out.tipo_diseno])
+    }
+    for (const p of (matchedGroup?.parametros || [])) {
+      if (out[p.clave] === undefined || out[p.clave] === null || out[p.clave] === '') {
+        const resolved = resolveSubfilaColumnValue(out, p)
+        if (resolved !== undefined) {
+          out[p.clave] = resolved
+        }
+      }
+    }
+    return out
+  }
+
   if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
     subfilasRows.value = partSubfilas.map((sf: any, idx: number) => ({
       id: sf.id || `sf-${idx}-${Date.now()}`,
       tipo: sf.tipo || `fila_${idx + 1}`,
-      nombre: sf.nombre || `Fila ${idx + 1}`,
+      nombre: sf.nombre || `Componente ${idx + 1}`,
       codigo: sf.codigo || '',
       grupo: (sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (padres[idx] || ''),
-      medidas: sf.medidas
-        ? {
-            ...sf.medidas,
-            ...(sf.medidas.tipo_diseno !== undefined
-              ? { tipo_diseno: normalizeLegacyRingDesign([sf.medidas.tipo_diseno]) }
-              : {})
-          }
-        : {}
+      medidas: hydrateSubfilaMedidas(sf.medidas || {})
     }))
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
@@ -1044,16 +1082,16 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
       return {
         id: r.id || `sf-${idx}-${Date.now()}`,
         tipo: r.tipo_aro || `fila_${idx + 1}`,
-        nombre: r.posicion || `Fila ${idx + 1}`,
+        nombre: r.posicion || `Componente ${idx + 1}`,
         codigo: (r.extra?.codigo as string) || (idx === 0 ? (partCodigoOem.value || '') : ''),
         grupo: padres[idx] || '',
-        medidas: {
+        medidas: hydrateSubfilaMedidas({
           ...(r.extra || {}),
           diametro_cilindro_mm: r.extra?.diametro_cilindro_mm ?? dFallback,
           grosor_mm: r.h1 ?? r.extra?.grosor_mm ?? null,
           altura_mm: r.a1 ?? r.extra?.altura_mm ?? null,
           tipo_diseno: perfilClean
-        }
+        })
       }
     })
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
@@ -1136,8 +1174,17 @@ const handleSavePart = async () => {
         activeGroup.value?.codigo === 'anillos_motor' ||
         (activeGroup.value?.categoria || '').toLowerCase().includes('anillo')
       if (isAnillosLike) {
+        const readRingDiam = (m: Record<string, any> | undefined) =>
+          resolveSubfilaColumnValue(m, { clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro' })
+        const readRingGrosor = (m: Record<string, any> | undefined) =>
+          resolveSubfilaColumnValue(m, { clave: 'grosor_mm', etiqueta: 'Grosor' })
+        const readRingAltura = (m: Record<string, any> | undefined) =>
+          resolveSubfilaColumnValue(m, { clave: 'altura_mm', etiqueta: 'Altura' })
+        const readRingDesign = (m: Record<string, any> | undefined) =>
+          resolveSubfilaColumnValue(m, { clave: 'tipo_diseno', etiqueta: 'Diseño' })
+
         const dFirst = subfilasRows.value
-          .map(r => r.medidas?.diametro_cilindro_mm)
+          .map(r => readRingDiam(r.medidas))
           .find(v => v != null && !isNaN(Number(v)))
         const dNum = dFirst != null
           ? Number(dFirst)
@@ -1146,15 +1193,18 @@ const handleSavePart = async () => {
         const mappedRings = subfilasRows.value.map((sf, idx) => {
           const isLast = idx === subfilasRows.value.length - 1
           const isOil = isLast || sf.nombre.toLowerCase().includes('aceite')
-          const design = String(sf.medidas?.tipo_diseno || '').trim()
+          const rawDiam = readRingDiam(sf.medidas)
+          const rawH1 = readRingGrosor(sf.medidas)
+          const rawA1 = readRingAltura(sf.medidas)
+          const design = String(readRingDesign(sf.medidas) || '').trim()
           return {
             ...sf.medidas,
             posicion: sf.nombre || `Anillo ${idx + 1}`,
             codigo: sf.codigo?.trim() || '',
             tipo_aro: isOil ? 'aceite' : (idx === 0 ? 'fuego' : 'compresion'),
-            d1: sf.medidas?.diametro_cilindro_mm != null ? Number(sf.medidas.diametro_cilindro_mm) : dNum,
-            h1: sf.medidas?.grosor_mm != null ? Number(sf.medidas.grosor_mm) : null,
-            a1: sf.medidas?.altura_mm != null ? Number(sf.medidas.altura_mm) : null,
+            d1: rawDiam != null && !isNaN(Number(rawDiam)) ? Number(rawDiam) : dNum,
+            h1: rawH1 != null && !isNaN(Number(rawH1)) ? Number(rawH1) : null,
+            a1: rawA1 != null && !isNaN(Number(rawA1)) ? Number(rawA1) : null,
             perfil: design || 'Plano',
             forma: design || 'Plano',
             identificador: (design && design !== 'Plano' && design !== 'Estándar') ? design : undefined
@@ -1371,7 +1421,7 @@ const handleSavePart = async () => {
   }
 }
 
-const resetPartForm = () => {
+function resetPartForm() {
   isEditPartMode.value = false
   editingPartId.value = null
   partCodigoOem.value = ''
@@ -1386,10 +1436,17 @@ const resetPartForm = () => {
   isMotorDropdownOpen.value = false
   partCatalogoOrigen.value = 'OEM'
   partImagenUrl.value = ''
-  paramValues.value = {}
+  const emptyParams: Record<string, any> = {}
+  for (const p of (activeGroup.value?.parametros || [])) {
+    emptyParams[p.clave] = p.tipo_dato === 'booleano' ? false : (p.tipo_dato === 'numero' ? null : '')
+  }
+  paramValues.value = emptyParams
   formErrors.value = {}
   hasThirdRing.value = false
   ringRows.value = createDefaultRingRows(activeGroup.value?.tabla_config, isRingsGroup.value)
+  initSubfilasForGroup(activeGroup.value)
+  subfilasMarcaBanner.value = ''
+  subfilasAplicacionBanner.value = ''
   saveErrorMessage.value = ''
   equivalencias.value = [{ marca_alterna: 'Dokuro', codigo_alterno: '', notas: '' }]
 }
@@ -1425,10 +1482,14 @@ const loadGroupForEditing = (grp: GrupoRepuesto) => {
 
 const addFormSubfila = () => {
   const count = subfilasRows.value.length + 1
+  const nextLabel = buildNextAutoRowLabel(
+    subfilasRows.value.map(r => r.nombre),
+    activeTablaConfig.value.titulo_primera_columna
+  )
   subfilasRows.value.push({
     id: `sf-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
     tipo: `fila_${count}`,
-    nombre: `Fila ${count}`,
+    nombre: nextLabel,
     codigo: '',
     grupo: '',
     medidas: {}

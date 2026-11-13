@@ -9,6 +9,7 @@ import {
   type TemplateColumnDef
 } from './FamilyTemplates'
 import {
+  buildNextAutoRowLabel,
   buildRowClusters,
   buildRowSpanMeta,
   getOptionBadgeClassByIndex,
@@ -298,14 +299,15 @@ const ensureTablaSubfilas = (): string[] => {
     currentTemplate.value.tabla_config = {
       titulo_primera_columna: 'Componente',
       modo_filas: 'subfilas',
-      subfilas: ['Fila 1'],
+      subfilas: ['Componente 1'],
       tiene_cabecera_marca: false
     }
   } else if (!currentTemplate.value.tabla_config.modo_filas || currentTemplate.value.tabla_config.modo_filas === 'libre' || currentTemplate.value.tabla_config.modo_filas === 'cojinetes') {
     currentTemplate.value.tabla_config.modo_filas = 'subfilas'
   }
   if (!Array.isArray(currentTemplate.value.tabla_config.subfilas) || currentTemplate.value.tabla_config.subfilas.length === 0) {
-    currentTemplate.value.tabla_config.subfilas = ['Fila 1']
+    const base = (currentTemplate.value.tabla_config.titulo_primera_columna || '').trim() || 'Componente'
+    currentTemplate.value.tabla_config.subfilas = [`${base} 1`]
   }
   return currentTemplate.value.tabla_config.subfilas
 }
@@ -356,8 +358,8 @@ const updateUnifiedRowName = (idx: number, val: string) => {
 const addUnifiedRow = () => {
   const arr = ensureTablaSubfilas()
   const padres = ensureTablaSubfilaPadres()
-  const count = arr.length + 1
-  arr.push(`Fila ${count}`)
+  const nextLabel = buildNextAutoRowLabel(arr, currentTemplate.value.tabla_config?.titulo_primera_columna, true)
+  arr.push(nextLabel)
   padres.push('')
 }
 

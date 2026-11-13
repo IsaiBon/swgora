@@ -6,6 +6,7 @@ import type {
 } from '@/services/catalogService'
 
 export interface TemplateColumnDef {
+  clave?: string
   etiqueta: string
   columna_padre?: string
   unidad?: string
@@ -61,7 +62,7 @@ export const BLANK_FAMILY_TEMPLATE: FamilyTemplate = {
     titulo_primera_columna: 'Componente',
     modo_filas: 'subfilas',
     tiene_cabecera_marca: false,
-    subfilas: ['Fila 1']
+    subfilas: ['Componente 1']
   },
   columnas: [
     { etiqueta: 'Diámetro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true },
@@ -122,10 +123,10 @@ export const WORKSHOP_FAMILY_TEMPLATES: FamilyTemplate[] = [
       tiene_cabecera_marca: false
     },
     columnas: [
-      { etiqueta: 'Diámetro de cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro estándar del cilindro' },
-      { etiqueta: 'Grosor', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor axial de cada ranura' },
-      { etiqueta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Ancho radial de cada ranura' },
-      { etiqueta: 'Diseño / Perfil', tipo_dato: 'seleccion', opciones: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral', 'Plano'], requerido: false, filtrable: true, descripcion: 'Perfil o diseño del anillo (Cónico, Espiral, etc.)' }
+      { clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro de cilindro', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Diámetro estándar del cilindro' },
+      { clave: 'grosor_mm', etiqueta: 'Grosor', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Espesor axial de cada ranura' },
+      { clave: 'altura_mm', etiqueta: 'Altura', unidad: 'mm', tipo_dato: 'numero', requerido: true, filtrable: true, descripcion: 'Ancho radial de cada ranura' },
+      { clave: 'tipo_diseno', etiqueta: 'Diseño / Perfil', tipo_dato: 'seleccion', opciones: ['Cónico', 'Semi-cónico', 'Escalonado', '1 Espiral', 'Doble Espiral', 'Plano'], requerido: false, filtrable: true, descripcion: 'Perfil o diseño del anillo (Cónico, Espiral, etc.)' }
     ]
   },
   {
@@ -254,6 +255,7 @@ export function cloneExistingGrupoToTemplate(grupo: GrupoRepuesto): FamilyTempla
         }
       : undefined,
     columnas: (grupo.parametros || []).map(p => ({
+      clave: p.clave,
       etiqueta: p.etiqueta,
       columna_padre: (p as any).columna_padre || undefined,
       unidad: p.unidad || (p.tipo_dato === 'numero' ? 'mm' : ''),
@@ -288,17 +290,21 @@ export function convertTemplateToGrupoInsert(
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || `familia_${Date.now()}`
 
-  // Generar parámetros técnicos con claves únicas y limpias sin intervención del usuario
+  // Generar parámetros técnicos con claves únicas, preservando la clave original al editar si existe
   const seenKeys = new Map<string, number>()
   const parametros: ParametroTecnicoDefinicion[] = template.columnas.map((col, idx) => {
-    let rawSlug = col.etiqueta
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '') || `col_${idx + 1}`
+    let rawSlug = col.clave && col.clave.trim()
+      ? col.clave.trim()
+      : (
+          col.etiqueta
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '') || `col_${idx + 1}`
+        )
 
-    if (col.columna_padre && col.columna_padre.trim()) {
+    if (!col.clave && col.columna_padre && col.columna_padre.trim()) {
       const parentSlug = col.columna_padre
         .toLowerCase()
         .normalize('NFD')

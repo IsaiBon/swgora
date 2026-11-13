@@ -229,6 +229,106 @@ export function normalizeLegacyRingDesign(candidates: Array<unknown>, isConicalF
   return raw
 }
 
+/** Resuelve el valor de una celda en subfilas/anillos soportando claves canónicas y alias renombrados al editar familias. */
+export function resolveSubfilaColumnValue(
+  medidas: Record<string, any> | undefined,
+  col: Pick<ParametroTecnicoDefinicion, 'clave' | 'etiqueta' | 'etiqueta_corta' | 'columna_padre'>
+): unknown {
+  if (!medidas) return undefined
+  const isSet = (v: unknown) => v !== undefined && v !== null && v !== ''
+  if (isSet(medidas[col.clave])) return medidas[col.clave]
+
+  const noSuffix = col.clave.replace(/_\d+$/, '')
+  if (noSuffix !== col.clave && isSet(medidas[noSuffix])) return medidas[noSuffix]
+
+  if (col.columna_padre) {
+    const parentSlug = col.columna_padre
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+    if (parentSlug && col.clave.startsWith(`${parentSlug}_`)) {
+      const stripped = col.clave.slice(parentSlug.length + 1)
+      if (isSet(medidas[stripped])) return medidas[stripped]
+    }
+  }
+
+  const colKey = (col.clave || '').toLowerCase()
+  const colLabel = (col.etiqueta_corta || col.etiqueta || '').toLowerCase()
+
+  if (
+    (colKey.includes('diametro') || colLabel.includes('diámetro') || colLabel.includes('diametro')) &&
+    !colKey.includes('interior') &&
+    !colKey.includes('exterior') &&
+    !colKey.includes('vastago') &&
+    !colKey.includes('cabeza') &&
+    !colKey.includes('munon') &&
+    !colKey.includes('alojamiento') &&
+    !colKey.includes('bulon')
+  ) {
+    const d = medidas.diametro_cilindro_mm ?? medidas.diametro_de_cilindro ?? medidas.diametro ?? medidas.d1
+    if (isSet(d)) return d
+  }
+
+  if (colKey.includes('grosor') || colLabel.includes('grosor') || colKey.includes('espesor') || colLabel.includes('espesor')) {
+    const h = medidas.grosor_mm ?? medidas.grosor ?? medidas.h1
+    if (isSet(h)) return h
+  }
+
+  if (colKey.includes('altura') || colLabel.includes('altura') || colKey.includes('radial')) {
+    const a = medidas.altura_mm ?? medidas.altura ?? medidas.a1
+    if (isSet(a)) return a
+  }
+
+  if (
+    colKey.includes('diseno') ||
+    colKey.includes('diseño') ||
+    colKey.includes('perfil') ||
+    colLabel.includes('diseño') ||
+    colLabel.includes('diseno') ||
+    colLabel.includes('perfil')
+  ) {
+    const raw =
+      medidas.tipo_diseno ??
+      medidas.diseno_perfil ??
+      medidas.diseno ??
+      medidas.identificador ??
+      medidas.perfil ??
+      medidas.forma
+    if (isSet(raw)) return normalizeLegacyRingDesign([raw])
+  }
+
+  return undefined
+}
+
+/** Genera el nombre automático de una nueva fila usando la etiqueta del primer campo/columna + número consecutivo. */
+export function buildNextAutoRowLabel(existingNames: string[], firstColTitle?: string, preferFirstCol = false): string {
+  const titleClean = (firstColTitle || '').trim()
+  const firstRow = (existingNames[0] || '').trim()
+  const numberedMatch = firstRow.match(/^(.+?)\s+\d+$/)
+  const firstRowBase = numberedMatch ? numberedMatch[1]!.trim() : ''
+
+  let base = titleClean || 'Componente'
+  if (!preferFirstCol && firstRowBase && firstRowBase.toLowerCase() !== 'fila') {
+    base = firstRowBase
+  } else if (
+    titleClean.toLowerCase() === 'componente' &&
+    firstRowBase &&
+    firstRowBase.toLowerCase() !== 'fila'
+  ) {
+    base = firstRowBase
+  }
+
+  const used = new Set(existingNames.map(n => (n || '').trim().toLowerCase()))
+  let num = existingNames.length + 1
+  while (used.has(`${base.toLowerCase()} ${num}`)) {
+    num++
+  }
+  return `${base} ${num}`
+}
+
 export interface RowClusterItem<T = string> {
   rowIdx: number
   name: T

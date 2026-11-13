@@ -14,6 +14,7 @@ import {
   normalizeLegacyRingDesign,
   normalizeText,
   resolveOptionBadgeClass,
+  resolveSubfilaColumnValue,
   sanitizeGroupParams,
   sortMotorsByRelevance
 } from '@/services/catalogService'
@@ -994,24 +995,7 @@ const formatPartParamColValue = (val: unknown, col: ParametroTecnicoDefinicion):
 }
 
 const getPartSubfilaRawValue = (sf: PartSubfilaDisplay, col: ParametroTecnicoDefinicion): unknown => {
-  if (!sf.medidas) return undefined
-  if (sf.medidas[col.clave] !== undefined) return sf.medidas[col.clave]
-  const noSuffix = col.clave.replace(/_\d+$/, '')
-  if (noSuffix !== col.clave && sf.medidas[noSuffix] !== undefined) return sf.medidas[noSuffix]
-  if (col.columna_padre) {
-    const parentSlug = col.columna_padre
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-    if (parentSlug && col.clave.startsWith(`${parentSlug}_`)) {
-      const stripped = col.clave.slice(parentSlug.length + 1)
-      if (sf.medidas[stripped] !== undefined) return sf.medidas[stripped]
-    }
-  }
-  return undefined
+  return resolveSubfilaColumnValue(sf.medidas, col)
 }
 
 const getPartSubfilaValue = (sf: PartSubfilaDisplay, col: ParametroTecnicoDefinicion): string => {
@@ -2070,12 +2054,12 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
         if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
           const tolParam = getTol(key)
+          const paramDef = currentGroupDefinition.value?.parametros.find(p => p.clave === key) || { clave: key, etiqueta: key }
           list = list.filter(r => {
             const dims = (r.dimensiones as any) || {}
-            // Si la pieza tiene sub-filas, comprobar si alguna sub-fila coincide con esta cota
-            if (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) {
-              const matchedInSubfila = dims.subfilas.some((sf: any) => {
-                const sfVal = sf.medidas ? sf.medidas[key] : undefined
+            if (isPartEmbeddedTableFormat(r) || (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) || (Array.isArray(dims.anillos) && dims.anillos.length > 0)) {
+              const matchedInRow = getPartSubfilas(r).some((sf) => {
+                const sfVal = resolveSubfilaColumnValue(sf.medidas, paramDef)
                 if (sfVal === undefined || sfVal === null || sfVal === '') return false
                 if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
                   return Math.abs(Number(sfVal) - Number(filterVal)) <= tolParam
@@ -2084,32 +2068,8 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
                 const strFlt = String(filterVal).toLowerCase().trim()
                 return strSf.includes(strFlt) || strFlt.includes(strSf)
               })
-              if (matchedInSubfila) return true
-            }
-
-            // Si la pieza tiene filas en tabla (anillos o matriz general), comprobar si alguna fila coincide con esta cota
-            if (Array.isArray(dims.anillos) && dims.anillos.length > 0) {
-              const matchedInRow = dims.anillos.some((ring: any) => {
-                const ringVal = ring.extra?.[key] !== undefined ? ring.extra[key] : (ring[key] !== undefined ? ring[key] : (
-                  key === 'diametro_cilindro_mm' ? ring.d1 : (
-                    key === 'grosor_mm' ? ring.h1 : (
-                      key === 'altura_mm' ? ring.a1 : (
-                        key === 'tipo_diseno'
-                          ? normalizeLegacyRingDesign([ring.tipo_diseno, ring.identificador, ring.perfil, ring.forma])
-                          : undefined
-                      )
-                    )
-                  )
-                ))
-                if (ringVal === undefined || ringVal === null || ringVal === '') return false
-                if (typeof filterVal === 'number' || (!isNaN(Number(filterVal)) && !isNaN(Number(ringVal)))) {
-                  return Math.abs(Number(ringVal) - Number(filterVal)) <= tolParam
-                }
-                const strR = String(ringVal).toLowerCase().trim()
-                const strFlt = String(filterVal).toLowerCase().trim()
-                return strR.includes(strFlt) || strFlt.includes(strR)
-              })
               if (matchedInRow) return true
+              if (Array.isArray(dims.subfilas) || Array.isArray(dims.anillos) || r.categoria === 'Anillos') return false
             }
 
             const partVal = getPartParamValue(r, key)
@@ -2649,6 +2609,7 @@ const toggleMotorsWithPartsOnly = async () => {
 const onGroupCreated = async (newGroup: GrupoRepuesto) => {
   isAdminModalOpen.value = false
   adminModalEditGroupId.value = null
+  adminModalEditPart.value = null
   showToast(`✓ Familia "${newGroup.nombre}" creada con ${newGroup.parametros.length} parámetros técnicos`)
   await catalogStore.fetchGrupos()
   const found = componentGroups.value.find(g => g.id === newGroup.codigo || g.id === newGroup.id)
@@ -2667,6 +2628,7 @@ const onGroupCreated = async (newGroup: GrupoRepuesto) => {
 const onGroupUpdated = async (updatedGroup: GrupoRepuesto) => {
   isAdminModalOpen.value = false
   adminModalEditGroupId.value = null
+  adminModalEditPart.value = null
   showToast(`✓ Familia "${updatedGroup.nombre}" actualizada con ${updatedGroup.parametros.length} parámetros técnicos`)
   await catalogStore.fetchGrupos()
   const found = componentGroups.value.find(g => g.id === updatedGroup.codigo || g.id === updatedGroup.id)
@@ -2679,6 +2641,7 @@ const onGroupUpdated = async (updatedGroup: GrupoRepuesto) => {
 const onGroupDeleted = async (deletedGroupId?: string) => {
   isAdminModalOpen.value = false
   adminModalEditGroupId.value = null
+  adminModalEditPart.value = null
   const currentId = selectedComponent.value?.id
   await catalogStore.fetchGrupos()
   if (
