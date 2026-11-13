@@ -50,6 +50,19 @@ const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 // Modo de layout de la tabla: 'auto' (adaptable), 'single' (1 sección), 'double' (2 secciones)
 const selectedLayout = ref<'auto' | 'single' | 'double'>('auto')
 
+// Control de visibilidad de subtotales por componente
+const showSubtotalsOverride = ref<boolean>(true)
+
+watch(
+  () => props.order,
+  (newOrder) => {
+    if (newOrder) {
+      showSubtotalsOverride.value = newOrder.showSubtotals !== undefined ? Boolean(newOrder.showSubtotals) : true
+    }
+  },
+  { immediate: true }
+)
+
 const handlePrint = () => {
   window.print()
 }
@@ -62,7 +75,11 @@ const handleDownload = async () => {
   try {
     const el = document.getElementById('printable-work-order')
     if (el) {
-      await exportOrderToPdf(el, props.order)
+      const orderToExport = {
+        ...props.order,
+        showSubtotals: showSubtotalsOverride.value
+      }
+      await exportOrderToPdf(el, orderToExport)
     }
   } catch (error) {
     console.error('Error al generar PDF de la orden:', error)
@@ -96,35 +113,50 @@ const handleDownload = async () => {
             </span>
           </div>
 
-          <!-- Selector de Modo de Layout (Adaptable, 1 Sección, 2 Secciones) -->
-          <div class="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-300">
-            <span class="px-2 text-slate-400 text-[10.5px] uppercase font-bold hidden sm:inline">Diseño:</span>
+          <!-- Controles de Vista: Modo de Layout y Subtotales -->
+          <div class="flex items-center gap-2">
+            <!-- Selector de Modo de Layout (Adaptable, 1 Sección, 2 Secciones) -->
+            <div class="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-300">
+              <span class="px-2 text-slate-400 text-[10.5px] uppercase font-bold hidden sm:inline">Diseño:</span>
+              <button
+                type="button"
+                @click="selectedLayout = 'auto'"
+                :class="selectedLayout === 'auto' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
+                class="px-2 py-1 rounded transition text-xs"
+                title="Adaptable automáticamente según cantidad de operaciones"
+              >
+                Auto (Adaptable)
+              </button>
+              <button
+                type="button"
+                @click="selectedLayout = 'single'"
+                :class="selectedLayout === 'single' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
+                class="px-2 py-1 rounded transition text-xs"
+                title="Forzar 1 sección (ancho completo)"
+              >
+                1 Sección
+              </button>
+              <button
+                type="button"
+                @click="selectedLayout = 'double'"
+                :class="selectedLayout === 'double' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
+                class="px-2 py-1 rounded transition text-xs"
+                title="Forzar 2 secciones (doble columna paralela)"
+              >
+                2 Secciones
+              </button>
+            </div>
+
+            <!-- Botón Rápido de Subtotales por Componente -->
             <button
               type="button"
-              @click="selectedLayout = 'auto'"
-              :class="selectedLayout === 'auto' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
-              class="px-2 py-1 rounded transition text-xs"
-              title="Adaptable automáticamente según cantidad de operaciones"
+              @click="showSubtotalsOverride = !showSubtotalsOverride"
+              :class="showSubtotalsOverride ? 'bg-slate-800 text-cyan-300 border-cyan-500/50' : 'bg-slate-800 text-slate-400 border-slate-700'"
+              class="px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5"
+              title="mostrar subtotales por componente"
             >
-              Auto (Adaptable)
-            </button>
-            <button
-              type="button"
-              @click="selectedLayout = 'single'"
-              :class="selectedLayout === 'single' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
-              class="px-2 py-1 rounded transition text-xs"
-              title="Forzar 1 sección (ancho completo)"
-            >
-              1 Sección
-            </button>
-            <button
-              type="button"
-              @click="selectedLayout = 'double'"
-              :class="selectedLayout === 'double' ? 'bg-[#004b97] text-white shadow-xs' : 'hover:text-white'"
-              class="px-2 py-1 rounded transition text-xs"
-              title="Forzar 2 secciones (doble columna paralela)"
-            >
-              2 Secciones
+              <span class="text-slate-300">Subtotales:</span>
+              <span class="font-black text-[11px]">{{ showSubtotalsOverride ? 'SÍ' : 'NO' }}</span>
             </button>
           </div>
 
@@ -166,7 +198,7 @@ const handleDownload = async () => {
           class="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/70 print:p-0 print:bg-white print:overflow-visible"
         >
           <!-- Hoja física de la orden limpia -->
-          <WorkOrderDocument :order="order" :layoutMode="selectedLayout" />
+          <WorkOrderDocument :order="order" :layoutMode="selectedLayout" :showSubtotals="showSubtotalsOverride" />
         </div>
 
         <!-- 3. Barra de pie informativa y salida rápida (oculta en impresión) -->

@@ -8,12 +8,24 @@ const props = withDefaults(
     order: Order | null
     variant?: 'preview' | 'pdf'
     layoutMode?: 'auto' | 'single' | 'double'
+    showSubtotals?: boolean
   }>(),
   {
     variant: 'preview',
-    layoutMode: 'auto'
+    layoutMode: 'auto',
+    showSubtotals: undefined
   }
 )
+
+const shouldShowSubtotals = computed(() => {
+  if (props.showSubtotals !== undefined) {
+    return props.showSubtotals
+  }
+  if (props.order?.showSubtotals !== undefined) {
+    return Boolean(props.order.showSubtotals)
+  }
+  return true
+})
 
 const tallerStore = useTallerStore()
 
@@ -254,11 +266,11 @@ const orderGrandTotal = computed(() => {
 
     <!-- 1. ENCABEZADO IDÉNTICO A ORDEN DE TRABAJO.XLSX -->
     <div class="border-b-2 border-slate-900 pb-3 mb-3">
-      <div class="flex items-start justify-between gap-3">
+      <div class="flex items-center justify-between gap-4">
         
         <!-- Logo + Información de la Empresa Rectificadora (Dinámica desde Supabase) -->
-        <div class="flex items-center gap-3.5 flex-1">
-          <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 flex items-center justify-center">
+        <div class="flex items-center gap-4 flex-1 min-w-0">
+          <div class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center p-1 border border-slate-200 rounded-xl bg-slate-50/50">
             <img
               :src="tallerStore.tallerInfo.logo_url || '/logo-taller.png'"
               alt="Logo Rectificadora"
@@ -267,25 +279,25 @@ const orderGrandTotal = computed(() => {
             />
           </div>
 
-          <div>
-            <h1 class="text-sm sm:text-base font-black tracking-tight text-slate-900 uppercase leading-tight">
+          <div class="flex-1 min-w-0">
+            <h1 class="text-base sm:text-lg font-black tracking-tight text-slate-900 uppercase leading-snug">
               {{ tallerStore.tallerInfo.nombre }}
             </h1>
-            <p class="text-[11px] font-medium text-slate-700 mt-0.5 leading-snug flex items-center gap-1">
-              <span class="text-rose-600 text-xs shrink-0 select-none">📍</span>
+            <p class="text-xs sm:text-[12px] font-medium text-slate-700 mt-1 leading-snug flex items-center gap-1.5">
+              <span class="text-rose-600 text-sm shrink-0 select-none">📍</span>
               <span>{{ tallerStore.tallerInfo.direccion }}</span>
             </p>
-            <div class="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-[10.5px] font-bold text-slate-800 mt-1">
+            <div class="flex items-center flex-wrap gap-x-4 gap-y-1 text-xs sm:text-[12px] font-bold text-slate-800 mt-1.5">
               <!-- WhatsApp Celular 1 -->
-              <span v-if="tallerStore.tallerInfo.celular1" class="inline-flex items-center gap-1">
-                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 inline-block shrink-0 fill-[#25D366]">
+              <span v-if="tallerStore.tallerInfo.celular1" class="inline-flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" class="w-4 h-4 inline-block shrink-0 fill-[#25D366]">
                   <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.11 7.44C8.95 7.44 8.68 7.5 8.46 7.74C8.23 7.98 7.6 8.57 7.6 9.78C7.6 10.99 8.48 12.16 8.6 12.33C8.73 12.49 10.33 14.96 12.78 16.02C13.36 16.27 13.82 16.42 14.17 16.53C14.76 16.72 15.3 16.69 15.72 16.63C16.19 16.56 17.17 16.04 17.37 15.47C17.58 14.9 17.58 14.41 17.51 14.31C17.45 14.21 17.3 14.15 17.06 14.03C16.83 13.91 15.69 13.35 15.48 13.27C15.27 13.19 15.12 13.15 14.97 13.39C14.81 13.62 14.37 14.15 14.23 14.31C14.1 14.46 13.96 14.48 13.73 14.36C13.5 14.24 12.52 13.92 11.37 12.9C10.47 12.1 9.87 11.11 9.75 10.9C9.63 10.69 9.74 10.58 9.85 10.46C9.96 10.36 10.09 10.18 10.21 10.04C10.33 9.9 10.37 9.79 10.45 9.64C10.53 9.48 10.49 9.35 10.43 9.23C10.37 9.11 9.89 7.93 9.7 7.45C9.51 6.98 9.32 7.05 9.17 7.04C9.04 7.04 8.89 7.04 8.73 7.04"/>
                 </svg>
                 <span>Cel: {{ tallerStore.tallerInfo.celular1 }}</span>
               </span>
               <!-- WhatsApp Celular 2 -->
-              <span v-if="tallerStore.tallerInfo.celular2" class="inline-flex items-center gap-1">
-                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 inline-block shrink-0 fill-[#25D366]">
+              <span v-if="tallerStore.tallerInfo.celular2" class="inline-flex items-center gap-1.5">
+                <svg viewBox="0 0 24 24" class="w-4 h-4 inline-block shrink-0 fill-[#25D366]">
                   <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.11 7.44C8.95 7.44 8.68 7.5 8.46 7.74C8.23 7.98 7.6 8.57 7.6 9.78C7.6 10.99 8.48 12.16 8.6 12.33C8.73 12.49 10.33 14.96 12.78 16.02C13.36 16.27 13.82 16.42 14.17 16.53C14.76 16.72 15.3 16.69 15.72 16.63C16.19 16.56 17.17 16.04 17.37 15.47C17.58 14.9 17.58 14.41 17.51 14.31C17.45 14.21 17.3 14.15 17.06 14.03C16.83 13.91 15.69 13.35 15.48 13.27C15.27 13.19 15.12 13.15 14.97 13.39C14.81 13.62 14.37 14.15 14.23 14.31C14.1 14.46 13.96 14.48 13.73 14.36C13.5 14.24 12.52 13.92 11.37 12.9C10.47 12.1 9.87 11.11 9.75 10.9C9.63 10.69 9.74 10.58 9.85 10.46C9.96 10.36 10.09 10.18 10.21 10.04C10.33 9.9 10.37 9.79 10.45 9.64C10.53 9.48 10.49 9.35 10.43 9.23C10.37 9.11 9.89 7.93 9.7 7.45C9.51 6.98 9.32 7.05 9.17 7.04C9.04 7.04 8.89 7.04 8.73 7.04"/>
                 </svg>
                 <span>Cel: {{ tallerStore.tallerInfo.celular2 }}</span>
@@ -415,7 +427,7 @@ const orderGrandTotal = computed(() => {
                 <td colspan="4" class="py-1 px-2">
                   <div class="flex justify-between items-center leading-normal">
                     <span>{{ section.title }}</span>
-                    <span class="text-[9px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                    <span v-if="shouldShowSubtotals" class="text-[9px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
                   </div>
                 </td>
               </tr>
@@ -475,7 +487,7 @@ const orderGrandTotal = computed(() => {
                         <td colspan="4" class="py-0.5 px-1.5">
                           <div class="flex justify-between items-center leading-normal">
                             <span>{{ section.title }}</span>
-                            <span class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                            <span v-if="shouldShowSubtotals" class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
                           </div>
                         </td>
                       </tr>
@@ -530,7 +542,7 @@ const orderGrandTotal = computed(() => {
                         <td colspan="4" class="py-0.5 px-1.5">
                           <div class="flex justify-between items-center leading-normal">
                             <span>{{ section.title }}</span>
-                            <span class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                            <span v-if="shouldShowSubtotals" class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
                           </div>
                         </td>
                       </tr>

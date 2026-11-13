@@ -81,6 +81,7 @@ export interface Order {
   partsTotal: number
   materialsTotal: number
   hasIva?: boolean
+  showSubtotals?: boolean
   subtotal?: number
   iva?: number
   total: number

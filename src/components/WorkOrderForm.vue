@@ -230,6 +230,9 @@ const customMaterialName = ref('')
 // Impuesto IVA (13%)
 const applyIva = ref(false)
 
+// Mostrar subtotales por componente en el PDF
+const showSubtotals = ref(true)
+
 // Modal de impresión
 const showPrintModal = ref(false)
 const orderForPrint = ref<Order | null>(null)
@@ -729,6 +732,7 @@ const loadExistingOrder = (order: Order) => {
   parts.value = order.parts ? JSON.parse(JSON.stringify(order.parts)) : []
   materials.value = order.materials ? JSON.parse(JSON.stringify(order.materials)) : []
   applyIva.value = Boolean(order.hasIva)
+  showSubtotals.value = order.showSubtotals !== undefined ? Boolean(order.showSubtotals) : true
 
   // Sincronizar las operaciones existentes en la lista unificada
   if (order.operations && order.operations.length > 0) {
@@ -1044,6 +1048,7 @@ const handleSaveOrder = async () => {
       partsTotal: partsTotal.value,
       materialsTotal: materialsTotal.value,
       hasIva: applyIva.value,
+      showSubtotals: showSubtotals.value,
       subtotal: laborTotal.value,
       iva: applyIva.value ? ivaAmount.value : 0,
       total: totalOrder.value,
@@ -2131,6 +2136,30 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 Cotización (B/N)
               </button>
             </div>
+          </div>
+
+          <!-- Opción: Mostrar Subtotales por Componente en el PDF -->
+          <div class="pt-2 border-t border-slate-100">
+            <label
+              for="toggle-subtotals"
+              class="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl cursor-pointer select-none transition group"
+              title="mostrar subtotales por componente"
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  id="toggle-subtotals"
+                  type="checkbox"
+                  v-model="showSubtotals"
+                  class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] focus:ring-2 cursor-pointer"
+                />
+                <span class="text-xs font-bold text-slate-800">
+                  Mostrar subtotales
+                </span>
+              </div>
+              <span class="text-[10.5px] text-slate-400 group-hover:text-slate-600 transition italic">
+                mostrar subtotales por componente
+              </span>
+            </label>
           </div>
 
           <!-- Botones de Acción (Acción Unificada: Guardar Orden e Imprimir) -->
