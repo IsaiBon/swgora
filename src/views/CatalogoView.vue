@@ -542,31 +542,14 @@ const handleBrandKeydown = (e: KeyboardEvent) => {
 
 const handleMotorKeydown = (e: KeyboardEvent) => {
   const list = brandMotorsList.value.slice(0, 60)
-  if (!isMotorOpen.value && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-    isMotorOpen.value = true
-    highlightedMotorIdx.value = 0
-    e.preventDefault()
-    return
-  }
-  if (e.key === 'ArrowDown') {
-    if (list.length === 0) return
-    e.preventDefault()
-    highlightedMotorIdx.value = (highlightedMotorIdx.value + 1) % list.length
-  } else if (e.key === 'ArrowUp') {
-    if (list.length === 0) return
-    e.preventDefault()
-    highlightedMotorIdx.value = (highlightedMotorIdx.value - 1 + list.length) % list.length
-  } else if (e.key === 'Enter') {
-    e.preventDefault()
-    const idx = highlightedMotorIdx.value >= 0 && highlightedMotorIdx.value < list.length ? highlightedMotorIdx.value : 0
-    if (list[idx]) {
-      handleSelectMotor(list[idx])
+  if (e.key === 'Enter') {
+    if (list[0]) {
+      e.preventDefault()
+      handleSelectMotor(list[0])
       setTimeout(() => componentInputRef.value?.focus(), 60)
     }
   } else if (e.key === 'Escape') {
-    if (isMotorOpen.value) {
-      isMotorOpen.value = false
-    } else if (motorInput.value) {
+    if (motorInput.value) {
       handleClearSelectedMotor()
     }
   }
@@ -1582,15 +1565,16 @@ const onFocusModel = (e?: Event) => {
 }
 const onInputModel = () => { isModelOpen.value = true }
 const onFocusMotor = (e?: Event) => {
-  isMotorOpen.value = true
-  highlightedMotorIdx.value = 0
+  isMotorOpen.value = false
+  activeViewTab.value = 'motores'
+  showAllMotors.value = true
   if (e?.target) {
     (e.target as HTMLInputElement).select?.()
   }
 }
 const onInputMotor = () => {
-  isMotorOpen.value = true
-  highlightedMotorIdx.value = 0
+  isMotorOpen.value = false
+  motorCurrentPage.value = 1
   // Al cambiar el filtro de motor, limpiar selección puntual y volver a mostrar los motores disponibles en la tabla
   if (selectedMotor.value) {
     selectedMotor.value = null
@@ -3196,48 +3180,9 @@ onUnmounted(() => {
               <X class="w-3.5 h-3.5" />
             </button>
             <ChevronDown
-              @click="isMotorOpen = !isMotorOpen"
+              @click="onFocusMotor(); motorInputRef?.focus()"
               class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
             />
-          </div>
-
-          <!-- Dropdown Motores en Cascada -->
-          <div
-            v-if="isMotorOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
-          >
-            <div
-              v-for="(mot, mIdx) in brandMotorsList.slice(0, 60)"
-              :key="mot.id"
-              @click="handleSelectMotor(mot)"
-              @mouseenter="highlightedMotorIdx = mIdx"
-              :class="[
-                'px-3 py-2 cursor-pointer text-xs flex items-center justify-between gap-2 transition motor-item-' + mIdx,
-                highlightedMotorIdx === mIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedMotor?.id === mot.id ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70')
-              ]"
-            >
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="selectedMotor?.id === mot.id ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                <div class="min-w-0 truncate">
-                  <span v-if="!selectedBrand && mot.fabricante_id" class="text-[10px] font-bold text-[#038391] mr-1 uppercase">
-                    {{ getBrandName(mot.fabricante_id) }}
-                  </span>
-                  <strong class="font-mono font-bold">{{ mot.codigo }}</strong>
-                  <span v-if="getMotorModelName(mot) !== '—'" class="text-[10px] text-slate-500 ml-1">
-                    · {{ getMotorModelName(mot) }}
-                  </span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <span v-if="mot.cilindrada_texto || mot.cilindrada_cc" class="text-[10px] text-slate-400 font-mono">
-                  {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
-                </span>
-                <Check v-if="selectedMotor?.id === mot.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
-              </div>
-            </div>
-            <div v-if="brandMotorsList.length === 0" class="p-2.5 text-center text-xs text-slate-400">
-              No hay motores coincidentes
-            </div>
           </div>
         </div>
 
