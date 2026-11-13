@@ -1,6 +1,14 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import AuthLayout from '@/layouts/AuthLayout.vue'
+import { useTallerStore } from '@/stores/taller'
+
+const tallerStore = useTallerStore()
+
+onMounted(() => {
+  void tallerStore.loadTallerInfo()
+})
 </script>
 
 <template>

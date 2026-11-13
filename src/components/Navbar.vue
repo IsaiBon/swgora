@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
+import { useTallerStore } from '@/stores/taller'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   LayoutDashboard,
@@ -24,8 +25,11 @@ import {
 
 const authStore = useAuthStore()
 const uiStore = useUiStore()
+const tallerStore = useTallerStore()
 const router = useRouter()
 const route = useRoute()
+
+const tallerLogoUrl = computed(() => tallerStore.tallerInfo.logo_url || '/logo-taller.png')
 
 const mobileMenuOpen = ref(false)
 const userMenuOpen = ref(false)
@@ -84,6 +88,7 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  void tallerStore.loadTallerInfo()
 })
 
 onUnmounted(() => {
@@ -148,25 +153,21 @@ const handleNewOrder = () => {
         <path d="M22 0 C9.85 0 0 12.15 0 22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
       </svg>
 
-      <!-- 1. Left: Brand / Logo con efecto Glossy Glass (Estilo Supaste) -->
+      <!-- 1. Left: Brand / Logotipo del Taller (desde Supabase) -->
       <router-link
         :to="authStore.defaultRoute"
         class="flex items-center gap-2.5 group select-none shrink-0"
         title="Ir al inicio"
       >
-        <!-- Ícono Squircle con brillo vítreo tipo iOS / Supaste -->
+        <!-- Logotipo oficial del taller sincronizado desde Supabase -->
         <div
-          class="relative w-8 h-8 rounded-lg bg-gradient-to-br from-[#05C7F2] via-[#0284c7] to-[#004b97] p-1 flex items-center justify-center shadow-sm shadow-[#05C7F2]/25 ring-1 ring-white/30 overflow-hidden group-hover:scale-105 transition-transform"
+          class="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#041428] flex items-center justify-center shadow-sm shadow-[#05C7F2]/25 ring-1 ring-[#05C7F2]/35 overflow-hidden group-hover:scale-105 transition-transform shrink-0"
         >
-          <!-- Reflejo brillante de cristal superior -->
-          <div class="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/40 to-transparent rounded-t-lg pointer-events-none"></div>
-          
-          <!-- Monograma JR en blanco / cyan -->
-          <svg viewBox="0 0 40 40" class="w-full h-full fill-none stroke-white stroke-[3.2] stroke-linecap-round stroke-linejoin-round drop-shadow-sm">
-            <path d="M 14 10 H 20 V 26 C 20 30 17 32 13 32" />
-            <path d="M 23 10 H 29 C 33 10 35 12 35 16 C 35 20 32 22 28 22 H 23 V 32" />
-            <path d="M 27 22 L 34 32" stroke="#05F2F2" />
-          </svg>
+          <img
+            :src="tallerLogoUrl"
+            alt="Logotipo del taller"
+            class="w-full h-full object-contain"
+          />
         </div>
 
         <!-- Solo Nombre JR BLANCO (sin badge de SWGORA) -->

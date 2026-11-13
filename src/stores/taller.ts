@@ -1,12 +1,33 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { tallerService, DEFAULT_TALLER_INFO, type TallerInfo } from '@/services/tallerService'
+
+const syncBrowserFavicon = (logoUrl?: string) => {
+  if (typeof document === 'undefined') return
+  const href = logoUrl?.trim() || '/logo-taller.png'
+  const favicon = document.getElementById('app-favicon') as HTMLLinkElement | null
+  if (favicon && favicon.getAttribute('href') !== href) {
+    favicon.setAttribute('href', href)
+  }
+  const appleIcon = document.getElementById('app-apple-touch-icon') as HTMLLinkElement | null
+  if (appleIcon && appleIcon.getAttribute('href') !== href) {
+    appleIcon.setAttribute('href', href)
+  }
+}
 
 export const useTallerStore = defineStore('taller', () => {
   const tallerInfo = ref<TallerInfo>({ ...DEFAULT_TALLER_INFO })
   const isLoaded = ref(false)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+
+  watch(
+    () => tallerInfo.value.logo_url,
+    (nextUrl) => {
+      syncBrowserFavicon(nextUrl)
+    },
+    { immediate: true }
+  )
 
   const loadTallerInfo = async (force = false) => {
     if (isLoaded.value && !force) return tallerInfo.value
