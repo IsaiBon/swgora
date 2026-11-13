@@ -18,7 +18,7 @@ const props = withDefaults(
 )
 
 const shouldShowSubtotals = computed(() => {
-  if (props.showSubtotals !== undefined) {
+  if (typeof props.showSubtotals === 'boolean') {
     return props.showSubtotals
   }
   if (props.order?.showSubtotals !== undefined) {

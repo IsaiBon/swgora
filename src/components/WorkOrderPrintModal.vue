@@ -54,10 +54,12 @@ const selectedLayout = ref<'auto' | 'single' | 'double'>('auto')
 const showSubtotalsOverride = ref<boolean>(true)
 
 watch(
-  () => props.order,
-  (newOrder) => {
-    if (newOrder) {
-      showSubtotalsOverride.value = newOrder.showSubtotals !== undefined ? Boolean(newOrder.showSubtotals) : true
+  () => [props.isOpen, props.order?.id, props.order?.showSubtotals] as const,
+  ([open, _id, showSubs]) => {
+    if (open && props.order) {
+      showSubtotalsOverride.value = typeof showSubs === 'boolean'
+        ? showSubs
+        : (typeof props.order.showSubtotals === 'boolean' ? props.order.showSubtotals : true)
     }
   },
   { immediate: true }
@@ -151,12 +153,17 @@ const handleDownload = async () => {
             <button
               type="button"
               @click="showSubtotalsOverride = !showSubtotalsOverride"
-              :class="showSubtotalsOverride ? 'bg-slate-800 text-cyan-300 border-cyan-500/50' : 'bg-slate-800 text-slate-400 border-slate-700'"
-              class="px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5"
+              :class="showSubtotalsOverride ? 'bg-cyan-950/60 text-cyan-300 border-cyan-500/50 shadow-xs' : 'bg-slate-800 text-slate-400 border-slate-700'"
+              class="px-2.5 py-1 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer select-none"
               title="mostrar subtotales por componente"
             >
               <span class="text-slate-300">Subtotales:</span>
-              <span class="font-black text-[11px]">{{ showSubtotalsOverride ? 'SÍ' : 'NO' }}</span>
+              <span
+                class="font-mono text-[10.5px] font-black px-1.5 py-0.5 rounded"
+                :class="showSubtotalsOverride ? 'bg-cyan-500 text-slate-950' : 'bg-slate-700 text-slate-300'"
+              >
+                {{ showSubtotalsOverride ? 'SÍ' : 'NO' }}
+              </span>
             </button>
           </div>
 

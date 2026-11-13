@@ -1067,8 +1067,12 @@ const handleSaveOrder = async () => {
       saved = await ordersService.createOrder(orderPayload)
     }
 
-    lastSavedOrder.value = saved
-    orderForPrint.value = saved
+    const finalSavedOrder: Order = {
+      ...saved,
+      showSubtotals: showSubtotals.value
+    }
+    lastSavedOrder.value = finalSavedOrder
+    orderForPrint.value = finalSavedOrder
 
     notificationMessage.value = { 
       type: 'success', 
@@ -2140,26 +2144,40 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
           <!-- Opción: Mostrar Subtotales por Componente en el PDF -->
           <div class="pt-2 border-t border-slate-100">
-            <label
-              for="toggle-subtotals"
-              class="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl cursor-pointer select-none transition group"
+            <button
+              type="button"
+              @click="showSubtotals = !showSubtotals"
+              class="w-full flex items-center justify-between p-2.5 rounded-xl border transition text-left cursor-pointer select-none"
+              :class="showSubtotals ? 'bg-cyan-50/70 border-[#04c4d9]/50 shadow-xs' : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'"
               title="mostrar subtotales por componente"
             >
-              <div class="flex items-center gap-2">
-                <input
-                  id="toggle-subtotals"
-                  type="checkbox"
-                  v-model="showSubtotals"
-                  class="w-4 h-4 text-[#04c4d9] rounded border-slate-300 focus:ring-[#04c4d9] focus:ring-2 cursor-pointer"
-                />
-                <span class="text-xs font-bold text-slate-800">
-                  Mostrar subtotales
-                </span>
+              <div class="flex items-center gap-2.5">
+                <!-- Visual Switch Toggle -->
+                <div
+                  class="w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 shrink-0"
+                  :class="showSubtotals ? 'bg-[#04c4d9]' : 'bg-slate-300'"
+                >
+                  <div
+                    class="w-4 h-4 rounded-full bg-white shadow transform transition-transform"
+                    :class="showSubtotals ? 'translate-x-4' : 'translate-x-0'"
+                  ></div>
+                </div>
+                <div>
+                  <span class="text-xs font-bold text-slate-800 block leading-tight">
+                    Mostrar subtotales
+                  </span>
+                  <span class="text-[10px] text-slate-500 italic block mt-0.5">
+                    mostrar subtotales por componente
+                  </span>
+                </div>
               </div>
-              <span class="text-[10.5px] text-slate-400 group-hover:text-slate-600 transition italic">
-                mostrar subtotales por componente
+              <span
+                class="text-[10px] font-black px-2 py-0.5 rounded font-mono transition"
+                :class="showSubtotals ? 'bg-[#04c4d9] text-white' : 'bg-slate-200 text-slate-600'"
+              >
+                {{ showSubtotals ? 'SÍ' : 'NO' }}
               </span>
-            </label>
+            </button>
           </div>
 
           <!-- Botones de Acción (Acción Unificada: Guardar Orden e Imprimir) -->
