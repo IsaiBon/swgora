@@ -34,6 +34,8 @@ export const DEFAULT_TALLER_INFO: TallerInfo = {
 }
 
 const LOCAL_STORAGE_KEY = 'swgora_taller_config'
+const LOGIN_STORAGE_KEY = 'swgora_login_customization'
+const CLOUD_LOGIN_TALLER_ID = '__swgora_login_customization__'
 
 function getTargetTallerId(): string {
   const ctx = getActiveTenantContext()
@@ -77,14 +79,48 @@ export const tallerService = {
     const storageKey = getTallerStorageKey()
     const defaults = getDefaultTallerInfoForContext()
 
-    try {
-      const { data, error } = await supabase
-        .from('taller')
-        .select('*')
-        .eq('id', targetId)
-        .maybeSingle()
+    // 1. Obtener caché local de login y de taller como base inmediata
+    let localLoginConfig: Partial<TallerInfo> = {}
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const rawLogin = window.localStorage.getItem(LOGIN_STORAGE_KEY)
+        if (rawLogin) {
+          localLoginConfig = JSON.parse(rawLogin)
+        }
+      } catch {}
+    }
 
-      if (!error && data) {
+    try {
+      // 2. Consultar taller en Supabase y el registro de personalización de login en paralelo
+      const [tallerRes, loginRes] = await Promise.all([
+        supabase.from('taller').select('*').eq('id', targetId).maybeSingle(),
+        supabase.from('taller').select('*').eq('id', CLOUD_LOGIN_TALLER_ID).maybeSingle()
+      ])
+
+      let remoteLoginConfig: Partial<TallerInfo> = {}
+      if (loginRes.data) {
+        if (loginRes.data.eslogan) {
+          try {
+            remoteLoginConfig = JSON.parse(loginRes.data.eslogan)
+          } catch {}
+        }
+        if (!remoteLoginConfig.login_titulo) {
+          remoteLoginConfig = {
+            login_titulo: loginRes.data.nombre,
+            login_subtitulo: loginRes.data.celular1,
+            login_mensaje: loginRes.data.direccion,
+            login_bg_url: loginRes.data.logo_url
+          }
+        }
+      }
+
+      const activeLogin = {
+        ...localLoginConfig,
+        ...remoteLoginConfig
+      }
+
+      if (!tallerRes.error && tallerRes.data) {
+        const data = tallerRes.data
         let cachedIva = defaults.iva_porcentaje ?? 13
         if (typeof window !== 'undefined' && window.localStorage) {
           try {
@@ -95,7 +131,7 @@ export const tallerService = {
                 cachedIva = Number(parsedCache.iva_porcentaje)
               }
             }
-          } catch { /* ignorar */ }
+          } catch {}
         }
 
         const info: TallerInfo = {
@@ -109,15 +145,19 @@ export const tallerService = {
           iva_porcentaje: data.iva_porcentaje !== undefined && data.iva_porcentaje !== null
             ? Number(data.iva_porcentaje)
             : cachedIva,
-          login_titulo: data.login_titulo !== undefined && data.login_titulo !== null ? data.login_titulo : defaults.login_titulo,
-          login_subtitulo: data.login_subtitulo !== undefined && data.login_subtitulo !== null ? data.login_subtitulo : defaults.login_subtitulo,
-          login_mensaje: data.login_mensaje !== undefined && data.login_mensaje !== null ? data.login_mensaje : defaults.login_mensaje,
-          login_bg_url: data.login_bg_url !== undefined && data.login_bg_url !== null ? data.login_bg_url : defaults.login_bg_url,
+          login_titulo: activeLogin.login_titulo || data.login_titulo || defaults.login_titulo,
+          login_subtitulo: activeLogin.login_subtitulo || data.login_subtitulo || defaults.login_subtitulo,
+          login_mensaje: activeLogin.login_mensaje || data.login_mensaje || defaults.login_mensaje,
+          login_bg_url: activeLogin.login_bg_url || data.login_bg_url || defaults.login_bg_url,
           created_at: data.created_at,
           updated_at: data.updated_at
         }
+
         if (typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.setItem(storageKey, JSON.stringify(info))
+          if (activeLogin.login_titulo) {
+            window.localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(activeLogin))
+          }
         }
         return info
       }
@@ -130,14 +170,22 @@ export const tallerService = {
       try {
         const cached = window.localStorage.getItem(storageKey)
         if (cached) {
-          return JSON.parse(cached)
+          const parsed = JSON.parse(cached)
+          return {
+            ...defaults,
+            ...parsed,
+            ...localLoginConfig
+          }
         }
       } catch {
         // Ignorar error de parsing
       }
     }
 
-    return { ...defaults }
+    return {
+      ...defaults,
+      ...localLoginConfig
+    }
   },
 
   /**
@@ -208,6 +256,39 @@ export const tallerService = {
       login_subtitulo: info.login_subtitulo !== undefined ? info.login_subtitulo.trim() : (defaults.login_subtitulo || 'Taller Industrial y Rectificado de Motores'),
       login_mensaje: info.login_mensaje !== undefined ? info.login_mensaje.trim() : (defaults.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'),
       login_bg_url: info.login_bg_url || defaults.login_bg_url || '/images/workshop-bg.jpg'
+    }
+
+    // Guardar de inmediato en caché local de login
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify({
+        login_titulo: fullPayload.login_titulo,
+        login_subtitulo: fullPayload.login_subtitulo,
+        login_mensaje: fullPayload.login_mensaje,
+        login_bg_url: fullPayload.login_bg_url,
+        logo_url: fullPayload.logo_url
+      }))
+      window.localStorage.setItem(storageKey, JSON.stringify(fullPayload))
+    }
+
+    // Sincronizar en la nube en el registro especial de personalización del Login
+    try {
+      await supabase.from('taller').upsert({
+        id: CLOUD_LOGIN_TALLER_ID,
+        nombre: fullPayload.login_titulo,
+        direccion: fullPayload.login_mensaje,
+        celular1: fullPayload.login_subtitulo,
+        logo_url: fullPayload.login_bg_url,
+        eslogan: JSON.stringify({
+          login_titulo: fullPayload.login_titulo,
+          login_subtitulo: fullPayload.login_subtitulo,
+          login_mensaje: fullPayload.login_mensaje,
+          login_bg_url: fullPayload.login_bg_url,
+          logo_url: fullPayload.logo_url
+        }),
+        updated_at: new Date().toISOString()
+      })
+    } catch (loginCloudErr) {
+      console.warn('[tallerService] Advertencia sincronizando login en Supabase:', loginCloudErr)
     }
 
     try {

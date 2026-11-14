@@ -5,7 +5,7 @@ import { useTallerStore } from '@/stores/taller'
 const tallerStore = useTallerStore()
 
 onMounted(async () => {
-  await tallerStore.loadTallerInfo()
+  await tallerStore.loadTallerInfo(true)
 })
 
 const currentBgUrl = computed(() => {

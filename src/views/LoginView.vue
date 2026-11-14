@@ -237,7 +237,7 @@ watch(
 )
 
 onMounted(async () => {
-  await tallerStore.loadTallerInfo()
+  await tallerStore.loadTallerInfo(true)
   inspectUrlForAuthFlow()
 })
 
@@ -377,8 +377,8 @@ const returnToLogin = () => {
 
 const handleLogoError = (e: Event) => {
   const target = e.target as HTMLImageElement | null
-  if (target) {
-    target.style.display = 'none'
+  if (target && target.src && !target.src.endsWith('/logo-taller.png')) {
+    target.src = '/logo-taller.png'
   }
 }
 </script>
