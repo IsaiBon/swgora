@@ -29,6 +29,8 @@ export interface Motor {
   id: string
   fabricante_id: string
   modelo_id?: string
+  modelo_ids?: string[]
+  modelos_nombres?: string[]
   numero_id?: number | string
   codigo: string
   nombre_comercial?: string
@@ -1778,6 +1780,19 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
 export const normalizeText = (t: string): string =>
   (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 
+const extractPartModelTokens = (part: Partial<RepuestoTecnico>): string[] => {
+  const specObj = (part.especificaciones_tecnicas as Record<string, unknown>) || {}
+  const dimsObj = (part.dimensiones as Record<string, unknown>) || {}
+  return [
+    ...(Array.isArray(specObj.modelos) ? specObj.modelos.map(String) : []),
+    ...(Array.isArray(dimsObj.modelos) ? dimsObj.modelos.map(String) : []),
+    ...(Array.isArray(specObj.modelos_adicionales) ? specObj.modelos_adicionales.map(String) : []),
+    ...(Array.isArray(dimsObj.modelos_adicionales) ? dimsObj.modelos_adicionales.map(String) : []),
+    specObj.modelo ? String(specObj.modelo) : '',
+    dimsObj.modelo ? String(dimsObj.modelo) : ''
+  ].filter(Boolean)
+}
+
 export const catalogService = {
   /**
    * Obtiene la lista de fabricantes disponibles
@@ -2143,15 +2158,28 @@ export const catalogService = {
   },
 
   /**
-   * IDs de motores asociados a un modelo (relación N:M modelo_motor + vínculo antiguo motores.modelo_id)
+   * IDs de motores asociados a un modelo (relación N:M modelo_motor + vínculo antiguo motores.modelo_id + respaldo local)
    */
   async getMotorIdsByModelo(modeloId: string): Promise<string[]> {
     const ids = new Set<string>()
-    const { data: links } = await supabase
-      .from('modelo_motor').select('motor_id').eq('modelo_id', modeloId).not('motor_id', 'is', null)
-    ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.motor_id)))
-    const { data: legacy } = await supabase.from('motores').select('id').eq('modelo_id', modeloId)
-    ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.id)))
+    try {
+      const { data: links } = await supabase
+        .from('modelo_motor').select('motor_id').eq('modelo_id', modeloId).not('motor_id', 'is', null)
+      ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.motor_id)))
+      const { data: legacy } = await supabase.from('motores').select('id').eq('modelo_id', modeloId)
+      ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.id)))
+    } catch (err) {
+      console.warn('[CatalogService] Error consultando motores por modelo:', err)
+    }
+
+    for (const m of [...getLocalCustomMotores(), ...mockMotores]) {
+      const extraIds = Array.isArray((m.especificaciones_tecnicas as any)?.modelo_ids)
+        ? ((m.especificaciones_tecnicas as any).modelo_ids as string[])
+        : []
+      if (m.modelo_id === modeloId || m.modelo_ids?.includes(modeloId) || extraIds.includes(modeloId)) {
+        ids.add(m.id)
+      }
+    }
     return [...ids]
   },
 
@@ -2160,11 +2188,197 @@ export const catalogService = {
    */
   async getModeloIdsByMotor(motorId: string): Promise<string[]> {
     const ids = new Set<string>()
-    const { data: links } = await supabase.from('modelo_motor').select('modelo_id').eq('motor_id', motorId)
-    ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
-    const { data: legacy } = await supabase.from('motores').select('modelo_id').eq('id', motorId).not('modelo_id', 'is', null)
-    ;(legacy || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
+    try {
+      const { data: links } = await supabase.from('modelo_motor').select('modelo_id').eq('motor_id', motorId)
+      ;(links || []).forEach((l: Record<string, unknown>) => ids.add(String(l.modelo_id)))
+      const { data: legacy } = await supabase.from('motores').select('modelo_id, especificaciones_tecnicas').eq('id', motorId)
+      ;(legacy || []).forEach((l: Record<string, unknown>) => {
+        if (l.modelo_id) ids.add(String(l.modelo_id))
+        const specIds = (l.especificaciones_tecnicas as Record<string, unknown> | undefined)?.modelo_ids
+        if (Array.isArray(specIds)) {
+          specIds.forEach(x => { if (x) ids.add(String(x)) })
+        }
+      })
+    } catch (err) {
+      console.warn('[CatalogService] Error consultando modelos por motor:', err)
+    }
+
+    for (const m of [...getLocalCustomMotores(), ...mockMotores]) {
+      if (m.id === motorId) {
+        if (m.modelo_id) ids.add(m.modelo_id)
+        m.modelo_ids?.forEach(x => { if (x) ids.add(x) })
+        const specIds = (m.especificaciones_tecnicas as Record<string, unknown> | undefined)?.modelo_ids
+        if (Array.isArray(specIds)) {
+          specIds.forEach(x => { if (x) ids.add(String(x)) })
+        }
+      }
+    }
     return [...ids]
+  },
+
+  /**
+   * Sincroniza la lista exacta de modelos asociados a un motor en la tabla N:M modelo_motor
+   */
+  async syncMotorModelos(
+    motorId: string,
+    motorCodigo: string,
+    modeloIds: string[]
+  ): Promise<void> {
+    if (!motorId) return
+    const uniqueModelIds = Array.from(new Set(modeloIds.map(id => String(id || '').trim()).filter(Boolean)))
+    const cleanCodigo = (motorCodigo || '').trim()
+    const normalizedCodigo = normalizeText(cleanCodigo) || cleanCodigo.toLowerCase()
+
+    try {
+      if (isCatalogUuid(motorId)) {
+        const { data: existingLinks } = await supabase
+          .from('modelo_motor')
+          .select('modelo_id')
+          .eq('motor_id', motorId)
+
+        const toRemove = (existingLinks || [])
+          .map((l: Record<string, unknown>) => String(l.modelo_id || ''))
+          .filter(mid => mid && !uniqueModelIds.includes(mid))
+
+        if (uniqueModelIds.length === 0) {
+          await supabase.from('modelo_motor').delete().eq('motor_id', motorId)
+        } else if (toRemove.length > 0) {
+          await supabase
+            .from('modelo_motor')
+            .delete()
+            .eq('motor_id', motorId)
+            .in('modelo_id', toRemove)
+        }
+
+        const uuidModelIds = uniqueModelIds.filter(isCatalogUuid)
+        if (uuidModelIds.length > 0 && normalizedCodigo) {
+          const rows = uuidModelIds.map(mid => ({
+            modelo_id: mid,
+            motor_id: motorId,
+            motor_codigo: cleanCodigo,
+            motor_codigo_normalizado: normalizedCodigo
+          }))
+          await supabase
+            .from('modelo_motor')
+            .upsert(rows, { onConflict: 'modelo_id,motor_codigo_normalizado' })
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error sincronizando modelos del motor en Supabase:', err)
+    }
+
+    for (const m of mockMotores) {
+      if (m.id === motorId) {
+        m.modelo_id = uniqueModelIds[0] || undefined
+        m.modelo_ids = uniqueModelIds
+      }
+    }
+  },
+
+  /**
+   * Garantiza que los nombres de modelo declarados en un repuesto existan y queden vinculados a su motor
+   */
+  async syncPartModelsWithMotor(
+    motorId: string,
+    rawModelNames: string[]
+  ): Promise<void> {
+    if (!motorId) return
+    const parsedNames = Array.from(
+      new Set(
+        rawModelNames
+          .flatMap(entry => String(entry || '').split(/[,\/;|\n]+/))
+          .map(s => s.replace(/\s+/g, ' ').trim())
+          .filter(s => {
+            if (!s) return false
+            const low = s.toLowerCase()
+            return low !== 'n/a' && low !== 'na' && low !== 'universal' && low !== 'varios' && low !== '-' && low !== '—'
+          })
+      )
+    )
+    if (parsedNames.length === 0) return
+
+    try {
+      let fabricanteId = ''
+      let motorCodigo = ''
+      let currentPrimaryModeloId: string | undefined
+      let currentSpec: Record<string, unknown> = {}
+
+      if (isCatalogUuid(motorId)) {
+        const { data: dbMot } = await supabase
+          .from('motores')
+          .select('id, codigo, fabricante_id, modelo_id, especificaciones_tecnicas')
+          .eq('id', motorId)
+          .maybeSingle()
+        if (dbMot) {
+          fabricanteId = String(dbMot.fabricante_id || '')
+          motorCodigo = String(dbMot.codigo || '')
+          currentPrimaryModeloId = dbMot.modelo_id ? String(dbMot.modelo_id) : undefined
+          currentSpec = (dbMot.especificaciones_tecnicas as Record<string, unknown>) || {}
+        }
+      }
+
+      if (!fabricanteId) {
+        const localMot = [...getLocalCustomMotores(), ...mockMotores].find(m => m.id === motorId)
+        if (localMot) {
+          fabricanteId = localMot.fabricante_id
+          motorCodigo = localMot.codigo
+          currentPrimaryModeloId = localMot.modelo_id
+          currentSpec = (localMot.especificaciones_tecnicas as Record<string, unknown>) || {}
+        }
+      }
+
+      if (!fabricanteId) return
+
+      const fabModelos = await this.getModelos(fabricanteId)
+      const resolvedPartModelIds: string[] = []
+      const resolvedPartModelNames: string[] = []
+
+      for (const name of parsedNames) {
+        const normName = normalizeText(name)
+        let matched = fabModelos.find(m => normalizeText(m.nombre) === normName)
+        if (!matched) {
+          matched = await this.createModelo(fabricanteId, name.toUpperCase())
+          fabModelos.push(matched)
+        }
+        resolvedPartModelIds.push(matched.id)
+        resolvedPartModelNames.push(matched.nombre)
+      }
+
+      const existingIds = await this.getModeloIdsByMotor(motorId)
+      const mergedModelIds = Array.from(
+        new Set([...existingIds, ...(currentPrimaryModeloId ? [currentPrimaryModeloId] : []), ...resolvedPartModelIds].filter(Boolean))
+      )
+      const mergedModelNames = Array.from(
+        new Set([
+          ...(Array.isArray(currentSpec.modelos_nombres) ? (currentSpec.modelos_nombres as string[]) : []),
+          ...mergedModelIds
+            .map(mid => fabModelos.find(m => m.id === mid)?.nombre || '')
+            .filter(Boolean),
+          ...resolvedPartModelNames
+        ])
+      )
+
+      const nextPrimaryId = currentPrimaryModeloId || mergedModelIds[0] || null
+      const nextSpec: Record<string, unknown> = {
+        ...currentSpec,
+        modelo_ids: mergedModelIds,
+        modelos_nombres: mergedModelNames
+      }
+
+      if (isCatalogUuid(motorId)) {
+        await supabase
+          .from('motores')
+          .update({
+            modelo_id: nextPrimaryId,
+            especificaciones_tecnicas: nextSpec
+          })
+          .eq('id', motorId)
+      }
+
+      await this.syncMotorModelos(motorId, motorCodigo, mergedModelIds)
+    } catch (err) {
+      console.warn('[CatalogService] Error sincronizando modelos del repuesto con su motor:', err)
+    }
   },
 
   /**
@@ -2228,20 +2442,43 @@ export const catalogService = {
         ? '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos!inner(id)'
         : '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos(id)'
 
-      let query = supabase.from('motores').select(selectFields)
-      if (fabricanteId) {
-        query = query.eq('fabricante_id', fabricanteId)
-      }
+      let motorIdsFilter: string[] | undefined
       if (modeloId) {
         const motorIds = await this.getMotorIdsByModelo(modeloId)
         // Si no hay ningún motor vinculado se devuelve lista vacía (no los de otros modelos)
         if (motorIds.length === 0) return []
-        query = query.in('id', motorIds)
+        motorIdsFilter = motorIds
       }
 
-      const { data, error } = await query.order('codigo', { ascending: true }).limit(1000)
+      const pageSize = 1000
+      const maxPages = 6
+      const allData: Record<string, unknown>[] = []
+      let queryError: unknown = null
 
-      if (error || !data || (data.length === 0 && !fabricanteId && !modeloId)) {
+      for (let page = 0; page < maxPages; page++) {
+        let query = supabase.from('motores').select(selectFields)
+        if (fabricanteId) {
+          query = query.eq('fabricante_id', fabricanteId)
+        }
+        if (motorIdsFilter) {
+          query = query.in('id', motorIdsFilter)
+        }
+        const from = page * pageSize
+        const to = from + pageSize - 1
+        const { data: batch, error } = await query.order('codigo', { ascending: true }).range(from, to)
+        if (error) {
+          queryError = error
+          break
+        }
+        if (batch && batch.length > 0) {
+          allData.push(...(batch as unknown as Record<string, unknown>[]))
+        }
+        if (!batch || batch.length < pageSize) {
+          break
+        }
+      }
+
+      if (queryError || (allData.length === 0 && !fabricanteId && !modeloId)) {
         let filtered = [...mockMotores]
         for (const loc of localMotors) {
           if (!filtered.some(m => m.id === loc.id || (m.codigo.toLowerCase() === loc.codigo.toLowerCase() && m.fabricante_id === loc.fabricante_id))) {
@@ -2252,18 +2489,81 @@ export const catalogService = {
           filtered = filtered.filter(m => m.fabricante_id === fabricanteId)
         }
         if (modeloId) {
-          filtered = filtered.filter(m => m.modelo_id === modeloId)
+          filtered = filtered.filter(m => {
+            const specIds = Array.isArray((m.especificaciones_tecnicas as any)?.modelo_ids) ? (m.especificaciones_tecnicas as any).modelo_ids : []
+            return m.modelo_id === modeloId || m.modelo_ids?.includes(modeloId) || specIds.includes(modeloId)
+          })
         }
         return filtered.length > 0 ? filtered : mockMotores
       }
 
-      const dbMotors: Motor[] = data.map((item: Record<string, unknown>) => {
+      const [modelosCatalog, mmLinks]: [Modelo[], Array<{ motor_id: string; modelo_id: string }>] = await Promise.all([
+        this.getModelos(fabricanteId).catch((): Modelo[] => []),
+        (async (): Promise<Array<{ motor_id: string; modelo_id: string }>> => {
+          const uuidIds = allData.map(item => String(item.id || '')).filter(isCatalogUuid)
+          if (uuidIds.length === 0) return []
+          const chunkSize = 250
+          const chunks: string[][] = []
+          for (let i = 0; i < uuidIds.length; i += chunkSize) {
+            chunks.push(uuidIds.slice(i, i + chunkSize))
+          }
+          const results = await Promise.all(
+            chunks.map(async (chunk): Promise<Array<{ motor_id: string; modelo_id: string }>> => {
+              try {
+                const { data } = await supabase
+                  .from('modelo_motor')
+                  .select('motor_id, modelo_id')
+                  .in('motor_id', chunk)
+                return (data || []) as Array<{ motor_id: string; modelo_id: string }>
+              } catch {
+                return []
+              }
+            })
+          )
+          return results.flat()
+        })()
+      ])
+
+      const modeloById = new Map<string, Modelo>(modelosCatalog.map((m: Modelo) => [m.id, m]))
+      const motorToModelIdsMap = new Map<string, Set<string>>()
+      for (const link of mmLinks) {
+        if (!link.motor_id || !link.modelo_id) continue
+        const mId = String(link.motor_id)
+        const modId = String(link.modelo_id)
+        if (!motorToModelIdsMap.has(mId)) motorToModelIdsMap.set(mId, new Set())
+        motorToModelIdsMap.get(mId)!.add(modId)
+      }
+
+      const dbMotors: Motor[] = allData.map((item: Record<string, unknown>) => {
+        const motorId = String(item.id)
         const espec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
         const repArray = Array.isArray(item.repuestos_tecnicos) ? item.repuestos_tecnicos : []
+        const specModelIds = Array.isArray(espec.modelo_ids) ? espec.modelo_ids.map(String).filter(Boolean) : []
+        const specModelNames = Array.isArray(espec.modelos_nombres) ? espec.modelos_nombres.map(String).filter(Boolean) : []
+        const primaryModeloId = item.modelo_id ? String(item.modelo_id) : undefined
+        const primaryModeloObj = item.modelo as Modelo | undefined
+
+        const combinedIds = Array.from(
+          new Set([
+            ...(primaryModeloId ? [primaryModeloId] : []),
+            ...(motorToModelIdsMap.get(motorId) ? Array.from(motorToModelIdsMap.get(motorId)!) : []),
+            ...specModelIds
+          ].filter(Boolean))
+        )
+        const resolvedNames = Array.from(
+          new Set([
+            ...(primaryModeloObj?.nombre ? [primaryModeloObj.nombre] : []),
+            ...combinedIds.map(mid => modeloById.get(mid)?.nombre || '').filter(Boolean),
+            ...specModelNames
+          ].filter(Boolean))
+        )
+
         return {
-          id: String(item.id),
+          id: motorId,
           fabricante_id: String(item.fabricante_id),
-          modelo_id: item.modelo_id ? String(item.modelo_id) : undefined,
+          modelo_id: primaryModeloId || combinedIds[0] || undefined,
+          modelo_ids: combinedIds,
+          modelos_nombres: resolvedNames,
           numero_id: espec.numero_id ? (espec.numero_id as number | string) : undefined,
           codigo: String(item.codigo),
           nombre_comercial: item.nombre_comercial ? String(item.nombre_comercial) : undefined,
@@ -2282,7 +2582,7 @@ export const catalogService = {
           anios: item.anios ? String(item.anios) : (espec.anios ? String(espec.anios) : undefined),
           especificaciones_tecnicas: espec,
           fabricante: item.fabricante as Fabricante | undefined,
-          modelo: item.modelo as Modelo | undefined,
+          modelo: primaryModeloObj,
           parts_count: repArray.length
         }
       })
@@ -2312,6 +2612,25 @@ export const catalogService = {
     const fabList = await this.getFabricantes()
     const matchedFab = fabList.find(f => f.id === motorData.fabricante_id) || fabList[0]
     const fabName = matchedFab ? matchedFab.nombre.toUpperCase() : 'MOTOR'
+    const targetFabId = matchedFab?.id || motorData.fabricante_id || 'fab-1'
+    const allModelos = await this.getModelos(targetFabId).catch(() => [] as Modelo[])
+
+    const normalizedModelIds = Array.from(
+      new Set(
+        (Array.isArray(motorData.modelo_ids)
+          ? motorData.modelo_ids
+          : (motorData.modelo_id ? [motorData.modelo_id] : [])
+        ).map(id => String(id || '').trim()).filter(Boolean)
+      )
+    )
+    const primaryModeloId = normalizedModelIds[0] || undefined
+    const primaryModeloObj = primaryModeloId ? allModelos.find(m => m.id === primaryModeloId) : undefined
+    const resolvedModelNames = Array.from(
+      new Set([
+        ...normalizedModelIds.map(id => allModelos.find(m => m.id === id)?.nombre || '').filter(Boolean),
+        ...(Array.isArray(motorData.modelos_nombres) ? motorData.modelos_nombres.map(n => String(n || '').trim()).filter(Boolean) : [])
+      ])
+    )
 
     const espec: Record<string, unknown> = {
       denominacion_venta: motorData.denominacion_venta || '',
@@ -2321,13 +2640,17 @@ export const catalogService = {
       kw: motorData.kw || undefined,
       cv: motorData.cv || undefined,
       anios: motorData.anios || undefined,
-      ...(motorData.especificaciones_tecnicas || {})
+      ...(motorData.especificaciones_tecnicas || {}),
+      modelo_ids: normalizedModelIds,
+      modelos_nombres: resolvedModelNames
     }
 
     const newMotor: Motor = {
       id: `mot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      fabricante_id: matchedFab?.id || motorData.fabricante_id || 'fab-1',
-      modelo_id: motorData.modelo_id || undefined,
+      fabricante_id: targetFabId,
+      modelo_id: primaryModeloId,
+      modelo_ids: normalizedModelIds,
+      modelos_nombres: resolvedModelNames,
       codigo: cleanCodigo,
       nombre_comercial: motorData.nombre_comercial || `${fabName} - ${cleanCodigo}`,
       denominacion_venta: motorData.denominacion_venta || '',
@@ -2341,6 +2664,7 @@ export const catalogService = {
       anios: motorData.anios || undefined,
       especificaciones_tecnicas: espec,
       fabricante: matchedFab,
+      modelo: primaryModeloObj,
       parts_count: 0
     }
 
@@ -2367,11 +2691,13 @@ export const catalogService = {
       if (!error && data) {
         newMotor.id = String(data.id)
         if (data.fabricante) newMotor.fabricante = data.fabricante as Fabricante
+        if (data.modelo) newMotor.modelo = data.modelo as Modelo
       }
     } catch (err) {
       console.warn('[CatalogService] Inserción de motor en Supabase falló, guardando localmente:', err)
     }
 
+    await this.syncMotorModelos(newMotor.id, newMotor.codigo, normalizedModelIds)
     saveLocalCustomMotor(newMotor)
     if (!mockMotores.some(m => m.id === newMotor.id)) {
       mockMotores.unshift(newMotor)
@@ -2387,6 +2713,25 @@ export const catalogService = {
     const fabList = await this.getFabricantes()
     const matchedFab = fabList.find(f => f.id === motorData.fabricante_id)
     const fabName = matchedFab ? matchedFab.nombre.toUpperCase() : 'MOTOR'
+    const targetFabId = motorData.fabricante_id || matchedFab?.id || ''
+    const allModelos = await this.getModelos(targetFabId || undefined).catch(() => [] as Modelo[])
+
+    const normalizedModelIds = Array.from(
+      new Set(
+        (Array.isArray(motorData.modelo_ids)
+          ? motorData.modelo_ids
+          : (motorData.modelo_id ? [motorData.modelo_id] : [])
+        ).map(mid => String(mid || '').trim()).filter(Boolean)
+      )
+    )
+    const primaryModeloId = normalizedModelIds[0] || undefined
+    const primaryModeloObj = primaryModeloId ? allModelos.find(m => m.id === primaryModeloId) : undefined
+    const resolvedModelNames = Array.from(
+      new Set([
+        ...normalizedModelIds.map(mid => allModelos.find(m => m.id === mid)?.nombre || '').filter(Boolean),
+        ...(Array.isArray(motorData.modelos_nombres) ? motorData.modelos_nombres.map(n => String(n || '').trim()).filter(Boolean) : [])
+      ])
+    )
 
     const espec: Record<string, unknown> = {
       ...(motorData.especificaciones_tecnicas || {}),
@@ -2394,13 +2739,17 @@ export const catalogService = {
       cilindrada_texto: motorData.cilindrada_cc
         ? `${motorData.cilindrada_cc} cc / ${(Number(motorData.cilindrada_cc) / 1000).toFixed(1)} l`
         : undefined,
-      anios: motorData.anios || undefined
+      anios: motorData.anios || undefined,
+      modelo_ids: normalizedModelIds,
+      modelos_nombres: resolvedModelNames
     }
 
     let updated: Motor = {
       id,
-      fabricante_id: motorData.fabricante_id || matchedFab?.id || '',
-      modelo_id: motorData.modelo_id || undefined,
+      fabricante_id: targetFabId,
+      modelo_id: primaryModeloId,
+      modelo_ids: normalizedModelIds,
+      modelos_nombres: resolvedModelNames,
       codigo: cleanCodigo,
       nombre_comercial: motorData.nombre_comercial?.trim() || `${fabName} - ${cleanCodigo}`,
       denominacion_venta: motorData.denominacion_venta || '',
@@ -2411,7 +2760,8 @@ export const catalogService = {
       valvulas: motorData.valvulas ? Number(motorData.valvulas) : 8,
       anios: motorData.anios || undefined,
       especificaciones_tecnicas: espec,
-      fabricante: matchedFab
+      fabricante: matchedFab,
+      modelo: primaryModeloObj
     }
 
     try {
@@ -2437,6 +2787,8 @@ export const catalogService = {
         updated = {
           ...updated,
           id: String(data.id),
+          modelo_ids: normalizedModelIds,
+          modelos_nombres: resolvedModelNames,
           fabricante: (data.fabricante as Fabricante) || updated.fabricante,
           modelo: (data.modelo as Modelo) || updated.modelo
         }
@@ -2444,6 +2796,8 @@ export const catalogService = {
     } catch (err) {
       console.warn('[CatalogService] Error actualizando motor en Supabase:', err)
     }
+
+    await this.syncMotorModelos(updated.id, updated.codigo, normalizedModelIds)
 
     const localList = getLocalCustomMotores()
     const localIdx = localList.findIndex(m => m.id === id)
@@ -3500,6 +3854,12 @@ export const catalogService = {
           ...insertedPart,
           equivalencias: createdEquivs
         })
+        if (mapped.motor_id) {
+          const modelTokens = extractPartModelTokens(part)
+          if (modelTokens.length > 0) {
+            await this.syncPartModelsWithMotor(mapped.motor_id, modelTokens)
+          }
+        }
         clearCatalogPartsCache()
         saveLocalCustomRepuesto(mapped)
         mockRepuestos.unshift(mapped)
@@ -3686,6 +4046,12 @@ export const catalogService = {
           ...updatedPart,
           equivalencias: finalEquivs
         })
+        if (mapped.motor_id) {
+          const modelTokens = extractPartModelTokens(part)
+          if (modelTokens.length > 0) {
+            await this.syncPartModelsWithMotor(mapped.motor_id, modelTokens)
+          }
+        }
         clearCatalogPartsCache()
         saveLocalCustomRepuesto(mapped)
         const mockIdx = mockRepuestos.findIndex(r => r.id === partId)

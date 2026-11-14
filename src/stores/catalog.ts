@@ -83,6 +83,7 @@ export const useCatalogStore = defineStore('catalog', () => {
         return list.filter(m =>
           m.id === mot.modelo_id ||
           m.id === mot.modelo?.id ||
+          mot.modelo_ids?.includes(m.id) ||
           modeloIdsDelMotor.value.includes(m.id) ||
           (denom.length > 0 && denom.includes(m.nombre.toLowerCase())) ||
           (comm.length > 0 && comm.includes(m.nombre.toLowerCase()))
@@ -475,6 +476,12 @@ export const useCatalogStore = defineStore('catalog', () => {
       const created = await catalogService.createRepuesto(partData, equivalencias)
       // Añadir inmediatamente al inicio de la lista reactiva
       repuestos.value.unshift(created)
+      if (created.motor_id) {
+        await Promise.all([
+          fetchModelos(selectedFabricanteId.value || undefined),
+          fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
+        ])
+      }
       return created
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al guardar el nuevo repuesto en Supabase'
@@ -502,6 +509,12 @@ export const useCatalogStore = defineStore('catalog', () => {
         repuestos.value[idx] = updated
       } else {
         repuestos.value.unshift(updated)
+      }
+      if (updated.motor_id) {
+        await Promise.all([
+          fetchModelos(selectedFabricanteId.value || undefined),
+          fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
+        ])
       }
       return updated
     } catch (err: unknown) {
@@ -708,7 +721,18 @@ export const useCatalogStore = defineStore('catalog', () => {
     error.value = null
     try {
       const updated = await catalogService.updateMotor(id, motorData)
-      motores.value = motores.value.map(m => (m.id === id ? { ...m, ...updated } : m))
+      motores.value = motores.value.map(m =>
+        m.id === id
+          ? {
+              ...m,
+              ...updated,
+              parts_count: m.parts_count ?? updated.parts_count
+            }
+          : m
+      )
+      if (selectedMotorId.value === id) {
+        modeloIdsDelMotor.value = updated.modelo_ids || []
+      }
       return updated
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al actualizar el motor'

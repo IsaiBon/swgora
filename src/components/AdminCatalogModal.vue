@@ -243,6 +243,14 @@ watch(() => props.isOpen, (open) => {
     if (catalogStore.modelos.length === 0) {
       catalogStore.fetchModelos()
     }
+    if (partMarca.value.trim()) {
+      const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === partMarca.value.trim().toLowerCase())
+      if (fab) {
+        catalogStore.getMotoresForBrand(fab.id).then(list => {
+          brandMotoresAll.value = list
+        }).catch(() => {})
+      }
+    }
   } else {
     saveErrorMessage.value = ''
     showDeleteConfirm.value = false
@@ -263,6 +271,7 @@ const selectedGroupCode = ref<string>('')
 const partMotorId = ref<string>('')
 const motorSearchQuery = ref<string>('')
 const isMotorDropdownOpen = ref<boolean>(false)
+const brandMotoresAll = ref<Motor[]>([])
 
 const getBrandName = (fabId?: string): string => {
   if (!fabId) return ''
@@ -270,16 +279,29 @@ const getBrandName = (fabId?: string): string => {
   return fab ? fab.nombre : ''
 }
 
+const mergedAvailableMotores = computed<Motor[]>(() => {
+  const byId = new Map<string, Motor>()
+  for (const m of (catalogStore.motores || [])) {
+    byId.set(m.id, m)
+  }
+  for (const m of brandMotoresAll.value) {
+    if (!byId.has(m.id)) {
+      byId.set(m.id, m)
+    }
+  }
+  return Array.from(byId.values())
+})
+
 const selectedMotor = computed<Motor | null>(() => {
   if (!partMotorId.value) return null
-  return catalogStore.motores.find(m => m.id === partMotorId.value) || null
+  return mergedAvailableMotores.value.find(m => m.id === partMotorId.value) || null
 })
 
 const filteredMotoresList = computed<Motor[]>(() => {
   const query = motorSearchQuery.value.trim().toLowerCase()
-  let all = catalogStore.motores || []
+  let all = mergedAvailableMotores.value
 
-  // Cascada: filtrar motores por Marca y Modelo escritos en el modal si coinciden con el catálogo
+  // Filtrar motores por Marca escrita en el modal si coincide con el catálogo
   const brandClean = partMarca.value.trim().toLowerCase()
   if (brandClean) {
     const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === brandClean)
@@ -288,25 +310,24 @@ const filteredMotoresList = computed<Motor[]>(() => {
     }
   }
 
+  // Priorizar (sin ocultar los demás motores de la marca) los motores que coinciden con el modelo indicado
   const modelClean = partModelo.value.trim().toLowerCase()
   if (modelClean) {
     const matchingMod = availableModalModelos.value.find(mod => mod.nombre.toLowerCase() === modelClean)
-    if (matchingMod) {
-      const byModel = all.filter(
-        m =>
-          m.modelo_id === matchingMod.id ||
-          m.modelo?.id === matchingMod.id ||
-          (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(modelClean)) ||
-          (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(modelClean))
-      )
-      if (byModel.length > 0) {
-        all = byModel
+    const isModelMatch = (m: Motor) => {
+      if (matchingMod && (m.modelo_id === matchingMod.id || m.modelo?.id === matchingMod.id || m.modelo_ids?.includes(matchingMod.id))) {
+        return true
       }
+      if ((m.modelos_nombres || []).some(n => n.toLowerCase().includes(modelClean))) return true
+      if (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(modelClean)) return true
+      if (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(modelClean)) return true
+      return false
     }
+    all = [...all].sort((a, b) => Number(isModelMatch(b)) - Number(isModelMatch(a)))
   }
 
   if (!query) {
-    return all.slice(0, 30)
+    return all.slice(0, 50)
   }
 
   return all
@@ -316,14 +337,16 @@ const filteredMotoresList = computed<Motor[]>(() => {
       const denom = (m.denominacion_venta || '').toLowerCase()
       const brand = getBrandName(m.fabricante_id).toLowerCase()
       const fuel = (m.combustible || '').toLowerCase()
+      const modelNames = (m.modelos_nombres || []).join(' ').toLowerCase()
 
       return code.includes(query) || 
              name.includes(query) || 
              denom.includes(query) || 
              brand.includes(query) ||
-             fuel.includes(query)
+             fuel.includes(query) ||
+             modelNames.includes(query)
     })
-    .slice(0, 40)
+    .slice(0, 50)
 })
 
 const onMotorFocus = () => {
@@ -351,9 +374,19 @@ const selectMotor = (mot: Motor | null) => {
     }
     const resolvedModName =
       mot.modelo?.nombre ||
+      (mot.modelos_nombres && mot.modelos_nombres[0]) ||
       (mot.modelo_id ? catalogStore.modelos.find(m => m.id === mot.modelo_id)?.nombre : undefined)
-    if (resolvedModName) {
-      partModelo.value = resolvedModName.toUpperCase()
+    if (!partModelo.value.trim() && resolvedModName) {
+      const motorModelsList = Array.from(
+        new Set([
+          resolvedModName.toUpperCase(),
+          ...(mot.modelos_nombres || []).map(n => n.trim().toUpperCase())
+        ].filter(Boolean))
+      )
+      partModelo.value = motorModelsList[0] || ''
+      if (partModelosAdicionales.value.length === 0 && motorModelsList.length > 1) {
+        partModelosAdicionales.value = motorModelsList.slice(1)
+      }
     }
     if (!partAno.value && mot.anios) {
       partAno.value = mot.anios
@@ -386,6 +419,7 @@ const partCodigoOem = ref<string>('')
 const partCodigosOemAdicionales = ref<string[]>([])
 const partMarca = ref<string>('')
 const partModelo = ref<string>('')
+const partModelosAdicionales = ref<string[]>([])
 const partAno = ref<string>('')
 const partNombre = ref<string>('')
 const partSubsistema = ref<string>('Block')
@@ -464,10 +498,47 @@ watch(partMarca, async (newBrand) => {
     const brandClean = newBrand.trim().toLowerCase()
     const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === brandClean)
     if (fab) {
-      await catalogStore.fetchModelos(fab.id)
+      const [, motorsList] = await Promise.all([
+        catalogStore.fetchModelos(fab.id),
+        catalogStore.getMotoresForBrand(fab.id).catch(() => [] as Motor[])
+      ])
+      brandMotoresAll.value = motorsList
     }
+  } else {
+    brandMotoresAll.value = []
   }
 })
+
+const addModeloAdicional = () => {
+  partModelosAdicionales.value.push('')
+}
+
+const removeModeloAdicional = (idx: number) => {
+  partModelosAdicionales.value.splice(idx, 1)
+}
+
+const normalizeModeloInputs = () => {
+  const mainTokens = partModelo.value
+    .split(/[,\/;|\n]+/)
+    .map(m => m.replace(/\s+/g, ' ').trim().toUpperCase())
+    .filter(Boolean)
+  const extraTokens = partModelosAdicionales.value
+    .flatMap(entry => String(entry || '').split(/[,\/;|\n]+/))
+    .map(m => m.replace(/\s+/g, ' ').trim().toUpperCase())
+    .filter(Boolean)
+
+  if (mainTokens.length > 0) {
+    partModelo.value = mainTokens[0]
+    partModelosAdicionales.value = Array.from(
+      new Set([...mainTokens.slice(1), ...extraTokens].filter(m => m !== partModelo.value))
+    )
+  } else if (extraTokens.length > 0) {
+    partModelo.value = extraTokens[0]
+    partModelosAdicionales.value = Array.from(
+      new Set(extraTokens.slice(1).filter(m => m !== partModelo.value))
+    )
+  }
+}
 
 const addCodigoOemAdicional = () => {
   partCodigosOemAdicionales.value.push('')
@@ -872,6 +943,8 @@ const removeEquivalenceRow = (index: number) => {
 
 // Validación de repuesto: Los únicos campos obligatorios son Código OEM, Marca, Modelo y Año
 const validatePartForm = (): boolean => {
+  normalizeOemInputs()
+  normalizeModeloInputs()
   const errors: Record<string, string> = {}
 
   if (!partCodigoOem.value.trim()) {
@@ -933,7 +1006,29 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   const spec = (part.especificaciones_tecnicas as any) || {}
   const dims = (part.dimensiones as any) || {}
   partMarca.value = spec.marca || spec.fabricantes?.[0] || dims.marca || (part.motor?.fabricante?.nombre) || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : '') || ''
-  partModelo.value = spec.modelo || spec.vehiculo || dims.modelo || (part.motor?.modelo?.nombre) || ''
+  const rawModelsList: string[] = []
+  const pushModelTokens = (val: unknown) => {
+    if (Array.isArray(val)) {
+      val.forEach(item => pushModelTokens(item))
+    } else if (typeof val === 'string' && val.trim()) {
+      val.split(/[,\/;|\n]+/).forEach(tok => {
+        const clean = tok.replace(/\s+/g, ' ').trim().toUpperCase()
+        if (clean) rawModelsList.push(clean)
+      })
+    }
+  }
+  pushModelTokens(spec.modelos)
+  pushModelTokens(dims.modelos)
+  pushModelTokens(spec.modelo)
+  pushModelTokens(dims.modelo)
+  pushModelTokens(spec.modelos_adicionales)
+  pushModelTokens(dims.modelos_adicionales)
+  if (rawModelsList.length === 0) {
+    pushModelTokens(spec.vehiculo || part.motor?.modelo?.nombre || '')
+  }
+  const uniquePartModels = Array.from(new Set(rawModelsList))
+  partModelo.value = uniquePartModels[0] || ''
+  partModelosAdicionales.value = uniquePartModels.slice(1)
   partAno.value = spec.ano || spec.anios || dims.ano || (part.motor?.anios) || ''
   partSubsistema.value = part.subsistema || 'Block'
   partCatalogoOrigen.value = part.catalogo_origen || 'OEM'
@@ -1497,6 +1592,7 @@ const handleSavePart = async () => {
     }
 
     normalizeOemInputs()
+    normalizeModeloInputs()
     const allMainTokens = partCodigoOem.value
       .split(/[,\/;|\n]+/)
       .map(c => c.trim().toUpperCase())
@@ -1511,10 +1607,22 @@ const handleSavePart = async () => {
     const codigosOemAdicionalesClean = Array.from(
       new Set([...extraFromMain, ...extraFlat].filter(c => c && c !== primaryOemClean))
     )
+
+    const primaryModeloClean = partModelo.value.trim().toUpperCase()
+    const extraModelosClean = partModelosAdicionales.value
+      .flatMap(m => String(m || '').split(/[,\/;|\n]+/))
+      .map(m => m.replace(/\s+/g, ' ').trim().toUpperCase())
+      .filter(m => m && m !== primaryModeloClean)
+    const allModelosClean = Array.from(new Set([primaryModeloClean, ...extraModelosClean].filter(Boolean)))
+    const combinedModeloLabel = allModelosClean.join(' / ')
+    const modelosAdicionalesClean = allModelosClean.slice(1)
+
     dimensionesPayload.codigos_oem_adicionales = codigosOemAdicionalesClean
     dimensionesPayload.marca = partMarca.value.trim().toUpperCase()
-    dimensionesPayload.modelo = partModelo.value.trim().toUpperCase()
-    dimensionesPayload.vehiculo = `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()}`
+    dimensionesPayload.modelo = combinedModeloLabel
+    dimensionesPayload.modelos = allModelosClean
+    dimensionesPayload.modelos_adicionales = modelosAdicionalesClean
+    dimensionesPayload.vehiculo = `${partMarca.value.trim().toUpperCase()} ${combinedModeloLabel}`
     dimensionesPayload.ano = partAno.value.trim()
 
     const cleanImagenes = Array.from(
@@ -1542,8 +1650,10 @@ const handleSavePart = async () => {
       codigos_oem_adicionales: codigosOemAdicionalesClean,
       marca: partMarca.value.trim().toUpperCase(),
       fabricantes: [partMarca.value.trim().toUpperCase()],
-      modelo: partModelo.value.trim().toUpperCase(),
-      vehiculo: `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()}`,
+      modelo: combinedModeloLabel,
+      modelos: allModelosClean,
+      modelos_adicionales: modelosAdicionalesClean,
+      vehiculo: `${partMarca.value.trim().toUpperCase()} ${combinedModeloLabel}`,
       ano: partAno.value.trim(),
       anios: partAno.value.trim(),
       imagenes: cleanImagenes,
@@ -1553,7 +1663,7 @@ const handleSavePart = async () => {
     }
 
     const finalNombre = partNombre.value.trim() || 
-      `${partMarca.value.trim().toUpperCase()} ${partModelo.value.trim().toUpperCase()} - ${activeGroup.value?.nombre || 'Repuesto'} (${primaryOemClean})`
+      `${partMarca.value.trim().toUpperCase()} ${combinedModeloLabel} - ${activeGroup.value?.nombre || 'Repuesto'} (${primaryOemClean})`
 
     const partPayload = {
       motor_id: partMotorId.value || undefined,
@@ -1623,6 +1733,7 @@ function resetPartForm() {
   partCodigosOemAdicionales.value = []
   partMarca.value = ''
   partModelo.value = ''
+  partModelosAdicionales.value = []
   partAno.value = ''
   partNombre.value = ''
   partSubsistema.value = activeGroup.value?.subsistema || 'Block'
@@ -2390,17 +2501,53 @@ onUnmounted(() => {
                 </div>
 
                 <div>
-                  <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                    Modelo <span class="text-rose-600 font-black">*</span>
-                  </label>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-[11px] font-bold text-slate-700">
+                      Modelo <span class="text-rose-600 font-black">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      @click="addModeloAdicional"
+                      class="text-[10px] font-extrabold text-[#004B97] hover:text-[#038391] flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded-md border border-cyan-200 shadow-2xs transition shrink-0 cursor-pointer"
+                      title="Agregar otro modelo compatible con esta pieza"
+                    >
+                      <Plus class="w-2.5 h-2.5 text-[#04C4D9]" />
+                      <span>+ Agregar Modelo</span>
+                    </button>
+                  </div>
                   <input
                     v-model="partModelo"
+                    @blur="normalizeModeloInputs"
                     list="modal-modelos-list"
                     type="text"
                     placeholder="Ej. HILUX, COROLLA..."
                     class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                     :class="formErrors.partModelo ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                   />
+                  <div v-if="partModelosAdicionales.length > 0" class="space-y-1.5 mt-1.5">
+                    <div
+                      v-for="(_, modIdx) in partModelosAdicionales"
+                      :key="`extra-modelo-${modIdx}`"
+                      class="flex items-center gap-1"
+                    >
+                      <input
+                        v-model="partModelosAdicionales[modIdx]"
+                        @blur="normalizeModeloInputs"
+                        list="modal-modelos-list"
+                        type="text"
+                        placeholder="Otro modelo..."
+                        class="flex-1 min-w-0 px-2.5 py-1 text-xs font-bold uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                      />
+                      <button
+                        type="button"
+                        @click="removeModeloAdicional(modIdx)"
+                        class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
+                        title="Quitar modelo"
+                      >
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                   <datalist id="modal-modelos-list">
                     <option v-for="mod in availableModalModelos" :key="mod.id" :value="mod.nombre" />
                   </datalist>

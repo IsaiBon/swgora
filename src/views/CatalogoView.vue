@@ -181,6 +181,7 @@ const isQuickCreateMotorOpen = ref<boolean>(false)
 const editingMotorId = ref<string | null>(null)
 const quickMotorBrandId = ref<string>('')
 const quickMotorModelId = ref<string>('')
+const quickMotorAdditionalModelIds = ref<string[]>([])
 const quickMotorCode = ref<string>('')
 const quickMotorName = ref<string>('')
 const quickMotorSeries = ref<string>('')
@@ -289,12 +290,21 @@ const handleSaveQuickBrand = async () => {
   }
 }
 
+const addQuickMotorModelRow = () => {
+  quickMotorAdditionalModelIds.value.push('')
+}
+
+const removeQuickMotorModelRow = (idx: number) => {
+  quickMotorAdditionalModelIds.value.splice(idx, 1)
+}
+
 const openQuickCreateMotorModal = (initialCode?: string) => {
   editingMotorId.value = null
   confirmDeleteMotor.value = false
   quickMotorCode.value = (initialCode || motorInput.value || '').trim().toUpperCase()
   quickMotorBrandId.value = selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || '11111111-1111-1111-1111-111111111101'
   quickMotorModelId.value = selectedModel.value?.id || ''
+  quickMotorAdditionalModelIds.value = []
   quickMotorName.value = quickMotorCode.value ? `Motor ${quickMotorCode.value}` : ''
   quickMotorSeries.value = ''
   quickMotorCylinders.value = 4
@@ -304,12 +314,30 @@ const openQuickCreateMotorModal = (initialCode?: string) => {
   isQuickCreateMotorOpen.value = true
 }
 
-const openEditMotorModal = (mot: Motor, e?: Event, startDelete = false) => {
+const openEditMotorModal = async (mot: Motor, e?: Event, startDelete = false) => {
   e?.stopPropagation()
   editingMotorId.value = mot.id
   confirmDeleteMotor.value = startDelete
   quickMotorBrandId.value = mot.fabricante_id
-  quickMotorModelId.value = mot.modelo_id || ''
+  if (mot.fabricante_id && !catalogStore.modelos.some(m => m.fabricante_id === mot.fabricante_id)) {
+    await catalogStore.fetchModelos(mot.fabricante_id).catch(() => {})
+  }
+  const rawIds = [
+    ...(Array.isArray(mot.modelo_ids) ? mot.modelo_ids : []),
+    ...(Array.isArray((mot.especificaciones_tecnicas as any)?.modelo_ids) ? (mot.especificaciones_tecnicas as any).modelo_ids : []),
+    ...(mot.modelo_id ? [mot.modelo_id] : [])
+  ].map(id => String(id || '').trim()).filter(Boolean)
+  for (const nm of getMotorModelNamesList(mot)) {
+    const matchedMod = catalogStore.modelos.find(
+      m => m.fabricante_id === mot.fabricante_id && normalizeText(m.nombre) === normalizeText(nm)
+    )
+    if (matchedMod && !rawIds.includes(matchedMod.id)) {
+      rawIds.push(matchedMod.id)
+    }
+  }
+  const uniqueIds = Array.from(new Set(rawIds))
+  quickMotorModelId.value = uniqueIds[0] || ''
+  quickMotorAdditionalModelIds.value = uniqueIds.slice(1)
   quickMotorCode.value = mot.codigo
   quickMotorName.value = mot.nombre_comercial || ''
   quickMotorSeries.value = mot.denominacion_venta || ''
@@ -346,10 +374,19 @@ const handleSaveQuickMotor = async () => {
   if (!cleanCode) return
   isSavingQuickMotor.value = true
   try {
+    const allModelIds = Array.from(
+      new Set([quickMotorModelId.value, ...quickMotorAdditionalModelIds.value].map(id => String(id || '').trim()).filter(Boolean))
+    )
+    const resolvedModelNames = allModelIds
+      .map(mid => catalogStore.modelos.find(m => m.id === mid)?.nombre || '')
+      .filter(Boolean)
+
     if (editingMotorId.value) {
       const updated = await catalogStore.updateMotor(editingMotorId.value, {
         fabricante_id: quickMotorBrandId.value,
-        modelo_id: quickMotorModelId.value || undefined,
+        modelo_id: allModelIds[0] || undefined,
+        modelo_ids: allModelIds,
+        modelos_nombres: resolvedModelNames,
         codigo: cleanCode,
         nombre_comercial: quickMotorName.value.trim() || `Motor ${cleanCode}`,
         denominacion_venta: quickMotorSeries.value.trim() || undefined,
@@ -365,9 +402,12 @@ const handleSaveQuickMotor = async () => {
       }
       showToast(`✓ Motor "${updated.codigo}" actualizado`)
     } else {
+      const fallbackModelIds = allModelIds.length > 0 ? allModelIds : (selectedModel.value?.id ? [selectedModel.value.id] : [])
       const created = await catalogStore.createMotor({
         fabricante_id: quickMotorBrandId.value || selectedBrand.value?.id || '11111111-1111-1111-1111-111111111101',
-        modelo_id: quickMotorModelId.value || selectedModel.value?.id,
+        modelo_id: fallbackModelIds[0] || undefined,
+        modelo_ids: fallbackModelIds,
+        modelos_nombres: fallbackModelIds.map(mid => catalogStore.modelos.find(m => m.id === mid)?.nombre || '').filter(Boolean),
         codigo: cleanCode,
         nombre_comercial: quickMotorName.value.trim() || `Motor ${cleanCode}`,
         denominacion_venta: quickMotorSeries.value.trim() || undefined,
@@ -995,6 +1035,109 @@ const currentGroupDefinition = computed<GrupoRepuesto | null>(() => {
   return grp
 })
 
+const resolveGroupDefinitionForPart = (part?: RepuestoTecnico | null): GrupoRepuesto | null => {
+  if (currentGroupDefinition.value) return currentGroupDefinition.value
+  if (!part) return null
+
+  const spec = (part.especificaciones_tecnicas || {}) as Record<string, unknown>
+  const dims = (part.dimensiones || {}) as Record<string, unknown>
+  const specCode = String(spec.grupo_codigo || dims.grupo_codigo || '').toLowerCase().trim()
+  const cat = (part.categoria || '').toLowerCase().trim()
+  const nom = (part.nombre || '').toLowerCase().trim()
+
+  let matched: GrupoRepuesto | null =
+    catalogStore.grupos.find(
+      g =>
+        (specCode && (g.codigo.toLowerCase() === specCode || g.id.toLowerCase() === specCode)) ||
+        g.codigo.toLowerCase() === cat ||
+        g.categoria.toLowerCase() === cat ||
+        g.nombre.toLowerCase() === cat
+    ) || null
+
+  if (!matched && Array.isArray(dims.subfilas) && dims.subfilas.length > 0) {
+    const firstRow = dims.subfilas.find((sf: any) => !sf?.es_fila_central && sf?.medidas && typeof sf.medidas === 'object')
+    const measureKeys = firstRow ? Object.keys(firstRow.medidas as Record<string, unknown>) : []
+    if (measureKeys.length > 0) {
+      let bestScore = 0
+      for (const g of catalogStore.grupos) {
+        if (!g.parametros?.length) continue
+        const score = g.parametros.filter(p => measureKeys.includes(p.clave)).length
+        if (score > bestScore) {
+          bestScore = score
+          matched = g
+        }
+      }
+    }
+  }
+
+  if (!matched) {
+    let semanticCode = ''
+    if (cat.includes('anillo') || nom.includes('anillo') || Array.isArray(dims.anillos)) semanticCode = 'anillos_motor'
+    else if (cat.includes('sello')) semanticCode = 'ajuste_valvula'
+    else if (cat.includes('guía') || cat.includes('guia')) semanticCode = 'guias_valvula'
+    else if (cat.includes('asiento')) semanticCode = 'asientos_valvula'
+    else if (cat.includes('válvula') || cat.includes('valvula')) semanticCode = 'valvula'
+    else if (cat.includes('perno') || cat.includes('tornillo')) semanticCode = 'tornillos_culata'
+    else if (cat.includes('casquet') || cat.includes('cojinet') || cat.includes('metal') || Boolean(part.tipo_cojinete)) semanticCode = 'casqueteria'
+    else if (cat.includes('camisa')) semanticCode = 'camisas_cilindro'
+    else if (cat.includes('empaque') || cat.includes('junta')) semanticCode = 'empaques_juntas'
+
+    if (semanticCode) {
+      matched = catalogStore.grupos.find(g => g.codigo === semanticCode) || null
+    }
+  }
+
+  if (!matched) return null
+  if (matched.parametros && matched.parametros.length > 0) {
+    return {
+      ...matched,
+      parametros: sanitizeGroupParams(matched.parametros)
+    }
+  }
+  return matched
+}
+
+const getPartTableColumns = (part?: RepuestoTecnico | null): ParametroTecnicoDefinicion[] => {
+  const grp = resolveGroupDefinitionForPart(part)
+  if (grp?.parametros && grp.parametros.length > 0) {
+    return grp.parametros
+  }
+  if (activeTableGroupColumns.value.length > 0) {
+    return activeTableGroupColumns.value
+  }
+  if (!part) return []
+  const rows = getPartSubfilas(part).filter(sf => !sf.es_fila_central)
+  const keys = new Set<string>()
+  for (const sf of rows) {
+    for (const [k, v] of Object.entries(sf.medidas || {})) {
+      if (['posicion', 'tipo_aro', 'perfil', 'forma', 'identificador', 'extra', 'codigo', 'id'].includes(k)) continue
+      if (v !== undefined && v !== null && v !== '') {
+        keys.add(k)
+      }
+    }
+  }
+  return Array.from(keys).map((k, idx) => ({
+    id: `fallback-${k}-${idx}`,
+    clave: k,
+    etiqueta: k.replace(/_mm$/i, '').replace(/_/g, ' '),
+    unidad: k.toLowerCase().endsWith('_mm') ? 'mm' : '',
+    tipo_dato: typeof rows[0]?.medidas?.[k] === 'boolean' ? 'booleano' : (typeof rows[0]?.medidas?.[k] === 'number' ? 'numero' : 'texto'),
+    requerido: true
+  }))
+}
+
+const getPartGroupSubcolumnsHeaders = (part?: RepuestoTecnico | null) => {
+  return buildNestedTableHeaders(getPartTableColumns(part))
+}
+
+const getPartHasGroupSubcolumns = (part?: RepuestoTecnico | null): boolean => {
+  return getPartGroupSubcolumnsHeaders(part).hasSubcolumns
+}
+
+const getPartTableColFirstHeader = (part?: RepuestoTecnico | null): string => {
+  return resolveGroupDefinitionForPart(part)?.tabla_config?.titulo_primera_columna || tableColFirstHeader.value || 'Componente'
+}
+
 // Determina si la familia activa usa Vista en Tabla (sub-tabla incrustada dentro de la 4ta columna)
 const isCurrentGroupTableView = computed<boolean>(() => {
   if (!currentGroupDefinition.value) return false
@@ -1004,6 +1147,8 @@ const isCurrentGroupTableView = computed<boolean>(() => {
 const isPartEmbeddedTableFormat = (part: RepuestoTecnico): boolean => {
   if (currentGroupDefinition.value?.tipo_vista === 'normal') return false
   if (isCurrentGroupTableView.value) return true
+  const resolvedGrp = resolveGroupDefinitionForPart(part)
+  if (resolvedGrp?.tipo_vista === 'tabla') return true
   const dims = part.dimensiones as any
   return (
     (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) ||
@@ -1022,8 +1167,9 @@ export interface PartSubfilaDisplay {
 
 const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   const dims = part.dimensiones as any
-  const configuredPadres = currentGroupDefinition.value?.tabla_config?.subfila_padres || []
-  const configuredTipos = currentGroupDefinition.value?.tabla_config?.subfila_tipos || []
+  const grpDef = resolveGroupDefinitionForPart(part)
+  const configuredPadres = grpDef?.tabla_config?.subfila_padres || []
+  const configuredTipos = grpDef?.tabla_config?.subfila_tipos || []
   if (Array.isArray(dims?.subfilas) && dims.subfilas.length > 0) {
     return dims.subfilas.map((sf: any, idx: number) => {
       const esCentral = sf.es_fila_central !== undefined ? Boolean(sf.es_fila_central) : (configuredTipos[idx] === 'central')
@@ -1046,7 +1192,7 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
   }
   if (
     (Array.isArray(dims?.anillos) && dims.anillos.length > 0) ||
-    currentGroupDefinition.value?.codigo === 'anillos_motor' ||
+    grpDef?.codigo === 'anillos_motor' ||
     part.categoria === 'Anillos'
   ) {
     const isConical = Boolean(part.diseno_conico || dims?.diseno_conico || dims?.keystone)
@@ -1071,7 +1217,7 @@ const getPartSubfilas = (part: RepuestoTecnico): PartSubfilaDisplay[] => {
       }
     })
   }
-  const configuredSubfilas = currentGroupDefinition.value?.tabla_config?.subfilas
+  const configuredSubfilas = grpDef?.tabla_config?.subfilas
   if (Array.isArray(configuredSubfilas) && configuredSubfilas.length > 0) {
     return configuredSubfilas.map((nombre, idx) => {
       const esCentral = configuredTipos[idx] === 'central'
@@ -1106,7 +1252,7 @@ const partHasRowGroups = (part: RepuestoTecnico): boolean => {
 }
 
 const getPartMiniTableColspan = (part: RepuestoTecnico): number => {
-  return (partHasRowGroups(part) ? 1 : 0) + 1 + activeTableGroupColumns.value.length
+  return (partHasRowGroups(part) ? 1 : 0) + 1 + getPartTableColumns(part).length
 }
 
 const getPartDisplayOemCodes = (part: RepuestoTecnico): string[] => {
@@ -1190,7 +1336,8 @@ const isTechnicalOrientationAvailable = computed<boolean>(() => {
     isCurrentGroupTableView.value ||
     isCasqueteriaOrCojinetesContext.value ||
     isCurrentGroupRingsTable.value ||
-    (currentGroupDefinition.value?.parametros && currentGroupDefinition.value.parametros.length > 0)
+    (currentGroupDefinition.value?.parametros && currentGroupDefinition.value.parametros.length > 0) ||
+    displayedParts.value.some(p => isPartEmbeddedTableFormat(p) || Boolean(resolveGroupDefinitionForPart(p)?.parametros?.length))
   )
 })
 
@@ -1718,12 +1865,70 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
 const doesMotorMatchModel = (mot: Motor, mod: Modelo): boolean => {
   if (mot.modelo_id && mot.modelo_id === mod.id) return true
   if (mot.modelo?.id && mot.modelo.id === mod.id) return true
+  if (Array.isArray(mot.modelo_ids) && mot.modelo_ids.includes(mod.id)) return true
+  const specIds = (mot.especificaciones_tecnicas as any)?.modelo_ids
+  if (Array.isArray(specIds) && specIds.includes(mod.id)) return true
   const modName = normalizeText(mod.nombre)
   if (!modName) return false
+  if (getMotorModelNamesList(mot).some(n => normalizeText(n) === modName)) return true
   if (mot.denominacion_venta && normalizeText(mot.denominacion_venta).includes(modName)) return true
   if (mot.nombre_comercial && normalizeText(mot.nombre_comercial).includes(modName)) return true
   return false
 }
+
+const editableBrandTarget = computed<Fabricante | null>(() => {
+  if (selectedBrand.value) return selectedBrand.value
+  const q = brandInput.value.trim().toLowerCase()
+  if (q) {
+    return (
+      filteredBrands.value.find(b => b.nombre.toLowerCase() === q) ||
+      filteredBrands.value[0] ||
+      null
+    )
+  }
+  return null
+})
+
+const editableMotorTarget = computed<Motor | null>(() => {
+  if (selectedMotor.value) return selectedMotor.value
+  const q = motorInput.value.trim().toLowerCase()
+  if (q) {
+    return (
+      brandMotorsList.value.find(m => m.codigo.toLowerCase() === q) ||
+      brandMotorsList.value[0] ||
+      null
+    )
+  }
+  return brandMotorsList.value.length === 1 ? brandMotorsList.value[0] : null
+})
+
+const editableModelTarget = computed<Modelo | null>(() => {
+  if (selectedModel.value) return selectedModel.value
+  const q = normalizeText(modelInput.value)
+  if (q) {
+    return (
+      filteredModels.value.find(m => normalizeText(m.nombre) === q) ||
+      filteredModels.value[0] ||
+      null
+    )
+  }
+  return null
+})
+
+const editableComponentTarget = computed<ComponentGroup | null>(() => {
+  if (selectedComponent.value) return selectedComponent.value
+  const q = componentInput.value.trim().toLowerCase()
+  if (q) {
+    return (
+      filteredComponentGroups.value.find(
+        g => g.title.toLowerCase() === q || g.shortTitle.toLowerCase() === q
+      ) ||
+      filteredComponentGroups.value[0] ||
+      null
+    )
+  }
+  return null
+})
 
 // 1. Filtrado de MARCAS / FABRICANTES (reacciona a Motor / Modelo activos)
 const filteredBrands = computed(() => {
@@ -1807,8 +2012,17 @@ const filteredModels = computed(() => {
   let list = catalogStore.availableModelos
 
   if (!selectedMotor.value && motorInput.value.trim()) {
-    const motors = brandMotorsList.value
-    list = list.filter(m => motors.some(mot => doesMotorMatchModel(mot, m)))
+    const mq = motorInput.value.trim().toLowerCase()
+    const motorsForInput = availableMotors.value.filter(
+      m =>
+        m.codigo.toLowerCase().includes(mq) ||
+        (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(mq)) ||
+        (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(mq))
+    )
+    const matched = list.filter(m => motorsForInput.some(mot => doesMotorMatchModel(mot, m)))
+    if (matched.length > 0) {
+      list = matched
+    }
   }
 
   if (!q || (selectedModel.value && q === normalizeText(selectedModel.value.nombre))) {
@@ -1826,9 +2040,11 @@ const handleSelectModel = async (mod: Modelo) => {
   isModelOpen.value = false
   motorCurrentPage.value = 1
 
-  // Limpiar motor previo para mostrar los motores asociados a este modelo
-  selectedMotor.value = null
-  motorInput.value = ''
+  // Conservar motorInput escrito por el usuario (ej. "2L");
+  // solo deseleccionar selectedMotor puntual si ya no coincide con el modelo elegido.
+  if (selectedMotor.value && !doesMotorMatchModel(selectedMotor.value, mod)) {
+    selectedMotor.value = null
+  }
 
   // Si no había fabricante seleccionado o difiere, autocompletar fabricante del modelo
   if (mod.fabricante_id && (!selectedBrand.value || selectedBrand.value.id !== mod.fabricante_id)) {
@@ -1853,8 +2069,9 @@ const handleClearSelectedModel = async () => {
   selectedModel.value = null
   setTimeout(() => modelInputRef.value?.focus(), 50)
   modelInput.value = ''
-  selectedMotor.value = null
-  motorInput.value = ''
+  if (selectedMotor.value) {
+    selectedMotor.value = null
+  }
   await catalogStore.selectModelo(null)
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
@@ -1870,7 +2087,23 @@ const onFocusModel = (e?: Event) => {
     (e.target as HTMLInputElement).select?.()
   }
 }
-const onInputModel = () => { isModelOpen.value = true }
+const onInputModel = async () => {
+  isModelOpen.value = true
+  motorCurrentPage.value = 1
+  if (selectedModel.value && normalizeText(modelInput.value) !== normalizeText(selectedModel.value.nombre)) {
+    selectedModel.value = null
+    if (selectedMotor.value) {
+      selectedMotor.value = null
+    }
+    await catalogStore.selectModelo(null)
+    if (selectedComponent.value) {
+      activeViewTab.value = 'repuestos'
+      await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+    } else {
+      activeViewTab.value = 'motores'
+    }
+  }
+}
 const onFocusMotor = (e?: Event) => {
   isMotorOpen.value = false
   activeViewTab.value = 'motores'
@@ -2094,6 +2327,30 @@ const handleClearSearch = () => {
 const brandMotorsList = computed<Motor[]>(() => {
   let list = availableMotors.value
 
+  if (selectedModel.value) {
+    list = list.filter(m => doesMotorMatchModel(m, selectedModel.value!))
+  } else if (modelInput.value.trim()) {
+    const modQuery = normalizeText(modelInput.value)
+    if (modQuery) {
+      const matchingModelIds = new Set(
+        catalogStore.modelos
+          .filter(mod => normalizeText(mod.nombre).includes(modQuery))
+          .map(mod => mod.id)
+      )
+      list = list.filter(m => {
+        if (normalizeText(getMotorModelName(m)).includes(modQuery)) return true
+        const mIds = [
+          ...(m.modelo_id ? [m.modelo_id] : []),
+          ...(Array.isArray(m.modelo_ids) ? m.modelo_ids : []),
+          ...(Array.isArray((m.especificaciones_tecnicas as any)?.modelo_ids)
+            ? ((m.especificaciones_tecnicas as any).modelo_ids as string[])
+            : [])
+        ]
+        return mIds.some(id => matchingModelIds.has(id))
+      })
+    }
+  }
+
   const q = motorInput.value.trim().toLowerCase()
   const isSelectedMotorCurrent = selectedMotor.value && (
     q === selectedMotor.value.codigo.toLowerCase().trim() ||
@@ -2157,16 +2414,49 @@ const goToPrevMotorPage = () => { if (motorCurrentPage.value > 1) motorCurrentPa
 const goToNextMotorPage = () => { if (motorCurrentPage.value < motorTotalPages.value) motorCurrentPage.value++ }
 const goToLastMotorPage = () => { motorCurrentPage.value = motorTotalPages.value }
 
-watch([selectedBrand, selectedModel, selectedYear, yearInput, motorInput, motorMatchMode], () => {
+watch([selectedBrand, selectedModel, modelInput, selectedYear, yearInput, motorInput, motorMatchMode], () => {
   motorCurrentPage.value = 1
 })
 
-const getMotorModelName = (mot: Motor): string => {
-  if (mot.modelo?.nombre) return mot.modelo.nombre
-  if (mot.modelo_id) {
-    const mod = catalogStore.modelos.find(m => m.id === mot.modelo_id)
-    if (mod) return mod.nombre
+const getMotorModelNamesList = (mot: Motor): string[] => {
+  const names: string[] = []
+  const seen = new Set<string>()
+  const addName = (raw?: string | null) => {
+    const clean = String(raw || '').replace(/\s+/g, ' ').trim()
+    if (!clean || clean === '—' || clean === '-') return
+    const key = normalizeText(clean)
+    if (key && !seen.has(key)) {
+      seen.add(key)
+      names.push(clean)
+    }
   }
+
+  const allIds = [
+    ...(Array.isArray(mot.modelo_ids) ? mot.modelo_ids : []),
+    ...(Array.isArray((mot.especificaciones_tecnicas as any)?.modelo_ids)
+      ? ((mot.especificaciones_tecnicas as any).modelo_ids as string[])
+      : []),
+    ...(mot.modelo_id ? [mot.modelo_id] : [])
+  ]
+  for (const mid of allIds) {
+    const found = catalogStore.modelos.find(m => m.id === mid)
+    if (found) addName(found.nombre)
+  }
+
+  if (mot.modelo?.nombre) addName(mot.modelo.nombre)
+  if (Array.isArray(mot.modelos_nombres)) {
+    mot.modelos_nombres.forEach(addName)
+  }
+  const specNames = (mot.especificaciones_tecnicas as any)?.modelos_nombres
+  if (Array.isArray(specNames)) {
+    specNames.forEach(addName)
+  }
+  return names
+}
+
+const getMotorModelName = (mot: Motor): string => {
+  const names = getMotorModelNamesList(mot)
+  if (names.length > 0) return names.join(', ')
   return mot.denominacion_venta || '—'
 }
 
@@ -3094,6 +3384,7 @@ const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroup
 }
 
 const handleEditGroup = (grpId?: string | null) => {
+  isComponentOpen.value = false
   const targetId = grpId || selectedComponent.value?.id || resolveGroupIdFromPart(modalPart.value)
   openAdminCatalogModal('grupo', targetId)
 }
@@ -3437,9 +3728,9 @@ onUnmounted(() => {
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
-                v-if="selectedBrand"
+                v-if="editableBrandTarget"
                 type="button"
-                @click="openEditBrandModal(selectedBrand)"
+                @click="openEditBrandModal(editableBrandTarget)"
                 class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
                 title="Editar o eliminar marca"
               >
@@ -3491,6 +3782,14 @@ onUnmounted(() => {
               </div>
               <div class="flex items-center gap-1.5">
                 <span class="text-[10px] text-slate-400 font-mono">{{ fab.engines_count || 'Varios' }} motores</span>
+                <button
+                  type="button"
+                  @click.stop="openEditBrandModal(fab)"
+                  class="p-1 text-slate-400 hover:text-[#004B97] hover:bg-blue-50 rounded transition cursor-pointer"
+                  :title="`Editar marca ${fab.nombre}`"
+                >
+                  <Edit3 class="w-3 h-3" />
+                </button>
                 <Check v-if="selectedBrand?.id === fab.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
@@ -3580,11 +3879,11 @@ onUnmounted(() => {
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
-                v-if="selectedMotor"
+                v-if="editableMotorTarget"
                 type="button"
-                @click="openEditMotorModal(selectedMotor)"
+                @click="openEditMotorModal(editableMotorTarget)"
                 class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
-                title="Editar o eliminar motor"
+                :title="`Editar o eliminar motor ${editableMotorTarget.codigo}`"
               >
                 <Edit3 class="w-3 h-3" />
               </button>
@@ -3635,9 +3934,9 @@ onUnmounted(() => {
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
-                v-if="selectedModel"
+                v-if="editableModelTarget"
                 type="button"
-                @click="openEditModelModal(selectedModel)"
+                @click="openEditModelModal(editableModelTarget)"
                 class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
                 title="Editar o eliminar modelo"
               >
@@ -3695,6 +3994,14 @@ onUnmounted(() => {
                 <span v-if="mod.anio_inicio" class="text-[10px] text-slate-400 font-mono">
                   {{ mod.anio_inicio }} - {{ mod.anio_fin || 'Act' }}
                 </span>
+                <button
+                  type="button"
+                  @click.stop="openEditModelModal(mod)"
+                  class="p-1 text-slate-400 hover:text-[#004B97] hover:bg-blue-50 rounded transition cursor-pointer"
+                  :title="`Editar modelo ${mod.nombre}`"
+                >
+                  <Edit3 class="w-3 h-3" />
+                </button>
                 <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
@@ -3826,9 +4133,9 @@ onUnmounted(() => {
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
-                v-if="selectedComponent"
+                v-if="editableComponentTarget"
                 type="button"
-                @click="handleEditGroup(selectedComponent.id)"
+                @click="handleEditGroup(editableComponentTarget.id)"
                 class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
                 title="Editar o eliminar familia"
               >
@@ -3873,7 +4180,7 @@ onUnmounted(() => {
                 highlightedComponentIdx === cIdx ? 'bg-cyan-100/90 text-[#038391] ring-1 ring-inset ring-[#04C4D9]' : (selectedComponent?.id === grp.id ? 'bg-cyan-50/60 text-[#038391] font-bold' : 'text-slate-800 hover:bg-cyan-50/70')
               ]"
             >
-              <div class="flex items-center gap-2.5">
+              <div class="flex items-center gap-2.5 min-w-0">
                 <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
@@ -3881,9 +4188,19 @@ onUnmounted(() => {
                 <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
                 <Layers v-else class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <span class="font-bold text-slate-900 text-xs">{{ grp.title }}</span>
+                <span class="font-bold text-slate-900 text-xs truncate">{{ grp.title }}</span>
               </div>
-              <Check v-if="selectedComponent?.id === grp.id" class="w-4 h-4 text-[#04C4D9] shrink-0 ml-2" />
+              <div class="flex items-center gap-1.5 shrink-0 ml-2">
+                <button
+                  type="button"
+                  @click.stop="handleEditGroup(grp.id)"
+                  class="p-1 text-slate-400 hover:text-[#004B97] hover:bg-blue-50 rounded transition cursor-pointer"
+                  :title="`Editar componente ${grp.title}`"
+                >
+                  <Edit3 class="w-3 h-3" />
+                </button>
+                <Check v-if="selectedComponent?.id === grp.id" class="w-4 h-4 text-[#04C4D9]" />
+              </div>
             </div>
             <div v-if="filteredComponentGroups.length === 0" class="p-3 text-center text-xs text-slate-400">
               No hay componentes coincidentes
@@ -5278,7 +5595,7 @@ onUnmounted(() => {
                         <thead>
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
                             <th
-                              v-if="hasGroupSubcolumns"
+                              v-if="getPartHasGroupSubcolumns(part)"
                               class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/80 text-[#004B97] font-black text-left whitespace-nowrap"
                             >
                               Medida
@@ -5312,7 +5629,7 @@ onUnmounted(() => {
                             class="bg-slate-50/80"
                           >
                             <td
-                              :colspan="(hasGroupSubcolumns ? 2 : 1) + Math.max(1, getPartSubfilas(part).filter(s => !s.es_fila_central).length)"
+                              :colspan="(getPartHasGroupSubcolumns(part) ? 2 : 1) + Math.max(1, getPartSubfilas(part).filter(s => !s.es_fila_central).length)"
                               class="px-2.5 py-1 font-bold text-slate-800 text-center"
                             >
                               {{ csf.nombre || '—' }}
@@ -5321,12 +5638,12 @@ onUnmounted(() => {
 
                           <!-- Filas verticales: atributos/medidas -->
                           <tr
-                            v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns(activeTableGroupColumns)"
+                            v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns(getPartTableColumns(part))"
                             :key="`mt-vrow-${part.id}-${vRow.col.id || vIdx}`"
                             class="hover:bg-slate-50/70 transition"
                           >
                             <td
-                              v-if="hasGroupSubcolumns && vRow.showParent"
+                              v-if="getPartHasGroupSubcolumns(part) && vRow.showParent"
                               :rowspan="vRow.parentRowspan"
                               class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/40 text-left align-middle font-black text-[#004B97] text-[10px] uppercase whitespace-nowrap"
                             >
@@ -5380,7 +5697,7 @@ onUnmounted(() => {
                         <thead>
                           <!-- Tier 1 dentro de la mini-tabla cuando hay sub-columnas agrupadas -->
                           <tr
-                            v-if="groupSubcolumnsHeaders.hasSubcolumns"
+                            v-if="getPartGroupSubcolumnsHeaders(part).hasSubcolumns"
                             class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200"
                           >
                             <th
@@ -5388,12 +5705,12 @@ onUnmounted(() => {
                               rowspan="2"
                               class="px-2.5 py-1 border-r border-slate-200 bg-cyan-50/70 text-[#004B97] font-black text-center align-middle"
                             >
-                              {{ currentGroupDefinition?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
+                              {{ resolveGroupDefinitionForPart(part)?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
                             </th>
                             <th rowspan="2" class="px-2.5 py-1 border-r border-slate-200 text-left align-middle">
-                              {{ tableColFirstHeader }}
+                              {{ getPartTableColFirstHeader(part) }}
                             </th>
-                            <template v-for="item in groupSubcolumnsHeaders.tier1" :key="`mt-t1-${part.id}-${item.id}`">
+                            <template v-for="item in getPartGroupSubcolumnsHeaders(part).tier1" :key="`mt-t1-${part.id}-${item.id}`">
                               <th
                                 v-if="item.isGroup"
                                 :colspan="item.colspan"
@@ -5412,25 +5729,25 @@ onUnmounted(() => {
                           </tr>
 
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                            <template v-if="!groupSubcolumnsHeaders.hasSubcolumns">
+                            <template v-if="!getPartGroupSubcolumnsHeaders(part).hasSubcolumns">
                               <th
                                 v-if="partHasRowGroups(part)"
                                 class="px-2.5 py-1 border-r border-slate-200 bg-cyan-50/70 text-[#004B97] font-black text-center"
                               >
-                                {{ currentGroupDefinition?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
+                                {{ resolveGroupDefinitionForPart(part)?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
                               </th>
                               <th class="px-2.5 py-1 border-r border-slate-200 text-left whitespace-nowrap">
-                                {{ tableColFirstHeader }}
+                                {{ getPartTableColFirstHeader(part) }}
                               </th>
                             </template>
                             <template
-                              v-for="(col, cIdx) in activeTableGroupColumns"
+                              v-for="(col, cIdx) in getPartTableColumns(part)"
                               :key="`mt-col-${part.id}-${col.id || cIdx}`"
                             >
                               <th
-                                v-if="!groupSubcolumnsHeaders.hasSubcolumns || (col.columna_padre && col.columna_padre.trim())"
+                                v-if="!getPartGroupSubcolumnsHeaders(part).hasSubcolumns || (col.columna_padre && col.columna_padre.trim())"
                                 class="px-2.5 py-1 whitespace-nowrap"
-                                :class="cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : ''"
+                                :class="cIdx < getPartTableColumns(part).length - 1 ? 'border-r border-slate-200' : ''"
                               >
                                 {{ col.etiqueta_corta || col.etiqueta }}
                                 <span v-if="col.unidad && col.tipo_dato !== 'booleano' && col.tipo_dato !== 'seleccion'" class="text-[8px] font-normal text-slate-500 lowercase">({{ unitMode === 'milesimas' && col.unidad === 'mm' ? 'pulg' : col.unidad }})</span>
@@ -5477,7 +5794,7 @@ onUnmounted(() => {
 
                             <!-- Columnas de medidas / booleanos / opciones -->
                             <template
-                              v-for="(col, cIdx) in activeTableGroupColumns"
+                              v-for="(col, cIdx) in getPartTableColumns(part)"
                               :key="`mt-val-${part.id}-${sfIdx}-${col.id || cIdx}`"
                             >
                               <td
@@ -5485,7 +5802,7 @@ onUnmounted(() => {
                                 :rowspan="col.compartido_filas ? (getPartSubfilaSharedMeta(part)[sfIdx]?.sharedRowspan || 1) : undefined"
                                 class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
                                 :class="[
-                                  cIdx < activeTableGroupColumns.length - 1 ? 'border-r border-slate-200' : '',
+                                  cIdx < getPartTableColumns(part).length - 1 ? 'border-r border-slate-200' : '',
                                   col.compartido_filas ? 'align-middle bg-cyan-50/15' : '',
                                   getMeasurementMatchClass(getPartMiniTableCellRawValue(part, sf, col) as any, dynamicParamFilters[col.clave], getTol(col.clave))
                                 ]"
@@ -5524,26 +5841,26 @@ onUnmounted(() => {
 
                   <!-- Caso Dinámico General: Vertical (tabla atributo-valor) u Horizontal (badges) -->
                   <div
-                    v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0 && currentTableOrientation === 'vertical'"
+                    v-else-if="(resolveGroupDefinitionForPart(part)?.parametros?.length || 0) > 0 && currentTableOrientation === 'vertical'"
                     class="py-1"
                   >
                     <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono text-[11px] select-text">
                       <table class="border-collapse">
                         <thead>
                           <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
-                            <th v-if="hasGroupSubcolumns" class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/80 text-[#004B97] text-left">Grupo</th>
+                            <th v-if="getPartHasGroupSubcolumns(part)" class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/80 text-[#004B97] text-left">Grupo</th>
                             <th class="px-2.5 py-1 border-r border-slate-200 text-left">Especificación</th>
                             <th class="px-2.5 py-1 text-right">Valor / Medida</th>
                           </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                           <tr
-                            v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns(currentGroupDefinition.parametros.filter(p => p.requerido !== false || getPartParamValue(part, p.clave) != null))"
+                            v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns((resolveGroupDefinitionForPart(part)?.parametros || []).filter(p => p.requerido !== false || getPartParamValue(part, p.clave) != null))"
                             :key="`flat-v-${part.id}-${vRow.col.clave}-${vIdx}`"
                             class="hover:bg-slate-50/70 transition"
                           >
                             <td
-                              v-if="hasGroupSubcolumns && vRow.showParent"
+                              v-if="getPartHasGroupSubcolumns(part) && vRow.showParent"
                               :rowspan="vRow.parentRowspan"
                               class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/40 font-black text-[#004B97] text-[10px] uppercase align-middle whitespace-nowrap"
                             >
@@ -5587,11 +5904,11 @@ onUnmounted(() => {
                   </div>
 
                   <div 
-                    v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" 
+                    v-else-if="(resolveGroupDefinitionForPart(part)?.parametros?.length || 0) > 0" 
                     class="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-800"
                   >
                     <template 
-                      v-for="p in currentGroupDefinition.parametros.filter(p => p.requerido !== false || getPartParamValue(part, p.clave) != null)" 
+                      v-for="p in (resolveGroupDefinitionForPart(part)?.parametros || []).filter(p => p.requerido !== false || getPartParamValue(part, p.clave) != null)" 
                       :key="p.clave"
                     >
                       <!-- Caso A: Posición / Tipo de Válvula / Selección (soporta múltiples opciones) -->
@@ -6335,7 +6652,7 @@ onUnmounted(() => {
             </div>
 
             <!-- CASO FAMILIAS EN TABLA (CASQUETERÍA / COJINETES / SUBFILAS): SOPORTE VERTICAL ↔ HORIZONTAL -->
-            <div v-else-if="getPartSubfilas(modalPart).length > 0 && activeTableGroupColumns.length > 0">
+            <div v-else-if="getPartSubfilas(modalPart).length > 0 && getPartTableColumns(modalPart).length > 0">
               <div class="flex items-center justify-between mb-2 gap-2">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                   <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
@@ -6355,7 +6672,7 @@ onUnmounted(() => {
                 <table class="w-full border-collapse text-center">
                   <thead>
                     <tr class="bg-slate-100 text-slate-800 border-b border-slate-200">
-                      <th v-if="hasGroupSubcolumns" class="px-3 py-1.5 border-r border-slate-200 bg-blue-50/80 text-[#004B97] text-xs font-black uppercase tracking-wider text-left">Medida</th>
+                      <th v-if="getPartHasGroupSubcolumns(modalPart)" class="px-3 py-1.5 border-r border-slate-200 bg-blue-50/80 text-[#004B97] text-xs font-black uppercase tracking-wider text-left">Medida</th>
                       <th class="px-3 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider text-left">Parámetro</th>
                       <th
                         v-for="(sf, sfColIdx) in getPartSubfilas(modalPart).filter(s => !s.es_fila_central)"
@@ -6376,19 +6693,19 @@ onUnmounted(() => {
                       class="bg-slate-50/80"
                     >
                       <td
-                        :colspan="(hasGroupSubcolumns ? 2 : 1) + Math.max(1, getPartSubfilas(modalPart).filter(s => !s.es_fila_central).length)"
+                        :colspan="(getPartHasGroupSubcolumns(modalPart) ? 2 : 1) + Math.max(1, getPartSubfilas(modalPart).filter(s => !s.es_fila_central).length)"
                         class="px-3 py-1.5 font-bold text-slate-800 text-center"
                       >
                         {{ csf.nombre || '—' }}
                       </td>
                     </tr>
                     <tr
-                      v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns(activeTableGroupColumns)"
+                      v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns(getPartTableColumns(modalPart))"
                       :key="`modal-vrow-${vIdx}`"
                       class="hover:bg-slate-50/70 transition"
                     >
                       <td
-                        v-if="hasGroupSubcolumns && vRow.showParent"
+                        v-if="getPartHasGroupSubcolumns(modalPart) && vRow.showParent"
                         :rowspan="vRow.parentRowspan"
                         class="px-3 py-1.5 border-r border-slate-200 bg-blue-50/40 font-black text-[#004B97] uppercase text-[10px] text-left align-middle"
                       >
@@ -6430,11 +6747,11 @@ onUnmounted(() => {
                   <thead>
                     <tr class="bg-slate-100 text-slate-800 border-b border-slate-200">
                       <th v-if="partHasRowGroups(modalPart)" class="px-3 py-1.5 border-r border-slate-200 bg-cyan-50/70 text-[#004B97] text-xs font-black uppercase text-center">
-                        {{ currentGroupDefinition?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
+                        {{ resolveGroupDefinitionForPart(modalPart)?.tabla_config?.titulo_grupo_filas || 'Grupo' }}
                       </th>
-                      <th class="px-3 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider text-left">{{ tableColFirstHeader }}</th>
+                      <th class="px-3 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider text-left">{{ getPartTableColFirstHeader(modalPart) }}</th>
                       <th
-                        v-for="col in activeTableGroupColumns"
+                        v-for="col in getPartTableColumns(modalPart)"
                         :key="`m-subcol-${col.id}`"
                         class="px-2.5 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider"
                       >
@@ -6467,7 +6784,7 @@ onUnmounted(() => {
                         </td>
                         <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200 text-left">{{ sf.nombre }}</td>
                         <td
-                          v-for="col in activeTableGroupColumns"
+                          v-for="col in getPartTableColumns(modalPart)"
                           :key="`m-sfv-${sfIdx}-${col.id}`"
                           class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900"
                         >
@@ -6507,9 +6824,9 @@ onUnmounted(() => {
                 <table class="w-full border-collapse text-center">
                   <thead>
                     <tr class="bg-slate-100 text-slate-800 border-b border-slate-200">
-                      <th class="px-3 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider text-left">{{ tableColFirstHeader }}</th>
+                      <th class="px-3 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider text-left">{{ getPartTableColFirstHeader(modalPart) }}</th>
                       <th
-                        v-for="col in activeTableGroupColumns"
+                        v-for="col in getPartTableColumns(modalPart)"
                         :key="`m-col-${col.id}`"
                         class="px-2.5 py-1.5 border-r border-slate-200 text-xs font-bold uppercase tracking-wider"
                       >
@@ -6534,7 +6851,7 @@ onUnmounted(() => {
                         </span>
                       </td>
                       <td
-                        v-for="col in activeTableGroupColumns"
+                        v-for="col in getPartTableColumns(modalPart)"
                         :key="`m-val-${col.id}`"
                         class="px-2.5 py-1.5 border-r border-slate-200 font-bold text-slate-900"
                       >
@@ -6838,9 +7155,18 @@ onUnmounted(() => {
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Modelo de Vehículo
-                </label>
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    Modelo(s) de Vehículo
+                  </label>
+                  <button
+                    type="button"
+                    @click="addQuickMotorModelRow()"
+                    class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] transition cursor-pointer"
+                  >
+                    + Agregar modelo
+                  </button>
+                </div>
                 <select
                   v-model="quickMotorModelId"
                   class="w-full px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
@@ -6854,6 +7180,33 @@ onUnmounted(() => {
                     {{ mod.nombre }}
                   </option>
                 </select>
+                <div
+                  v-for="(_, mIdx) in quickMotorAdditionalModelIds"
+                  :key="`quick-motor-extra-mod-${mIdx}`"
+                  class="flex items-center gap-1.5 mt-1.5"
+                >
+                  <select
+                    v-model="quickMotorAdditionalModelIds[mIdx]"
+                    class="flex-1 min-w-0 px-2.5 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
+                  >
+                    <option value="">Seleccionar modelo adicional</option>
+                    <option
+                      v-for="mod in catalogStore.modelos.filter(m => !quickMotorBrandId || m.fabricante_id === quickMotorBrandId)"
+                      :key="`extra-opt-${mIdx}-${mod.id}`"
+                      :value="mod.id"
+                    >
+                      {{ mod.nombre }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    @click="removeQuickMotorModelRow(mIdx)"
+                    class="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg border border-slate-200 transition cursor-pointer"
+                    title="Quitar modelo"
+                  >
+                    <X class="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               <div>
