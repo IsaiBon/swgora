@@ -5259,11 +5259,8 @@ onUnmounted(() => {
                 <th rowspan="2" class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Componente
                 </th>
-                <th rowspan="2" class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                <th rowspan="2" class="py-1.5 px-2.5 w-40 min-w-[140px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Código OEM
-                </th>
-                <th rowspan="2" class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
-                  Catálogos Alternos
                 </th>
                 
                 <!-- Columnas Padre / Standalone de la Familia -->
@@ -5299,17 +5296,14 @@ onUnmounted(() => {
               </tr>
             </thead>
 
-            <!-- Caso B: Cabecera Estándar de 5 Columnas (Vista Normal plana o Vista en Tabla con sub-tabla incrustada) -->
+            <!-- Caso B: Cabecera Estándar de 4 Columnas (Vista Normal plana o Vista en Tabla con sub-tabla incrustada) -->
             <thead v-else class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
                 <th class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Componente
                 </th>
-                <th class="py-1.5 px-2.5 w-28 min-w-[95px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                <th class="py-1.5 px-2.5 w-40 min-w-[140px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Código OEM
-                </th>
-                <th class="py-1.5 px-2.5 w-36 min-w-[130px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
-                  Catálogos Alternos
                 </th>
                 
                 <th v-if="isCurrentGroupTableView" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
@@ -5330,7 +5324,6 @@ onUnmounted(() => {
             <tbody v-if="catalogStore.loadingRepuestos || catalogStore.isSearching" class="divide-y divide-slate-100">
               <tr v-for="n in 5" :key="`skel-rep-${n}`" class="animate-pulse bg-slate-50/50">
                 <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
-                <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-20 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
                 <template v-if="hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal'">
                   <td v-for="col in activeTableGroupColumns" :key="`skel-col-${col.id}`" class="py-2 px-2 border-b border-slate-100"><div class="h-3.5 w-12 mx-auto bg-slate-200 rounded"></div></td>
@@ -5521,13 +5514,9 @@ onUnmounted(() => {
                         {{ part.codigo_oem || '—' }}
                       </span>
                     </div>
-                  </div>
-                </td>
 
-                <!-- 3. Códigos Alternos por Catálogo -->
-                <td class="py-2 px-2.5 align-middle border-b border-slate-100">
-                  <div class="flex flex-wrap gap-1">
-                    <template v-if="getPartEquivalencias(part).length > 0">
+                    <!-- Códigos Alternos / Catálogos agrupados en Código OEM -->
+                    <div v-if="getPartEquivalencias(part).length > 0" class="flex flex-wrap gap-1 pt-0.5">
                       <span
                         v-for="eq in getPartEquivalencias(part)"
                         :key="eq.id"
@@ -5541,10 +5530,7 @@ onUnmounted(() => {
                         <span class="font-sans text-[9px] uppercase opacity-90">{{ eq.marca_alterna }}:</span>
                         <strong>{{ eq.codigo_alterno }}</strong>
                       </span>
-                    </template>
-                    <span v-else class="text-[10px] text-slate-400 italic">
-                      Sin cruces
-                    </span>
+                    </div>
                   </div>
                 </td>
 
@@ -6017,7 +6003,10 @@ onUnmounted(() => {
 
               <!-- Empty State -->
               <tr v-if="displayedParts.length === 0">
-                <td colspan="5" class="py-10 text-center text-slate-400 bg-white">
+                <td
+                  :colspan="hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal' ? 3 + Math.max(1, activeTableGroupColumns.length) : 4"
+                  class="py-10 text-center text-slate-400 bg-white"
+                >
                   <div class="max-w-sm mx-auto space-y-2">
                     <AlertCircle class="w-6 h-6 text-slate-300 mx-auto" />
                     <h4 class="text-xs font-bold text-slate-700">No hay repuestos coincidentes</h4>
