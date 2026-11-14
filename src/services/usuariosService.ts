@@ -747,13 +747,7 @@ export function verificarCredencialAdmin(params: {
     id: params.id,
     email: params.email,
   })
-  if (expected && params.password === expected) {
-    return true
-  }
-  return obtenerCandidatosPasswordUsuario({
-    id: params.id,
-    email: params.email,
-  }).includes(params.password)
+  return !!expected && params.password === expected
 }
 
 /**
