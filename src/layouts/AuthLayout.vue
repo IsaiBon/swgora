@@ -5,12 +5,12 @@
   <div class="auth-shell relative min-h-screen w-full flex flex-col items-center justify-between px-4 py-5 sm:px-6 sm:py-6 bg-[#09132B] overflow-x-hidden font-sans selection:bg-[#BFEBF2]/35 selection:text-white">
     <!-- Imagen de fondo de taller -->
     <div
-      class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none"
+      class="absolute inset-0 bg-cover bg-center opacity-45 pointer-events-none"
       style="background-image: url('/images/workshop-bg.jpg');"
     ></div>
 
     <!-- Capas de profundidad Zafiro + Halo Cian (sin naranja) -->
-    <div class="absolute inset-0 bg-gradient-to-br from-[#09132B]/95 via-[#0D1B3E]/90 to-[#004B97]/85 pointer-events-none"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-[#09132B]/80 via-[#0D1B3E]/75 to-[#004B97]/70 pointer-events-none"></div>
     <div
       class="absolute inset-0 pointer-events-none"
       style="background: radial-gradient(circle at 22% 15%, rgba(4, 196, 217, 0.24) 0%, transparent 45%), radial-gradient(circle at 82% 82%, rgba(37, 99, 235, 0.18) 0%, transparent 45%);"
