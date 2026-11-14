@@ -3307,7 +3307,7 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- ========================================================================= -->
-    <div class="sticky top-[72px] z-20 studio-card catalog-gradient-frame backdrop-blur-md p-2.5 sm:p-3 space-y-1.5 overflow-visible">
+    <div class="sticky top-[72px] z-20 studio-card backdrop-blur-md p-2.5 sm:p-3 space-y-1.5 overflow-visible">
       
       <!-- Fila Superior: Buscador Universal + Chips Activos + Pestañas + Botón Filtros Móvil -->
       <div class="flex items-center gap-2 flex-wrap lg:flex-nowrap">
@@ -3924,7 +3924,7 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <div 
       v-if="!selectedBrand && !brandInput && !selectedMotor && !motorInput && !selectedModel && !selectedYear && !yearInput && !selectedComponent && !searchInput && !showAllMotors" 
-      class="catalog-gradient-frame rounded-2xl shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
+      class="bg-white rounded-2xl border border-slate-200 shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
     >
       <div class="w-12 h-12 rounded-xl bg-cyan-50 border border-cyan-200/80 text-[#04C4D9] flex items-center justify-center mx-auto shadow-2xs">
         <Sparkles class="w-6 h-6" />
@@ -3970,7 +3970,7 @@ onUnmounted(() => {
       class="space-y-3.5"
     >
       <!-- Encabezado de la tabla de motores -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 catalog-gradient-frame px-3.5 py-2.5 rounded-xl shadow-2xs">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <div class="flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
           <h3 class="text-xs sm:text-sm font-bold text-slate-900">
@@ -4001,7 +4001,7 @@ onUnmounted(() => {
       </div>
 
       <!-- TABLA TÉCNICA DE MOTORES -->
-      <div class="studio-card catalog-gradient-frame rounded-2xl shadow-2xs overflow-hidden">
+      <div class="studio-card rounded-2xl shadow-2xs overflow-hidden">
         
         <!-- Barra de Estado / Paginación Resumen -->
         <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white py-2 px-4 flex items-center justify-between text-xs font-medium">
@@ -4244,7 +4244,7 @@ onUnmounted(() => {
       <!-- ======================================================================= -->
       <!-- BARRA DE FILTROS DE MEDIDAS TÉCNICAS (MINIMALISTA)                      -->
       <!-- ======================================================================= -->
-      <div v-if="selectedComponent" class="catalog-gradient-frame p-3.5 rounded-2xl shadow-2xs space-y-2.5">
+      <div v-if="selectedComponent" class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
         
         <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
           <div class="flex items-center gap-2">
@@ -4904,7 +4904,7 @@ onUnmounted(() => {
       </div>
 
       <!-- TABLA TÉCNICA DE REPUESTOS EN FORMATO MATRIZ (MINIMALISTA) -->
-      <div class="studio-card catalog-gradient-frame rounded-2xl shadow-2xs overflow-hidden">
+      <div class="studio-card rounded-2xl shadow-2xs overflow-hidden">
         
         <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap text-xs font-bold">
           <span class="flex items-center gap-1.5">
@@ -7278,15 +7278,3 @@ onUnmounted(() => {
 
   </div>
 </template>
-
-<style scoped>
-.catalog-gradient-frame {
-  border: 2.5px solid transparent !important;
-  background-color: #ffffff;
-  background-image:
-    linear-gradient(#ffffff, #ffffff),
-    linear-gradient(125deg, #04C4D9 0%, #0284C7 34%, #004B97 68%, #0D1B3E 100%);
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-}
-</style>
