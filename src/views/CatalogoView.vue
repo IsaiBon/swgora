@@ -250,7 +250,6 @@ const handleDeleteQuickBrand = async () => {
     }
     if (selectedMotor.value?.fabricante_id === targetId) {
       selectedMotor.value = null
-      motorInput.value = ''
     }
     showToast(`✓ Marca "${targetName}" eliminada`)
   } catch (err) {
@@ -679,9 +678,7 @@ const handleMotorKeydown = (e: KeyboardEvent) => {
       setTimeout(() => componentInputRef.value?.focus(), 60)
     }
   } else if (e.key === 'Escape') {
-    if (motorInput.value) {
-      handleClearSelectedMotor()
-    }
+    isMotorOpen.value = false
   }
 }
 
@@ -1960,27 +1957,66 @@ const handleFocusBrand = (e?: Event) => {
   }
 }
 
+const onInputBrand = async () => {
+  isBrandOpen.value = true
+  highlightedBrandIdx.value = 0
+  if (selectedBrand.value && brandInput.value.trim().toLowerCase() !== selectedBrand.value.nombre.toLowerCase().trim()) {
+    selectedBrand.value = null
+    selectedModel.value = null
+    modelInput.value = ''
+    selectedMotor.value = null
+    showAllMotors.value = Boolean(motorInput.value.trim())
+    await catalogStore.selectFabricante(null)
+    if (selectedComponent.value) {
+      activeViewTab.value = 'repuestos'
+      await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category)
+    } else {
+      catalogStore.repuestos = []
+      activeViewTab.value = 'motores'
+    }
+  }
+}
+
 const handleSelectBrand = async (fab: Fabricante) => {
+  const keepModel = selectedModel.value?.fabricante_id === fab.id ? selectedModel.value : null
+  const keepMotor = selectedMotor.value?.fabricante_id === fab.id ? selectedMotor.value : null
+  const prevMotorModelIds = [...catalogStore.modeloIdsDelMotor]
+
   selectedBrand.value = fab
   brandInput.value = fab.nombre.toUpperCase()
   isBrandOpen.value = false
-  showAllMotors.value = false
+  showAllMotors.value = Boolean(motorInput.value.trim())
   motorCurrentPage.value = 1
 
-  // Reiniciar modelo y motor subordinados
-  selectedModel.value = null
-  modelInput.value = ''
-  selectedMotor.value = null
-  motorInput.value = ''
+  // Conservar modelo y motor si pertenecen a la misma marca; nunca borrar motorInput
+  if (!keepModel) {
+    selectedModel.value = null
+    modelInput.value = ''
+  }
+  selectedMotor.value = keepMotor
 
   // Limpiar filtros dimensionales para garantizar catálogo limpio en la nueva marca
   resetMeasurementsFilters()
 
   await catalogStore.selectFabricante(fab.id)
 
+  if (keepModel) {
+    await catalogStore.selectModelo(keepModel.id)
+  }
+  if (keepMotor) {
+    catalogStore.selectedMotorId = keepMotor.id
+    catalogStore.modeloIdsDelMotor = prevMotorModelIds.length > 0 ? prevMotorModelIds : [...(keepMotor.modelo_ids || [])]
+  }
+
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
-    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, fab.id)
+    if (keepMotor) {
+      await catalogStore.fetchRepuestosByMotor(keepMotor.id)
+    } else {
+      await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, fab.id, keepModel?.id)
+    }
+  } else if (keepMotor && activeViewTab.value === 'repuestos') {
+    await catalogStore.fetchRepuestosByMotor(keepMotor.id)
   } else {
     activeViewTab.value = 'motores'
   }
@@ -1993,8 +2029,7 @@ const handleClearSelectedBrand = async () => {
   selectedModel.value = null
   modelInput.value = ''
   selectedMotor.value = null
-  motorInput.value = ''
-  showAllMotors.value = false
+  showAllMotors.value = Boolean(motorInput.value.trim())
   await catalogStore.selectFabricante(null)
 
   if (selectedComponent.value) {
@@ -2035,16 +2070,23 @@ const filteredModels = computed(() => {
 })
 
 const handleSelectModel = async (mod: Modelo) => {
+  const preservedMotor =
+    selectedMotor.value && doesMotorMatchModel(selectedMotor.value, mod)
+      ? selectedMotor.value
+      : null
+  const prevMotorModelIds = [...catalogStore.modeloIdsDelMotor]
+
   selectedModel.value = mod
   modelInput.value = mod.nombre
   isModelOpen.value = false
   motorCurrentPage.value = 1
+  if (motorInput.value.trim()) {
+    showAllMotors.value = true
+  }
 
   // Conservar motorInput escrito por el usuario (ej. "2L");
   // solo deseleccionar selectedMotor puntual si ya no coincide con el modelo elegido.
-  if (selectedMotor.value && !doesMotorMatchModel(selectedMotor.value, mod)) {
-    selectedMotor.value = null
-  }
+  selectedMotor.value = preservedMotor
 
   // Si no había fabricante seleccionado o difiere, autocompletar fabricante del modelo
   if (mod.fabricante_id && (!selectedBrand.value || selectedBrand.value.id !== mod.fabricante_id)) {
@@ -2057,23 +2099,48 @@ const handleSelectModel = async (mod: Modelo) => {
 
   await catalogStore.selectModelo(mod.id)
 
+  if (preservedMotor) {
+    catalogStore.selectedMotorId = preservedMotor.id
+    catalogStore.modeloIdsDelMotor = prevMotorModelIds.length > 0 ? prevMotorModelIds : [...(preservedMotor.modelo_ids || [])]
+  }
+
   if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
-    await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id, mod.id)
+    if (preservedMotor) {
+      await catalogStore.fetchRepuestosByMotor(preservedMotor.id)
+    } else {
+      await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id, mod.id)
+    }
+  } else if (preservedMotor && activeViewTab.value === 'repuestos') {
+    await catalogStore.fetchRepuestosByMotor(preservedMotor.id)
   } else {
     activeViewTab.value = 'motores'
   }
 }
 
 const handleClearSelectedModel = async () => {
+  const preservedMotor = selectedMotor.value
+  const prevMotorModelIds = [...catalogStore.modeloIdsDelMotor]
+
   selectedModel.value = null
   setTimeout(() => modelInputRef.value?.focus(), 50)
   modelInput.value = ''
-  if (selectedMotor.value) {
-    selectedMotor.value = null
+  if (motorInput.value.trim()) {
+    showAllMotors.value = true
   }
   await catalogStore.selectModelo(null)
-  if (selectedComponent.value) {
+
+  if (preservedMotor) {
+    selectedMotor.value = preservedMotor
+    catalogStore.selectedMotorId = preservedMotor.id
+    catalogStore.modeloIdsDelMotor = prevMotorModelIds.length > 0 ? prevMotorModelIds : [...(preservedMotor.modelo_ids || [])]
+    if (selectedComponent.value || activeViewTab.value === 'repuestos') {
+      activeViewTab.value = 'repuestos'
+      await catalogStore.fetchRepuestosByMotor(preservedMotor.id)
+    } else {
+      activeViewTab.value = 'motores'
+    }
+  } else if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
     await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
   } else {
@@ -2090,15 +2157,34 @@ const onFocusModel = (e?: Event) => {
 const onInputModel = async () => {
   isModelOpen.value = true
   motorCurrentPage.value = 1
+  if (motorInput.value.trim()) {
+    showAllMotors.value = true
+  }
   if (selectedModel.value && normalizeText(modelInput.value) !== normalizeText(selectedModel.value.nombre)) {
+    const preservedMotor = selectedMotor.value
+    const prevMotorModelIds = [...catalogStore.modeloIdsDelMotor]
     selectedModel.value = null
-    if (selectedMotor.value) {
-      selectedMotor.value = null
-    }
     await catalogStore.selectModelo(null)
+    if (preservedMotor) {
+      const modQuery = normalizeText(modelInput.value)
+      const stillMatches = !modQuery || getMotorModelNamesList(preservedMotor).some(n => normalizeText(n).includes(modQuery))
+      if (stillMatches) {
+        selectedMotor.value = preservedMotor
+        catalogStore.selectedMotorId = preservedMotor.id
+        catalogStore.modeloIdsDelMotor = prevMotorModelIds.length > 0 ? prevMotorModelIds : [...(preservedMotor.modelo_ids || [])]
+      } else {
+        selectedMotor.value = null
+      }
+    }
     if (selectedComponent.value) {
       activeViewTab.value = 'repuestos'
-      await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+      if (selectedMotor.value) {
+        await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+      } else {
+        await catalogStore.fetchRepuestosByGrupo(selectedComponent.value.category, undefined, selectedBrand.value?.id)
+      }
+    } else if (selectedMotor.value && activeViewTab.value === 'repuestos') {
+      await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
     } else {
       activeViewTab.value = 'motores'
     }
@@ -2910,6 +2996,24 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
   if (selectedMotor.value) {
     const targetMotorId = selectedMotor.value.id
     list = list.filter(r => r.motor_id === targetMotorId || r.motor?.id === targetMotorId)
+  } else if (motorInput.value.trim()) {
+    const mq = motorInput.value.trim().toLowerCase()
+    const matchingMotorIds = new Set(brandMotorsList.value.map(m => m.id))
+    const codeMatches = (rawCode?: string | null) => {
+      const c = String(rawCode || '').trim().toLowerCase()
+      if (!c) return false
+      return motorMatchMode.value === 'startsWith' ? c.startsWith(mq) : c.includes(mq)
+    }
+    list = list.filter(r => {
+      if (r.motor_id && matchingMotorIds.has(r.motor_id)) return true
+      if (r.motor?.id && matchingMotorIds.has(r.motor.id)) return true
+      if (codeMatches(r.motor?.codigo) || codeMatches(r.motor?.nombre_comercial) || codeMatches(r.motor?.denominacion_venta)) return true
+      const compat = (r.especificaciones_tecnicas as any)?.motores_compatibles
+      if (Array.isArray(compat) && compat.some((c: unknown) => codeMatches(String(c)))) return true
+      const motTexto = (r.dimensiones as any)?.motores_texto
+      if (typeof motTexto === 'string' && motTexto.toLowerCase().includes(mq)) return true
+      return false
+    })
   }
 
   if (selectedBrand.value) {
@@ -3626,7 +3730,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Badges activos integrados en la fila superior -->
-        <div v-if="selectedBrand || selectedModel || selectedMotor || selectedYear || selectedComponent" class="hidden md:flex items-center gap-1 flex-wrap">
+        <div v-if="selectedBrand || selectedModel || selectedMotor || motorInput.trim() || selectedYear || selectedComponent" class="hidden md:flex items-center gap-1 flex-wrap">
           <span v-if="selectedBrand || brandInput" class="px-2 py-0.5 rounded-md bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] text-[11px] font-bold">
             {{ selectedBrand?.nombre || brandInput }}
           </span>
@@ -3634,8 +3738,8 @@ onUnmounted(() => {
             <span>{{ selectedModel.nombre }}</span>
             <button type="button" @click="handleClearSelectedModel" class="text-slate-400 hover:text-rose-500 cursor-pointer"><X class="w-2.5 h-2.5" /></button>
           </span>
-          <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1E446E] text-white font-mono text-[11px] font-bold">
-            <span>{{ selectedMotor.codigo }}</span>
+          <span v-if="selectedMotor || motorInput.trim()" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1E446E] text-white font-mono text-[11px] font-bold">
+            <span>{{ selectedMotor?.codigo || motorInput.trim().toUpperCase() }}</span>
             <button type="button" @click="handleClearSelectedMotor" class="text-slate-300 hover:text-rose-300 cursor-pointer"><X class="w-2.5 h-2.5" /></button>
           </span>
           <span v-if="selectedYear" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-mono text-[11px] font-bold">
@@ -3720,7 +3824,7 @@ onUnmounted(() => {
               v-model="brandInput"
               @focus="handleFocusBrand"
               @click="handleFocusBrand"
-              @input="isBrandOpen = true; highlightedBrandIdx = 0"
+              @input="onInputBrand()"
               @keydown="handleBrandKeydown"
               type="text"
               placeholder="Fabricante..."
