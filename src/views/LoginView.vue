@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useTallerStore } from '@/stores/taller'
 import {
   KeyRound,
   X,
@@ -23,6 +24,28 @@ import {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const tallerStore = useTallerStore()
+
+// Personalización reactiva del Login configurada por el Administrador en Módulo de Taller
+const loginLogoUrl = computed(() => tallerStore.tallerInfo.logo_url || '/logo-taller.png')
+const loginTitle = computed(() => {
+  return viewMode.value === 'login'
+    ? (tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco')
+    : 'Restablecer Contraseña'
+})
+const loginSubtitle = computed(() => {
+  return viewMode.value === 'login'
+    ? (tallerStore.tallerInfo.login_subtitulo || 'Taller Industrial y Rectificado de Motores')
+    : 'Configuración de seguridad de tu cuenta'
+})
+const loginMessage = computed(() => {
+  return viewMode.value === 'login'
+    ? (tallerStore.tallerInfo.login_mensaje || 'Ingresa tus credenciales para acceder al sistema')
+    : 'Crea una contraseña segura para recuperar tu acceso'
+})
+const companyNameForRecovery = computed(() => {
+  return tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco'
+})
 
 // Modo activo de la vista: 'login' | 'reset' (actualización de nueva contraseña)
 type ViewMode = 'login' | 'reset'
@@ -213,7 +236,8 @@ watch(
   }
 )
 
-onMounted(() => {
+onMounted(async () => {
+  await tallerStore.loadTallerInfo()
   inspectUrlForAuthFlow()
 })
 
@@ -369,35 +393,27 @@ const handleLogoError = (e: Event) => {
       <div class="h-1.5 w-full bg-gradient-to-r from-[#0D1B3E] via-[#004B97] to-[#04C4D9]"></div>
 
       <div class="p-6 sm:p-8">
-        <!-- Cabecera de Marca JR Blanco -->
+        <!-- Cabecera de Marca Personalizable -->
         <div class="flex flex-col items-center text-center mb-6">
           <div
             class="w-16 h-16 sm:w-[74px] sm:h-[74px] rounded-2xl bg-gradient-to-br from-[#0D1B3E] to-[#004B97] p-2 shadow-md ring-1 ring-[#BFEBF2]/50 flex items-center justify-center overflow-hidden mb-3.5 animate-soft-float"
           >
             <img
-              src="/logo-taller.png"
-              alt="Logo Oficial Taller JR Blanco"
+              :src="loginLogoUrl"
+              :alt="loginTitle"
               class="w-full h-full object-contain select-none"
               @error="handleLogoError"
             />
           </div>
 
           <h1 class="font-display text-xl sm:text-2xl font-extrabold text-[#0D1B3E] tracking-tight">
-            {{ viewMode === 'login' ? 'JR Blanco' : 'Restablecer Contraseña' }}
+            {{ loginTitle }}
           </h1>
           <p class="text-[11px] font-bold uppercase tracking-wider text-[#004B97] mt-1">
-            {{
-              viewMode === 'login'
-                ? 'Taller Industrial y Rectificado de Motores'
-                : 'Configuración de seguridad de tu cuenta'
-            }}
+            {{ loginSubtitle }}
           </p>
           <p class="text-xs text-slate-500 mt-1">
-            {{
-              viewMode === 'login'
-                ? 'Ingresa tus credenciales para acceder al sistema'
-                : 'Crea una contraseña segura para recuperar tu acceso'
-            }}
+            {{ loginMessage }}
           </p>
         </div>
 
@@ -859,7 +875,7 @@ const handleLogoError = (e: Event) => {
               </div>
 
               <p class="text-xs text-slate-600 mb-4 leading-relaxed">
-                Ingresa el correo asociado a tu cuenta de <strong>JR Blanco</strong>. Te enviaremos un enlace seguro para que definas una nueva contraseña.
+                Ingresa el correo asociado a tu cuenta de <strong>{{ companyNameForRecovery }}</strong>. Te enviaremos un enlace seguro para que definas una nueva contraseña.
               </p>
 
               <!-- Mensaje de error en modal -->

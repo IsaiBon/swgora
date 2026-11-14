@@ -10,6 +10,10 @@ export interface TallerInfo {
   eslogan?: string
   logo_url?: string
   iva_porcentaje?: number
+  login_titulo?: string
+  login_subtitulo?: string
+  login_mensaje?: string
+  login_bg_url?: string
   created_at?: string
   updated_at?: string
 }
@@ -22,7 +26,11 @@ export const DEFAULT_TALLER_INFO: TallerInfo = {
   celular2: '7142-0401',
   eslogan: 'APOYARTE ES NUESTRO COMPROMISO',
   logo_url: '/logo-taller.png',
-  iva_porcentaje: 13
+  iva_porcentaje: 13,
+  login_titulo: 'JR Blanco',
+  login_subtitulo: 'Taller Industrial y Rectificado de Motores',
+  login_mensaje: 'Ingresa tus credenciales para acceder al sistema',
+  login_bg_url: '/images/workshop-bg.jpg'
 }
 
 const LOCAL_STORAGE_KEY = 'swgora_taller_config'
@@ -40,15 +48,20 @@ function getTallerStorageKey(): string {
 function getDefaultTallerInfoForContext(): TallerInfo {
   const ctx = getActiveTenantContext()
   if (ctx.tenantId) {
+    const defaultName = (ctx.tallerNombre || ctx.userName || 'MI TALLER MECÁNICO').toUpperCase()
     return {
       id: `taller_${ctx.tenantId}`,
-      nombre: (ctx.tallerNombre || ctx.userName || 'MI TALLER MECÁNICO').toUpperCase(),
+      nombre: defaultName,
       direccion: 'Configura la dirección de tu taller',
       celular1: '',
       celular2: '',
       eslogan: 'SERVICIO MECÁNICO Y RECTIFICACIÓN',
       logo_url: '/logo-taller.png',
       iva_porcentaje: 13,
+      login_titulo: ctx.tallerNombre || 'Mi Taller',
+      login_subtitulo: 'Taller Industrial y Rectificado de Motores',
+      login_mensaje: 'Ingresa tus credenciales para acceder al sistema',
+      login_bg_url: '/images/workshop-bg.jpg',
     }
   }
   return { ...DEFAULT_TALLER_INFO }
@@ -96,6 +109,10 @@ export const tallerService = {
           iva_porcentaje: data.iva_porcentaje !== undefined && data.iva_porcentaje !== null
             ? Number(data.iva_porcentaje)
             : cachedIva,
+          login_titulo: data.login_titulo !== undefined && data.login_titulo !== null ? data.login_titulo : defaults.login_titulo,
+          login_subtitulo: data.login_subtitulo !== undefined && data.login_subtitulo !== null ? data.login_subtitulo : defaults.login_subtitulo,
+          login_mensaje: data.login_mensaje !== undefined && data.login_mensaje !== null ? data.login_mensaje : defaults.login_mensaje,
+          login_bg_url: data.login_bg_url !== undefined && data.login_bg_url !== null ? data.login_bg_url : defaults.login_bg_url,
           created_at: data.created_at,
           updated_at: data.updated_at
         }
@@ -184,30 +201,53 @@ export const tallerService = {
       logo_url: info.logo_url || defaults.logo_url,
       updated_at: new Date().toISOString()
     }
-    const payload = { ...basePayload, iva_porcentaje: ivaPct }
+    const fullPayload = {
+      ...basePayload,
+      iva_porcentaje: ivaPct,
+      login_titulo: info.login_titulo !== undefined ? info.login_titulo.trim() : (defaults.login_titulo || 'JR Blanco'),
+      login_subtitulo: info.login_subtitulo !== undefined ? info.login_subtitulo.trim() : (defaults.login_subtitulo || 'Taller Industrial y Rectificado de Motores'),
+      login_mensaje: info.login_mensaje !== undefined ? info.login_mensaje.trim() : (defaults.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'),
+      login_bg_url: info.login_bg_url || defaults.login_bg_url || '/images/workshop-bg.jpg'
+    }
 
     try {
       const { data, error } = await supabase
         .from('taller')
-        .upsert(payload)
+        .upsert(fullPayload)
         .select('*')
         .single()
 
       if (!error && data) {
-        const merged = { ...data, iva_porcentaje: data.iva_porcentaje ?? ivaPct } as TallerInfo
+        const merged = { ...fullPayload, ...data } as TallerInfo
         if (typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.setItem(storageKey, JSON.stringify(merged))
         }
         return merged
       } else if (error) {
-        // Fallback si la columna iva_porcentaje aún no existe en Supabase
+        // Fallback 1: Si faltan las nuevas columnas de login, intentar con basePayload + iva_porcentaje
+        const payloadWithIva = { ...basePayload, iva_porcentaje: ivaPct }
+        const { data: retryIvaData, error: retryIvaErr } = await supabase
+          .from('taller')
+          .upsert(payloadWithIva)
+          .select('*')
+          .single()
+
+        if (!retryIvaErr && retryIvaData) {
+          const merged = { ...fullPayload, ...retryIvaData } as TallerInfo
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem(storageKey, JSON.stringify(merged))
+          }
+          return merged
+        }
+
+        // Fallback 2: Intentar solo basePayload
         const { data: retryData, error: retryErr } = await supabase
           .from('taller')
           .upsert(basePayload)
           .select('*')
           .single()
         if (!retryErr && retryData) {
-          const merged = { ...retryData, iva_porcentaje: ivaPct } as TallerInfo
+          const merged = { ...fullPayload, ...retryData } as TallerInfo
           if (typeof window !== 'undefined' && window.localStorage) {
             window.localStorage.setItem(storageKey, JSON.stringify(merged))
           }
@@ -219,11 +259,11 @@ export const tallerService = {
       console.error('[tallerService] Excepción actualizando taller:', err)
     }
 
-    // Guardar en localStorage como fallback
+    // Guardar en localStorage como fallback garantizado
     if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(storageKey, JSON.stringify(payload))
+      window.localStorage.setItem(storageKey, JSON.stringify(fullPayload))
     }
-    return payload as TallerInfo
+    return fullPayload as TallerInfo
   },
 
   /**
@@ -231,9 +271,23 @@ export const tallerService = {
    * y retorna la URL pública. Cuenta con respaldo automático a Data URL base64.
    */
   async uploadLogo(file: File): Promise<string> {
+    return this.uploadAsset(file, 'logo_taller')
+  },
+
+  /**
+   * Sube una nueva imagen de fondo para la pantalla de Login en Supabase Storage (bucket 'taller')
+   */
+  async uploadLoginBg(file: File): Promise<string> {
+    return this.uploadAsset(file, 'login_bg')
+  },
+
+  /**
+   * Sube un archivo gráfico al bucket 'taller' o genera un Data URL de respaldo
+   */
+  async uploadAsset(file: File, prefix = 'asset'): Promise<string> {
     try {
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png'
-      const cleanFileName = `logo_taller_${Date.now()}.${fileExt}`
+      const cleanFileName = `${prefix}_${Date.now()}.${fileExt}`
 
       const { data, error } = await supabase.storage
         .from('taller')
@@ -251,10 +305,10 @@ export const tallerService = {
           return publicUrlData.publicUrl
         }
       } else if (error) {
-        console.warn('[tallerService] Advertencia subiendo logo a Storage, usando Data URL:', error)
+        console.warn(`[tallerService] Advertencia subiendo ${prefix} a Storage, usando Data URL:`, error)
       }
     } catch (err) {
-      console.warn('[tallerService] Excepción en uploadLogo:', err)
+      console.warn(`[tallerService] Excepción en uploadAsset (${prefix}):`, err)
     }
 
     // Fallback: Convertir archivo a Data URL base64 ultra-estable
