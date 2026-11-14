@@ -4370,7 +4370,7 @@ onUnmounted(() => {
           <!-- Campos de búsqueda: Diámetro + Anillos numerados (1°, 2°, 3°, 4°...) + Anillo de aceite SIEMPRE al final -->
           <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
             <!-- Diámetro (siempre primero) -->
-            <div v-if="isTableParamInFilter('diametro_cilindro_mm')" class="catalog-gradient-frame p-2 rounded-lg flex flex-col justify-between">
+            <div v-if="isTableParamInFilter('diametro_cilindro_mm')" class="bg-blue-50/50 p-2 rounded-lg border border-blue-200/90 flex flex-col justify-between">
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-[10px] font-black uppercase tracking-wider text-[#004B97] truncate" title="Diámetro nominal del cilindro / pistón">
                   {{ getTableParamLabel('diametro_cilindro_mm', 'Diámetro') }}
@@ -4388,7 +4388,7 @@ onUnmounted(() => {
             </div>
 
             <!-- 1er Anillo (Fuego): Grosor y Altura -->
-            <div v-if="isTableParamInFilter('anillo1_h1') || isTableParamInFilter('anillo1_a1')" class="catalog-gradient-frame p-2 rounded-lg">
+            <div v-if="isTableParamInFilter('anillo1_h1') || isTableParamInFilter('anillo1_a1')" class="bg-slate-50/80 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
                 <span>1er Anillo</span>
                 <span class="text-[9px] text-slate-400 font-normal">Fuego</span>
@@ -4424,7 +4424,7 @@ onUnmounted(() => {
             </div>
 
             <!-- 2do Anillo: Grosor y Altura -->
-            <div v-if="isTableParamInFilter('anillo2_h1') || isTableParamInFilter('anillo2_a1')" class="catalog-gradient-frame p-2 rounded-lg">
+            <div v-if="isTableParamInFilter('anillo2_h1') || isTableParamInFilter('anillo2_a1')" class="bg-slate-50/80 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
                 <span>2do Anillo</span>
                 <span class="text-[9px] text-slate-400 font-normal">Compr.</span>
@@ -4460,7 +4460,7 @@ onUnmounted(() => {
             </div>
 
             <!-- 3er Anillo: Grosor y Altura -->
-            <div class="catalog-gradient-frame p-2 rounded-lg">
+            <div class="bg-slate-50/80 p-2 rounded-lg border border-slate-200/90">
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
                 <span>3er Anillo</span>
                 <span class="text-[9px] text-[#038391] font-mono font-semibold">Compr.</span>
@@ -4499,7 +4499,7 @@ onUnmounted(() => {
             <div
               v-for="(slot, sIdx) in extraRingFilters"
               :key="`extra-ring-flt-${sIdx}`"
-              class="catalog-gradient-frame p-2 rounded-lg"
+              class="bg-slate-50/80 p-2 rounded-lg border border-slate-200/90"
             >
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 mb-1 flex items-center justify-between">
                 <span>{{ sIdx + 4 }}° Anillo</span>
@@ -4545,7 +4545,7 @@ onUnmounted(() => {
             <!-- Anillo de aceite: con los otros anillos (siempre última posición de los anillos) -->
             <div
               v-if="isTableParamInFilter('aceite_h1') || isTableParamInFilter('aceite_a1')"
-              class="catalog-gradient-frame p-2 rounded-lg"
+              class="bg-slate-50/80 p-2 rounded-lg border border-slate-200/90"
             >
               <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 mb-1 flex items-center justify-between">
                 <span>Anillo Aceite</span>
