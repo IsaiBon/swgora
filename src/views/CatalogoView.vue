@@ -3318,7 +3318,7 @@ onUnmounted(() => {
             @input="handleSearchInput"
             type="text"
             placeholder="Buscar por código OEM, cruce o descripción..."
-            class="w-full pl-8 pr-12 py-1.5 min-h-[34px] text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
+            class="w-full pl-8 pr-12 py-1.5 h-[32px] text-[11px] placeholder:text-[11px] font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
           />
           <div class="absolute right-2 top-1.5 flex items-center gap-1">
             <Loader2 v-if="catalogStore.isSearching" class="w-3.5 h-3.5 text-[#04C4D9] animate-spin" />
@@ -3417,34 +3417,13 @@ onUnmounted(() => {
         
         <!-- 1. FABRICANTE -->
         <div class="relative combobox-brand">
-          <div class="flex items-center justify-between mb-0.5">
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Fabricante
             </label>
-            <div class="flex items-center gap-2">
-              <button
-                v-if="selectedBrand"
-                type="button"
-                @click="openEditBrandModal(selectedBrand)"
-                class="text-[10px] font-bold text-slate-500 hover:text-[#004B97] flex items-center gap-0.5 transition cursor-pointer"
-                title="Editar o eliminar marca seleccionada"
-              >
-                <Edit3 class="w-3 h-3" />
-                <span>Editar</span>
-              </button>
-              <button
-                type="button"
-                @click="openQuickCreateBrandModal(brandInput)"
-                class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
-                title="Registrar una nueva marca o fabricante"
-              >
-                <Plus class="w-3 h-3" />
-                <span>Nueva</span>
-              </button>
-            </div>
           </div>
 
-          <div class="relative flex items-center">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="brandInputRef"
               v-model="brandInput"
@@ -3453,22 +3432,41 @@ onUnmounted(() => {
               @input="isBrandOpen = true; highlightedBrandIdx = 0"
               @keydown="handleBrandKeydown"
               type="text"
-              placeholder="Buscar fabricante..."
-              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
+              placeholder="Fabricante..."
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
-            <button
-              v-if="brandInput"
-              type="button"
-              @click="handleClearSelectedBrand"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-              title="Limpiar marca"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isBrandOpen = !isBrandOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
+            <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
+              <button
+                v-if="selectedBrand"
+                type="button"
+                @click="openEditBrandModal(selectedBrand)"
+                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
+                title="Editar o eliminar marca"
+              >
+                <Edit3 class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click="openQuickCreateBrandModal(brandInput)"
+                class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
+                title="Nueva marca"
+              >
+                <Plus class="w-3 h-3" />
+              </button>
+              <button
+                v-if="brandInput"
+                type="button"
+                @click="handleClearSelectedBrand"
+                class="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Limpiar marca"
+              >
+                <X class="w-3 h-3" />
+              </button>
+              <ChevronDown
+                @click="isBrandOpen = !isBrandOpen"
+                class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600"
+              />
+            </div>
           </div>
 
           <!-- Dropdown Marcas -->
@@ -3517,12 +3515,12 @@ onUnmounted(() => {
 
         <!-- 2. MOTOR -->
         <div class="relative combobox-motor">
-          <div class="flex items-center justify-between mb-0.5 gap-1 flex-wrap">
+          <div class="flex items-center justify-between mb-0.5 gap-1 min-h-[18px]">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Motor
+            </label>
             <div class="flex items-center gap-1">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                Motor
-              </label>
-              <!-- Buscador Dual de Motores: Inicia con vs Contiene -->
+              <!-- Buscador Dual de Motores: Inicia vs Cont -->
               <div
                 class="inline-flex items-center p-0.5 rounded-md bg-slate-100 border border-slate-200 text-[9px] font-extrabold"
                 title="Cambiar modo de coincidencia al buscar código de motor"
@@ -3554,43 +3552,21 @@ onUnmounted(() => {
                   Cont
                 </button>
               </div>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <button
-                v-if="selectedMotor"
-                type="button"
-                @click="openEditMotorModal(selectedMotor)"
-                class="text-[10px] font-bold text-slate-500 hover:text-[#004B97] flex items-center gap-0.5 transition cursor-pointer"
-                title="Editar o eliminar motor seleccionado"
-              >
-                <Edit3 class="w-3 h-3" />
-                <span>Editar</span>
-              </button>
-              <button
-                type="button"
-                @click="openQuickCreateMotorModal(motorInput)"
-                class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
-                title="Registrar un nuevo código de motor"
-              >
-                <Plus class="w-3 h-3" />
-                <span>Nuevo</span>
-              </button>
               <button
                 type="button"
                 @click="toggleMotorsWithPartsOnly"
-                class="text-[10px] font-bold px-1.5 py-0.2 rounded transition flex items-center gap-1 cursor-pointer"
+                class="text-[9px] font-bold px-1.5 py-0.5 rounded transition cursor-pointer"
                 :class="catalogStore.onlyMotorsWithParts 
                   ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40' 
                   : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
                 :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-                <span>{{ catalogStore.onlyMotorsWithParts ? 'C/Rep' : 'Todos' }}</span>
+                {{ catalogStore.onlyMotorsWithParts ? 'C/Rep' : 'Todos' }}
               </button>
             </div>
           </div>
 
-          <div class="relative flex items-center">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="motorInputRef"
               v-model="motorInput"
@@ -3599,55 +3575,53 @@ onUnmounted(() => {
               @input="onInputMotor"
               @keydown="handleMotorKeydown"
               type="text"
-              placeholder="Buscar o filtrar motor..."
-              class="w-full pl-2.5 pr-11 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
+              placeholder="Motor..."
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-mono font-bold bg-transparent focus:outline-none"
             />
-            <button
-              v-if="motorInput"
-              type="button"
-              @click="handleClearSelectedMotor"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-              title="Limpiar motor"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="onFocusMotor(); motorInputRef?.focus()"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
+            <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
+              <button
+                v-if="selectedMotor"
+                type="button"
+                @click="openEditMotorModal(selectedMotor)"
+                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
+                title="Editar o eliminar motor"
+              >
+                <Edit3 class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click="openQuickCreateMotorModal(motorInput)"
+                class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
+                title="Nuevo motor"
+              >
+                <Plus class="w-3 h-3" />
+              </button>
+              <button
+                v-if="motorInput"
+                type="button"
+                @click="handleClearSelectedMotor"
+                class="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Limpiar motor"
+              >
+                <X class="w-3 h-3" />
+              </button>
+              <ChevronDown
+                @click="onFocusMotor(); motorInputRef?.focus()"
+                class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600"
+              />
+            </div>
           </div>
         </div>
 
         <!-- 3. MODELO -->
         <div class="relative combobox-model">
-          <div class="flex items-center justify-between mb-0.5">
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Modelo
             </label>
-            <div class="flex items-center gap-2">
-              <button
-                v-if="selectedModel"
-                type="button"
-                @click="openEditModelModal(selectedModel)"
-                class="text-[10px] font-bold text-slate-500 hover:text-[#004B97] flex items-center gap-0.5 transition cursor-pointer"
-                title="Editar o eliminar modelo seleccionado"
-              >
-                <Edit3 class="w-3 h-3" />
-                <span>Editar</span>
-              </button>
-              <button
-                type="button"
-                @click="openQuickCreateModelModal(modelInput)"
-                class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
-                title="Registrar un nuevo modelo de vehículo"
-              >
-                <Plus class="w-3 h-3" />
-                <span>Nuevo</span>
-              </button>
-            </div>
           </div>
 
-          <div class="relative flex items-center">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="modelInputRef"
               v-model="modelInput"
@@ -3656,22 +3630,41 @@ onUnmounted(() => {
               @input="onInputModel(); highlightedModelIdx = 0"
               @keydown="handleModelKeydown"
               type="text"
-              :placeholder="selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Buscar modelo...'"
-              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
+              :placeholder="selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Modelo...'"
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
-            <button
-              v-if="modelInput"
-              type="button"
-              @click="handleClearSelectedModel"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-              title="Limpiar modelo"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isModelOpen = !isModelOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
+            <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
+              <button
+                v-if="selectedModel"
+                type="button"
+                @click="openEditModelModal(selectedModel)"
+                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
+                title="Editar o eliminar modelo"
+              >
+                <Edit3 class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click="openQuickCreateModelModal(modelInput)"
+                class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
+                title="Nuevo modelo"
+              >
+                <Plus class="w-3 h-3" />
+              </button>
+              <button
+                v-if="modelInput"
+                type="button"
+                @click="handleClearSelectedModel"
+                class="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Limpiar modelo"
+              >
+                <X class="w-3 h-3" />
+              </button>
+              <ChevronDown
+                @click="isModelOpen = !isModelOpen"
+                class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600"
+              />
+            </div>
           </div>
 
           <!-- Dropdown Modelos -->
@@ -3727,22 +3720,13 @@ onUnmounted(() => {
 
         <!-- 4. AÑO DE COMPATIBILIDAD -->
         <div class="relative combobox-year">
-          <div class="flex items-center justify-between mb-0.5">
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Año
             </label>
-            <button
-              type="button"
-              @click="openQuickCreateYearModal(yearInput)"
-              class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition"
-              title="Agregar un nuevo año o rango de compatibilidad"
-            >
-              <Plus class="w-3 h-3" />
-              <span>Nuevo</span>
-            </button>
           </div>
 
-          <div class="relative flex items-center">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               v-model="yearInput"
               @focus="isYearOpen = true"
@@ -3750,22 +3734,32 @@ onUnmounted(() => {
               @input="onInputYear"
               @keydown.enter.prevent="filteredYears[0] ? handleSelectYear(filteredYears[0]) : (yearInput.trim() ? handleSaveQuickYear(yearInput) : null)"
               type="text"
-              placeholder="Todos los años..."
-              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
+              placeholder="Todos..."
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-mono font-bold bg-transparent focus:outline-none"
             />
-            <button
-              v-if="selectedYear || yearInput"
-              type="button"
-              @click="handleClearYear"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-              title="Limpiar año"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isYearOpen = !isYearOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
+            <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
+              <button
+                type="button"
+                @click="openQuickCreateYearModal(yearInput)"
+                class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
+                title="Nuevo año"
+              >
+                <Plus class="w-3 h-3" />
+              </button>
+              <button
+                v-if="selectedYear || yearInput"
+                type="button"
+                @click="handleClearYear"
+                class="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Limpiar año"
+              >
+                <X class="w-3 h-3" />
+              </button>
+              <ChevronDown
+                @click="isYearOpen = !isYearOpen"
+                class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600"
+              />
+            </div>
           </div>
 
           <!-- Dropdown Años -->
@@ -3812,22 +3806,13 @@ onUnmounted(() => {
 
         <!-- 5. COMPONENTE -->
         <div class="relative combobox-component">
-          <div class="flex items-center justify-between mb-0.5">
-            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Componente
             </label>
-            <button
-              type="button"
-              @click="handleCreateNewGroup"
-              class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
-              title="Crear nueva familia paramétrica"
-            >
-              <Plus class="w-3 h-3 text-[#04C4D9]" />
-              <span>Familia</span>
-            </button>
           </div>
 
-          <div class="relative flex items-center">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="componentInputRef"
               v-model="componentInput"
@@ -3836,22 +3821,41 @@ onUnmounted(() => {
               @input="isComponentOpen = true; highlightedComponentIdx = 0"
               @keydown="handleComponentKeydown"
               type="text"
-              placeholder="Buscar componente..."
-              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
+              placeholder="Componente..."
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
-            <button
-              v-if="componentInput"
-              type="button"
-              @click="handleClearSelectedComponent"
-              class="absolute right-7 p-1 text-slate-400 hover:text-slate-600"
-              title="Limpiar componente"
-            >
-              <X class="w-3.5 h-3.5" />
-            </button>
-            <ChevronDown
-              @click="isComponentOpen = !isComponentOpen"
-              class="w-4 h-4 text-slate-400 absolute right-2.5 cursor-pointer hover:text-slate-600"
-            />
+            <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
+              <button
+                v-if="selectedComponent"
+                type="button"
+                @click="handleEditGroup(selectedComponent.id)"
+                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
+                title="Editar o eliminar familia"
+              >
+                <Edit3 class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                @click="handleCreateNewGroup"
+                class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
+                title="Nueva familia"
+              >
+                <Plus class="w-3 h-3" />
+              </button>
+              <button
+                v-if="componentInput"
+                type="button"
+                @click="handleClearSelectedComponent"
+                class="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Limpiar componente"
+              >
+                <X class="w-3 h-3" />
+              </button>
+              <ChevronDown
+                @click="isComponentOpen = !isComponentOpen"
+                class="w-3.5 h-3.5 text-slate-400 cursor-pointer hover:text-slate-600"
+              />
+            </div>
           </div>
 
           <!-- Dropdown Tipos de Componente -->
@@ -4136,24 +4140,14 @@ onUnmounted(() => {
 
                 <!-- 12. Editar / eliminar motor -->
                 <td class="py-2 px-2 text-center align-middle" @click.stop>
-                  <div class="inline-flex items-center justify-center gap-1">
-                    <button
-                      type="button"
-                      @click="openEditMotorModal(mot, $event)"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-[#004B97] hover:bg-blue-50 transition cursor-pointer"
-                      title="Editar código de motor, modelo o año"
-                    >
-                      <Edit3 class="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      @click="openEditMotorModal(mot, $event, true)"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                      title="Eliminar motor"
-                    >
-                      <Trash2 class="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    @click="openEditMotorModal(mot, $event)"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-[#004B97] hover:bg-blue-50 transition cursor-pointer"
+                    title="Editar o eliminar motor, modelo o año"
+                  >
+                    <Edit3 class="w-3.5 h-3.5" />
+                  </button>
                 </td>
               </tr>
 
