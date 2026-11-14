@@ -3318,7 +3318,7 @@ onUnmounted(() => {
             @input="handleSearchInput"
             type="text"
             placeholder="Buscar por código OEM, cruce o descripción..."
-            class="catalog-input-frame w-full pl-8 pr-12 py-1.5 h-[32px] text-[11px] placeholder:text-[11px] font-medium rounded-lg transition"
+            class="w-full pl-8 pr-12 py-1.5 h-[32px] text-[11px] placeholder:text-[11px] font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
           />
           <div class="absolute right-2 top-1.5 flex items-center gap-1">
             <Loader2 v-if="catalogStore.isSearching" class="w-3.5 h-3.5 text-[#04C4D9] animate-spin" />
@@ -3423,7 +3423,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="brandInputRef"
               v-model="brandInput"
@@ -3566,7 +3566,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="motorInputRef"
               v-model="motorInput"
@@ -3621,7 +3621,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="modelInputRef"
               v-model="modelInput"
@@ -3726,7 +3726,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               v-model="yearInput"
               @focus="isYearOpen = true"
@@ -3812,7 +3812,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
+          <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
             <input
               ref="componentInputRef"
               v-model="componentInput"
@@ -7539,25 +7539,5 @@ onUnmounted(() => {
     linear-gradient(125deg, #04C4D9 0%, #0284C7 34%, #004B97 68%, #0D1B3E 100%);
   background-origin: border-box;
   background-clip: padding-box, border-box;
-}
-
-.catalog-input-frame {
-  border: 2px solid transparent !important;
-  background-color: #f8fafc;
-  background-image:
-    linear-gradient(#f8fafc, #f8fafc),
-    linear-gradient(125deg, #04C4D9 0%, #0284C7 36%, #004B97 72%, #0D1B3E 100%);
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-}
-
-.catalog-input-frame:focus,
-.catalog-input-frame:focus-within {
-  outline: none;
-  background-color: #ffffff;
-  background-image:
-    linear-gradient(#ffffff, #ffffff),
-    linear-gradient(125deg, #04C4D9 0%, #0284C7 42%, #004B97 100%);
-  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.16);
 }
 </style>
