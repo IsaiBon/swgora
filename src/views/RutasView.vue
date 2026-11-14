@@ -35,6 +35,7 @@ import { useAuthStore, normalizeRole } from '@/stores/auth'
 import {
   obtenerCredencialUsuario,
   cambiarPasswordUsuario,
+  sincronizarBovedaCredencialesDesdeNube,
 } from '@/services/usuariosService'
 
 const router = useRouter()
@@ -167,6 +168,7 @@ async function cargarTodo() {
       rutasService.getRutas(),
       ordersService.getOrders(),
       perfilesService.getPerfiles().catch(() => [] as Perfil[]),
+      sincronizarBovedaCredencialesDesdeNube().catch(() => undefined),
     ])
     rutas.value = rutasData
     orders.value = ordersData
@@ -582,11 +584,18 @@ async function guardarCredencialSubAdminModal() {
       email: rutaCredencialModal.value.subAdminEmail,
       password: limpia,
     })
+    if (res.newUserId) {
+      rutaCredencialModal.value.subAdminId = res.newUserId
+      await cargarTodo()
+    }
     mostrarPasswordCredModal.value = true
-    tipoMensajeCredencialModal.value = res.updatedInAuth ? 'ok' : 'error'
+    tipoMensajeCredencialModal.value =
+      res.updatedInAuth || res.syncedInCloud ? 'ok' : 'error'
     mensajeCredencialModal.value = res.updatedInAuth
-      ? 'Contraseña actualizada en Supabase Auth y guardada en la bóveda.'
-      : 'Solo se guardó en la bóveda local de este navegador, NO se pudo actualizar en Supabase Auth (la Edge Function no está disponible o no coincide la contraseña previa).'
+      ? 'Contraseña actualizada en Supabase Auth y sincronizada en la bóveda en la nube.'
+      : res.syncedInCloud
+        ? 'Contraseña actualizada y sincronizada en la bóveda en la nube (activa para iniciar sesión en todos los dispositivos).'
+        : 'Solo se guardó en la bóveda local de este navegador, NO se pudo actualizar en Supabase Auth ni sincronizar en la nube.'
   } catch (err: unknown) {
     tipoMensajeCredencialModal.value = 'error'
     mensajeCredencialModal.value =

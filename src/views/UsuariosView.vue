@@ -28,6 +28,8 @@ import {
   obtenerCredencialUsuario,
   cambiarPasswordUsuario,
   sincronizarPerfilesPendientes,
+  sincronizarBovedaCredencialesDesdeNube,
+  aplicarRolesBovedaAPerfiles,
   type NuevoUsuario,
 } from '@/services/usuariosService'
 
@@ -468,10 +470,13 @@ async function cargarUsuarios() {
       await sincronizarPerfilesPendientes().catch(() => undefined)
     }
 
-    const [perfilesData, rutasData] = await Promise.all([
+    const [perfilesDataRaw, rutasData] = await Promise.all([
       perfilesService.getPerfiles(),
       rutasService.getRutas().catch(() => [] as RutaSucursal[]),
+      sincronizarBovedaCredencialesDesdeNube().catch(() => undefined),
     ])
+    const perfilesData = aplicarRolesBovedaAPerfiles(perfilesDataRaw)
+    versionCredenciales.value++
     rutas.value = rutasData
 
     const perfilesDelTenant = perfilesData.filter((perfil) => {
@@ -1169,13 +1174,22 @@ async function guardarCredencialVisible() {
       email: perfil.email,
       password: limpia,
     })
+    if (res.newUserId) {
+      perfil.id = res.newUserId
+    }
     versionCredenciales.value++
     credencialesVisibles[perfil.id] = true
     mostrarPasswordEnModal.value = true
-    tipoMensajeModalCredencial.value = res.updatedInAuth ? 'ok' : 'error'
+    if (res.newUserId) {
+      await cargarUsuarios()
+    }
+    tipoMensajeModalCredencial.value =
+      res.updatedInAuth || res.syncedInCloud ? 'ok' : 'error'
     mensajeModalCredencial.value = res.updatedInAuth
-      ? 'Contraseña actualizada en Supabase Auth y guardada en la bóveda.'
-      : 'Solo se guardó en la bóveda local de este navegador, NO se pudo actualizar en Supabase Auth (la Edge Function no está disponible o no coincide la contraseña previa).'
+      ? 'Contraseña actualizada en Supabase Auth y sincronizada en la bóveda en la nube.'
+      : res.syncedInCloud
+        ? 'Contraseña actualizada y sincronizada en la bóveda en la nube (activa para iniciar sesión en todos los dispositivos).'
+        : 'Solo se guardó en la bóveda local de este navegador, NO se pudo actualizar en Supabase Auth ni sincronizar en la nube.'
   } catch (err: unknown) {
     tipoMensajeModalCredencial.value = 'error'
     mensajeModalCredencial.value =

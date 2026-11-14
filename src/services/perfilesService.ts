@@ -21,13 +21,55 @@ export type PerfilUpdate = Partial<
 
 const PERFILES_CACHE_KEY = 'swgora_perfiles_cache_v1'
 
+const KNOWN_ADMIN_EMAILS = new Set([
+  'admin@jrblanco.com',
+  'admin.swgora@gmail.com',
+  'jrblanco@gmail.com',
+  'jrblanco1@gmail.com',
+  'luis1@gmail.com',
+  'diegogranados1324@gmail.com',
+])
+
+function isCorruptedRoleString(value?: string | null): boolean {
+  if (!value) return true
+  const lower = value.trim().toLowerCase()
+  return (
+    !lower ||
+    lower === 'rolnuevo' ||
+    lower === 'undefined' ||
+    lower === 'null'
+  )
+}
+
+export function sanitizePerfilRole(
+  rol?: string | null,
+  email?: string | null,
+  fallbackRol?: string | null
+): string {
+  if (!isCorruptedRoleString(rol)) {
+    return rol!.trim()
+  }
+  if (!isCorruptedRoleString(fallbackRol)) {
+    return fallbackRol!.trim()
+  }
+  const cleanEmail = (email || '').trim().toLowerCase()
+  if (cleanEmail && KNOWN_ADMIN_EMAILS.has(cleanEmail)) {
+    return 'admin'
+  }
+  return 'operador'
+}
+
 function readPerfilesCache(): Perfil[] {
   if (typeof localStorage === 'undefined') return []
   try {
     const raw = localStorage.getItem(PERFILES_CACHE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as Perfil[]) : []
+    if (!Array.isArray(parsed)) return []
+    return (parsed as Perfil[]).map((p) => ({
+      ...p,
+      rol: sanitizePerfilRole(p.rol, p.email),
+    }))
   } catch {
     return []
   }
@@ -175,10 +217,15 @@ function mergePerfilesIntoCache(
   for (const item of entradas) {
     if (!item?.id) continue
     const prev = prevById.get(item.id)
+    const incomingCorrupted = isCorruptedRoleString(item.rol)
     const incomingGeneric =
-      !item.rol || item.rol.trim().toLowerCase() === 'operador'
+      incomingCorrupted || item.rol.trim().toLowerCase() === 'operador'
     const resolvedRol =
-      incomingGeneric && isRichEncodedRole(prev?.rol) ? prev!.rol : item.rol
+      incomingGeneric && isRichEncodedRole(prev?.rol)
+        ? prev!.rol
+        : incomingCorrupted
+          ? sanitizePerfilRole(item.rol, item.email, prev?.rol)
+          : item.rol
     const resolvedLocalOnly =
       options.markLocalOnly !== undefined
         ? options.markLocalOnly
@@ -438,13 +485,15 @@ export const perfilesService = {
         dbError = error
       } else if (data) {
         const dbPerfil = data as Perfil
-        if (!dbPerfil.rol || !dbPerfil.rol.trim()) {
-          const rescuedRol =
+        if (isCorruptedRoleString(dbPerfil.rol)) {
+          const rescuedRol = sanitizePerfilRole(
+            dbPerfil.rol,
+            dbPerfil.email || cleanEmail || cached?.email,
             (cached?.rol && isRichEncodedRole(cached.rol) ? cached.rol : '') ||
-            metaRole ||
-            cached?.rol ||
-            extraFallback?.rol ||
-            'operador'
+              metaRole ||
+              cached?.rol ||
+              extraFallback?.rol
+          )
           const rescuedNombre =
             dbPerfil.nombre?.trim() ||
             metaName ||
@@ -484,12 +533,14 @@ export const perfilesService = {
       extraFallback?.nombre ||
       (cleanEmail ? cleanEmail.split('@')[0] : '') ||
       'Usuario'
-    const rol =
+    const rol = sanitizePerfilRole(
+      null,
+      cleanEmail || cached?.email,
       (cached?.rol && isRichEncodedRole(cached.rol) ? cached.rol : '') ||
-      metaRole ||
-      cached?.rol ||
-      extraFallback?.rol ||
-      'operador'
+        metaRole ||
+        cached?.rol ||
+        extraFallback?.rol
+    )
     const now = new Date().toISOString()
 
     // Intentar restaurar la fila faltante en `public.perfiles` (RLS `auth.uid() = id` lo permite)

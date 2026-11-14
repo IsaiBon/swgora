@@ -3,6 +3,9 @@ import DashboardView from '@/views/DashboardView.vue'
 import OrdenesView from '@/views/OrdenesView.vue'
 import CatalogoView from '@/views/CatalogoView.vue'
 import ClientesView from '@/views/ClientesView.vue'
+import RutasView from '@/views/RutasView.vue'
+import UsuariosView from '@/views/UsuariosView.vue'
+import TallerView from '@/views/TallerView.vue'
 import LoginView from '@/views/LoginView.vue'
 import { useAuthStore, isRouteAllowedForRole, getDefaultRouteForRole } from '@/stores/auth'
 
@@ -10,7 +13,7 @@ const routes = [
   {
     path: '/rutas',
     name: 'Rutas',
-    component: () => import('@/views/RutasView.vue'),
+    component: RutasView,
     meta: {
       layout: 'main',
       title: 'Rutas y Sub-Administradores - JR Blanco',
@@ -20,7 +23,7 @@ const routes = [
   {
     path: '/usuarios',
     name: 'Usuarios',
-    component: () => import('@/views/UsuariosView.vue'),
+    component: UsuariosView,
     meta: {
       layout: 'main',
       title: 'Administración de usuarios - JR Blanco',
@@ -30,7 +33,7 @@ const routes = [
   {
     path: '/taller',
     name: 'Taller',
-    component: () => import('@/views/TallerView.vue'),
+    component: TallerView,
     meta: {
       layout: 'main',
       title: 'Configuración del Taller - JR Blanco',
