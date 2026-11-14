@@ -1031,32 +1031,6 @@ function getLocalDeletedGroupKeys(): Set<string> {
   }
 }
 
-function markLocalGroupDeleted(keys: Array<string | undefined | null>): void {
-  if (typeof window === 'undefined') return
-  try {
-    const set = getLocalDeletedGroupKeys()
-    for (const k of keys) {
-      if (k && String(k).trim()) set.add(String(k).trim())
-    }
-    localStorage.setItem(LOCAL_DELETED_GROUPS_KEY, JSON.stringify(Array.from(set)))
-  } catch {
-    // Silencioso
-  }
-}
-
-function unmarkLocalGroupDeleted(keys: Array<string | undefined | null>): void {
-  if (typeof window === 'undefined') return
-  try {
-    const set = getLocalDeletedGroupKeys()
-    for (const k of keys) {
-      if (k) set.delete(String(k).trim())
-    }
-    localStorage.setItem(LOCAL_DELETED_GROUPS_KEY, JSON.stringify(Array.from(set)))
-  } catch {
-    // Silencioso
-  }
-}
-
 function getLocalDynamicGrupos(): GrupoRepuesto[] {
   if (typeof window === 'undefined') return []
   try {
@@ -1065,23 +1039,6 @@ function getLocalDynamicGrupos(): GrupoRepuesto[] {
     return JSON.parse(raw) as GrupoRepuesto[]
   } catch {
     return []
-  }
-}
-
-function saveLocalDynamicGrupo(grupo: GrupoRepuesto): void {
-  if (typeof window === 'undefined') return
-  try {
-    unmarkLocalGroupDeleted([grupo.id, grupo.codigo])
-    const list = getLocalDynamicGrupos()
-    const idx = list.findIndex(g => g.codigo === grupo.codigo || g.id === grupo.id)
-    if (idx >= 0) {
-      list[idx] = grupo
-    } else {
-      list.push(grupo)
-    }
-    localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(list))
-  } catch (e) {
-    console.error('Error guardando grupo en localStorage:', e)
   }
 }
 
@@ -3017,9 +2974,6 @@ export const catalogService = {
    * Obtiene la lista de grupos / familias de piezas y sus esquemas paramétricos técnicos
    */
   async getGrupos(): Promise<GrupoRepuesto[]> {
-    const localGrupos = getLocalDynamicGrupos()
-    const deletedKeys = getLocalDeletedGroupKeys()
-
     const normalizeTableGroup = (grp: GrupoRepuesto): GrupoRepuesto => {
       const isTable = grp.tipo_vista === 'tabla' || grp.codigo === 'anillos_motor'
       if (!isTable) {
@@ -3162,8 +3116,19 @@ export const catalogService = {
         .eq('activo', true)
         .order('orden_visual', { ascending: true })
 
-      if (!error && data && data.length > 0) {
-        const fromDb: GrupoRepuesto[] = data.map((row: Record<string, unknown>) => {
+      if (error) {
+        throw error
+      }
+
+      if (Array.isArray(data)) {
+        // Supabase es la fuente única de verdad entre desarrollo y producción:
+        // descartamos cachés locales previas cuando la BD responde correctamente.
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(LOCAL_GROUPS_STORAGE_KEY)
+          localStorage.removeItem(LOCAL_DELETED_GROUPS_KEY)
+        }
+
+        return data.map((row: Record<string, unknown>) => {
           const params = Array.isArray(row.parametros) ? (row.parametros as ParametroTecnicoDefinicion[]) : []
           const metaTipoVista = (params[0] as any)?._tipo_vista as GrupoTipoVista | undefined
           const metaTablaConfig = (params[0] as any)?._tabla_config as TablaConfiguracion | undefined
@@ -3190,29 +3155,14 @@ export const catalogService = {
             updated_at: row.updated_at ? String(row.updated_at) : undefined
           })
         })
-
-        // Fusionar con grupos locales creados o editados (priorizando la versión local actualizada)
-        const merged = [...fromDb]
-        for (const locRaw of localGrupos) {
-          const loc = normalizeTableGroup(locRaw)
-          const existingIdx = merged.findIndex(m => m.codigo === loc.codigo || m.id === loc.id)
-          if (existingIdx >= 0) {
-            merged[existingIdx] = {
-              ...merged[existingIdx],
-              ...loc,
-              id: merged[existingIdx].id || loc.id
-            }
-          } else {
-            merged.push(loc)
-          }
-        }
-        return merged.filter(g => !deletedKeys.has(g.id) && !deletedKeys.has(g.codigo))
       }
     } catch (e) {
       console.warn('[CatalogService] Error consultando grupos_repuestos en Supabase, usando respaldo:', e)
     }
 
-    // Fallback a mockGruposRepuestos + grupos locales (priorizando la versión local actualizada)
+    // Fallback offline a mockGruposRepuestos + cache local únicamente si Supabase no está disponible
+    const localGrupos = getLocalDynamicGrupos()
+    const deletedKeys = getLocalDeletedGroupKeys()
     const merged = mockGruposRepuestos.map(normalizeTableGroup)
     for (const locRaw of localGrupos) {
       const loc = normalizeTableGroup(locRaw)
@@ -3272,33 +3222,33 @@ export const catalogService = {
       updated_at: new Date().toISOString()
     }
 
-    // Intentar inserción en Supabase
-    try {
-      const { data, error } = await supabase
-        .from('grupos_repuestos')
-        .insert({
-          codigo: newGroup.codigo,
-          nombre: newGroup.nombre,
-          categoria: newGroup.categoria,
-          subsistema: newGroup.subsistema,
-          descripcion: newGroup.descripcion,
-          icono: newGroup.icono,
-          parametros: newGroup.parametros,
-          activo: newGroup.activo,
-          orden_visual: newGroup.orden_visual
-        })
-        .select('*')
-        .single()
+    // Insertar directamente en Supabase (fuente única de verdad)
+    const { data, error } = await supabase
+      .from('grupos_repuestos')
+      .insert({
+        codigo: newGroup.codigo,
+        nombre: newGroup.nombre,
+        categoria: newGroup.categoria,
+        subsistema: newGroup.subsistema,
+        descripcion: newGroup.descripcion ?? null,
+        icono: newGroup.icono,
+        parametros: newGroup.parametros,
+        activo: newGroup.activo,
+        orden_visual: newGroup.orden_visual
+      })
+      .select('*')
+      .single()
 
-      if (!error && data) {
-        newGroup.id = String(data.id)
-      }
-    } catch (err) {
-      console.warn('[CatalogService] No se pudo guardar grupo en Supabase directamente, guardando en cache local:', err)
+    if (error || !data) {
+      console.error('[CatalogService] Error creando familia en Supabase:', error)
+      throw new Error(error?.message || 'No se pudo crear la familia en Supabase')
     }
 
-    // Persistir siempre en localStorage para disponibilidad inmediata
-    saveLocalDynamicGrupo(newGroup)
+    newGroup.id = String(data.id)
+    if (data.created_at) newGroup.created_at = String(data.created_at)
+    if (data.updated_at) newGroup.updated_at = String(data.updated_at)
+    removeLocalDynamicGrupo(newGroup.id)
+    removeLocalDynamicGrupo(newGroup.codigo)
     return newGroup
   },
 
@@ -3342,39 +3292,55 @@ export const catalogService = {
       updated_at: new Date().toISOString()
     }
 
-    // Intentar actualización en Supabase (solo usar id.eq cuando id es UUID válido)
-    try {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updated.id)
-      const baseUpdate = supabase
-        .from('grupos_repuestos')
-        .update({
-          nombre: updated.nombre,
-          categoria: updated.categoria,
-          subsistema: updated.subsistema,
-          descripcion: updated.descripcion,
-          icono: updated.icono,
-          parametros: updated.parametros,
-          activo: updated.activo,
-          orden_visual: updated.orden_visual,
-          updated_at: updated.updated_at
-        })
-      const { data, error } = await (
-        isUuid
-          ? baseUpdate.or(`id.eq.${updated.id},codigo.eq.${updated.codigo}`)
-          : baseUpdate.eq('codigo', updated.codigo)
-      )
-        .select('*')
-        .maybeSingle()
-
-      if (!error && data) {
-        updated.id = String(data.id)
-      }
-    } catch (err) {
-      console.warn('[CatalogService] No se pudo actualizar grupo en Supabase directamente, guardando en cache local:', err)
+    // Actualizar directamente en Supabase (fuente única de verdad)
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updated.id)
+    const dbPayload = {
+      nombre: updated.nombre,
+      categoria: updated.categoria,
+      subsistema: updated.subsistema,
+      descripcion: updated.descripcion ?? null,
+      icono: updated.icono,
+      parametros: updated.parametros,
+      activo: updated.activo,
+      orden_visual: updated.orden_visual,
+      updated_at: updated.updated_at
     }
 
-    // Persistir en cache local para disponibilidad inmediata
-    saveLocalDynamicGrupo(updated)
+    const baseUpdate = supabase.from('grupos_repuestos').update(dbPayload)
+    const { data, error } = await (
+      isUuid
+        ? baseUpdate.or(`id.eq.${updated.id},codigo.eq.${updated.codigo}`)
+        : baseUpdate.eq('codigo', updated.codigo)
+    )
+      .select('*')
+      .maybeSingle()
+
+    if (error) {
+      console.error('[CatalogService] Error actualizando familia en Supabase:', error)
+      throw new Error(error.message || 'No se pudo actualizar la familia en Supabase')
+    }
+
+    if (data) {
+      updated.id = String(data.id)
+    } else {
+      // Si el grupo provenía de respaldo local y aún no existía en BD, insertarlo en Supabase
+      const { data: inserted, error: insertError } = await supabase
+        .from('grupos_repuestos')
+        .insert({
+          codigo: updated.codigo,
+          ...dbPayload
+        })
+        .select('*')
+        .single()
+      if (insertError || !inserted) {
+        console.error('[CatalogService] Error insertando familia en Supabase:', insertError)
+        throw new Error(insertError?.message || 'No se pudo sincronizar la familia en Supabase')
+      }
+      updated.id = String(inserted.id)
+    }
+
+    removeLocalDynamicGrupo(updated.id)
+    removeLocalDynamicGrupo(updated.codigo)
     return updated
   },
 
@@ -3388,36 +3354,35 @@ export const catalogService = {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)
     const codeTarget = codigoHint?.trim() || (!isUuid ? cleanId : '')
 
-    try {
-      let query = supabase.from('grupos_repuestos').delete()
-      if (isUuid && codeTarget) {
-        query = query.or(`id.eq.${cleanId},codigo.eq.${codeTarget}`)
-      } else if (isUuid) {
-        query = query.eq('id', cleanId)
-      } else {
-        query = query.eq('codigo', codeTarget)
-      }
-      const { error } = await query
+    let query = supabase.from('grupos_repuestos').delete()
+    if (isUuid && codeTarget) {
+      query = query.or(`id.eq.${cleanId},codigo.eq.${codeTarget}`)
+    } else if (isUuid) {
+      query = query.eq('id', cleanId)
+    } else {
+      query = query.eq('codigo', codeTarget)
+    }
+    const { error } = await query
 
-      if (error) {
-        // Fallback: desactivar en BD si existen restricciones referenciales o políticas de DELETE
-        let soft = supabase.from('grupos_repuestos').update({ activo: false, updated_at: new Date().toISOString() })
-        if (isUuid && codeTarget) {
-          soft = soft.or(`id.eq.${cleanId},codigo.eq.${codeTarget}`)
-        } else if (isUuid) {
-          soft = soft.eq('id', cleanId)
-        } else {
-          soft = soft.eq('codigo', codeTarget)
-        }
-        await soft
+    if (error) {
+      // Fallback: desactivar en BD si existen restricciones referenciales o políticas de DELETE
+      let soft = supabase.from('grupos_repuestos').update({ activo: false, updated_at: new Date().toISOString() })
+      if (isUuid && codeTarget) {
+        soft = soft.or(`id.eq.${cleanId},codigo.eq.${codeTarget}`)
+      } else if (isUuid) {
+        soft = soft.eq('id', cleanId)
+      } else {
+        soft = soft.eq('codigo', codeTarget)
       }
-    } catch (err) {
-      console.warn('[CatalogService] Error eliminando familia en Supabase:', err)
+      const { error: softError } = await soft
+      if (softError) {
+        console.error('[CatalogService] Error eliminando familia en Supabase:', softError)
+        throw new Error(softError.message || error.message || 'No se pudo eliminar la familia en Supabase')
+      }
     }
 
     removeLocalDynamicGrupo(cleanId)
     if (codeTarget && codeTarget !== cleanId) removeLocalDynamicGrupo(codeTarget)
-    markLocalGroupDeleted([cleanId, codeTarget])
     return true
   },
 

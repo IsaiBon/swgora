@@ -69,7 +69,7 @@ const catalogStore = useCatalogStore()
 const brandInput = ref<string>('')
 const modelInput = ref<string>('')
 const motorInput = ref<string>('')
-const motorMatchMode = ref<'startsWith' | 'contains'>('contains')
+const motorMatchMode = ref<'startsWith' | 'contains'>('startsWith')
 const componentInput = ref<string>('')
 
 const isBrandOpen = ref<boolean>(false)
@@ -3307,26 +3307,26 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- ========================================================================= -->
-    <div class="sticky top-[72px] z-20 studio-card bg-white/95 backdrop-blur-md p-3.5 sm:p-4 space-y-2 overflow-visible">
+    <div class="sticky top-[72px] z-20 studio-card bg-white/95 backdrop-blur-md p-2.5 sm:p-3 space-y-1.5 overflow-visible">
       
-      <!-- Fila Superior: Buscador Universal + Botón Filtros Móvil -->
-      <div class="flex items-center gap-2">
-        <div class="relative flex-1">
-          <Search class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+      <!-- Fila Superior: Buscador Universal + Chips Activos + Pestañas + Botón Filtros Móvil -->
+      <div class="flex items-center gap-2 flex-wrap lg:flex-nowrap">
+        <div class="relative flex-1 min-w-[200px]">
+          <Search class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           <input
             v-model="searchInput"
             @input="handleSearchInput"
             type="text"
             placeholder="Buscar por código OEM, cruce o descripción..."
-            class="w-full pl-9 pr-14 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
+            class="w-full pl-8 pr-12 py-1.5 min-h-[34px] text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] transition"
           />
-          <div class="absolute right-2.5 top-2 flex items-center gap-1">
-            <Loader2 v-if="catalogStore.isSearching" class="w-4 h-4 text-[#04C4D9] animate-spin" />
+          <div class="absolute right-2 top-1.5 flex items-center gap-1">
+            <Loader2 v-if="catalogStore.isSearching" class="w-3.5 h-3.5 text-[#04C4D9] animate-spin" />
             <button
               v-if="searchInput"
               type="button"
               @click="handleClearSearch"
-              class="p-1 text-slate-400 hover:text-slate-600 rounded"
+              class="p-0.5 text-slate-400 hover:text-slate-600 rounded"
               title="Limpiar búsqueda"
             >
               <X class="w-3.5 h-3.5" />
@@ -3334,11 +3334,58 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Badges activos integrados en la fila superior -->
+        <div v-if="selectedBrand || selectedModel || selectedMotor || selectedYear || selectedComponent" class="hidden md:flex items-center gap-1 flex-wrap">
+          <span v-if="selectedBrand || brandInput" class="px-2 py-0.5 rounded-md bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] text-[11px] font-bold">
+            {{ selectedBrand?.nombre || brandInput }}
+          </span>
+          <span v-if="selectedModel" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold">
+            <span>{{ selectedModel.nombre }}</span>
+            <button type="button" @click="handleClearSelectedModel" class="text-slate-400 hover:text-rose-500 cursor-pointer"><X class="w-2.5 h-2.5" /></button>
+          </span>
+          <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1E446E] text-white font-mono text-[11px] font-bold">
+            <span>{{ selectedMotor.codigo }}</span>
+            <button type="button" @click="handleClearSelectedMotor" class="text-slate-300 hover:text-rose-300 cursor-pointer"><X class="w-2.5 h-2.5" /></button>
+          </span>
+          <span v-if="selectedYear" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-mono text-[11px] font-bold">
+            <span>{{ selectedYear }}</span>
+            <button type="button" @click="selectedYear = ''" class="text-amber-500 hover:text-rose-500 cursor-pointer"><X class="w-2.5 h-2.5" /></button>
+          </span>
+          <span v-if="selectedComponent" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 text-[#0D1B3E] border border-sky-200 text-[11px] font-bold">
+            <span>{{ selectedComponent.title }}</span>
+            <button type="button" @click="handleClearSelectedComponent" class="text-sky-500 hover:text-rose-500 cursor-pointer"><X class="w-2.5 h-2.5" /></button>
+          </span>
+        </div>
+
+        <!-- Pestañas para alternar entre lista de motores y repuestos -->
+        <div v-if="selectedComponent" class="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg shrink-0">
+          <button
+            type="button"
+            @click="activeViewTab = 'motores'"
+            :class="[
+              'px-2 py-1 rounded-md text-[11px] font-bold transition cursor-pointer',
+              activeViewTab === 'motores' ? 'bg-white text-[#1E446E] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+            ]"
+          >
+            Motores ({{ brandMotorsList.length }})
+          </button>
+          <button
+            type="button"
+            @click="activeViewTab = 'repuestos'"
+            :class="[
+              'px-2 py-1 rounded-md text-[11px] font-bold transition cursor-pointer',
+              activeViewTab === 'repuestos' ? 'bg-white text-[#147488] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+            ]"
+          >
+            Repuestos ({{ displayedParts.length }})
+          </button>
+        </div>
+
         <!-- Botón Toggle de Filtros Avanzados (Solo Móvil / Tablet < lg) -->
         <button
           type="button"
           @click="isMobileFiltersOpen = !isMobileFiltersOpen"
-          class="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 border shadow-2xs select-none active:scale-95"
+          class="lg:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition shrink-0 border shadow-2xs select-none active:scale-95"
           :class="isMobileFiltersOpen 
             ? 'bg-[#004B97] text-white border-[#004B97]' 
             : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'"
@@ -3361,17 +3408,17 @@ onUnmounted(() => {
 
       <div 
         :class="[
-          'gap-2.5 items-end transition-all duration-200',
+          'gap-2 items-end transition-all duration-200',
           isMobileFiltersOpen 
-            ? 'grid grid-cols-2 lg:grid-cols-5 pt-1' 
+            ? 'grid grid-cols-2 lg:grid-cols-5 pt-0.5' 
             : 'hidden lg:grid lg:grid-cols-5'
         ]"
       >
         
         <!-- 1. FABRICANTE -->
         <div class="relative combobox-brand">
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
               Fabricante
             </label>
             <div class="flex items-center gap-2">
@@ -3380,19 +3427,10 @@ onUnmounted(() => {
                 type="button"
                 @click="openEditBrandModal(selectedBrand)"
                 class="text-[10px] font-bold text-slate-500 hover:text-[#004B97] flex items-center gap-0.5 transition cursor-pointer"
-                title="Editar marca seleccionada"
+                title="Editar o eliminar marca seleccionada"
               >
                 <Edit3 class="w-3 h-3" />
                 <span>Editar</span>
-              </button>
-              <button
-                v-if="selectedBrand"
-                type="button"
-                @click="openEditBrandModal(selectedBrand, true)"
-                class="text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 transition cursor-pointer"
-                title="Eliminar marca seleccionada"
-              >
-                <Trash2 class="w-3 h-3" />
               </button>
               <button
                 type="button"
@@ -3416,7 +3454,7 @@ onUnmounted(() => {
               @keydown="handleBrandKeydown"
               type="text"
               placeholder="Buscar fabricante..."
-              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
+              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
             />
             <button
               v-if="brandInput"
@@ -3479,9 +3517,9 @@ onUnmounted(() => {
 
         <!-- 2. MOTOR -->
         <div class="relative combobox-motor">
-          <div class="flex items-center justify-between mb-1 gap-1 flex-wrap">
-            <div class="flex items-center gap-1.5">
-              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5 gap-1 flex-wrap">
+            <div class="flex items-center gap-1">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
                 Motor
               </label>
               <!-- Buscador Dual de Motores: Inicia con vs Contiene -->
@@ -3500,7 +3538,7 @@ onUnmounted(() => {
                   ]"
                   title="Búsqueda ordenada: códigos que comienzan con lo escrito (ej. 8L -> 8L...)"
                 >
-                  Inicia con
+                  Inicia
                 </button>
                 <button
                   type="button"
@@ -3513,7 +3551,7 @@ onUnmounted(() => {
                   ]"
                   title="Búsqueda flexible: códigos o nombres que contengan el texto"
                 >
-                  Contiene
+                  Cont
                 </button>
               </div>
             </div>
@@ -3523,19 +3561,10 @@ onUnmounted(() => {
                 type="button"
                 @click="openEditMotorModal(selectedMotor)"
                 class="text-[10px] font-bold text-slate-500 hover:text-[#004B97] flex items-center gap-0.5 transition cursor-pointer"
-                title="Editar motor seleccionado"
+                title="Editar o eliminar motor seleccionado"
               >
                 <Edit3 class="w-3 h-3" />
                 <span>Editar</span>
-              </button>
-              <button
-                v-if="selectedMotor"
-                type="button"
-                @click="openEditMotorModal(selectedMotor, undefined, true)"
-                class="text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 transition cursor-pointer"
-                title="Eliminar motor seleccionado"
-              >
-                <Trash2 class="w-3 h-3" />
               </button>
               <button
                 type="button"
@@ -3549,14 +3578,14 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="toggleMotorsWithPartsOnly"
-                class="text-[10px] font-bold px-1.5 py-0.5 rounded transition flex items-center gap-1 cursor-pointer"
+                class="text-[10px] font-bold px-1.5 py-0.2 rounded transition flex items-center gap-1 cursor-pointer"
                 :class="catalogStore.onlyMotorsWithParts 
                   ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40' 
                   : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
                 :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
               >
                 <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-                <span>{{ catalogStore.onlyMotorsWithParts ? 'Con repuestos' : 'Todos' }}</span>
+                <span>{{ catalogStore.onlyMotorsWithParts ? 'C/Rep' : 'Todos' }}</span>
               </button>
             </div>
           </div>
@@ -3571,7 +3600,7 @@ onUnmounted(() => {
               @keydown="handleMotorKeydown"
               type="text"
               placeholder="Buscar o filtrar motor..."
-              class="w-full pl-3 pr-12 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
+              class="w-full pl-2.5 pr-11 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
             />
             <button
               v-if="motorInput"
@@ -3591,8 +3620,8 @@ onUnmounted(() => {
 
         <!-- 3. MODELO -->
         <div class="relative combobox-model">
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
               Modelo
             </label>
             <div class="flex items-center gap-2">
@@ -3601,19 +3630,10 @@ onUnmounted(() => {
                 type="button"
                 @click="openEditModelModal(selectedModel)"
                 class="text-[10px] font-bold text-slate-500 hover:text-[#004B97] flex items-center gap-0.5 transition cursor-pointer"
-                title="Editar modelo seleccionado"
+                title="Editar o eliminar modelo seleccionado"
               >
                 <Edit3 class="w-3 h-3" />
                 <span>Editar</span>
-              </button>
-              <button
-                v-if="selectedModel"
-                type="button"
-                @click="openEditModelModal(selectedModel, true)"
-                class="text-[10px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 transition cursor-pointer"
-                title="Eliminar modelo seleccionado"
-              >
-                <Trash2 class="w-3 h-3" />
               </button>
               <button
                 type="button"
@@ -3637,7 +3657,7 @@ onUnmounted(() => {
               @keydown="handleModelKeydown"
               type="text"
               :placeholder="selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Buscar modelo...'"
-              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
+              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
             />
             <button
               v-if="modelInput"
@@ -3707,8 +3727,8 @@ onUnmounted(() => {
 
         <!-- 4. AÑO DE COMPATIBILIDAD -->
         <div class="relative combobox-year">
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
               Año
             </label>
             <button
@@ -3731,7 +3751,7 @@ onUnmounted(() => {
               @keydown.enter.prevent="filteredYears[0] ? handleSelectYear(filteredYears[0]) : (yearInput.trim() ? handleSaveQuickYear(yearInput) : null)"
               type="text"
               placeholder="Todos los años..."
-              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
+              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
             />
             <button
               v-if="selectedYear || yearInput"
@@ -3792,18 +3812,18 @@ onUnmounted(() => {
 
         <!-- 5. COMPONENTE -->
         <div class="relative combobox-component">
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <div class="flex items-center justify-between mb-0.5">
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">
               Componente
             </label>
             <button
               type="button"
               @click="handleCreateNewGroup"
-              class="text-[11px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-1 transition"
+              class="text-[10px] font-bold text-[#038391] hover:text-[#04C4D9] flex items-center gap-0.5 transition cursor-pointer"
               title="Crear nueva familia paramétrica"
             >
               <Plus class="w-3 h-3 text-[#04C4D9]" />
-              <span>+ Nueva Familia</span>
+              <span>Familia</span>
             </button>
           </div>
 
@@ -3817,7 +3837,7 @@ onUnmounted(() => {
               @keydown="handleComponentKeydown"
               type="text"
               placeholder="Buscar componente..."
-              class="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[40px] transition"
+              class="w-full pl-2.5 pr-7 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9] min-h-[34px] transition"
             />
             <button
               v-if="componentInput"
@@ -3892,69 +3912,6 @@ onUnmounted(() => {
           </button>
         </div>
 
-      </div>
-
-      <!-- Barra informativa activa de selección en cascada (Minimalista) -->
-      <div v-if="selectedBrand || selectedModel || selectedMotor || selectedYear || selectedComponent" class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Activos:</span>
-          
-          <span v-if="selectedBrand || brandInput" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 text-[#038391] border border-cyan-200/80 font-bold text-xs">
-            <span>{{ selectedBrand?.nombre || brandInput }}</span>
-          </span>
-
-          <span v-if="selectedModel" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 font-bold text-xs">
-            <span>{{ selectedModel.nombre }}</span>
-            <button type="button" @click="handleClearSelectedModel" class="text-slate-400 hover:text-rose-500 ml-0.5">
-              <X class="w-3 h-3" />
-            </button>
-          </span>
-
-          <span v-if="selectedMotor" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#004B97] text-white font-mono font-bold text-xs">
-            <span>{{ selectedMotor.codigo }}</span>
-            <button type="button" @click="handleClearSelectedMotor" class="text-slate-400 hover:text-rose-400 ml-0.5">
-              <X class="w-3 h-3" />
-            </button>
-          </span>
-
-          <span v-if="selectedYear" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-mono font-bold text-xs">
-            <span>Año {{ selectedYear }}</span>
-            <button type="button" @click="selectedYear = ''" class="text-amber-500 hover:text-rose-500 ml-0.5">
-              <X class="w-3 h-3" />
-            </button>
-          </span>
-
-          <span v-if="selectedComponent" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 font-bold text-xs">
-            <span>{{ selectedComponent.title }}</span>
-            <button type="button" @click="handleClearSelectedComponent" class="text-blue-400 hover:text-rose-500 ml-0.5">
-              <X class="w-3 h-3" />
-            </button>
-          </span>
-        </div>
-
-        <!-- Pestañas para alternar entre lista de motores y repuestos -->
-        <div v-if="selectedComponent" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
-          <button
-            type="button"
-            @click="activeViewTab = 'motores'"
-            :class="[
-              'px-2.5 py-1 rounded-md text-xs font-bold transition',
-              activeViewTab === 'motores' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-            ]"
-          >
-            Motores ({{ brandMotorsList.length }})
-          </button>
-          <button
-            type="button"
-            @click="activeViewTab = 'repuestos'"
-            :class="[
-              'px-2.5 py-1 rounded-md text-xs font-bold transition',
-              activeViewTab === 'repuestos' ? 'bg-white text-[#04C4D9] shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-            ]"
-          >
-            Repuestos ({{ displayedParts.length }})
-          </button>
-        </div>
       </div>
     </div>
 
