@@ -22,6 +22,8 @@ import {
   sortMotorsByRelevance
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
+import CatalogImportModal from '@/components/CatalogImportModal.vue'
+import { type CatalogImportReport } from '@/services/catalogImportService'
 import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
 import ToleranceBadge from '@/components/ToleranceBadge.vue'
 import { 
@@ -59,6 +61,7 @@ import {
   ArrowUpDown,
   Download,
   ExternalLink,
+  Upload,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -3532,6 +3535,29 @@ const handleCreateNewGroup = () => {
   isAdminModalOpen.value = true
 }
 
+const isImportModalOpen = ref<boolean>(false)
+
+const onCatalogImported = async (report: CatalogImportReport) => {
+  showToast(
+    `✓ Importación lista: ${report.createdParts} repuestos creados, ${report.updatedParts} actualizados, ${report.createdMotors} motores nuevos`
+  )
+  if (selectedMotor.value) {
+    await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+  } else if (selectedComponent.value) {
+    await catalogStore.fetchRepuestosByGrupo(
+      selectedComponent.value.category,
+      undefined,
+      catalogStore.selectedFabricanteId || undefined
+    )
+  } else {
+    await catalogStore.fetchRepuestosByGrupo(
+      '',
+      undefined,
+      catalogStore.selectedFabricanteId || undefined
+    )
+  }
+}
+
 const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroupId?: string | null) => {
   adminModalTab.value = tab
   adminModalEditGroupId.value = editGroupId || null
@@ -3717,6 +3743,16 @@ onUnmounted(() => {
           >
             <FolderPlus class="w-3.5 h-3.5 text-[#BFEBF2]" />
             <span>+ Nueva Familia</span>
+          </button>
+
+          <button
+            type="button"
+            @click="isImportModalOpen = true"
+            class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
+            title="Importar datos desde Excel / JSON o descargar plantilla"
+          >
+            <Upload class="w-3.5 h-3.5 text-[#BFEBF2]" />
+            <span>Importar / Plantilla</span>
           </button>
 
           <button
@@ -7776,6 +7812,13 @@ onUnmounted(() => {
       @group-created="onGroupCreated"
       @group-updated="onGroupUpdated"
       @group-deleted="onGroupDeleted"
+    />
+
+    <CatalogImportModal
+      :is-open="isImportModalOpen"
+      :preselected-group-id="selectedComponent?.id || null"
+      @close="isImportModalOpen = false"
+      @imported="onCatalogImported"
     />
 
   </div>
