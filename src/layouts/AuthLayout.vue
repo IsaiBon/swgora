@@ -1,9 +1,29 @@
 <script setup lang="ts">
+import { onMounted, computed } from 'vue'
+import { useTallerStore } from '@/stores/taller'
+
+const tallerStore = useTallerStore()
+
+onMounted(async () => {
+  await tallerStore.loadTallerInfo(true)
+})
+
+const companyDisplayName = computed(() => {
+  return tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco'
+})
+
+const companySubtitle = computed(() => {
+  return tallerStore.tallerInfo.login_subtitulo || 'Taller Industrial y Rectificado de Motores'
+})
+
+const companySlogan = computed(() => {
+  return tallerStore.tallerInfo.eslogan || 'Apoyarte es nuestro compromiso'
+})
 </script>
 
 <template>
   <div class="auth-shell relative min-h-screen w-full flex flex-col items-center justify-between px-4 py-5 sm:px-6 sm:py-6 bg-[#09132B] overflow-x-hidden font-sans selection:bg-[#BFEBF2]/35 selection:text-white">
-    <!-- Imagen de fondo de taller -->
+    <!-- Imagen de fondo de taller predeterminada -->
     <div
       class="absolute inset-0 bg-cover bg-center opacity-45 pointer-events-none"
       style="background-image: url('/images/workshop-bg.jpg');"
@@ -30,7 +50,7 @@
         </span>
       </div>
       <div class="flex items-center gap-2 text-[11px] text-slate-300 font-medium">
-        <span class="hidden sm:inline text-slate-400">JR Blanco</span>
+        <span class="hidden sm:inline text-slate-400">{{ companyDisplayName }}</span>
         <span class="hidden sm:inline text-slate-600">•</span>
         <span class="px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-slate-200 font-mono text-[10px] tabular-nums">
           Acceso Seguro
@@ -46,10 +66,10 @@
     <!-- Pie de página institucional minimalista -->
     <footer class="relative z-10 w-full max-w-5xl pt-3 pb-1 px-1 text-[11px] text-slate-400 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-1.5">
       <span class="text-slate-300 font-medium">
-        © {{ new Date().getFullYear() }} JR Blanco — Taller Industrial y Rectificado de Motores
+        © {{ new Date().getFullYear() }} {{ companyDisplayName }} — {{ companySubtitle }}
       </span>
       <span class="text-slate-400">
-        Apoyarte es nuestro compromiso
+        {{ companySlogan }}
       </span>
     </footer>
   </div>

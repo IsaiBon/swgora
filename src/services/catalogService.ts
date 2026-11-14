@@ -51,6 +51,7 @@ export interface Motor {
   fabricante?: Fabricante
   modelo?: Modelo
   parts_count?: number
+  created_at?: string
 }
 
 export interface Equivalencia {
@@ -2659,7 +2660,10 @@ export const catalogService = {
         }
         const from = page * pageSize
         const to = from + pageSize - 1
-        const { data: batch, error } = await query.order('codigo', { ascending: true }).range(from, to)
+        const { data: batch, error } = await query
+          .order('created_at', { ascending: false })
+          .order('codigo', { ascending: true })
+          .range(from, to)
         if (error) {
           queryError = error
           break
@@ -2807,7 +2811,8 @@ export const catalogService = {
           especificaciones_tecnicas: espec,
           fabricante: item.fabricante as Fabricante | undefined,
           modelo: primaryModeloObj,
-          parts_count: repArray.length
+          parts_count: repArray.length,
+          created_at: item.created_at ? String(item.created_at) : undefined
         }
       })
 
@@ -2817,6 +2822,13 @@ export const catalogService = {
           dbMotors.push(loc)
         }
       }
+
+      dbMotors.sort((a, b) => {
+        const ta = a.created_at ? Date.parse(a.created_at) : 0
+        const tb = b.created_at ? Date.parse(b.created_at) : 0
+        if (tb !== ta) return tb - ta
+        return String(a.codigo || '').localeCompare(String(b.codigo || ''))
+      })
 
       return dbMotors
     } catch {
@@ -2889,7 +2901,8 @@ export const catalogService = {
       especificaciones_tecnicas: espec,
       fabricante: matchedFab,
       modelo: primaryModeloObj,
-      parts_count: 0
+      parts_count: 0,
+      created_at: new Date().toISOString()
     }
 
     try {
@@ -2914,6 +2927,7 @@ export const catalogService = {
 
       if (!error && data) {
         newMotor.id = String(data.id)
+        if (data.created_at) newMotor.created_at = String(data.created_at)
         if (data.fabricante) newMotor.fabricante = data.fabricante as Fabricante
         if (data.modelo) newMotor.modelo = data.modelo as Modelo
       }

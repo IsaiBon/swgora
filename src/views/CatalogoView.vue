@@ -22,6 +22,8 @@ import {
   sortMotorsByRelevance
 } from '@/services/catalogService'
 import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
+import CatalogImportModal from '@/components/CatalogImportModal.vue'
+import { type CatalogImportReport } from '@/services/catalogImportService'
 import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
 import ToleranceBadge from '@/components/ToleranceBadge.vue'
 import { 
@@ -59,6 +61,7 @@ import {
   ArrowUpDown,
   Download,
   ExternalLink,
+  Upload,
 } from 'lucide-vue-next'
 
 const catalogStore = useCatalogStore()
@@ -69,7 +72,6 @@ const catalogStore = useCatalogStore()
 const brandInput = ref<string>('')
 const modelInput = ref<string>('')
 const motorInput = ref<string>('')
-const motorMatchMode = ref<'startsWith' | 'contains'>('startsWith')
 const componentInput = ref<string>('')
 
 const isBrandOpen = ref<boolean>(false)
@@ -110,7 +112,7 @@ const filteredYears = computed<string[]>(() => {
   if (!q || q === selectedYear.value.toLowerCase()) {
     return availableYears.value
   }
-  return availableYears.value.filter(yr => yr.toLowerCase().includes(q))
+  return availableYears.value.filter(yr => yr.toLowerCase().startsWith(q))
 })
 
 const effectiveYearFilter = computed<string>(() => {
@@ -740,19 +742,19 @@ const handleComponentKeydown = (e: KeyboardEvent) => {
 }
 
 /**
- * Resaltado visual reactivo: destaca en AZUL CELESTE las coincidencias exactas (diff <= 0.05)
+ * Resaltado visual reactivo: destaca en VERDE las coincidencias exactas (diff <= 0.001)
  * y en AMARILLO las cotas que entran dentro del rango de tolerancia universal / individual.
  */
 function getMeasurementMatchClass(partValue: number | undefined | null, filterValue: number | undefined | null, tol: number = 1.0): string {
-  if (filterValue === undefined || filterValue === null || isNaN(Number(filterValue)) || partValue === undefined || partValue === null || isNaN(Number(partValue))) {
+  if (filterValue === undefined || filterValue === null || filterValue === ('' as unknown as number) || isNaN(Number(filterValue)) || partValue === undefined || partValue === null || partValue === ('' as unknown as number) || isNaN(Number(partValue))) {
     return 'bg-slate-100 text-slate-800 border-slate-200'
   }
   const diff = Math.abs(Number(partValue) - Number(filterValue))
-  if (diff <= 0.05) {
-    return 'bg-sky-100 text-[#0D1B3E] border-sky-400 font-black ring-1 ring-sky-500/60 shadow-2xs'
+  if (diff <= 0.001) {
+    return 'bg-emerald-100 text-emerald-950 border-emerald-500 font-black ring-1 ring-emerald-500/70 shadow-2xs'
   }
   if (diff <= tol) {
-    return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs'
+    return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/70 shadow-2xs'
   }
   return 'bg-slate-100 text-slate-500 border-slate-200 opacity-60'
 }
@@ -852,7 +854,7 @@ function getPositionOrTypeBadgeClass(partVal: any, filterVal: any, opciones?: st
 
   const strFilter = String(filterVal).trim().toLowerCase()
   if (strFilter === lower || tokens.some(t => t.toLowerCase() === strFilter)) {
-    return 'bg-sky-100 text-[#0D1B3E] border-sky-400 font-black ring-1 ring-sky-500/60 text-[10px]'
+    return 'bg-emerald-100 text-emerald-950 border-emerald-500 font-black ring-1 ring-emerald-500/70 text-[10px]'
   }
 
   const matches = (isAdm && (strFilter === 'in' || strFilter.includes('admis'))) ||
@@ -860,7 +862,7 @@ function getPositionOrTypeBadgeClass(partVal: any, filterVal: any, opciones?: st
                   tokens.some(t => t.toLowerCase().includes(strFilter) || strFilter.includes(t.toLowerCase()))
 
   if (matches) {
-    return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 text-[10px]'
+    return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/70 text-[10px]'
   }
 
   return 'bg-slate-100 text-slate-500 border-slate-200 opacity-60 text-[10px]'
@@ -1775,12 +1777,12 @@ const resetMeasurementsFilters = () => {
 // =============================================================================
 const toastMessage = ref<string | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
-const showToast = (msg: string) => {
+const showToast = (msg: string, duration = 2600) => {
   if (toastTimer) clearTimeout(toastTimer)
   toastMessage.value = msg
   toastTimer = setTimeout(() => {
     toastMessage.value = null
-  }, 2400)
+  }, duration)
 }
 
 const copiedCode = ref<string | null>(null)
@@ -1927,6 +1929,48 @@ const editableComponentTarget = computed<ComponentGroup | null>(() => {
   return null
 })
 
+const handleTopEditBrand = () => {
+  if (editableBrandTarget.value) {
+    openEditBrandModal(editableBrandTarget.value)
+    return
+  }
+  isBrandOpen.value = true
+  brandInputRef.value?.focus()
+  showToast('Seleccione o busque una marca y presione su ícono de editar')
+}
+
+const handleTopEditMotor = () => {
+  if (editableMotorTarget.value) {
+    openEditMotorModal(editableMotorTarget.value)
+    return
+  }
+  showAllMotors.value = true
+  activeViewTab.value = 'motores'
+  isMotorOpen.value = true
+  motorInputRef.value?.focus()
+  showToast('Seleccione o busque un motor y presione Editar en la tabla')
+}
+
+const handleTopEditModel = () => {
+  if (editableModelTarget.value) {
+    openEditModelModal(editableModelTarget.value)
+    return
+  }
+  isModelOpen.value = true
+  modelInputRef.value?.focus()
+  showToast('Seleccione o busque un modelo y presione su ícono de editar')
+}
+
+const handleTopEditComponent = () => {
+  if (editableComponentTarget.value) {
+    handleEditGroup(editableComponentTarget.value.id)
+    return
+  }
+  isComponentOpen.value = true
+  componentInputRef.value?.focus()
+  showToast('Seleccione o busque un componente y presione su ícono de editar')
+}
+
 // 1. Filtrado de MARCAS / FABRICANTES (reacciona a Motor / Modelo activos)
 const filteredBrands = computed(() => {
   const q = brandInput.value.toLowerCase().trim()
@@ -1945,8 +1989,8 @@ const filteredBrands = computed(() => {
     return list
   }
   return list.filter(f =>
-    f.nombre.toLowerCase().includes(q) ||
-    (f.pais_origen && f.pais_origen.toLowerCase().includes(q))
+    f.nombre.toLowerCase().startsWith(q) ||
+    (f.pais_origen && f.pais_origen.toLowerCase().startsWith(q))
   )
 })
 
@@ -2050,7 +2094,7 @@ const filteredModels = computed(() => {
     const mq = motorInput.value.trim().toLowerCase()
     const motorsForInput = availableMotors.value.filter(m => {
       const code = (m.codigo || '').toLowerCase().trim()
-      return motorMatchMode.value === 'startsWith' ? code.startsWith(mq) : code.includes(mq)
+      return code.startsWith(mq)
     })
     const matched = list.filter(m => motorsForInput.some(mot => doesMotorMatchModel(mot, m)))
     if (matched.length > 0) {
@@ -2062,8 +2106,8 @@ const filteredModels = computed(() => {
     return list
   }
   return list.filter(m =>
-    normalizeText(m.nombre).includes(q) ||
-    (m.fabricante_id && normalizeText(getBrandName(m.fabricante_id)).includes(q))
+    normalizeText(m.nombre).startsWith(q) ||
+    (m.fabricante_id && normalizeText(getBrandName(m.fabricante_id)).startsWith(q))
   )
 })
 
@@ -2296,10 +2340,9 @@ const filteredComponentGroups = computed(() => {
     return list
   }
   return list.filter(g => 
-    g.title.toLowerCase().includes(q) || 
-    g.shortTitle.toLowerCase().includes(q) ||
-    g.category.toLowerCase().includes(q) ||
-    g.description.toLowerCase().includes(q)
+    g.title.toLowerCase().startsWith(q) || 
+    g.shortTitle.toLowerCase().startsWith(q) ||
+    g.category.toLowerCase().startsWith(q)
   )
 })
 
@@ -2443,10 +2486,15 @@ const brandMotorsList = computed<Motor[]>(() => {
   )
 
   if (q && !isSelectedMotorCurrent) {
-    const matched = motorMatchMode.value === 'startsWith'
-      ? list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
-      : list.filter(m => m.codigo.toLowerCase().trim().includes(q))
+    const matched = list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
     list = sortMotorsByRelevance(matched, q)
+  } else {
+    list = [...list].sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : 0
+      const tb = b.created_at ? Date.parse(b.created_at) : 0
+      if (tb !== ta) return tb - ta
+      return String(a.codigo || '').localeCompare(String(b.codigo || ''))
+    })
   }
 
   if (effectiveYearFilter.value) {
@@ -2491,7 +2539,25 @@ const goToPrevMotorPage = () => { if (motorCurrentPage.value > 1) motorCurrentPa
 const goToNextMotorPage = () => { if (motorCurrentPage.value < motorTotalPages.value) motorCurrentPage.value++ }
 const goToLastMotorPage = () => { motorCurrentPage.value = motorTotalPages.value }
 
-watch([selectedBrand, selectedModel, modelInput, selectedYear, yearInput, motorInput, motorMatchMode], () => {
+const recentMotorsList = computed<Motor[]>(() => {
+  return [...catalogStore.availableMotores]
+    .sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : 0
+      const tb = b.created_at ? Date.parse(b.created_at) : 0
+      if (tb !== ta) return tb - ta
+      return String(a.codigo || '').localeCompare(String(b.codigo || ''))
+    })
+    .slice(0, 8)
+})
+
+const isRecentMotor = (mot: Motor): boolean => {
+  if (!mot.created_at) return false
+  const ts = Date.parse(mot.created_at)
+  if (isNaN(ts)) return false
+  return Date.now() - ts <= 48 * 60 * 60 * 1000
+}
+
+watch([selectedBrand, selectedModel, modelInput, selectedYear, yearInput, motorInput], () => {
   motorCurrentPage.value = 1
 })
 
@@ -2832,6 +2898,218 @@ watch(tableSearchFilter, (val) => {
 
 const tableBrandFilter = ref<string>('Todas las marcas')
 
+const extractNormalizedRings = (r: RepuestoTecnico) => {
+  const subfilas = getPartSubfilas(r).filter(sf => !sf.es_fila_central)
+  if (subfilas.length > 0) {
+    const rows = subfilas.map((sf) => {
+      const dVal = resolveSubfilaColumnValue(sf.medidas, { clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro' })
+      const hVal = resolveSubfilaColumnValue(sf.medidas, { clave: 'grosor_mm', etiqueta: 'Grosor' })
+      const aVal = resolveSubfilaColumnValue(sf.medidas, { clave: 'altura_mm', etiqueta: 'Altura' })
+      return {
+        isOil: sf.nombre.toLowerCase().includes('aceite') || sf.nombre.toLowerCase().includes('oil'),
+        d1: dVal != null && !isNaN(Number(dVal)) ? Number(dVal) : (r.diametro_cilindro_mm != null ? Number(r.diametro_cilindro_mm) : null),
+        h1: hVal != null && !isNaN(Number(hVal)) ? Number(hVal) : null,
+        a1: aVal != null && !isNaN(Number(aVal)) ? Number(aVal) : null
+      }
+    })
+    const explicitOilIdx = rows.findIndex(x => x.isOil)
+    const oilIdx = explicitOilIdx >= 0 ? explicitOilIdx : (rows.length >= 2 ? rows.length - 1 : -1)
+    const oilRing = oilIdx >= 0 ? rows[oilIdx] : null
+    const compRings = rows.filter((_, idx) => idx !== oilIdx)
+    return { rows, compRings, oilRing }
+  }
+  const rings = getPartRingsList(r)
+  const oilIdx = rings.findIndex(x =>
+    String(x.posicion || '').toLowerCase().includes('aceite') ||
+    String(x.posicion || '').toLowerCase().includes('oil')
+  )
+  const resolvedOilIdx = oilIdx >= 0 ? oilIdx : (rings.length >= 2 ? rings.length - 1 : -1)
+  const oilRing = resolvedOilIdx >= 0 ? rings[resolvedOilIdx] : null
+  const compRings = rings.filter((_, idx) => idx !== resolvedOilIdx)
+  return { rows: rings, compRings, oilRing }
+}
+
+function getPartFilterMatchStatus(part: RepuestoTecnico): 'exact' | 'tolerance' | null {
+  let hasActiveCheck = false
+  let hasToleranceMatch = false
+
+  const checkNum = (val: unknown, target: unknown, tolKey: string) => {
+    if (!isFilterActive(target)) return
+    hasActiveCheck = true
+    if (val === undefined || val === null || val === '' || isNaN(Number(val))) {
+      hasToleranceMatch = true
+      return
+    }
+    const diff = Math.abs(Number(val) - Number(target))
+    if (diff > 0.001 && diff <= getTol(tolKey)) {
+      hasToleranceMatch = true
+    } else if (diff > getTol(tolKey)) {
+      hasToleranceMatch = true
+    }
+  }
+
+  if (isCurrentGroupRingsTable.value) {
+    const { rows, compRings, oilRing } = extractNormalizedRings(part)
+    if (isFilterActive(filterAnilloDiametro.value)) {
+      const d1 = rows.find(x => x.d1 != null)?.d1 ?? part.diametro_cilindro_mm
+      checkNum(d1, filterAnilloDiametro.value, 'anilloDiametro')
+    }
+    const compSpecs = [
+      { g: filterAnilloGrosor1.value, a: filterAnilloRadial1.value, kg: 'anilloGrosor1', ka: 'anilloRadial1' },
+      { g: filterAnilloGrosor2.value, a: filterAnilloRadial2.value, kg: 'anilloGrosor2', ka: 'anilloRadial2' },
+      { g: filterAnilloGrosor3.value, a: filterAnilloRadial3.value, kg: 'anilloGrosor3', ka: 'anilloRadial3' },
+      ...extraRingFilters.value.map((slot, idx) => ({
+        g: slot.grosor,
+        a: slot.altura,
+        kg: `anilloGrosor${idx + 4}`,
+        ka: `anilloRadial${idx + 4}`
+      }))
+    ]
+    compSpecs.forEach((cf, idx) => {
+      checkNum(compRings[idx]?.h1, cf.g, cf.kg)
+      checkNum(compRings[idx]?.a1, cf.a, cf.ka)
+    })
+    checkNum(oilRing?.h1, filterAnilloGrosorAceite.value, 'anilloGrosorAceite')
+    checkNum(oilRing?.a1, filterAnilloRadialAceite.value, 'anilloRadialAceite')
+
+    if (filterAnilloDisenos.value.length > 0) {
+      hasActiveCheck = true
+      const partDesigns = getPartRingDesigns(part).map(d => normalizeText(d))
+      const selectedTokens = filterAnilloDisenos.value.map(d => normalizeText(d))
+      const allExact = selectedTokens.every(tok => partDesigns.some(pd => pd === tok))
+      if (!allExact) hasToleranceMatch = true
+    }
+  }
+
+  const dims = (part.dimensiones as any) || {}
+  const subfilas = getPartSubfilas(part).filter(sf => !sf.es_fila_central)
+  for (const [key, filterVal] of Object.entries(dynamicParamFilters.value)) {
+    if (filterVal === undefined || filterVal === null || filterVal === '') continue
+    hasActiveCheck = true
+    const tolParam = getTol(key)
+    const paramDef = currentGroupDefinition.value?.parametros.find(p => p.clave === key) || { clave: key, etiqueta: key }
+
+    if (isPartEmbeddedTableFormat(part) || (Array.isArray(dims.subfilas) && dims.subfilas.length > 0) || (Array.isArray(dims.anillos) && dims.anillos.length > 0)) {
+      let rowExact = false
+      for (const sf of subfilas) {
+        const sfVal = resolveSubfilaColumnValue(sf.medidas, paramDef)
+        if (sfVal === undefined || sfVal === null || sfVal === '') continue
+        if (typeof filterVal === 'number' || (!Array.isArray(sfVal) && !isNaN(Number(filterVal)) && !isNaN(Number(sfVal)))) {
+          if (Math.abs(Number(sfVal) - Number(filterVal)) <= 0.001) {
+            rowExact = true
+            break
+          }
+        } else {
+          const tokens = parseMultiOptionValues(sfVal).map(s => s.toLowerCase())
+          const fLow = String(filterVal).toLowerCase().trim()
+          if (tokens.some(t => t === fLow) || String(sfVal).toLowerCase().trim() === fLow) {
+            rowExact = true
+            break
+          }
+        }
+      }
+      if (!rowExact) hasToleranceMatch = true
+      continue
+    }
+
+    const partVal = getPartParamValue(part, key)
+    if (partVal === undefined || partVal === null || partVal === '') {
+      hasToleranceMatch = true
+      continue
+    }
+    if (typeof filterVal === 'number' || (!Array.isArray(partVal) && !isNaN(Number(filterVal)) && !isNaN(Number(partVal)))) {
+      const diff = Math.abs(Number(partVal) - Number(filterVal))
+      if (diff > 0.001 && diff <= tolParam) {
+        hasToleranceMatch = true
+      } else if (diff > tolParam) {
+        hasToleranceMatch = true
+      }
+    } else {
+      const partTokens = parseMultiOptionValues(partVal).map(s => s.toLowerCase())
+      const strPart = partTokens.join(', ') || String(partVal).toLowerCase().trim()
+      const strFilter = String(filterVal).toLowerCase().trim()
+      const isExactStr = strPart === strFilter || partTokens.some(t => t === strFilter)
+      if (!isExactStr) hasToleranceMatch = true
+    }
+  }
+
+  if (!hasActiveCheck) return null
+  return hasToleranceMatch ? 'tolerance' : 'exact'
+}
+
+function getMiniTableCellMatchClass(
+  part: RepuestoTecnico,
+  sf: PartSubfilaDisplay,
+  sfIdx: number,
+  col: ParametroTecnicoDefinicion
+): string {
+  const rawVal = getPartMiniTableCellRawValue(part, sf, col)
+  const dynVal = dynamicParamFilters.value[col.clave]
+  if (dynVal !== undefined && dynVal !== null && dynVal !== '') {
+    if (col.tipo_dato === 'seleccion') {
+      return getPositionOrTypeBadgeClass(rawVal, dynVal, col.opciones)
+    }
+    return getMeasurementMatchClass(rawVal as any, dynVal as any, getTol(col.clave))
+  }
+
+  if (isCurrentGroupRingsTable.value || part.categoria === 'Anillos') {
+    const k = col.clave.toLowerCase()
+    if (k === 'diametro_cilindro_mm' || k.includes('diametro')) {
+      return getMeasurementMatchClass(rawVal as any, filterAnilloDiametro.value, getTol('anilloDiametro'))
+    }
+    const nonCentralRows = getPartSubfilas(part).filter(r => !r.es_fila_central)
+    const rowPos = nonCentralRows.indexOf(sf)
+    const resolvedPos = rowPos >= 0 ? rowPos : sfIdx
+    const explicitOilPos = nonCentralRows.findIndex(
+      r => r.nombre.toLowerCase().includes('aceite') || r.nombre.toLowerCase().includes('oil')
+    )
+    const oilPos = explicitOilPos >= 0 ? explicitOilPos : (nonCentralRows.length >= 2 ? nonCentralRows.length - 1 : -1)
+    const isOilRow = resolvedPos === oilPos
+
+    if (k === 'grosor_mm' || k.includes('grosor')) {
+      if (isOilRow) {
+        return getMeasurementMatchClass(rawVal as any, filterAnilloGrosorAceite.value, getTol('anilloGrosorAceite'))
+      }
+      const compIdx = oilPos >= 0 && resolvedPos > oilPos ? resolvedPos - 1 : resolvedPos
+      const targetG =
+        compIdx === 0 ? filterAnilloGrosor1.value :
+        compIdx === 1 ? filterAnilloGrosor2.value :
+        compIdx === 2 ? filterAnilloGrosor3.value :
+        extraRingFilters.value[compIdx - 3]?.grosor
+      const tolKey = `anilloGrosor${compIdx + 1}`
+      return getMeasurementMatchClass(rawVal as any, targetG, getTol(tolKey))
+    }
+
+    if (k === 'altura_mm' || k.includes('altura')) {
+      if (isOilRow) {
+        return getMeasurementMatchClass(rawVal as any, filterAnilloRadialAceite.value, getTol('anilloRadialAceite'))
+      }
+      const compIdx = oilPos >= 0 && resolvedPos > oilPos ? resolvedPos - 1 : resolvedPos
+      const targetA =
+        compIdx === 0 ? filterAnilloRadial1.value :
+        compIdx === 1 ? filterAnilloRadial2.value :
+        compIdx === 2 ? filterAnilloRadial3.value :
+        extraRingFilters.value[compIdx - 3]?.altura
+      const tolKey = `anilloRadial${compIdx + 1}`
+      return getMeasurementMatchClass(rawVal as any, targetA, getTol(tolKey))
+    }
+
+    if ((k === 'tipo_diseno' || k.includes('diseno')) && filterAnilloDisenos.value.length > 0) {
+      const tokens = parseMultiOptionValues(rawVal).map(t => normalizeText(t))
+      const selectedTokens = filterAnilloDisenos.value.map(d => normalizeText(d))
+      if (tokens.some(t => selectedTokens.includes(t))) {
+        return 'bg-emerald-100 text-emerald-950 border-emerald-500 font-black ring-1 ring-emerald-500/70 shadow-2xs'
+      }
+      if (tokens.some(t => selectedTokens.some(st => t.includes(st) || st.includes(t)))) {
+        return 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/70 shadow-2xs'
+      }
+      return 'bg-slate-100 text-slate-500 border-slate-200 opacity-60'
+    }
+  }
+
+  return 'bg-slate-100 text-slate-800 border-slate-200'
+}
+
 const displayedParts = computed<RepuestoTecnico[]>(() => {
   let list = catalogStore.repuestos
 
@@ -2874,37 +3152,6 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     // 2. Filtros de medidas dimensionales específicas
     // Caso Especializado: FAMILIAS EN TABLA / ANILLOS DE MOTOR (Diámetro, 1°..N°, Aceite y Diseño múltiple)
     if (isCurrentGroupRingsTable.value) {
-      const extractNormalizedRings = (r: RepuestoTecnico) => {
-        const subfilas = getPartSubfilas(r).filter(sf => !sf.es_fila_central)
-        if (subfilas.length > 0) {
-          const rows = subfilas.map((sf) => {
-            const dVal = resolveSubfilaColumnValue(sf.medidas, { clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro' })
-            const hVal = resolveSubfilaColumnValue(sf.medidas, { clave: 'grosor_mm', etiqueta: 'Grosor' })
-            const aVal = resolveSubfilaColumnValue(sf.medidas, { clave: 'altura_mm', etiqueta: 'Altura' })
-            return {
-              isOil: sf.nombre.toLowerCase().includes('aceite') || sf.nombre.toLowerCase().includes('oil'),
-              d1: dVal != null && !isNaN(Number(dVal)) ? Number(dVal) : (r.diametro_cilindro_mm != null ? Number(r.diametro_cilindro_mm) : null),
-              h1: hVal != null && !isNaN(Number(hVal)) ? Number(hVal) : null,
-              a1: aVal != null && !isNaN(Number(aVal)) ? Number(aVal) : null
-            }
-          })
-          const explicitOilIdx = rows.findIndex(x => x.isOil)
-          const oilIdx = explicitOilIdx >= 0 ? explicitOilIdx : (rows.length >= 2 ? rows.length - 1 : -1)
-          const oilRing = oilIdx >= 0 ? rows[oilIdx] : null
-          const compRings = rows.filter((_, idx) => idx !== oilIdx)
-          return { rows, compRings, oilRing }
-        }
-        const rings = getPartRingsList(r)
-        const oilIdx = rings.findIndex(x =>
-          String(x.posicion || '').toLowerCase().includes('aceite') ||
-          String(x.posicion || '').toLowerCase().includes('oil')
-        )
-        const resolvedOilIdx = oilIdx >= 0 ? oilIdx : (rings.length >= 2 ? rings.length - 1 : -1)
-        const oilRing = resolvedOilIdx >= 0 ? rings[resolvedOilIdx] : null
-        const compRings = rings.filter((_, idx) => idx !== resolvedOilIdx)
-        return { rows: rings, compRings, oilRing }
-      }
-
       // Diámetro (la primera siempre)
       if (isFilterActive(filterAnilloDiametro.value)) {
         const tolAnilloDiametro = getTol('anilloDiametro')
@@ -3056,7 +3303,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     const codeMatches = (rawCode?: string | null) => {
       const c = String(rawCode || '').trim().toLowerCase()
       if (!c) return false
-      return motorMatchMode.value === 'startsWith' ? c.startsWith(mq) : c.includes(mq)
+      return c.startsWith(mq)
     }
     list = list.filter(r => {
       if (r.motor_id && matchingMotorIds.has(r.motor_id)) return true
@@ -3170,6 +3417,14 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
 
       return false
     })
+  }
+
+  if (activeMeasurementsCount.value > 0) {
+    const score = (part: RepuestoTecnico) => {
+      const st = getPartFilterMatchStatus(part)
+      return st === 'exact' ? 0 : (st === 'tolerance' ? 1 : 2)
+    }
+    list = [...list].sort((a, b) => score(a) - score(b))
   }
 
   return list
@@ -3532,6 +3787,45 @@ const handleCreateNewGroup = () => {
   isAdminModalOpen.value = true
 }
 
+const isImportModalOpen = ref<boolean>(false)
+const importBannerReport = ref<CatalogImportReport | null>(null)
+let importBannerTimer: ReturnType<typeof setTimeout> | null = null
+
+const onCatalogImported = async (report: CatalogImportReport) => {
+  importBannerReport.value = report
+  if (importBannerTimer) clearTimeout(importBannerTimer)
+  importBannerTimer = setTimeout(() => {
+    importBannerReport.value = null
+  }, 12000)
+
+  showToast(
+    `✓ Importación exitosa: ${report.createdMotors} motores y ${report.createdParts} repuestos guardados`,
+    4500
+  )
+
+  if (report.createdMotors > 0 && report.createdParts === 0 && !selectedComponent.value) {
+    showAllMotors.value = true
+    activeViewTab.value = 'motores'
+    motorCurrentPage.value = 1
+  }
+
+  if (selectedMotor.value) {
+    await catalogStore.fetchRepuestosByMotor(selectedMotor.value.id)
+  } else if (selectedComponent.value) {
+    await catalogStore.fetchRepuestosByGrupo(
+      selectedComponent.value.category,
+      undefined,
+      catalogStore.selectedFabricanteId || undefined
+    )
+  } else if (report.createdParts > 0 || report.updatedParts > 0) {
+    await catalogStore.fetchRepuestosByGrupo(
+      '',
+      undefined,
+      catalogStore.selectedFabricanteId || undefined
+    )
+  }
+}
+
 const openAdminCatalogModal = (tab: 'repuesto' | 'grupo' = 'repuesto', editGroupId?: string | null) => {
   adminModalTab.value = tab
   adminModalEditGroupId.value = editGroupId || null
@@ -3651,6 +3945,7 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick)
   if (toastTimer) clearTimeout(toastTimer)
+  if (importBannerTimer) clearTimeout(importBannerTimer)
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 </script>
@@ -3669,10 +3964,10 @@ onUnmounted(() => {
     >
       <div 
         v-if="toastMessage" 
-        class="fixed bottom-6 right-6 z-50 bg-[#19314D] text-white px-4 py-2.5 rounded-xl shadow-2xl border border-[#C1E8EF]/35 flex items-center gap-2.5 popover-pop-in"
+        class="fixed bottom-6 right-6 z-50 bg-emerald-700 text-white px-5 py-3.5 rounded-2xl shadow-2xl border-2 border-emerald-300/70 flex items-center gap-3 popover-pop-in"
       >
-        <CheckCircle2 class="w-4 h-4 text-[#BFEBF2] shrink-0" />
-        <span class="text-xs font-semibold">{{ toastMessage }}</span>
+        <CheckCircle2 class="w-5 h-5 text-emerald-100 shrink-0" />
+        <span class="text-sm font-extrabold tracking-tight">{{ toastMessage }}</span>
       </div>
     </Transition>
 
@@ -3721,6 +4016,16 @@ onUnmounted(() => {
 
           <button
             type="button"
+            @click="isImportModalOpen = true"
+            class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
+            title="Importar datos desde Excel / JSON o descargar plantilla"
+          >
+            <Upload class="w-3.5 h-3.5 text-[#BFEBF2]" />
+            <span>Importar / Plantilla</span>
+          </button>
+
+          <button
+            type="button"
             @click="handleResetAll"
             class="px-3.5 py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-sm transition-all duration-150 active:scale-[0.97] flex items-center gap-1.5 cursor-pointer"
             title="Restaurar registros y filtros"
@@ -3741,7 +4046,7 @@ onUnmounted(() => {
         <AlertTriangle class="w-4 h-4 text-rose-600 shrink-0" />
         <span>{{ catalogStore.error || catalogStore.repuestosError }}</span>
       </div>
-      <button 
+      <button
         type="button"
         @click="catalogStore.initCatalog()"
         class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shrink-0"
@@ -3750,6 +4055,54 @@ onUnmounted(() => {
         <span>Reintentar</span>
       </button>
     </div>
+
+    <!-- Banner Vistoso de Confirmación de Importación Masiva -->
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="transform -translate-y-2 opacity-0 scale-98"
+      enter-to-class="transform translate-y-0 opacity-100 scale-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="importBannerReport"
+        class="rounded-2xl border-2 border-emerald-400 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white p-4 sm:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 ring-4 ring-emerald-200/60"
+      >
+        <div class="flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-white/20 border border-white/40 flex items-center justify-center shrink-0">
+            <CheckCircle2 class="w-7 h-7 text-white" />
+          </div>
+          <div>
+            <h3 class="text-base sm:text-lg font-black tracking-tight text-white">
+              ¡Importación completada exitosamente!
+            </h3>
+            <div class="flex flex-wrap items-center gap-2 mt-1 text-xs font-extrabold">
+              <span class="px-2.5 py-0.5 rounded-lg bg-white text-emerald-900">
+                Motores nuevos: {{ importBannerReport.createdMotors }}
+              </span>
+              <span class="px-2.5 py-0.5 rounded-lg bg-white text-emerald-900">
+                Repuestos nuevos: {{ importBannerReport.createdParts }}
+              </span>
+              <span v-if="importBannerReport.updatedParts > 0" class="px-2.5 py-0.5 rounded-lg bg-white text-[#004B97]">
+                Actualizados: {{ importBannerReport.updatedParts }}
+              </span>
+              <span v-if="importBannerReport.createdBrands > 0 || importBannerReport.createdModels > 0" class="px-2.5 py-0.5 rounded-lg bg-emerald-900/40 text-white border border-white/25">
+                Marcas +{{ importBannerReport.createdBrands }} · Modelos +{{ importBannerReport.createdModels }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          @click="importBannerReport = null"
+          class="self-end sm:self-center p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition cursor-pointer shrink-0"
+          title="Cerrar aviso"
+        >
+          <X class="w-4 h-4" />
+        </button>
+      </div>
+    </Transition>
 
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
@@ -3864,10 +4217,28 @@ onUnmounted(() => {
         
         <!-- 1. FABRICANTE -->
         <div class="relative combobox-brand">
-          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px] gap-1">
             <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Fabricante
             </label>
+            <button
+              type="button"
+              @click.stop="handleTopEditBrand"
+              :class="
+                editableBrandTarget
+                  ? 'bg-blue-50 hover:bg-blue-100 text-[#004B97] border-blue-200'
+                  : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#004B97] border-slate-200'
+              "
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold transition cursor-pointer"
+              :title="
+                editableBrandTarget
+                  ? `Editar o eliminar marca ${editableBrandTarget.nombre}`
+                  : 'Seleccionar una marca para editar o eliminar'
+              "
+            >
+              <Edit3 class="w-2.5 h-2.5" />
+              <span>Editar</span>
+            </button>
           </div>
 
           <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
@@ -3883,15 +4254,6 @@ onUnmounted(() => {
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
-              <button
-                v-if="editableBrandTarget"
-                type="button"
-                @click="openEditBrandModal(editableBrandTarget)"
-                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
-                title="Editar o eliminar marca"
-              >
-                <Edit3 class="w-3 h-3" />
-              </button>
               <button
                 type="button"
                 @click="openQuickCreateBrandModal(brandInput)"
@@ -3975,38 +4337,24 @@ onUnmounted(() => {
               Motor
             </label>
             <div class="flex items-center gap-1">
-              <!-- Buscador Dual de Motores: Inicia vs Cont -->
-              <div
-                class="inline-flex items-center p-0.5 rounded-md bg-slate-100 border border-slate-200 text-[9px] font-extrabold"
-                title="Cambiar modo de coincidencia al buscar código de motor"
+              <button
+                type="button"
+                @click.stop="handleTopEditMotor"
+                :class="
+                  editableMotorTarget
+                    ? 'bg-blue-50 hover:bg-blue-100 text-[#004B97] border-blue-200'
+                    : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#004B97] border-slate-200'
+                "
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold transition cursor-pointer"
+                :title="
+                  editableMotorTarget
+                    ? `Editar o eliminar motor ${editableMotorTarget.codigo}`
+                    : 'Seleccionar un motor para editar o eliminar'
+                "
               >
-                <button
-                  type="button"
-                  @click="motorMatchMode = 'startsWith'"
-                  :class="[
-                    'px-1.5 py-0.2 rounded transition cursor-pointer',
-                    motorMatchMode === 'startsWith'
-                      ? 'bg-[#1E446E] text-white shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  ]"
-                  title="Búsqueda ordenada: códigos que comienzan con lo escrito (ej. 8L -> 8L...)"
-                >
-                  Inicia
-                </button>
-                <button
-                  type="button"
-                  @click="motorMatchMode = 'contains'"
-                  :class="[
-                    'px-1.5 py-0.2 rounded transition cursor-pointer',
-                    motorMatchMode === 'contains'
-                      ? 'bg-[#147488] text-white shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  ]"
-                  title="Búsqueda flexible: códigos o nombres que contengan el texto"
-                >
-                  Cont
-                </button>
-              </div>
+                <Edit3 class="w-2.5 h-2.5" />
+                <span>Editar</span>
+              </button>
               <button
                 type="button"
                 @click="toggleMotorsWithPartsOnly"
@@ -4035,15 +4383,6 @@ onUnmounted(() => {
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
-                v-if="editableMotorTarget"
-                type="button"
-                @click="openEditMotorModal(editableMotorTarget)"
-                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
-                :title="`Editar o eliminar motor ${editableMotorTarget.codigo}`"
-              >
-                <Edit3 class="w-3 h-3" />
-              </button>
-              <button
                 type="button"
                 @click="openQuickCreateMotorModal(motorInput)"
                 class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
@@ -4070,10 +4409,28 @@ onUnmounted(() => {
 
         <!-- 3. MODELO -->
         <div class="relative combobox-model">
-          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px] gap-1">
             <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Modelo
             </label>
+            <button
+              type="button"
+              @click.stop="handleTopEditModel"
+              :class="
+                editableModelTarget
+                  ? 'bg-blue-50 hover:bg-blue-100 text-[#004B97] border-blue-200'
+                  : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#004B97] border-slate-200'
+              "
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold transition cursor-pointer"
+              :title="
+                editableModelTarget
+                  ? `Editar o eliminar modelo ${editableModelTarget.nombre}`
+                  : 'Seleccionar un modelo para editar o eliminar'
+              "
+            >
+              <Edit3 class="w-2.5 h-2.5" />
+              <span>Editar</span>
+            </button>
           </div>
 
           <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
@@ -4089,15 +4446,6 @@ onUnmounted(() => {
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
-              <button
-                v-if="editableModelTarget"
-                type="button"
-                @click="openEditModelModal(editableModelTarget)"
-                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
-                title="Editar o eliminar modelo"
-              >
-                <Edit3 class="w-3 h-3" />
-              </button>
               <button
                 type="button"
                 @click="openQuickCreateModelModal(modelInput)"
@@ -4269,10 +4617,28 @@ onUnmounted(() => {
 
         <!-- 5. COMPONENTE -->
         <div class="relative combobox-component">
-          <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
+          <div class="flex items-center justify-between mb-0.5 min-h-[18px] gap-1">
             <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Componente
             </label>
+            <button
+              type="button"
+              @click.stop="handleTopEditComponent"
+              :class="
+                editableComponentTarget
+                  ? 'bg-blue-50 hover:bg-blue-100 text-[#004B97] border-blue-200'
+                  : 'bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#004B97] border-slate-200'
+              "
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold transition cursor-pointer"
+              :title="
+                editableComponentTarget
+                  ? `Editar o eliminar familia ${editableComponentTarget.shortTitle}`
+                  : 'Seleccionar un componente para editar o eliminar'
+              "
+            >
+              <Edit3 class="w-2.5 h-2.5" />
+              <span>Editar</span>
+            </button>
           </div>
 
           <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
@@ -4288,15 +4654,6 @@ onUnmounted(() => {
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
-              <button
-                v-if="editableComponentTarget"
-                type="button"
-                @click="handleEditGroup(editableComponentTarget.id)"
-                class="p-1 text-slate-500 hover:text-[#004B97] rounded transition cursor-pointer"
-                title="Editar o eliminar familia"
-              >
-                <Edit3 class="w-3 h-3" />
-              </button>
               <button
                 type="button"
                 @click="handleCreateNewGroup"
@@ -4433,6 +4790,46 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <!-- Motores agregados recientemente -->
+      <div v-if="recentMotorsList.length > 0" class="pt-3 border-t border-slate-100 text-left space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+            Motores recientes
+          </span>
+          <button
+            type="button"
+            @click="showAllMotors = true; activeViewTab = 'motores'"
+            class="text-[11px] font-bold text-[#004B97] hover:underline cursor-pointer"
+          >
+            Ver lista completa →
+          </button>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          <button
+            v-for="rm in recentMotorsList"
+            :key="`rec-mot-${rm.id}`"
+            type="button"
+            @click="handleSelectMotor(rm)"
+            class="px-2.5 py-2 rounded-xl border border-slate-200 hover:border-[#04C4D9] hover:bg-cyan-50/60 bg-slate-50/60 text-left transition cursor-pointer group"
+          >
+            <div class="flex items-center justify-between gap-1">
+              <span class="font-mono font-extrabold text-xs text-slate-900 group-hover:text-[#038391] truncate">
+                {{ rm.codigo }}
+              </span>
+              <span
+                v-if="isRecentMotor(rm)"
+                class="px-1 py-0 rounded bg-emerald-100 text-emerald-800 text-[8px] font-black uppercase shrink-0"
+              >
+                Nuevo
+              </span>
+            </div>
+            <div class="text-[10px] text-slate-500 truncate mt-0.5">
+              {{ getBrandName(rm.fabricante_id) }} · {{ getMotorModelName(rm) }}
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- ========================================================================= -->
@@ -4553,7 +4950,7 @@ onUnmounted(() => {
 
                 <!-- 3. Código de Motor -->
                 <td class="py-2 px-3.5 font-semibold text-slate-800 align-middle border-r border-slate-100">
-                  <div class="flex items-center gap-1.5">
+                  <div class="flex items-center gap-1.5 flex-wrap">
                     <span class="font-mono font-bold text-slate-900 group-hover:text-[#038391] transition">
                       {{ getBrandName(mot.fabricante_id) }} - {{ mot.codigo }}
                     </span>
@@ -4562,6 +4959,12 @@ onUnmounted(() => {
                       class="text-[9px] px-1.5 py-0.2 rounded bg-[#147488] text-white font-bold"
                     >
                       Activo
+                    </span>
+                    <span
+                      v-else-if="isRecentMotor(mot)"
+                      class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold"
+                    >
+                      Reciente
                     </span>
                   </div>
                 </td>
@@ -5380,7 +5783,7 @@ onUnmounted(() => {
       <div class="studio-card rounded-2xl shadow-2xs overflow-hidden">
         
         <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap text-xs font-bold">
-          <span class="flex items-center gap-1.5">
+          <span class="flex items-center gap-1.5 flex-wrap">
             <span>{{ selectedComponent?.title || 'Piezas Técnicas' }}</span>
             <span class="font-normal text-[#BFEBF2] font-mono text-[11px]">({{ displayedParts.length }} registros)</span>
           </span>
@@ -5801,7 +6204,7 @@ onUnmounted(() => {
                               class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
                               :class="[
                                 sfValIdx < getPartSubfilas(part).filter(s => !s.es_fila_central).length - 1 ? 'border-r border-slate-200' : '',
-                                getMeasurementMatchClass(getPartMiniTableCellRawValue(part, sf, vRow.col) as any, dynamicParamFilters[vRow.col.clave], getTol(vRow.col.clave))
+                                getMiniTableCellMatchClass(part, sf, sfValIdx, vRow.col)
                               ]"
                             >
                               <div
@@ -5945,8 +6348,8 @@ onUnmounted(() => {
                                 class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
                                 :class="[
                                   cIdx < getPartTableColumns(part).length - 1 ? 'border-r border-slate-200' : '',
-                                  col.compartido_filas ? 'align-middle bg-cyan-50/15' : '',
-                                  getMeasurementMatchClass(getPartMiniTableCellRawValue(part, sf, col) as any, dynamicParamFilters[col.clave], getTol(col.clave))
+                                  col.compartido_filas ? 'align-middle' : '',
+                                  getMiniTableCellMatchClass(part, sf, sfIdx, col)
                                 ]"
                               >
                                 <div
@@ -6100,7 +6503,7 @@ onUnmounted(() => {
                       <span 
                         v-else
                         class="px-1.5 py-0.5 rounded border text-[11px] transition inline-flex items-center gap-1"
-                        :class="dynamicParamFilters[p.clave] ? (String(getPartParamValue(part, p.clave) || '').toLowerCase().includes(String(dynamicParamFilters[p.clave]).toLowerCase()) ? 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/60 shadow-2xs' : 'bg-slate-100 text-slate-500 opacity-60') : 'bg-slate-100 text-slate-800 border-slate-200'"
+                        :class="dynamicParamFilters[p.clave] ? (String(getPartParamValue(part, p.clave) || '').trim().toLowerCase() === String(dynamicParamFilters[p.clave]).trim().toLowerCase() ? 'bg-emerald-100 text-emerald-950 border-emerald-500 font-black ring-1 ring-emerald-500/70 shadow-2xs' : (String(getPartParamValue(part, p.clave) || '').toLowerCase().includes(String(dynamicParamFilters[p.clave]).toLowerCase()) ? 'bg-amber-100 text-amber-950 border-amber-400 font-bold ring-1 ring-amber-400/70 shadow-2xs' : 'bg-slate-100 text-slate-500 opacity-60')) : 'bg-slate-100 text-slate-800 border-slate-200'"
                       >
                         <span class="text-slate-500 text-[10px] uppercase font-sans">{{ p.etiqueta_corta || p.etiqueta }}:</span>
                         <strong class="text-slate-900">{{ getPartParamValue(part, p.clave) || '—' }}</strong>
@@ -7778,5 +8181,13 @@ onUnmounted(() => {
       @group-deleted="onGroupDeleted"
     />
 
+    <CatalogImportModal
+      :is-open="isImportModalOpen"
+      :preselected-group-id="selectedComponent?.id || null"
+      @close="isImportModalOpen = false"
+      @imported="onCatalogImported"
+    />
+
   </div>
 </template>
+    
