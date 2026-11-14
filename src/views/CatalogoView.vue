@@ -3307,7 +3307,7 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <!-- BARRA SUPERIOR FIJA: FILTROS REACTIVOS EN CASCADA                         -->
     <!-- ========================================================================= -->
-    <div class="sticky top-[72px] z-20 studio-card bg-white/95 backdrop-blur-md p-2.5 sm:p-3 space-y-1.5 overflow-visible border-[1.5px] !border-[#1E446E]/85">
+    <div class="sticky top-[72px] z-20 studio-card catalog-gradient-frame backdrop-blur-md p-2.5 sm:p-3 space-y-1.5 overflow-visible">
       
       <!-- Fila Superior: Buscador Universal + Chips Activos + Pestañas + Botón Filtros Móvil -->
       <div class="flex items-center gap-2 flex-wrap lg:flex-nowrap">
@@ -3318,7 +3318,7 @@ onUnmounted(() => {
             @input="handleSearchInput"
             type="text"
             placeholder="Buscar por código OEM, cruce o descripción..."
-            class="w-full pl-8 pr-12 py-1.5 h-[32px] text-[11px] placeholder:text-[11px] font-medium bg-slate-50 border border-[#1E446E]/75 rounded-lg focus:outline-none focus:bg-white focus:border-[#004B97] focus:ring-1 focus:ring-[#004B97] transition"
+            class="catalog-input-frame w-full pl-8 pr-12 py-1.5 h-[32px] text-[11px] placeholder:text-[11px] font-medium rounded-lg transition"
           />
           <div class="absolute right-2 top-1.5 flex items-center gap-1">
             <Loader2 v-if="catalogStore.isSearching" class="w-3.5 h-3.5 text-[#04C4D9] animate-spin" />
@@ -3423,7 +3423,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="h-[32px] flex items-center bg-slate-50 border border-[#1E446E]/75 rounded-lg focus-within:bg-white focus-within:border-[#004B97] focus-within:ring-1 focus-within:ring-[#004B97] transition overflow-hidden">
+          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
             <input
               ref="brandInputRef"
               v-model="brandInput"
@@ -3566,7 +3566,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="h-[32px] flex items-center bg-slate-50 border border-[#1E446E]/75 rounded-lg focus-within:bg-white focus-within:border-[#004B97] focus-within:ring-1 focus-within:ring-[#004B97] transition overflow-hidden">
+          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
             <input
               ref="motorInputRef"
               v-model="motorInput"
@@ -3621,7 +3621,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="h-[32px] flex items-center bg-slate-50 border border-[#1E446E]/75 rounded-lg focus-within:bg-white focus-within:border-[#004B97] focus-within:ring-1 focus-within:ring-[#004B97] transition overflow-hidden">
+          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
             <input
               ref="modelInputRef"
               v-model="modelInput"
@@ -3726,7 +3726,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="h-[32px] flex items-center bg-slate-50 border border-[#1E446E]/75 rounded-lg focus-within:bg-white focus-within:border-[#004B97] focus-within:ring-1 focus-within:ring-[#004B97] transition overflow-hidden">
+          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
             <input
               v-model="yearInput"
               @focus="isYearOpen = true"
@@ -3812,7 +3812,7 @@ onUnmounted(() => {
             </label>
           </div>
 
-          <div class="h-[32px] flex items-center bg-slate-50 border border-[#1E446E]/75 rounded-lg focus-within:bg-white focus-within:border-[#004B97] focus-within:ring-1 focus-within:ring-[#004B97] transition overflow-hidden">
+          <div class="catalog-input-frame h-[32px] flex items-center rounded-lg transition overflow-hidden">
             <input
               ref="componentInputRef"
               v-model="componentInput"
@@ -3924,7 +3924,7 @@ onUnmounted(() => {
     <!-- ========================================================================= -->
     <div 
       v-if="!selectedBrand && !brandInput && !selectedMotor && !motorInput && !selectedModel && !selectedYear && !yearInput && !selectedComponent && !searchInput && !showAllMotors" 
-      class="bg-white rounded-2xl border-[1.5px] border-[#1E446E]/85 shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
+      class="catalog-gradient-frame rounded-2xl shadow-2xs p-6 text-center max-w-lg mx-auto space-y-3.5 my-6"
     >
       <div class="w-12 h-12 rounded-xl bg-cyan-50 border border-cyan-200/80 text-[#04C4D9] flex items-center justify-center mx-auto shadow-2xs">
         <Sparkles class="w-6 h-6" />
@@ -3970,7 +3970,7 @@ onUnmounted(() => {
       class="space-y-3.5"
     >
       <!-- Encabezado de la tabla de motores -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-xl border-[1.5px] border-[#1E446E]/85 shadow-2xs">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 catalog-gradient-frame px-3.5 py-2.5 rounded-xl shadow-2xs">
         <div class="flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-[#04C4D9]"></span>
           <h3 class="text-xs sm:text-sm font-bold text-slate-900">
@@ -4001,7 +4001,7 @@ onUnmounted(() => {
       </div>
 
       <!-- TABLA TÉCNICA DE MOTORES -->
-      <div class="studio-card bg-white rounded-2xl border-[1.5px] !border-[#1E446E]/85 shadow-2xs overflow-hidden">
+      <div class="studio-card catalog-gradient-frame rounded-2xl shadow-2xs overflow-hidden">
         
         <!-- Barra de Estado / Paginación Resumen -->
         <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white py-2 px-4 flex items-center justify-between text-xs font-medium">
@@ -4244,7 +4244,7 @@ onUnmounted(() => {
       <!-- ======================================================================= -->
       <!-- BARRA DE FILTROS DE MEDIDAS TÉCNICAS (MINIMALISTA)                      -->
       <!-- ======================================================================= -->
-      <div v-if="selectedComponent" class="bg-white p-3.5 rounded-2xl border-[1.5px] border-[#1E446E]/85 shadow-2xs space-y-2.5">
+      <div v-if="selectedComponent" class="catalog-gradient-frame p-3.5 rounded-2xl shadow-2xs space-y-2.5">
         
         <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
           <div class="flex items-center gap-2">
@@ -5155,7 +5155,7 @@ onUnmounted(() => {
       </div>
 
       <!-- TABLA TÉCNICA DE REPUESTOS EN FORMATO MATRIZ (MINIMALISTA) -->
-      <div class="studio-card bg-white rounded-2xl border-[1.5px] !border-[#1E446E]/85 shadow-2xs overflow-hidden">
+      <div class="studio-card catalog-gradient-frame rounded-2xl shadow-2xs overflow-hidden">
         
         <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap text-xs font-bold">
           <span class="flex items-center gap-1.5">
@@ -7529,3 +7529,35 @@ onUnmounted(() => {
 
   </div>
 </template>
+
+<style scoped>
+.catalog-gradient-frame {
+  border: 2.5px solid transparent !important;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(#ffffff, #ffffff),
+    linear-gradient(125deg, #04C4D9 0%, #0284C7 34%, #004B97 68%, #0D1B3E 100%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.catalog-input-frame {
+  border: 2px solid transparent !important;
+  background-color: #f8fafc;
+  background-image:
+    linear-gradient(#f8fafc, #f8fafc),
+    linear-gradient(125deg, #04C4D9 0%, #0284C7 36%, #004B97 72%, #0D1B3E 100%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.catalog-input-frame:focus,
+.catalog-input-frame:focus-within {
+  outline: none;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(#ffffff, #ffffff),
+    linear-gradient(125deg, #04C4D9 0%, #0284C7 42%, #004B97 100%);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.16);
+}
+</style>
