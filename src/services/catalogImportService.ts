@@ -882,7 +882,7 @@ export const parseCatalogImportFile = async (
     const isMotorsSheet =
       normSheet.includes('motor') && !normSheet.includes('anillo') && !normSheet.includes('repuesto')
 
-    rows.forEach((row, idx) => {
+    rows.forEach((row: Record<string, unknown>, idx: number) => {
       if (isMotorsSheet) {
         const m = parseMotorRowObject(row, idx + 2, sheetName)
         if (m) motors.push(m)
