@@ -2048,12 +2048,10 @@ const filteredModels = computed(() => {
 
   if (!selectedMotor.value && motorInput.value.trim()) {
     const mq = motorInput.value.trim().toLowerCase()
-    const motorsForInput = availableMotors.value.filter(
-      m =>
-        m.codigo.toLowerCase().includes(mq) ||
-        (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(mq)) ||
-        (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(mq))
-    )
+    const motorsForInput = availableMotors.value.filter(m => {
+      const code = (m.codigo || '').toLowerCase().trim()
+      return motorMatchMode.value === 'startsWith' ? code.startsWith(mq) : code.includes(mq)
+    })
     const matched = list.filter(m => motorsForInput.some(mot => doesMotorMatchModel(mot, m)))
     if (matched.length > 0) {
       list = matched
@@ -2447,14 +2445,7 @@ const brandMotorsList = computed<Motor[]>(() => {
   if (q && !isSelectedMotorCurrent) {
     const matched = motorMatchMode.value === 'startsWith'
       ? list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
-      : list.filter(m =>
-          m.codigo.toLowerCase().includes(q) ||
-          (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)) ||
-          (m.denominacion_venta && m.denominacion_venta.toLowerCase().includes(q)) ||
-          getMotorModelName(m).toLowerCase().includes(q) ||
-          m.combustible.toLowerCase().includes(q) ||
-          (m.fabricante_id && getBrandName(m.fabricante_id).toLowerCase().includes(q))
-        )
+      : list.filter(m => m.codigo.toLowerCase().trim().includes(q))
     list = sortMotorsByRelevance(matched, q)
   }
 
@@ -2544,6 +2535,69 @@ const getMotorModelName = (mot: Motor): string => {
   const names = getMotorModelNamesList(mot)
   if (names.length > 0) return names.join(', ')
   return mot.denominacion_venta || '—'
+}
+
+const getPartVehicleModelsLabel = (part: RepuestoTecnico): string => {
+  const spec = (part.especificaciones_tecnicas as Record<string, unknown>) || {}
+  const dims = (part.dimensiones as Record<string, unknown>) || {}
+  const linkedFromStore = part.motor_id ? catalogStore.motores.find(m => m.id === part.motor_id) : undefined
+  const linkedMot = linkedFromStore || part.motor
+
+  const brandName = (
+    part.motor?.fabricante?.nombre ||
+    (linkedMot?.fabricante_id ? getBrandName(linkedMot.fabricante_id) : '') ||
+    (spec.marca ? String(spec.marca) : '') ||
+    (Array.isArray(spec.fabricantes) && spec.fabricantes[0] ? String(spec.fabricantes[0]) : '') ||
+    (dims.marca ? String(dims.marca) : '')
+  )
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+
+  const models: string[] = []
+  const seen = new Set<string>()
+  const addModelName = (raw?: string | null) => {
+    for (const partTok of String(raw || '').split(/[,\/;|\n]+/)) {
+      const clean = partTok.replace(/\s+/g, ' ').trim()
+      if (!clean) continue
+      const low = clean.toLowerCase()
+      if (low === '—' || low === '-' || low === 'n/a' || low === 'na' || low === 'universal' || low === 'varios') continue
+      const key = normalizeText(clean)
+      if (key && !seen.has(key)) {
+        seen.add(key)
+        models.push(clean)
+      }
+    }
+  }
+
+  if (linkedMot) {
+    getMotorModelNamesList(linkedMot).forEach(n => addModelName(n))
+  }
+  if (part.motor && part.motor !== linkedMot) {
+    getMotorModelNamesList(part.motor).forEach(n => addModelName(n))
+  }
+
+  const pushJsonModels = (val: unknown) => {
+    if (Array.isArray(val)) {
+      val.forEach(v => pushJsonModels(v))
+    } else if (typeof val === 'string' && val.trim()) {
+      addModelName(val)
+    }
+  }
+  pushJsonModels(spec.modelos)
+  pushJsonModels(dims.modelos)
+  pushJsonModels(spec.modelos_adicionales)
+  pushJsonModels(dims.modelos_adicionales)
+  pushJsonModels(spec.modelo)
+  pushJsonModels(dims.modelo)
+
+  if (models.length > 0) {
+    const joined = models.join(', ')
+    return brandName ? `${brandName} ${joined}` : joined
+  }
+
+  const rawVeh = String(spec.vehiculo || dims.vehiculo || '').replace(/\s+/g, ' ').trim()
+  return rawVeh
 }
 
 const getMotorYearsLabel = (mot: Motor): string => {
@@ -3007,11 +3061,9 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     list = list.filter(r => {
       if (r.motor_id && matchingMotorIds.has(r.motor_id)) return true
       if (r.motor?.id && matchingMotorIds.has(r.motor.id)) return true
-      if (codeMatches(r.motor?.codigo) || codeMatches(r.motor?.nombre_comercial) || codeMatches(r.motor?.denominacion_venta)) return true
+      if (codeMatches(r.motor?.codigo)) return true
       const compat = (r.especificaciones_tecnicas as any)?.motores_compatibles
       if (Array.isArray(compat) && compat.some((c: unknown) => codeMatches(String(c)))) return true
-      const motTexto = (r.dimensiones as any)?.motores_texto
-      if (typeof motTexto === 'string' && motTexto.toLowerCase().includes(mq)) return true
       return false
     })
   }
@@ -5511,15 +5563,15 @@ onUnmounted(() => {
 
                       <!-- Badges de vehículo, año y cilindros (Información técnica estilo Dokuro / TecDoc) -->
                       <div 
-                        v-if="(part.especificaciones_tecnicas as any)?.vehiculo || (part.especificaciones_tecnicas as any)?.ano || (part.especificaciones_tecnicas as any)?.cilindros"
+                        v-if="getPartVehicleModelsLabel(part) || (part.especificaciones_tecnicas as any)?.ano || (part.especificaciones_tecnicas as any)?.cilindros"
                         class="flex flex-wrap items-center gap-1 mt-1 text-[10px]"
                       >
                         <span 
-                          v-if="(part.especificaciones_tecnicas as any)?.vehiculo"
+                          v-if="getPartVehicleModelsLabel(part)"
                           class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200"
                           title="Modelo de vehículo y aplicación técnica"
                         >
-                          {{ (part.especificaciones_tecnicas as any).vehiculo }}
+                          {{ getPartVehicleModelsLabel(part) }}
                         </span>
                         <span 
                           v-if="(part.especificaciones_tecnicas as any)?.ano && (part.especificaciones_tecnicas as any)?.ano !== '—'"
@@ -6312,6 +6364,10 @@ onUnmounted(() => {
                 <span class="text-[10px] text-slate-400 font-sans uppercase block">Combustible</span>
                 <strong class="text-slate-900">{{ selectedMotorInfoModal.combustible }}</strong>
               </div>
+              <div class="col-span-2 pt-1.5 border-t border-slate-200/80">
+                <span class="text-[10px] text-slate-400 font-sans uppercase block">Modelos de Vehículo Vinculados</span>
+                <strong class="text-slate-900 font-sans">{{ getMotorModelName(selectedMotorInfoModal) }}</strong>
+              </div>
             </div>
 
             <div class="p-3 bg-cyan-50/60 rounded-xl border border-cyan-200/70 text-slate-700 text-xs">
@@ -6543,12 +6599,12 @@ onUnmounted(() => {
 
             <!-- Aplicación técnica del vehículo, año y cilindros (Estilo Dokuro / TecDoc) -->
             <div 
-              v-if="(modalPart.especificaciones_tecnicas as any)?.vehiculo || (modalPart.especificaciones_tecnicas as any)?.ano || (modalPart.especificaciones_tecnicas as any)?.cilindros"
+              v-if="getPartVehicleModelsLabel(modalPart) || (modalPart.especificaciones_tecnicas as any)?.ano || (modalPart.especificaciones_tecnicas as any)?.cilindros"
               class="bg-blue-50/70 border border-blue-200 p-3 rounded-xl flex flex-wrap items-center gap-3 text-xs"
             >
-              <div v-if="(modalPart.especificaciones_tecnicas as any)?.vehiculo" class="flex items-center gap-1.5">
+              <div v-if="getPartVehicleModelsLabel(modalPart)" class="flex items-center gap-1.5">
                 <span class="text-blue-600 font-bold">Vehículo:</span>
-                <strong class="text-blue-950 font-bold">{{ (modalPart.especificaciones_tecnicas as any).vehiculo }}</strong>
+                <strong class="text-blue-950 font-bold">{{ getPartVehicleModelsLabel(modalPart) }}</strong>
               </div>
               <div v-if="(modalPart.especificaciones_tecnicas as any)?.ano" class="flex items-center gap-1.5">
                 <span class="text-slate-600 font-bold">Año:</span>

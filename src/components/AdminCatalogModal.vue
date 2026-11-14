@@ -243,11 +243,33 @@ watch(() => props.isOpen, (open) => {
     if (catalogStore.modelos.length === 0) {
       catalogStore.fetchModelos()
     }
-    if (partMarca.value.trim()) {
-      const fab = catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === partMarca.value.trim().toLowerCase())
+    if (partMarca.value.trim() || props.editPart?.motor?.fabricante_id) {
+      const fab =
+        catalogStore.fabricantes.find(f => f.nombre.toLowerCase() === partMarca.value.trim().toLowerCase()) ||
+        (props.editPart?.motor?.fabricante_id
+          ? catalogStore.fabricantes.find(f => f.id === props.editPart!.motor!.fabricante_id)
+          : undefined)
       if (fab) {
         catalogStore.getMotoresForBrand(fab.id).then(list => {
           brandMotoresAll.value = list
+          const targetMotId = props.editPart?.motor_id || props.preselectedMotorId
+          if (targetMotId && partMotorId.value === targetMotId) {
+            const matchedMot = list.find(m => m.id === targetMotId)
+            if (matchedMot) {
+              const motorModels = extractModelsFromMotorObj(matchedMot)
+              if (motorModels.length > 0) {
+                const merged = Array.from(
+                  new Set([
+                    ...(partModelo.value.trim() ? [partModelo.value.trim().toUpperCase()] : []),
+                    ...partModelosAdicionales.value.map(x => x.trim().toUpperCase()).filter(Boolean),
+                    ...motorModels
+                  ])
+                )
+                partModelo.value = merged[0] || ''
+                partModelosAdicionales.value = merged.slice(1)
+              }
+            }
+          }
         }).catch(() => {})
       }
     }
@@ -277,6 +299,35 @@ const getBrandName = (fabId?: string): string => {
   if (!fabId) return ''
   const fab = catalogStore.fabricantes.find(f => f.id === fabId)
   return fab ? fab.nombre : ''
+}
+
+const extractModelsFromMotorObj = (mot?: Motor | null): string[] => {
+  if (!mot) return []
+  const out: string[] = []
+  const addTok = (raw?: string | null) => {
+    for (const s of String(raw || '').split(/[,\/;|\n]+/)) {
+      const clean = s.replace(/\s+/g, ' ').trim().toUpperCase()
+      if (clean && clean !== '—' && clean !== '-' && clean !== 'N/A' && clean !== 'NA' && clean !== 'UNIVERSAL' && clean !== 'VARIOS') {
+        out.push(clean)
+      }
+    }
+  }
+  if (Array.isArray(mot.modelos_nombres)) mot.modelos_nombres.forEach(n => addTok(n))
+  const specNames = (mot.especificaciones_tecnicas as Record<string, unknown> | undefined)?.modelos_nombres
+  if (Array.isArray(specNames)) specNames.forEach(n => addTok(String(n)))
+  if (mot.modelo?.nombre) addTok(mot.modelo.nombre)
+  const allIds = [
+    ...(mot.modelo_id ? [mot.modelo_id] : []),
+    ...(Array.isArray(mot.modelo_ids) ? mot.modelo_ids : []),
+    ...(Array.isArray((mot.especificaciones_tecnicas as Record<string, unknown> | undefined)?.modelo_ids)
+      ? ((mot.especificaciones_tecnicas as Record<string, unknown>).modelo_ids as string[])
+      : [])
+  ]
+  for (const mid of allIds) {
+    const found = catalogStore.modelos.find(m => m.id === mid)
+    if (found?.nombre) addTok(found.nombre)
+  }
+  return Array.from(new Set(out))
 }
 
 const mergedAvailableMotores = computed<Motor[]>(() => {
@@ -372,21 +423,15 @@ const selectMotor = (mot: Motor | null) => {
     if (mot.fabricante_id && brand) {
       partMarca.value = brand.toUpperCase()
     }
-    const resolvedModName =
-      mot.modelo?.nombre ||
-      (mot.modelos_nombres && mot.modelos_nombres[0]) ||
-      (mot.modelo_id ? catalogStore.modelos.find(m => m.id === mot.modelo_id)?.nombre : undefined)
-    if (!partModelo.value.trim() && resolvedModName) {
-      const motorModelsList = Array.from(
-        new Set([
-          resolvedModName.toUpperCase(),
-          ...(mot.modelos_nombres || []).map(n => n.trim().toUpperCase())
-        ].filter(Boolean))
-      )
-      partModelo.value = motorModelsList[0] || ''
-      if (partModelosAdicionales.value.length === 0 && motorModelsList.length > 1) {
-        partModelosAdicionales.value = motorModelsList.slice(1)
-      }
+    const motorModelsList = extractModelsFromMotorObj(mot)
+    if (motorModelsList.length > 0) {
+      const existingPartModels = [
+        ...(partModelo.value.trim() ? [partModelo.value.trim().toUpperCase()] : []),
+        ...partModelosAdicionales.value.map(x => x.trim().toUpperCase()).filter(Boolean)
+      ]
+      const mergedModels = Array.from(new Set([...existingPartModels, ...motorModelsList]))
+      partModelo.value = mergedModels[0] || ''
+      partModelosAdicionales.value = mergedModels.slice(1)
     }
     if (!partAno.value && mot.anios) {
       partAno.value = mot.anios
@@ -1013,7 +1058,9 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     } else if (typeof val === 'string' && val.trim()) {
       val.split(/[,\/;|\n]+/).forEach(tok => {
         const clean = tok.replace(/\s+/g, ' ').trim().toUpperCase()
-        if (clean) rawModelsList.push(clean)
+        if (clean && clean !== '—' && clean !== '-' && clean !== 'N/A' && clean !== 'NA' && clean !== 'UNIVERSAL' && clean !== 'VARIOS') {
+          rawModelsList.push(clean)
+        }
       })
     }
   }
@@ -1023,8 +1070,24 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   pushModelTokens(dims.modelo)
   pushModelTokens(spec.modelos_adicionales)
   pushModelTokens(dims.modelos_adicionales)
+
+  if (part.motor_id) {
+    const linkedFromStore = catalogStore.motores.find(m => m.id === part.motor_id)
+    const linkedFromBrand = brandMotoresAll.value.find(m => m.id === part.motor_id)
+    extractModelsFromMotorObj(part.motor).forEach(m => rawModelsList.push(m))
+    extractModelsFromMotorObj(linkedFromStore).forEach(m => rawModelsList.push(m))
+    extractModelsFromMotorObj(linkedFromBrand).forEach(m => rawModelsList.push(m))
+  } else if (part.motor) {
+    extractModelsFromMotorObj(part.motor).forEach(m => rawModelsList.push(m))
+  }
+
   if (rawModelsList.length === 0) {
-    pushModelTokens(spec.vehiculo || part.motor?.modelo?.nombre || '')
+    const rawVeh = String(spec.vehiculo || dims.vehiculo || '').trim().toUpperCase()
+    const brandUp = partMarca.value.trim().toUpperCase()
+    const cleanVeh = brandUp && rawVeh.startsWith(`${brandUp} `)
+      ? rawVeh.slice(brandUp.length).trim()
+      : rawVeh
+    pushModelTokens(cleanVeh || part.motor?.modelo?.nombre || '')
   }
   const uniquePartModels = Array.from(new Set(rawModelsList))
   partModelo.value = uniquePartModels[0] || ''

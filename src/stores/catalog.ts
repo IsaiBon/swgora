@@ -481,6 +481,34 @@ export const useCatalogStore = defineStore('catalog', () => {
           fetchModelos(selectedFabricanteId.value || undefined),
           fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
         ])
+        const freshMot = motores.value.find(m => m.id === created.motor_id)
+        if (freshMot) {
+          const cleanMods = (freshMot.modelos_nombres || []).map(n => n.trim().toUpperCase()).filter(Boolean)
+          const label = cleanMods.join(' / ')
+          const brandName = (freshMot.fabricante?.nombre || fabricantes.value.find(f => f.id === freshMot.fabricante_id)?.nombre || '').trim().toUpperCase()
+          const vehLabel = cleanMods.length > 0 ? (brandName ? `${brandName} ${label}` : label) : undefined
+          repuestos.value = repuestos.value.map(r => {
+            if (r.motor_id !== created.motor_id && r.motor?.id !== created.motor_id) return r
+            return {
+              ...r,
+              motor: r.motor ? { ...r.motor, ...freshMot } : freshMot,
+              especificaciones_tecnicas: {
+                ...(r.especificaciones_tecnicas || {}),
+                modelo: label,
+                modelos: cleanMods,
+                modelos_adicionales: cleanMods.slice(1),
+                ...(vehLabel ? { vehiculo: vehLabel } : {})
+              },
+              dimensiones: {
+                ...(r.dimensiones || {}),
+                modelo: label,
+                modelos: cleanMods,
+                modelos_adicionales: cleanMods.slice(1),
+                ...(vehLabel ? { vehiculo: vehLabel } : {})
+              }
+            }
+          })
+        }
       }
       return created
     } catch (err: unknown) {
@@ -515,6 +543,34 @@ export const useCatalogStore = defineStore('catalog', () => {
           fetchModelos(selectedFabricanteId.value || undefined),
           fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
         ])
+        const freshMot = motores.value.find(m => m.id === updated.motor_id)
+        if (freshMot) {
+          const cleanMods = (freshMot.modelos_nombres || []).map(n => n.trim().toUpperCase()).filter(Boolean)
+          const label = cleanMods.join(' / ')
+          const brandName = (freshMot.fabricante?.nombre || fabricantes.value.find(f => f.id === freshMot.fabricante_id)?.nombre || '').trim().toUpperCase()
+          const vehLabel = cleanMods.length > 0 ? (brandName ? `${brandName} ${label}` : label) : undefined
+          repuestos.value = repuestos.value.map(r => {
+            if (r.motor_id !== updated.motor_id && r.motor?.id !== updated.motor_id) return r
+            return {
+              ...r,
+              motor: r.motor ? { ...r.motor, ...freshMot } : freshMot,
+              especificaciones_tecnicas: {
+                ...(r.especificaciones_tecnicas || {}),
+                modelo: label,
+                modelos: cleanMods,
+                modelos_adicionales: cleanMods.slice(1),
+                ...(vehLabel ? { vehiculo: vehLabel } : {})
+              },
+              dimensiones: {
+                ...(r.dimensiones || {}),
+                modelo: label,
+                modelos: cleanMods,
+                modelos_adicionales: cleanMods.slice(1),
+                ...(vehLabel ? { vehiculo: vehLabel } : {})
+              }
+            }
+          })
+        }
       }
       return updated
     } catch (err: unknown) {
@@ -730,6 +786,31 @@ export const useCatalogStore = defineStore('catalog', () => {
             }
           : m
       )
+      const cleanMods = (updated.modelos_nombres || []).map(n => n.trim().toUpperCase()).filter(Boolean)
+      const combinedLabel = cleanMods.join(' / ')
+      const brandName = (updated.fabricante?.nombre || fabricantes.value.find(f => f.id === updated.fabricante_id)?.nombre || '').trim().toUpperCase()
+      const vehLabel = cleanMods.length > 0 ? (brandName ? `${brandName} ${combinedLabel}` : combinedLabel) : undefined
+      repuestos.value = repuestos.value.map(r => {
+        if (r.motor_id !== id && r.motor?.id !== id) return r
+        return {
+          ...r,
+          motor: r.motor ? { ...r.motor, ...updated } : updated,
+          especificaciones_tecnicas: {
+            ...(r.especificaciones_tecnicas || {}),
+            modelo: combinedLabel,
+            modelos: cleanMods,
+            modelos_adicionales: cleanMods.slice(1),
+            ...(vehLabel ? { vehiculo: vehLabel } : {})
+          },
+          dimensiones: {
+            ...(r.dimensiones || {}),
+            modelo: combinedLabel,
+            modelos: cleanMods,
+            modelos_adicionales: cleanMods.slice(1),
+            ...(vehLabel ? { vehiculo: vehLabel } : {})
+          }
+        }
+      })
       if (selectedMotorId.value === id) {
         modeloIdsDelMotor.value = updated.modelo_ids || []
       }

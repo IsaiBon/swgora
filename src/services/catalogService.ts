@@ -1609,10 +1609,14 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
 
   if (motorRaw) {
     const motorEspec = (motorRaw.especificaciones_tecnicas as Record<string, unknown>) || {}
+    const motorSpecIds = Array.isArray(motorEspec.modelo_ids) ? motorEspec.modelo_ids.map(String).filter(Boolean) : []
+    const motorSpecNames = Array.isArray(motorEspec.modelos_nombres) ? motorEspec.modelos_nombres.map(String).filter(Boolean) : []
     motorData = {
       id: String(motorRaw.id),
       fabricante_id: String(motorRaw.fabricante_id),
       modelo_id: motorRaw.modelo_id ? String(motorRaw.modelo_id) : undefined,
+      modelo_ids: motorSpecIds.length > 0 ? motorSpecIds : undefined,
+      modelos_nombres: motorSpecNames.length > 0 ? motorSpecNames : undefined,
       numero_id: motorEspec.numero_id ? (motorEspec.numero_id as number | string) : undefined,
       codigo: String(motorRaw.codigo),
       nombre_comercial: motorRaw.nombre_comercial ? String(motorRaw.nombre_comercial) : undefined,
@@ -1780,17 +1784,46 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
 export const normalizeText = (t: string): string =>
   (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 
-const extractPartModelTokens = (part: Partial<RepuestoTecnico>): string[] => {
-  const specObj = (part.especificaciones_tecnicas as Record<string, unknown>) || {}
-  const dimsObj = (part.dimensiones as Record<string, unknown>) || {}
-  return [
-    ...(Array.isArray(specObj.modelos) ? specObj.modelos.map(String) : []),
-    ...(Array.isArray(dimsObj.modelos) ? dimsObj.modelos.map(String) : []),
-    ...(Array.isArray(specObj.modelos_adicionales) ? specObj.modelos_adicionales.map(String) : []),
-    ...(Array.isArray(dimsObj.modelos_adicionales) ? dimsObj.modelos_adicionales.map(String) : []),
-    specObj.modelo ? String(specObj.modelo) : '',
-    dimsObj.modelo ? String(dimsObj.modelo) : ''
+const extractModelTokensFromRaw = (
+  specObj?: Record<string, unknown> | null,
+  dimsObj?: Record<string, unknown> | null
+): string[] => {
+  const s = specObj || {}
+  const d = dimsObj || {}
+  const rawEntries = [
+    ...(Array.isArray(s.modelos) ? s.modelos.map(String) : []),
+    ...(Array.isArray(d.modelos) ? d.modelos.map(String) : []),
+    ...(Array.isArray(s.modelos_adicionales) ? s.modelos_adicionales.map(String) : []),
+    ...(Array.isArray(d.modelos_adicionales) ? d.modelos_adicionales.map(String) : []),
+    s.modelo ? String(s.modelo) : '',
+    d.modelo ? String(d.modelo) : ''
   ].filter(Boolean)
+
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const entry of rawEntries) {
+    for (const tok of String(entry).split(/[,\/;|\n]+/)) {
+      const clean = tok.replace(/\s+/g, ' ').trim()
+      if (!clean) continue
+      const low = clean.toLowerCase()
+      if (low === 'n/a' || low === 'na' || low === 'universal' || low === 'varios' || low === '-' || low === '—') {
+        continue
+      }
+      const key = normalizeText(clean)
+      if (key && !seen.has(key)) {
+        seen.add(key)
+        out.push(clean)
+      }
+    }
+  }
+  return out
+}
+
+const extractPartModelTokens = (part: Partial<RepuestoTecnico>): string[] => {
+  return extractModelTokensFromRaw(
+    (part.especificaciones_tecnicas as Record<string, unknown>) || {},
+    (part.dimensiones as Record<string, unknown>) || {}
+  )
 }
 
 export const catalogService = {
@@ -2276,11 +2309,157 @@ export const catalogService = {
   },
 
   /**
-   * Garantiza que los nombres de modelo declarados en un repuesto existan y queden vinculados a su motor
+   * Sincroniza la lista unificada de modelos de un motor hacia todos sus repuestos asociados
+   */
+  async syncMotorModelsToRepuestos(
+    motorId: string,
+    modelNames: string[],
+    brandName?: string
+  ): Promise<void> {
+    if (!motorId) return
+    const cleanModels: string[] = []
+    const seen = new Set<string>()
+    for (const entry of modelNames) {
+      for (const tok of String(entry || '').split(/[,\/;|\n]+/)) {
+        const clean = tok.replace(/\s+/g, ' ').trim().toUpperCase()
+        if (!clean) continue
+        const low = clean.toLowerCase()
+        if (low === 'n/a' || low === 'na' || low === 'universal' || low === 'varios' || low === '-' || low === '—') continue
+        const key = normalizeText(clean)
+        if (key && !seen.has(key)) {
+          seen.add(key)
+          cleanModels.push(clean)
+        }
+      }
+    }
+
+    const combinedModeloLabel = cleanModels.join(' / ')
+    const modelosAdicionalesClean = cleanModels.slice(1)
+    const brandClean = brandName ? brandName.trim().toUpperCase() : ''
+
+    try {
+      if (isCatalogUuid(motorId)) {
+        const { data: repRows } = await supabase
+          .from('repuestos_tecnicos')
+          .select('id, especificaciones_tecnicas, dimensiones')
+          .eq('motor_id', motorId)
+
+        if (repRows && repRows.length > 0) {
+          await Promise.all(
+            (repRows as Array<Record<string, unknown>>).map(async row => {
+              const prevSpec = (row.especificaciones_tecnicas as Record<string, unknown>) || {}
+              const prevDims = (row.dimensiones as Record<string, unknown>) || {}
+              const resolvedBrand =
+                brandClean ||
+                (prevSpec.marca ? String(prevSpec.marca).trim().toUpperCase() : '') ||
+                (prevDims.marca ? String(prevDims.marca).trim().toUpperCase() : '')
+              const vehiculoLabel =
+                cleanModels.length > 0
+                  ? (resolvedBrand ? `${resolvedBrand} ${combinedModeloLabel}` : combinedModeloLabel)
+                  : undefined
+
+              const nextSpec: Record<string, unknown> = {
+                ...prevSpec,
+                modelo: combinedModeloLabel,
+                modelos: cleanModels,
+                modelos_adicionales: modelosAdicionalesClean,
+                ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
+              }
+              if (cleanModels.length === 0) {
+                delete nextSpec.vehiculo
+              }
+
+              const nextDims: Record<string, unknown> = {
+                ...prevDims,
+                modelo: combinedModeloLabel,
+                modelos: cleanModels,
+                modelos_adicionales: modelosAdicionalesClean,
+                ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
+              }
+              if (cleanModels.length === 0) {
+                delete nextDims.vehiculo
+              }
+
+              await supabase
+                .from('repuestos_tecnicos')
+                .update({
+                  especificaciones_tecnicas: nextSpec,
+                  dimensiones: nextDims
+                })
+                .eq('id', String(row.id))
+            })
+          )
+        }
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error propagando modelos del motor a repuestos en Supabase:', err)
+    }
+
+    const applyToPart = (p: RepuestoTecnico): RepuestoTecnico => {
+      if (p.motor_id !== motorId) return p
+      const prevSpec = (p.especificaciones_tecnicas as Record<string, unknown>) || {}
+      const prevDims = (p.dimensiones as Record<string, unknown>) || {}
+      const resolvedBrand =
+        brandClean ||
+        (prevSpec.marca ? String(prevSpec.marca).trim().toUpperCase() : '') ||
+        (prevDims.marca ? String(prevDims.marca).trim().toUpperCase() : '')
+      const vehiculoLabel =
+        cleanModels.length > 0
+          ? (resolvedBrand ? `${resolvedBrand} ${combinedModeloLabel}` : combinedModeloLabel)
+          : undefined
+
+      const nextSpec: Record<string, unknown> = {
+        ...prevSpec,
+        modelo: combinedModeloLabel,
+        modelos: cleanModels,
+        modelos_adicionales: modelosAdicionalesClean,
+        ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
+      }
+      if (cleanModels.length === 0) delete nextSpec.vehiculo
+
+      const nextDims: Record<string, unknown> = {
+        ...prevDims,
+        modelo: combinedModeloLabel,
+        modelos: cleanModels,
+        modelos_adicionales: modelosAdicionalesClean,
+        ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
+      }
+      if (cleanModels.length === 0) delete nextDims.vehiculo
+
+      return {
+        ...p,
+        especificaciones_tecnicas: nextSpec,
+        dimensiones: nextDims,
+        motor: p.motor
+          ? { ...p.motor, modelos_nombres: cleanModels }
+          : p.motor
+      }
+    }
+
+    for (let i = 0; i < mockRepuestos.length; i++) {
+      if (mockRepuestos[i].motor_id === motorId) {
+        mockRepuestos[i] = applyToPart(mockRepuestos[i])
+      }
+    }
+
+    const localParts = getLocalCustomRepuestos()
+    for (const lp of localParts) {
+      if (lp.motor_id === motorId) {
+        saveLocalCustomRepuesto(applyToPart(lp))
+      }
+    }
+
+    clearCatalogPartsCache()
+  },
+
+  /**
+   * Garantiza que los nombres de modelo declarados en un repuesto existan, queden vinculados a su motor
+   * y se propaguen al resto de repuestos y fichas de ese motor
    */
   async syncPartModelsWithMotor(
     motorId: string,
-    rawModelNames: string[]
+    rawModelNames: string[],
+    replaceExact: boolean = false
   ): Promise<void> {
     if (!motorId) return
     const parsedNames = Array.from(
@@ -2302,11 +2481,12 @@ export const catalogService = {
       let motorCodigo = ''
       let currentPrimaryModeloId: string | undefined
       let currentSpec: Record<string, unknown> = {}
+      let brandName = ''
 
       if (isCatalogUuid(motorId)) {
         const { data: dbMot } = await supabase
           .from('motores')
-          .select('id, codigo, fabricante_id, modelo_id, especificaciones_tecnicas')
+          .select('id, codigo, fabricante_id, modelo_id, especificaciones_tecnicas, fabricante:fabricantes(nombre)')
           .eq('id', motorId)
           .maybeSingle()
         if (dbMot) {
@@ -2314,6 +2494,8 @@ export const catalogService = {
           motorCodigo = String(dbMot.codigo || '')
           currentPrimaryModeloId = dbMot.modelo_id ? String(dbMot.modelo_id) : undefined
           currentSpec = (dbMot.especificaciones_tecnicas as Record<string, unknown>) || {}
+          const fabObj = (dbMot as Record<string, unknown>).fabricante as { nombre?: string } | undefined
+          if (fabObj?.nombre) brandName = String(fabObj.nombre)
         }
       }
 
@@ -2324,6 +2506,7 @@ export const catalogService = {
           motorCodigo = localMot.codigo
           currentPrimaryModeloId = localMot.modelo_id
           currentSpec = (localMot.especificaciones_tecnicas as Record<string, unknown>) || {}
+          if (localMot.fabricante?.nombre) brandName = localMot.fabricante.nombre
         }
       }
 
@@ -2344,21 +2527,31 @@ export const catalogService = {
         resolvedPartModelNames.push(matched.nombre)
       }
 
-      const existingIds = await this.getModeloIdsByMotor(motorId)
+      const existingIds = replaceExact ? [] : await this.getModeloIdsByMotor(motorId)
       const mergedModelIds = Array.from(
-        new Set([...existingIds, ...(currentPrimaryModeloId ? [currentPrimaryModeloId] : []), ...resolvedPartModelIds].filter(Boolean))
+        new Set(
+          replaceExact
+            ? resolvedPartModelIds
+            : [...existingIds, ...(currentPrimaryModeloId ? [currentPrimaryModeloId] : []), ...resolvedPartModelIds].filter(Boolean)
+        )
       )
       const mergedModelNames = Array.from(
-        new Set([
-          ...(Array.isArray(currentSpec.modelos_nombres) ? (currentSpec.modelos_nombres as string[]) : []),
-          ...mergedModelIds
-            .map(mid => fabModelos.find(m => m.id === mid)?.nombre || '')
-            .filter(Boolean),
-          ...resolvedPartModelNames
-        ])
+        new Set(
+          replaceExact
+            ? resolvedPartModelNames
+            : [
+                ...(Array.isArray(currentSpec.modelos_nombres) ? (currentSpec.modelos_nombres as string[]) : []),
+                ...mergedModelIds
+                  .map(mid => fabModelos.find(m => m.id === mid)?.nombre || '')
+                  .filter(Boolean),
+                ...resolvedPartModelNames
+              ]
+        )
       )
 
-      const nextPrimaryId = currentPrimaryModeloId || mergedModelIds[0] || null
+      const nextPrimaryId = replaceExact
+        ? (mergedModelIds[0] || null)
+        : (currentPrimaryModeloId || mergedModelIds[0] || null)
       const nextSpec: Record<string, unknown> = {
         ...currentSpec,
         modelo_ids: mergedModelIds,
@@ -2376,6 +2569,7 @@ export const catalogService = {
       }
 
       await this.syncMotorModelos(motorId, motorCodigo, mergedModelIds)
+      await this.syncMotorModelsToRepuestos(motorId, mergedModelNames, brandName)
     } catch (err) {
       console.warn('[CatalogService] Error sincronizando modelos del repuesto con su motor:', err)
     }
@@ -2439,8 +2633,8 @@ export const catalogService = {
     const localMotors = getLocalCustomMotores()
     try {
       const selectFields = onlyWithParts
-        ? '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos!inner(id)'
-        : '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos(id)'
+        ? '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos!inner(id, especificaciones_tecnicas, dimensiones)'
+        : '*, fabricante:fabricantes(*), modelo:modelos(*), repuestos_tecnicos(id, especificaciones_tecnicas, dimensiones)'
 
       let motorIdsFilter: string[] | undefined
       if (modeloId) {
@@ -2536,27 +2730,57 @@ export const catalogService = {
 
       const dbMotors: Motor[] = allData.map((item: Record<string, unknown>) => {
         const motorId = String(item.id)
+        const fabIdStr = String(item.fabricante_id || '')
         const espec = (item.especificaciones_tecnicas as Record<string, unknown>) || {}
-        const repArray = Array.isArray(item.repuestos_tecnicos) ? item.repuestos_tecnicos : []
+        const repArray = Array.isArray(item.repuestos_tecnicos) ? (item.repuestos_tecnicos as Array<Record<string, unknown>>) : []
         const specModelIds = Array.isArray(espec.modelo_ids) ? espec.modelo_ids.map(String).filter(Boolean) : []
         const specModelNames = Array.isArray(espec.modelos_nombres) ? espec.modelos_nombres.map(String).filter(Boolean) : []
         const primaryModeloId = item.modelo_id ? String(item.modelo_id) : undefined
         const primaryModeloObj = item.modelo as Modelo | undefined
 
+        const partExtractedNames: string[] = []
+        const partResolvedIds: string[] = []
+        for (const rep of repArray) {
+          const tokens = extractModelTokensFromRaw(
+            rep.especificaciones_tecnicas as Record<string, unknown> | undefined,
+            rep.dimensiones as Record<string, unknown> | undefined
+          )
+          for (const tok of tokens) {
+            partExtractedNames.push(tok)
+            const normTok = normalizeText(tok)
+            const matchedMod = modelosCatalog.find(
+              m => (!fabIdStr || m.fabricante_id === fabIdStr) && normalizeText(m.nombre) === normTok
+            )
+            if (matchedMod) {
+              partResolvedIds.push(matchedMod.id)
+            }
+          }
+        }
+
         const combinedIds = Array.from(
           new Set([
             ...(primaryModeloId ? [primaryModeloId] : []),
             ...(motorToModelIdsMap.get(motorId) ? Array.from(motorToModelIdsMap.get(motorId)!) : []),
-            ...specModelIds
+            ...specModelIds,
+            ...partResolvedIds
           ].filter(Boolean))
         )
-        const resolvedNames = Array.from(
-          new Set([
-            ...(primaryModeloObj?.nombre ? [primaryModeloObj.nombre] : []),
-            ...combinedIds.map(mid => modeloById.get(mid)?.nombre || '').filter(Boolean),
-            ...specModelNames
-          ].filter(Boolean))
-        )
+        const rawResolvedNames = [
+          ...(primaryModeloObj?.nombre ? [primaryModeloObj.nombre] : []),
+          ...combinedIds.map(mid => modeloById.get(mid)?.nombre || '').filter(Boolean),
+          ...specModelNames,
+          ...partExtractedNames
+        ].filter(Boolean)
+        const resolvedNames: string[] = []
+        const seenModelKeys = new Set<string>()
+        for (const name of rawResolvedNames) {
+          const clean = String(name).replace(/\s+/g, ' ').trim()
+          const key = normalizeText(clean)
+          if (key && !seenModelKeys.has(key)) {
+            seenModelKeys.add(key)
+            resolvedNames.push(clean)
+          }
+        }
 
         return {
           id: motorId,
@@ -2698,6 +2922,9 @@ export const catalogService = {
     }
 
     await this.syncMotorModelos(newMotor.id, newMotor.codigo, normalizedModelIds)
+    if (resolvedModelNames.length > 0) {
+      await this.syncMotorModelsToRepuestos(newMotor.id, resolvedModelNames, fabName)
+    }
     saveLocalCustomMotor(newMotor)
     if (!mockMotores.some(m => m.id === newMotor.id)) {
       mockMotores.unshift(newMotor)
@@ -2798,6 +3025,8 @@ export const catalogService = {
     }
 
     await this.syncMotorModelos(updated.id, updated.codigo, normalizedModelIds)
+    await this.syncMotorModelsToRepuestos(updated.id, resolvedModelNames, fabName)
+    clearCatalogPartsCache()
 
     const localList = getLocalCustomMotores()
     const localIdx = localList.findIndex(m => m.id === id)
@@ -3857,7 +4086,7 @@ export const catalogService = {
         if (mapped.motor_id) {
           const modelTokens = extractPartModelTokens(part)
           if (modelTokens.length > 0) {
-            await this.syncPartModelsWithMotor(mapped.motor_id, modelTokens)
+            await this.syncPartModelsWithMotor(mapped.motor_id, modelTokens, false)
           }
         }
         clearCatalogPartsCache()
@@ -4049,7 +4278,7 @@ export const catalogService = {
         if (mapped.motor_id) {
           const modelTokens = extractPartModelTokens(part)
           if (modelTokens.length > 0) {
-            await this.syncPartModelsWithMotor(mapped.motor_id, modelTokens)
+            await this.syncPartModelsWithMotor(mapped.motor_id, modelTokens, true)
           }
         }
         clearCatalogPartsCache()
