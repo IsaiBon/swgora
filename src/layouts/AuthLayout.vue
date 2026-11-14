@@ -8,10 +8,6 @@ onMounted(async () => {
   await tallerStore.loadTallerInfo(true)
 })
 
-const currentBgUrl = computed(() => {
-  return tallerStore.tallerInfo.login_bg_url || '/images/workshop-bg.jpg'
-})
-
 const companyDisplayName = computed(() => {
   return tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco'
 })
@@ -27,10 +23,10 @@ const companySlogan = computed(() => {
 
 <template>
   <div class="auth-shell relative min-h-screen w-full flex flex-col items-center justify-between px-4 py-5 sm:px-6 sm:py-6 bg-[#09132B] overflow-x-hidden font-sans selection:bg-[#BFEBF2]/35 selection:text-white">
-    <!-- Imagen de fondo de taller personalizable -->
+    <!-- Imagen de fondo de taller predeterminada -->
     <div
-      class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none transition-all duration-700"
-      :style="{ backgroundImage: `url('${currentBgUrl}')` }"
+      class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none"
+      style="background-image: url('/images/workshop-bg.jpg');"
     ></div>
 
     <!-- Capas de profundidad Zafiro + Halo Cian (sin naranja) -->

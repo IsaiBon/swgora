@@ -35,10 +35,6 @@ const activeTab = ref<TallerTab>('membrete')
 const pendingLogoFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-// Archivo de fondo de login pendiente de guardar
-const pendingBgFile = ref<File | null>(null)
-const bgFileInputRef = ref<HTMLInputElement | null>(null)
-
 // Validación de permisos: Administrador o Taller Independiente
 onMounted(async () => {
   if (!authStore.canAccess('/taller')) {
@@ -60,8 +56,7 @@ const form = reactive({
   iva_porcentaje: 13,
   login_titulo: 'JR Blanco',
   login_subtitulo: 'Taller Industrial y Rectificado de Motores',
-  login_mensaje: 'Ingresa tus credenciales para acceder al sistema',
-  login_bg_url: '/images/workshop-bg.jpg'
+  login_mensaje: 'Ingresa tus credenciales para acceder al sistema'
 })
 
 const isSaving = ref(false)
@@ -88,15 +83,10 @@ const resetForm = () => {
   form.login_titulo = current.login_titulo || 'JR Blanco'
   form.login_subtitulo = current.login_subtitulo || 'Taller Industrial y Rectificado de Motores'
   form.login_mensaje = current.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'
-  form.login_bg_url = current.login_bg_url || '/images/workshop-bg.jpg'
 
   pendingLogoFile.value = null
-  pendingBgFile.value = null
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
-  }
-  if (bgFileInputRef.value) {
-    bgFileInputRef.value.value = ''
   }
 }
 
@@ -133,38 +123,6 @@ const resetToDefaultLogo = () => {
   showToast('Se restableció el logotipo al predeterminado del taller.', 'success')
 }
 
-// Manejador de selección de nueva imagen de fondo para el Login
-const handleBgSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (!file) return
-
-  // Validar tamaño máximo (8MB para fondo panorámico)
-  if (file.size > 8 * 1024 * 1024) {
-    showToast('El archivo de imagen es demasiado grande. El límite máximo es 8MB.', 'error')
-    target.value = ''
-    return
-  }
-
-  pendingBgFile.value = file
-  const reader = new FileReader()
-  reader.onload = () => {
-    form.login_bg_url = reader.result as string
-    showToast('Nueva imagen de fondo previsualizada. Haz clic en "Guardar Cambios" para aplicarla al Login.', 'success')
-  }
-  reader.readAsDataURL(file)
-}
-
-// Restablecer al fondo predeterminado del taller
-const resetToDefaultBg = () => {
-  form.login_bg_url = '/images/workshop-bg.jpg'
-  pendingBgFile.value = null
-  if (bgFileInputRef.value) {
-    bgFileInputRef.value.value = ''
-  }
-  showToast('Se restableció la imagen de fondo a la predeterminada del taller.', 'success')
-}
-
 // Preestablecer título de Login con el nombre del taller
 const syncLoginTitleWithWorkshop = () => {
   if (form.nombre.trim()) {
@@ -190,7 +148,6 @@ const handleSubmit = async () => {
   isSaving.value = true
   try {
     let finalLogoUrl = form.logo_url
-    let finalBgUrl = form.login_bg_url
 
     // Si hay un logo nuevo seleccionado, subirlo a Supabase Storage
     if (pendingLogoFile.value) {
@@ -198,15 +155,6 @@ const handleSubmit = async () => {
         finalLogoUrl = await tallerStore.uploadLogo(pendingLogoFile.value)
       } catch (uploadErr) {
         console.warn('Fallo subiendo logo a Storage, usando Data URL local:', uploadErr)
-      }
-    }
-
-    // Si hay una imagen de fondo nueva seleccionada, subirla a Supabase Storage
-    if (pendingBgFile.value) {
-      try {
-        finalBgUrl = await tallerStore.uploadLoginBg(pendingBgFile.value)
-      } catch (uploadBgErr) {
-        console.warn('Fallo subiendo fondo a Storage, usando Data URL local:', uploadBgErr)
       }
     }
 
@@ -220,14 +168,11 @@ const handleSubmit = async () => {
       iva_porcentaje: Number(form.iva_porcentaje),
       login_titulo: form.login_titulo.trim() || 'JR Blanco',
       login_subtitulo: form.login_subtitulo.trim() || 'Taller Industrial y Rectificado de Motores',
-      login_mensaje: form.login_mensaje.trim() || 'Ingresa tus credenciales para acceder al sistema',
-      login_bg_url: finalBgUrl || '/images/workshop-bg.jpg'
+      login_mensaje: form.login_mensaje.trim() || 'Ingresa tus credenciales para acceder al sistema'
     })
 
     form.logo_url = finalLogoUrl
-    form.login_bg_url = finalBgUrl
     pendingLogoFile.value = null
-    pendingBgFile.value = null
     showToast('Información del taller y personalización del Login guardadas exitosamente.', 'success')
   } catch (err: any) {
     console.error('Error al guardar datos del taller:', err)
@@ -693,70 +638,7 @@ const handleSubmit = async () => {
             </p>
           </div>
 
-          <!-- 4. SECCIÓN DE FONDO DE PANTALLA (WALLPAPER) -->
-          <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4.5 space-y-3">
-            <div class="flex items-center justify-between">
-              <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <ImageIcon class="w-4 h-4 text-[#04c4d9]" />
-                Imagen de Fondo (Wallpaper) del Login
-              </label>
-              <span class="text-[10px] text-slate-500 font-medium">Panorámico (JPG, PNG, WebP)</span>
-            </div>
-
-            <div class="flex flex-col sm:flex-row items-center gap-4">
-              <!-- Miniatura del Fondo Actual con Overlay -->
-              <div class="relative w-36 h-24 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-300 shadow-xs bg-[#09132B]">
-                <img
-                  :src="form.login_bg_url || '/images/workshop-bg.jpg'"
-                  alt="Fondo de Login"
-                  class="w-full h-full object-cover opacity-60"
-                  @error="(e: any) => e.target.src = '/images/workshop-bg.jpg'"
-                />
-                <div class="absolute inset-0 bg-gradient-to-t from-[#09132B]/80 to-transparent flex items-end p-2">
-                  <span class="text-[9px] font-mono font-bold text-cyan-300 uppercase">Fondo Activo</span>
-                </div>
-              </div>
-
-              <!-- Controles de Carga de Fondo -->
-              <div class="flex-1 space-y-2 text-center sm:text-left">
-                <div class="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                  <input
-                    ref="bgFileInputRef"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    class="hidden"
-                    @change="handleBgSelect"
-                  />
-
-                  <button
-                    type="button"
-                    @click="bgFileInputRef?.click()"
-                    class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#004b97] hover:bg-[#003a75] active:scale-95 rounded-xl shadow-xs transition cursor-pointer"
-                  >
-                    <Upload class="w-3.5 h-3.5 text-[#BFEBF2]" />
-                    Subir Foto del Taller
-                  </button>
-
-                  <button
-                    v-if="form.login_bg_url !== '/images/workshop-bg.jpg'"
-                    type="button"
-                    @click="resetToDefaultBg"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 hover:text-rose-600 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition cursor-pointer"
-                    title="Restablecer fondo al predeterminado"
-                  >
-                    <Trash2 class="w-3.5 h-3.5 text-rose-500" />
-                    Fondo Predeterminado
-                  </button>
-                </div>
-
-                <p class="text-[10.5px] text-slate-500 leading-relaxed">
-                  Sube una fotografía de tu taller mecánico o de tus maquinarias rectificadoras (máx. 8 MB). Se aplicarán automáticamente los filtros de tono corporativo azul oscuro y profundidad zafiro.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- 5. Nota informativa sobre el logotipo -->
+          <!-- 4. Nota informativa sobre el logotipo -->
           <div class="bg-sky-50/70 border border-sky-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-sky-900">
             <Sparkles class="w-4 h-4 text-[#004b97] shrink-0 mt-0.5" />
             <div class="space-y-0.5">
@@ -801,10 +683,10 @@ const handleSubmit = async () => {
           <div class="p-3 sm:p-4 bg-slate-900">
             <div class="relative w-full rounded-2xl overflow-hidden bg-[#09132B] border border-slate-700/80 shadow-2xl p-4 sm:p-5 flex flex-col items-center justify-between min-h-[500px]">
               
-              <!-- Fondo simulado reactivo -->
+              <!-- Fondo simulado predeterminado -->
               <div
-                class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none transition-all duration-500"
-                :style="{ backgroundImage: `url('${form.login_bg_url || '/images/workshop-bg.jpg'}')` }"
+                class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none"
+                style="background-image: url('/images/workshop-bg.jpg');"
               ></div>
               <div class="absolute inset-0 bg-gradient-to-br from-[#09132B]/95 via-[#0D1B3E]/90 to-[#004B97]/85 pointer-events-none"></div>
 
