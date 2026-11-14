@@ -39,8 +39,7 @@ const emit = defineEmits<{
 
 const catalogStore = useCatalogStore()
 
-// Plantilla y carga
-const templateMode = ref<'general' | 'specific'>('general')
+// Plantilla específica y carga
 const specificTarget = ref<string>('motors_only')
 const defaultImportGroupId = ref<string>('')
 const inputMode = ref<'file' | 'paste'>('file')
@@ -64,13 +63,12 @@ const progressLabel = ref<string>('')
 const importReport = ref<CatalogImportReport | null>(null)
 
 const resolvedTemplateScope = computed<TemplateScope>(() => {
-  if (templateMode.value === 'general') return 'general'
   if (specificTarget.value === 'motors_only') return 'motors_only'
   return 'parts_only'
 })
 
 const selectedTemplateGroup = computed(() => {
-  if (templateMode.value !== 'specific' || !specificTarget.value.startsWith('grupo:')) {
+  if (!specificTarget.value.startsWith('grupo:')) {
     return null
   }
   const codeOrId = specificTarget.value.slice('grupo:'.length)
@@ -80,9 +78,6 @@ const selectedTemplateGroup = computed(() => {
 })
 
 const templateScopeHint = computed(() => {
-  if (resolvedTemplateScope.value === 'general') {
-    return 'Incluye hojas: Repuestos + Motores + Instrucciones'
-  }
   if (resolvedTemplateScope.value === 'motors_only') {
     return 'Incluye solo: Motores + Instrucciones'
   }
@@ -105,10 +100,8 @@ watch(
   open => {
     if (open) {
       if (props.preselectedGroupId) {
-        templateMode.value = 'specific'
         specificTarget.value = `grupo:${props.preselectedGroupId}`
       } else {
-        templateMode.value = 'general'
         specificTarget.value = 'motors_only'
       }
       defaultImportGroupId.value = props.preselectedGroupId || ''
@@ -329,62 +322,27 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                   Descargar Plantilla de Ejemplo
                 </h3>
               </div>
-
-              <div class="inline-flex rounded-lg bg-white p-0.5 border border-slate-200 text-xs font-bold">
-                <button
-                  type="button"
-                  @click="templateMode = 'general'"
-                  :class="[
-                    'px-3 py-1 rounded-md transition cursor-pointer',
-                    templateMode === 'general'
-                      ? 'bg-[#004B97] text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  ]"
-                >
-                  Plantilla General
-                </button>
-                <button
-                  type="button"
-                  @click="templateMode = 'specific'"
-                  :class="[
-                    'px-3 py-1 rounded-md transition cursor-pointer',
-                    templateMode === 'specific'
-                      ? 'bg-[#004B97] text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  ]"
-                >
-                  Plantilla Específica
-                </button>
-              </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
               <div class="md:col-span-6">
-                <template v-if="templateMode === 'general'">
-                  <div class="px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700">
-                    <span class="font-bold text-slate-900">Catálogo Completo:</span>
-                    descarga en un solo archivo las secciones de <strong>Motores</strong> y <strong>Repuestos</strong> con todas las columnas estándar.
-                  </div>
-                </template>
-                <template v-else>
-                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    ¿Qué datos desea llenar específicamente?
-                  </label>
-                  <select
-                    v-model="specificTarget"
-                    class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  ¿Qué datos desea llenar específicamente?
+                </label>
+                <select
+                  v-model="specificTarget"
+                  class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                >
+                  <option value="motors_only">Solo Motores (altas de motores y modelos)</option>
+                  <option value="parts_all">Solo Repuestos (todas las medidas estándar)</option>
+                  <option
+                    v-for="g in catalogStore.grupos"
+                    :key="`tpl-grp-${g.id}`"
+                    :value="`grupo:${g.codigo}`"
                   >
-                    <option value="motors_only">Solo Motores (altas de motores y modelos)</option>
-                    <option value="parts_all">Solo Repuestos (todas las medidas estándar)</option>
-                    <option
-                      v-for="g in catalogStore.grupos"
-                      :key="`tpl-grp-${g.id}`"
-                      :value="`grupo:${g.codigo}`"
-                    >
-                      Solo Repuestos · Familia: {{ g.nombre }}
-                    </option>
-                  </select>
-                </template>
+                    Solo Repuestos · Familia: {{ g.nombre }}
+                  </option>
+                </select>
               </div>
 
               <div class="md:col-span-3">
@@ -790,49 +748,66 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             </div>
           </div>
 
-          <!-- RESUMEN FINAL -->
+          <!-- RESUMEN FINAL VISTOSO Y GRANDE -->
           <div
             v-if="importReport"
-            class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-2.5"
+            class="rounded-2xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 text-white p-5 sm:p-6 shadow-2xl space-y-4 ring-4 ring-emerald-200/70"
           >
-            <div class="flex items-center gap-2 text-emerald-900 font-extrabold text-sm">
-              <CheckCircle2 class="w-5 h-5 text-emerald-600" />
-              <span>Importación finalizada</span>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="flex items-center gap-3.5">
+                <div class="w-14 h-14 rounded-2xl bg-white/20 border-2 border-white/40 flex items-center justify-center shrink-0 shadow-lg">
+                  <CheckCircle2 class="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h4 class="text-lg sm:text-xl font-black tracking-tight text-white">
+                    ¡Importación completada con éxito!
+                  </h4>
+                  <p class="text-xs sm:text-sm text-emerald-50 font-medium mt-0.5">
+                    Los registros fueron guardados y sincronizados en el catálogo de SWGORA.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                @click="emit('close')"
+                class="px-4 py-2.5 rounded-xl bg-white text-emerald-800 hover:bg-emerald-50 text-xs sm:text-sm font-black shadow-md transition shrink-0 cursor-pointer"
+              >
+                Listo · Ver en Catálogo
+              </button>
             </div>
-            <div class="flex flex-wrap gap-2 text-xs font-bold">
-              <span class="px-2.5 py-1 rounded-lg bg-white border border-emerald-200 text-emerald-800">
-                Repuestos creados: {{ importReport.createdParts }}
-              </span>
-              <span
-                v-if="importReport.updatedParts > 0"
-                class="px-2.5 py-1 rounded-lg bg-white border border-sky-200 text-[#004B97]"
-              >
-                Actualizados: {{ importReport.updatedParts }}
-              </span>
-              <span
-                v-if="importReport.skippedParts > 0"
-                class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600"
-              >
-                Omitidos: {{ importReport.skippedParts }}
-              </span>
-              <span
-                v-if="importReport.createdMotors > 0"
-                class="px-2.5 py-1 rounded-lg bg-white border border-emerald-200 text-emerald-800"
-              >
-                Motores creados: {{ importReport.createdMotors }}
-              </span>
-              <span
-                v-if="importReport.createdBrands > 0 || importReport.createdModels > 0"
-                class="px-2.5 py-1 rounded-lg bg-white border border-cyan-200 text-cyan-900"
-              >
-                Marcas: +{{ importReport.createdBrands }} · Modelos: +{{ importReport.createdModels }}
-              </span>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-emerald-200">
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Motores creados</div>
+                <div class="text-2xl font-black font-mono text-emerald-900 mt-0.5">{{ importReport.createdMotors }}</div>
+              </div>
+              <div class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-emerald-200">
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Repuestos creados</div>
+                <div class="text-2xl font-black font-mono text-emerald-900 mt-0.5">{{ importReport.createdParts }}</div>
+              </div>
+              <div class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-sky-200">
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-[#004B97]">Actualizados</div>
+                <div class="text-2xl font-black font-mono text-[#0D1B3E] mt-0.5">{{ importReport.updatedParts }}</div>
+              </div>
+              <div class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-cyan-200">
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-cyan-800">Marcas / Modelos</div>
+                <div class="text-lg font-black font-mono text-cyan-950 mt-1">+{{ importReport.createdBrands }} / +{{ importReport.createdModels }}</div>
+              </div>
             </div>
+
+            <div
+              v-if="importReport.skippedParts > 0 || importReport.skippedMotors > 0"
+              class="text-xs font-bold text-emerald-50 bg-black/15 rounded-xl px-3.5 py-2 inline-flex flex-wrap items-center gap-3"
+            >
+              <span v-if="importReport.skippedMotors > 0">Motores omitidos (ya existían): {{ importReport.skippedMotors }}</span>
+              <span v-if="importReport.skippedParts > 0">Repuestos omitidos (ya existían): {{ importReport.skippedParts }}</span>
+            </div>
+
             <div
               v-if="importReport.errors.length > 0"
-              class="max-h-32 overflow-auto rounded-lg bg-white border border-rose-200 p-2.5 space-y-1 text-[11px] text-rose-700"
+              class="max-h-36 overflow-auto rounded-xl bg-white border border-rose-300 p-3 space-y-1 text-xs text-rose-700 shadow-inner"
             >
-              <div class="font-bold">Observaciones / errores ({{ importReport.errors.length }}):</div>
+              <div class="font-extrabold">Observaciones / errores ({{ importReport.errors.length }}):</div>
               <div v-for="(err, eIdx) in importReport.errors" :key="`imp-err-${eIdx}`">
                 <strong>{{ err.rowLabel }}:</strong> {{ err.message }}
               </div>
