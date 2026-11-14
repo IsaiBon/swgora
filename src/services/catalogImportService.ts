@@ -484,7 +484,7 @@ const parsePartRowObject = (
     parseNumberValue(pickField(norm, ['cantidad_piezas', 'piezas'])) ??
     parseNumberValue(dimensiones.cantidad_piezas)
 
-  // Anillos: soportar array JSON `anillos` O columnas planas anillo1_grosor..anillo_aceite_altura
+  // Anillos: soportar array JSON `anillos` O columnas planas anillo1..anilloN + anillo_aceite (siempre al final)
   let diametro_cilindro_mm =
     parseNumberValue(pickField(norm, ['diametro_cilindro_mm', 'diametro_cilindro', 'diametro_piston', 'diametro'])) ??
     parseNumberValue(dimensiones.diametro_cilindro_mm)
@@ -499,7 +499,7 @@ const parsePartRowObject = (
     parseNumberValue(dimensiones.espesor_anillo3_mm)
   let espesor_aceite_mm =
     parseNumberValue(
-      pickField(norm, ['espesor_aceite_mm', 'anillo_aceite_grosor', 'aceite_grosor', 'aceite_h1'])
+      pickField(norm, ['espesor_aceite_mm', 'anillo_aceite_grosor', 'aceite_grosor', 'aceite_h1', 'ultimo_anillo_grosor'])
     ) ?? parseNumberValue(dimensiones.espesor_aceite_mm)
 
   const disenosSet = new Set<string>(splitTokens(pickField(norm, ['disenos_anillo', 'disenos', 'diseno'])))
@@ -509,78 +509,91 @@ const parsePartRowObject = (
     }
   }
 
-  let parsedRings: Array<Record<string, unknown>> = []
+  let rawRingsList: Array<Record<string, unknown>> = []
   const rawAnillosVal = rawObj.anillos ?? dimensiones.anillos ?? pickField(norm, ['anillos_json', 'anillos'])
   if (Array.isArray(rawAnillosVal)) {
-    parsedRings = rawAnillosVal.filter((r): r is Record<string, unknown> => Boolean(r && typeof r === 'object'))
+    rawRingsList = rawAnillosVal.filter((r): r is Record<string, unknown> => Boolean(r && typeof r === 'object'))
   } else if (typeof rawAnillosVal === 'string' && rawAnillosVal.trim().startsWith('[')) {
     try {
       const arr = JSON.parse(rawAnillosVal.trim())
-      if (Array.isArray(arr)) parsedRings = arr
+      if (Array.isArray(arr)) rawRingsList = arr
     } catch {
       // ignorar
     }
   }
 
-  if (parsedRings.length === 0) {
-    // Reconstruir arreglo anillos[] a partir de columnas planas de Excel/JSON si existen cotas
-    const r1h = espesor_anillo1_mm
-    const r1a = parseNumberValue(pickField(norm, ['anillo1_altura', 'anillo_1_altura', 'anillo1_a1', 'altura_radial1_mm']))
-    const r1d = String(pickField(norm, ['anillo1_diseno', 'anillo_1_diseno', 'anillo1_perfil']) || '').trim()
+  let parsedRings: Array<Record<string, unknown>> = []
 
-    const r2h = espesor_anillo2_mm
-    const r2a = parseNumberValue(pickField(norm, ['anillo2_altura', 'anillo_2_altura', 'anillo2_a1', 'altura_radial2_mm']))
-    const r2d = String(pickField(norm, ['anillo2_diseno', 'anillo_2_diseno', 'anillo2_perfil']) || '').trim()
+  if (rawRingsList.length === 0) {
+    // Reconstruir arreglo anillos[] a partir de columnas planas de Excel/JSON.
+    // Soporta cualquier cantidad de anillos de compresión (1°, 2°, 3°, 4°, 5°, ...) y el anillo de aceite SIEMPRE al final.
+    const discoveredCompIndices = new Set<number>([1, 2, 3, 4])
+    for (const key of Object.keys(norm)) {
+      const m = key.match(/^anillo_?(\d+)_(?:grosor|altura|diseno|perfil|forma|h1|a1|espesor|tipo_diseno)$/)
+      if (m) {
+        const idx = Number(m[1])
+        if (idx >= 1 && idx <= 20) discoveredCompIndices.add(idx)
+      }
+      const mEsp = key.match(/^(?:espesor_anillo|altura_radial)(\d+)_mm$/)
+      if (mEsp) {
+        const idx = Number(mEsp[1])
+        if (idx >= 1 && idx <= 20) discoveredCompIndices.add(idx)
+      }
+    }
 
-    const r3h = espesor_anillo3_mm
-    const r3a = parseNumberValue(pickField(norm, ['anillo3_altura', 'anillo_3_altura', 'anillo3_a1', 'altura_radial3_mm']))
-    const r3d = String(pickField(norm, ['anillo3_diseno', 'anillo_3_diseno', 'anillo3_perfil']) || '').trim()
+    const sortedCompIndices = Array.from(discoveredCompIndices).sort((a, b) => a - b)
+    for (const idx of sortedCompIndices) {
+      const hVal =
+        parseNumberValue(
+          pickField(norm, [
+            `espesor_anillo${idx}_mm`,
+            `anillo${idx}_grosor`,
+            `anillo_${idx}_grosor`,
+            `anillo${idx}_h1`,
+            `anillo${idx}_espesor`
+          ])
+        ) ??
+        (idx === 1 ? espesor_anillo1_mm : idx === 2 ? espesor_anillo2_mm : idx === 3 ? espesor_anillo3_mm : parseNumberValue(dimensiones[`espesor_anillo${idx}_mm`]))
+      const aVal =
+        parseNumberValue(
+          pickField(norm, [
+            `anillo${idx}_altura`,
+            `anillo_${idx}_altura`,
+            `anillo${idx}_a1`,
+            `altura_radial${idx}_mm`,
+            `espesor_radial${idx}_mm`
+          ])
+        ) ?? parseNumberValue(dimensiones[`altura_radial${idx}_mm`] ?? dimensiones[`espesor_radial${idx}_mm`])
+      const dVal = String(
+        pickField(norm, [`anillo${idx}_diseno`, `anillo_${idx}_diseno`, `anillo${idx}_perfil`, `anillo${idx}_tipo_diseno`]) || ''
+      ).trim()
+
+      if (hVal != null || aVal != null || dVal !== '') {
+        parsedRings.push({
+          posicion: `${idx}° Anillo`,
+          tipo_aro: idx === 1 ? 'fuego' : 'compresion',
+          d1: diametro_cilindro_mm,
+          h1: hVal,
+          a1: aVal,
+          perfil: dVal || 'Plano',
+          forma: dVal || 'Plano'
+        })
+        if (dVal) disenosSet.add(dVal)
+      }
+    }
 
     const rOilH = espesor_aceite_mm
     const rOilA = parseNumberValue(
-      pickField(norm, ['anillo_aceite_altura', 'aceite_altura', 'aceite_a1', 'altura_radial_aceite_mm'])
+      pickField(norm, ['anillo_aceite_altura', 'aceite_altura', 'aceite_a1', 'altura_radial_aceite_mm', 'ultimo_anillo_altura'])
     )
-    const rOilD = String(pickField(norm, ['anillo_aceite_diseno', 'aceite_diseno', 'aceite_perfil']) || '').trim()
+    const rOilD = String(
+      pickField(norm, ['anillo_aceite_diseno', 'aceite_diseno', 'aceite_perfil', 'anillo_aceite_tipo_diseno', 'ultimo_anillo_diseno']) || ''
+    ).trim()
 
-    if (r1h != null || r1a != null) {
+    // Anillo de aceite siempre al FINAL de la lista
+    if (rOilH != null || rOilA != null || rOilD !== '') {
       parsedRings.push({
-        posicion: '1° Anillo',
-        tipo_aro: 'fuego',
-        d1: diametro_cilindro_mm,
-        h1: r1h,
-        a1: r1a,
-        perfil: r1d || 'Plano',
-        forma: r1d || 'Plano'
-      })
-      if (r1d) disenosSet.add(r1d)
-    }
-    if (r2h != null || r2a != null) {
-      parsedRings.push({
-        posicion: '2° Anillo',
-        tipo_aro: 'compresion',
-        d1: diametro_cilindro_mm,
-        h1: r2h,
-        a1: r2a,
-        perfil: r2d || 'Plano',
-        forma: r2d || 'Plano'
-      })
-      if (r2d) disenosSet.add(r2d)
-    }
-    if (r3h != null || r3a != null) {
-      parsedRings.push({
-        posicion: '3° Anillo',
-        tipo_aro: 'compresion',
-        d1: diametro_cilindro_mm,
-        h1: r3h,
-        a1: r3a,
-        perfil: r3d || 'Plano',
-        forma: r3d || 'Plano'
-      })
-      if (r3d) disenosSet.add(r3d)
-    }
-    if (rOilH != null || rOilA != null) {
-      parsedRings.push({
-        posicion: 'Anillo Aceite',
+        posicion: 'Anillo de aceite',
         tipo_aro: 'aceite',
         d1: diametro_cilindro_mm,
         h1: rOilH,
@@ -591,22 +604,86 @@ const parsePartRowObject = (
       if (rOilD) disenosSet.add(rOilD)
     }
   } else {
-    // Asegurar sincronización de medidas planas desde el array anillos
-    if (diametro_cilindro_mm == null && parsedRings[0]?.d1 != null) {
-      diametro_cilindro_mm = parseNumberValue(parsedRings[0].d1)
+    // Normalizar array JSON `anillos` (soporta 3, 4, 5 o más anillos) asegurando que el último SIEMPRE sea el de aceite
+    const normalizedEntries = rawRingsList.map((r, idx) => {
+      const rNorm: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(r)) {
+        rNorm[normalizeKey(k)] = v
+      }
+      const d1 =
+        parseNumberValue(r.d1 ?? rNorm.diametro_cilindro_mm ?? rNorm.diametro ?? diametro_cilindro_mm) ??
+        diametro_cilindro_mm
+      const h1 = parseNumberValue(r.h1 ?? rNorm.grosor_mm ?? rNorm.grosor ?? rNorm.espesor ?? rNorm.h1)
+      const a1 = parseNumberValue(r.a1 ?? rNorm.altura_mm ?? rNorm.altura ?? rNorm.radial ?? rNorm.a1)
+      const disenoStr = String(r.tipo_diseno ?? r.perfil ?? r.forma ?? rNorm.diseno ?? '').trim()
+      const posStr = String(r.posicion ?? r.nombre ?? '').trim()
+      const tipoAroStr = String(r.tipo_aro ?? '').trim().toLowerCase()
+      const explicitOil =
+        tipoAroStr === 'aceite' ||
+        posStr.toLowerCase().includes('aceite') ||
+        posStr.toLowerCase().includes('oil')
+
+      if (diametro_cilindro_mm == null && d1 != null) {
+        diametro_cilindro_mm = d1
+      }
+      if (disenoStr) disenosSet.add(disenoStr)
+
+      return {
+        raw: r,
+        origIdx: idx,
+        d1,
+        h1,
+        a1,
+        disenoStr,
+        posStr,
+        explicitOil
+      }
+    })
+
+    let oilEntryIdx = normalizedEntries.findIndex(e => e.explicitOil)
+    if (oilEntryIdx < 0 && normalizedEntries.length >= 2) {
+      // Regla de taller: cuando hay 2 o más anillos sin marcador explícito, el último siempre es el de aceite
+      oilEntryIdx = normalizedEntries.length - 1
     }
-    if (espesor_anillo1_mm == null && parsedRings[0]?.h1 != null) {
-      espesor_anillo1_mm = parseNumberValue(parsedRings[0].h1)
+
+    const compressionEntries = normalizedEntries.filter((_, i) => i !== oilEntryIdx)
+    const oilEntry = oilEntryIdx >= 0 ? normalizedEntries[oilEntryIdx] : null
+
+    parsedRings = compressionEntries.map((entry, idx) => ({
+      ...entry.raw,
+      posicion: entry.posStr && !/aceite|oil/i.test(entry.posStr) ? entry.posStr : `${idx + 1}° Anillo`,
+      tipo_aro: idx === 0 ? 'fuego' : 'compresion',
+      d1: entry.d1 ?? diametro_cilindro_mm,
+      h1: entry.h1,
+      a1: entry.a1,
+      perfil: entry.disenoStr || String(entry.raw.perfil || 'Plano'),
+      forma: entry.disenoStr || String(entry.raw.forma || 'Plano')
+    }))
+
+    if (oilEntry) {
+      parsedRings.push({
+        ...oilEntry.raw,
+        posicion: 'Anillo de aceite',
+        tipo_aro: 'aceite',
+        d1: oilEntry.d1 ?? diametro_cilindro_mm,
+        h1: oilEntry.h1,
+        a1: oilEntry.a1,
+        perfil: oilEntry.disenoStr || String(oilEntry.raw.perfil || 'Estándar'),
+        forma: oilEntry.disenoStr || String(oilEntry.raw.forma || 'Estándar')
+      })
     }
-    if (espesor_anillo2_mm == null && parsedRings.length >= 3 && parsedRings[1]?.h1 != null) {
-      espesor_anillo2_mm = parseNumberValue(parsedRings[1].h1)
+
+    // Sincronizar cotas planas desde la estructura normalizada
+    const compH = (idx: number) => {
+      const val = parsedRings[idx]?.tipo_aro !== 'aceite' ? parsedRings[idx]?.h1 : null
+      return val != null ? parseNumberValue(val) : null
     }
-    if (espesor_anillo3_mm == null && parsedRings.length >= 4 && parsedRings[2]?.h1 != null) {
-      espesor_anillo3_mm = parseNumberValue(parsedRings[2].h1)
-    }
-    const lastRing = parsedRings[parsedRings.length - 1]
-    if (espesor_aceite_mm == null && lastRing?.h1 != null) {
-      espesor_aceite_mm = parseNumberValue(lastRing.h1)
+    if (espesor_anillo1_mm == null) espesor_anillo1_mm = compH(0)
+    if (espesor_anillo2_mm == null) espesor_anillo2_mm = compH(1)
+    if (espesor_anillo3_mm == null) espesor_anillo3_mm = compH(2)
+    const lastOilRing = parsedRings[parsedRings.length - 1]
+    if (espesor_aceite_mm == null && lastOilRing?.tipo_aro === 'aceite' && lastOilRing?.h1 != null) {
+      espesor_aceite_mm = parseNumberValue(lastOilRing.h1)
     }
   }
 
@@ -865,6 +942,10 @@ const buildSampleRowsForTemplate = (
       'anillo2_diseno',
       'anillo3_grosor',
       'anillo3_altura',
+      'anillo3_diseno',
+      'anillo4_grosor',
+      'anillo4_altura',
+      'anillo4_diseno',
       'anillo_aceite_grosor',
       'anillo_aceite_altura',
       'anillo_aceite_diseno',
@@ -894,6 +975,10 @@ const buildSampleRowsForTemplate = (
         anillo2_diseno: 'Raspador',
         anillo3_grosor: '',
         anillo3_altura: '',
+        anillo3_diseno: '',
+        anillo4_grosor: '',
+        anillo4_altura: '',
+        anillo4_diseno: '',
         anillo_aceite_grosor: 4.0,
         anillo_aceite_altura: 3.5,
         anillo_aceite_diseno: 'Plano',
@@ -977,6 +1062,10 @@ const buildSampleRowsForTemplate = (
     'anillo1_altura',
     'anillo2_grosor',
     'anillo2_altura',
+    'anillo3_grosor',
+    'anillo3_altura',
+    'anillo4_grosor',
+    'anillo4_altura',
     'anillo_aceite_grosor',
     'anillo_aceite_altura',
     'medida_rosca',
@@ -1012,6 +1101,10 @@ const buildSampleRowsForTemplate = (
       anillo1_altura: '',
       anillo2_grosor: '',
       anillo2_altura: '',
+      anillo3_grosor: '',
+      anillo3_altura: '',
+      anillo4_grosor: '',
+      anillo4_altura: '',
       anillo_aceite_grosor: '',
       anillo_aceite_altura: '',
       medida_rosca: '',
@@ -1045,6 +1138,10 @@ const buildSampleRowsForTemplate = (
       anillo1_altura: 3.6,
       anillo2_grosor: 1.5,
       anillo2_altura: 3.8,
+      anillo3_grosor: '',
+      anillo3_altura: '',
+      anillo4_grosor: '',
+      anillo4_altura: '',
       anillo_aceite_grosor: 4.0,
       anillo_aceite_altura: 3.5,
       medida_rosca: '',
@@ -1191,7 +1288,7 @@ export const downloadCatalogExcelTemplate = (
     },
     {
       Campo_o_Regla: 'Medidas técnicas [Opcional]',
-      Descripcion: 'En Anillos use diametro_cilindro_mm, anillo1_grosor, anillo1_altura, anillo2_grosor, anillo2_altura, anillo3_grosor, anillo_aceite_grosor, anillo_aceite_altura.'
+      Descripcion: 'En Anillos: use diametro_cilindro_mm, anillo1..anillo4 (o anillo5_grosor/altura si hay más de 3 compresión), y SIEMPRE al final anillo_aceite_grosor, anillo_aceite_altura y anillo_aceite_diseno.'
     }
   ]
 
