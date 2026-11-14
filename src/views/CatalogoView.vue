@@ -5786,19 +5786,6 @@ onUnmounted(() => {
           <span class="flex items-center gap-1.5 flex-wrap">
             <span>{{ selectedComponent?.title || 'Piezas Técnicas' }}</span>
             <span class="font-normal text-[#BFEBF2] font-mono text-[11px]">({{ displayedParts.length }} registros)</span>
-            <span
-              v-if="activeMeasurementsCount - (filterCodigoPart.trim() ? 1 : 0) > 0"
-              class="inline-flex items-center gap-2 ml-2 px-2 py-0.5 rounded-full bg-white/15 border border-white/25 text-[10px] font-bold"
-            >
-              <span class="inline-flex items-center gap-1 text-emerald-200">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                Exacto
-              </span>
-              <span class="inline-flex items-center gap-1 text-amber-200">
-                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                En tolerancia
-              </span>
-            </span>
           </span>
           <div class="flex items-center gap-2 ml-auto">
             <button
@@ -5907,27 +5894,9 @@ onUnmounted(() => {
 
             <tbody v-else class="divide-y divide-slate-100">
               <template v-for="part in paginatedParts" :key="part.id">
-                <tr
-                  :class="[
-                    'transition group',
-                    getPartFilterMatchStatus(part) === 'exact'
-                      ? 'bg-emerald-50/75 hover:bg-emerald-100/75'
-                      : getPartFilterMatchStatus(part) === 'tolerance'
-                        ? 'bg-amber-50/80 hover:bg-amber-100/75'
-                        : 'hover:bg-slate-50'
-                  ]"
-                >
+                <tr class="hover:bg-slate-50 transition group">
                 <!-- 1. Componente con Miniatura Técnica y Lightbox -->
-                <td
-                  :class="[
-                    'py-2 px-3 align-middle border-b border-slate-100',
-                    getPartFilterMatchStatus(part) === 'exact'
-                      ? 'border-l-4 border-l-emerald-500'
-                      : getPartFilterMatchStatus(part) === 'tolerance'
-                        ? 'border-l-4 border-l-amber-400'
-                        : ''
-                  ]"
-                >
+                <td class="py-2 px-3 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-2.5">
                     <!-- Miniatura técnica interactiva -->
                     <div
@@ -5983,20 +5952,6 @@ onUnmounted(() => {
 
                     <div class="min-w-0">
                       <div class="flex items-center gap-1.5 flex-wrap">
-                        <span
-                          v-if="getPartFilterMatchStatus(part) === 'exact'"
-                          class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-400"
-                          title="Coincidencia exacta con las medidas buscadas"
-                        >
-                          Exacto
-                        </span>
-                        <span
-                          v-else-if="getPartFilterMatchStatus(part) === 'tolerance'"
-                          class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-950 border border-amber-400"
-                          title="Resultado dentro del rango de tolerancia configurado"
-                        >
-                          En tolerancia
-                        </span>
                         <span 
                           v-if="getPartCatalogBrand(part)"
                           class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
@@ -6393,7 +6348,7 @@ onUnmounted(() => {
                                 class="px-2.5 py-1 font-mono font-bold transition text-slate-900 whitespace-nowrap"
                                 :class="[
                                   cIdx < getPartTableColumns(part).length - 1 ? 'border-r border-slate-200' : '',
-                                  col.compartido_filas ? 'align-middle bg-cyan-50/15' : '',
+                                  col.compartido_filas ? 'align-middle' : '',
                                   getMiniTableCellMatchClass(part, sf, sfIdx, col)
                                 ]"
                               >
