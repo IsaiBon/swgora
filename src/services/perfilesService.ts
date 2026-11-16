@@ -631,14 +631,17 @@ export const perfilesService = {
       })
       .eq('id', id)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       throw error
     }
-    if (data) {
-      mergePerfilesIntoCache([data as Perfil], { markLocalOnly: false })
+    if (!data) {
+      throw new Error(
+        'No se pudo actualizar el perfil en Supabase (sin permisos RLS o el perfil no existe en la nube).'
+      )
     }
+    mergePerfilesIntoCache([data as Perfil], { markLocalOnly: false })
     return data as Perfil
   },
 
