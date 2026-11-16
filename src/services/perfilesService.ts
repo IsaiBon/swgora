@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { compressImage } from './storageService'
 
 export interface Perfil {
   id: string
@@ -639,6 +640,74 @@ export const perfilesService = {
       mergePerfilesIntoCache([data as Perfil], { markLocalOnly: false })
     }
     return data as Perfil
+  },
+
+  /**
+   * Comprime y sube la foto de perfil del usuario al bucket 'taller' (o genera un Data URL compacto de respaldo).
+   */
+  async uploadAvatar(file: File, userId: string): Promise<string> {
+    let fileToUpload: File = file
+    try {
+      const compressed = await compressImage(file, {
+        maxWidth: 512,
+        maxHeight: 512,
+        quality: 0.84,
+      })
+      fileToUpload = compressed.file
+    } catch {
+      fileToUpload = file
+    }
+
+    const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48)
+    const ext = fileToUpload.name.split('.').pop()?.toLowerCase() || 'webp'
+    const filePath = `avatars/${cleanUserId}_${Date.now()}.${ext}`
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('taller')
+        .upload(filePath, fileToUpload, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: fileToUpload.type || 'image/webp',
+        })
+
+      if (!error && data) {
+        const { data: publicUrlData } = supabase.storage
+          .from('taller')
+          .getPublicUrl(data.path)
+
+        if (publicUrlData?.publicUrl) {
+          return publicUrlData.publicUrl
+        }
+      } else if (error) {
+        console.warn('[perfilesService] Error subiendo avatar a Storage, usando Data URL:', error.message)
+      }
+    } catch (err) {
+      console.warn('[perfilesService] Excepción subiendo avatar a Storage:', err)
+    }
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = reject
+      reader.readAsDataURL(fileToUpload)
+    })
+  },
+
+  /**
+   * Actualiza la foto de perfil (avatar_url) en `public.perfiles` y en el caché local.
+   * Si no hay sesión real en Supabase (sesión de bóveda local), respalda el cambio localmente.
+   */
+  async updateAvatar(id: string, avatarUrl: string | null): Promise<{ perfil: Perfil | null; persistedInDb: boolean }> {
+    const hasSession = await this.hasLiveSupabaseSession()
+    if (!hasSession) {
+      this.updatePerfilInCache(id, { avatar_url: avatarUrl })
+      const cached = this.getCachedPerfilByEmailOrId({ id })
+      return { perfil: cached, persistedInDb: false }
+    }
+
+    const updated = await this.updatePerfil(id, { avatar_url: avatarUrl })
+    return { perfil: updated, persistedInDb: true }
   },
 
   /**

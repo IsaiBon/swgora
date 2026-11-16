@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useTallerStore } from '@/stores/taller'
+import { perfilesService } from '@/services/perfilesService'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ShieldCheck,
@@ -18,6 +19,8 @@ import {
   ChevronRight,
   PanelLeftOpen,
   PanelLeftClose,
+  Camera,
+  Loader2,
 } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
@@ -28,7 +31,34 @@ const route = useRoute()
 
 const userMenuOpen = ref(false)
 const userMenuContainerRef = ref<HTMLElement | null>(null)
+const navbarAvatarInputRef = ref<HTMLInputElement | null>(null)
+const uploadingNavbarAvatar = ref(false)
 let closeTimeout: ReturnType<typeof setTimeout> | null = null
+
+const triggerNavbarAvatarUpload = () => {
+  if (uploadingNavbarAvatar.value || !authStore.user?.id) return
+  if (navbarAvatarInputRef.value) {
+    navbarAvatarInputRef.value.value = ''
+    navbarAvatarInputRef.value.click()
+  }
+}
+
+const handleNavbarAvatarSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement | null
+  const file = input?.files?.[0]
+  const currentUserId = authStore.user?.id
+  if (!file || !currentUserId || !file.type.startsWith('image/')) return
+  uploadingNavbarAvatar.value = true
+  try {
+    const avatarUrl = await perfilesService.uploadAvatar(file, currentUserId)
+    await perfilesService.updateAvatar(currentUserId, avatarUrl)
+    authStore.updateCurrentUserProfile({ avatar_url: avatarUrl })
+  } catch (err) {
+    console.warn('[Navbar] No se pudo actualizar la foto de perfil:', err)
+  } finally {
+    uploadingNavbarAvatar.value = false
+  }
+}
 
 const pageTitleMap: Record<string, { title: string; subtitle: string }> = {
   '/dashboard': {
@@ -259,14 +289,34 @@ const handleNewOrder = () => {
           >
             <!-- Info del Usuario -->
             <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
-              <div class="w-11 h-11 rounded-xl overflow-hidden bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0">
-                <img
-                  v-if="authStore.user?.avatar"
-                  :src="authStore.user.avatar"
-                  :alt="authStore.user.name"
-                  class="w-full h-full object-cover"
-                />
-                <UserIcon v-else class="w-5 h-5 text-[#004B97]" />
+              <input
+                ref="navbarAvatarInputRef"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleNavbarAvatarSelected"
+              />
+              <div class="relative shrink-0">
+                <div class="w-11 h-11 rounded-xl overflow-hidden bg-blue-50 border border-blue-200 flex items-center justify-center">
+                  <img
+                    v-if="authStore.user?.avatar"
+                    :src="authStore.user.avatar"
+                    :alt="authStore.user.name"
+                    class="w-full h-full object-cover"
+                  />
+                  <UserIcon v-else class="w-5 h-5 text-[#004B97]" />
+                </div>
+                <button
+                  type="button"
+                  :disabled="uploadingNavbarAvatar"
+                  @click.stop="triggerNavbarAvatarUpload"
+                  class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white border border-slate-300 text-[#004B97] hover:bg-[#004B97] hover:text-white shadow-xs flex items-center justify-center transition cursor-pointer disabled:opacity-50"
+                  title="Cambiar foto de perfil"
+                  aria-label="Cambiar foto de perfil"
+                >
+                  <Loader2 v-if="uploadingNavbarAvatar" class="w-3 h-3 animate-spin" />
+                  <Camera v-else class="w-3 h-3" />
+                </button>
               </div>
               <div class="min-w-0 flex-1">
                 <div class="text-sm font-extrabold text-slate-900 truncate">

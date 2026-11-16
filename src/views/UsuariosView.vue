@@ -19,6 +19,8 @@ import {
   Pencil,
   LogIn,
   RefreshCw,
+  Camera,
+  Trash2,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -1009,6 +1011,10 @@ const copiadoId = ref<string | null>(null)
 const usuarioCredencial = ref<Perfil | null>(null)
 const nombreEditableFicha = ref('')
 const guardandoNombreFicha = ref(false)
+const guardandoAvatarId = ref<string | null>(null)
+const inputAvatarTablaRef = ref<HTMLInputElement | null>(null)
+const inputAvatarModalRef = ref<HTMLInputElement | null>(null)
+const usuarioDestinoAvatar = ref<Perfil | null>(null)
 const credencialEditable = ref('')
 const mostrarPasswordEnModal = ref(true)
 const esNuevaPasswordVisible = ref(true)
@@ -1137,6 +1143,9 @@ async function guardarNombreFichaUsuario() {
     if (fila) {
       fila.nombre = nuevoNombre
     }
+    if (perfil.id === auth.user?.id) {
+      auth.updateCurrentUserProfile({ nombre: nuevoNombre })
+    }
     perfilesService.cachePerfilesList(usuarios.value)
     tipoMensajeModalCredencial.value = 'ok'
     mensajeModalCredencial.value = 'Nombre de la ficha de usuario actualizado correctamente.'
@@ -1148,6 +1157,147 @@ async function guardarNombreFichaUsuario() {
         : 'No se pudo actualizar el nombre del usuario.'
   } finally {
     guardandoNombreFicha.value = false
+  }
+}
+
+function puedeEditarFoto(perfil: Perfil): boolean {
+  return esAdministrador.value || perfil.id === auth.user?.id
+}
+
+function pedirCambioAvatarTabla(perfil: Perfil) {
+  if (!puedeEditarFoto(perfil) || guardandoAvatarId.value) return
+  usuarioDestinoAvatar.value = perfil
+  if (inputAvatarTablaRef.value) {
+    inputAvatarTablaRef.value.value = ''
+    inputAvatarTablaRef.value.click()
+  }
+}
+
+function pedirCambioAvatarModal() {
+  if (!usuarioCredencial.value || !puedeEditarFoto(usuarioCredencial.value) || guardandoAvatarId.value) return
+  if (inputAvatarModalRef.value) {
+    inputAvatarModalRef.value.value = ''
+    inputAvatarModalRef.value.click()
+  }
+}
+
+async function aplicarNuevaFotoUsuario(perfil: Perfil, file: File) {
+  if (!file.type.startsWith('image/')) {
+    const msg = 'Selecciona un archivo de imagen válido (JPG, PNG o WebP).'
+    if (usuarioCredencial.value?.id === perfil.id) {
+      tipoMensajeModalCredencial.value = 'error'
+      mensajeModalCredencial.value = msg
+    } else {
+      errorLista.value = msg
+    }
+    return
+  }
+
+  guardandoAvatarId.value = perfil.id
+  errorLista.value = ''
+  if (usuarioCredencial.value?.id === perfil.id) {
+    mensajeModalCredencial.value = ''
+  }
+
+  try {
+    const avatarUrl = await perfilesService.uploadAvatar(file, perfil.id)
+    let persistedInDb = true
+
+    if (esUsuarioSoloRuta(perfil)) {
+      persistedInDb = false
+    } else {
+      const res = await perfilesService.updateAvatar(perfil.id, avatarUrl)
+      persistedInDb = res.persistedInDb
+    }
+
+    perfil.avatar_url = avatarUrl
+    const fila = usuarios.value.find((u) => u.id === perfil.id)
+    if (fila) {
+      fila.avatar_url = avatarUrl
+    }
+    if (usuarioCredencial.value?.id === perfil.id) {
+      usuarioCredencial.value.avatar_url = avatarUrl
+    }
+    if (perfil.id === auth.user?.id) {
+      auth.updateCurrentUserProfile({ avatar_url: avatarUrl })
+    }
+    perfilesService.cachePerfilesList(usuarios.value)
+
+    const okMsg = persistedInDb
+      ? `Foto de perfil de ${perfil.nombre} actualizada correctamente.`
+      : `Foto de perfil de ${perfil.nombre} actualizada en este navegador.`
+    mensajeExito.value = okMsg
+    if (usuarioCredencial.value?.id === perfil.id) {
+      tipoMensajeModalCredencial.value = 'ok'
+      mensajeModalCredencial.value = okMsg
+    }
+  } catch (err: unknown) {
+    const errMsg =
+      err instanceof Error
+        ? err.message
+        : 'No se pudo actualizar la foto de perfil.'
+    if (usuarioCredencial.value?.id === perfil.id) {
+      tipoMensajeModalCredencial.value = 'error'
+      mensajeModalCredencial.value = errMsg
+    } else {
+      errorLista.value = errMsg
+    }
+  } finally {
+    guardandoAvatarId.value = null
+    usuarioDestinoAvatar.value = null
+  }
+}
+
+async function alSeleccionarArchivoAvatar(evento: Event, desdeModal = false) {
+  const input = evento.target as HTMLInputElement | null
+  const file = input?.files?.[0]
+  const perfil = desdeModal ? usuarioCredencial.value : usuarioDestinoAvatar.value
+  if (!file || !perfil) return
+  await aplicarNuevaFotoUsuario(perfil, file)
+}
+
+async function quitarFotoUsuario(perfil: Perfil) {
+  if (!puedeEditarFoto(perfil) || guardandoAvatarId.value) return
+  guardandoAvatarId.value = perfil.id
+  errorLista.value = ''
+  if (usuarioCredencial.value?.id === perfil.id) {
+    mensajeModalCredencial.value = ''
+  }
+
+  try {
+    if (!esUsuarioSoloRuta(perfil)) {
+      await perfilesService.updateAvatar(perfil.id, null)
+    }
+    perfil.avatar_url = null
+    const fila = usuarios.value.find((u) => u.id === perfil.id)
+    if (fila) {
+      fila.avatar_url = null
+    }
+    if (usuarioCredencial.value?.id === perfil.id) {
+      usuarioCredencial.value.avatar_url = null
+    }
+    if (perfil.id === auth.user?.id) {
+      auth.updateCurrentUserProfile({ avatar_url: null })
+    }
+    perfilesService.cachePerfilesList(usuarios.value)
+
+    const msg = `Foto de perfil de ${perfil.nombre} eliminada.`
+    mensajeExito.value = msg
+    if (usuarioCredencial.value?.id === perfil.id) {
+      tipoMensajeModalCredencial.value = 'ok'
+      mensajeModalCredencial.value = msg
+    }
+  } catch (err: unknown) {
+    const errMsg =
+      err instanceof Error ? err.message : 'No se pudo eliminar la foto de perfil.'
+    if (usuarioCredencial.value?.id === perfil.id) {
+      tipoMensajeModalCredencial.value = 'error'
+      mensajeModalCredencial.value = errMsg
+    } else {
+      errorLista.value = errMsg
+    }
+  } finally {
+    guardandoAvatarId.value = null
   }
 }
 
@@ -1471,6 +1621,13 @@ onMounted(() => {
       </div>
 
       <div v-if="usuariosFiltrados.length" class="overflow-x-auto" :aria-busy="cargandoUsuarios">
+        <input
+          ref="inputAvatarTablaRef"
+          type="file"
+          accept="image/*"
+          class="hidden"
+          @change="alSeleccionarArchivoAvatar($event, false)"
+        />
         <table id="tabla-usuarios" class="w-full text-left text-sm">
           <caption class="sr-only">Usuarios, credenciales, roles y acciones de administración</caption>
           <thead class="studio-table-head">
@@ -1487,8 +1644,35 @@ onMounted(() => {
           <tbody class="divide-y divide-slate-100">
             <tr v-for="usuario in usuariosFiltrados" :key="usuario.id" class="transition-colors hover:bg-sky-50/45">
               <td class="px-5 py-4">
-                <p class="font-bold text-[#0D1B3E]">{{ usuario.nombre }}</p>
-                <p class="mt-0.5 text-xs text-slate-500">{{ usuario.email }}</p>
+                <div class="flex items-center gap-3">
+                  <div class="relative shrink-0 group/avatar">
+                    <div class="h-10 w-10 rounded-full overflow-hidden border border-slate-200 bg-gradient-to-br from-[#0D1B3E] to-[#004B97] flex items-center justify-center text-xs font-black text-[#BFEBF2] shadow-2xs">
+                      <img
+                        v-if="usuario.avatar_url"
+                        :src="usuario.avatar_url"
+                        :alt="usuario.nombre"
+                        class="h-full w-full object-cover"
+                      />
+                      <span v-else>{{ inicialesFicha(usuario.nombre) }}</span>
+                    </div>
+                    <button
+                      v-if="puedeEditarFoto(usuario)"
+                      type="button"
+                      :disabled="guardandoAvatarId === usuario.id"
+                      :title="`Cambiar foto de perfil de ${usuario.nombre}`"
+                      :aria-label="`Cambiar foto de perfil de ${usuario.nombre}`"
+                      class="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-white border border-slate-300 text-[#004B97] hover:bg-[#004B97] hover:text-white shadow-xs flex items-center justify-center transition cursor-pointer disabled:opacity-50"
+                      @click="pedirCambioAvatarTabla(usuario)"
+                    >
+                      <RefreshCw v-if="guardandoAvatarId === usuario.id" class="h-2.5 w-2.5 animate-spin" />
+                      <Camera v-else class="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="font-bold text-[#0D1B3E]">{{ usuario.nombre }}</p>
+                    <p class="mt-0.5 text-xs text-slate-500">{{ usuario.email }}</p>
+                  </div>
+                </div>
               </td>
 
               <!-- Columna de Credenciales (Solo Administrador) -->
@@ -2076,10 +2260,36 @@ onMounted(() => {
         >
           <!-- Cabecera oscura de Ficha de Usuario -->
           <div class="relative bg-gradient-to-r from-[#0D1B3E] to-[#004B97] px-6 py-5 text-white">
+            <input
+              ref="inputAvatarModalRef"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="alSeleccionarArchivoAvatar($event, true)"
+            />
             <div class="flex items-start justify-between gap-3">
               <div class="flex items-center gap-3.5 min-w-0">
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15 border border-white/25 text-sm font-black text-[#BFEBF2] shadow-inner">
-                  {{ inicialesFicha(usuarioCredencial.nombre) }}
+                <div class="relative shrink-0">
+                  <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white/15 border border-white/25 text-sm font-black text-[#BFEBF2] shadow-inner">
+                    <img
+                      v-if="usuarioCredencial.avatar_url"
+                      :src="usuarioCredencial.avatar_url"
+                      :alt="usuarioCredencial.nombre"
+                      class="h-full w-full object-cover"
+                    />
+                    <span v-else>{{ inicialesFicha(usuarioCredencial.nombre) }}</span>
+                  </div>
+                  <button
+                    v-if="puedeEditarFoto(usuarioCredencial)"
+                    type="button"
+                    :disabled="guardandoAvatarId === usuarioCredencial.id"
+                    title="Cambiar foto de perfil"
+                    class="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-[#004B97] border border-blue-200 shadow-sm transition hover:bg-[#BFEBF2] cursor-pointer disabled:opacity-50"
+                    @click="pedirCambioAvatarModal"
+                  >
+                    <RefreshCw v-if="guardandoAvatarId === usuarioCredencial.id" class="h-3 w-3 animate-spin" />
+                    <Camera v-else class="h-3 w-3" />
+                  </button>
                 </div>
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
@@ -2183,6 +2393,31 @@ onMounted(() => {
                   {{ guardandoNombreFicha ? 'Guardando…' : 'Guardar nombre' }}
                 </button>
               </form>
+
+              <div v-if="puedeEditarFoto(usuarioCredencial)" class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
+                <span class="text-xs font-semibold text-slate-600">Foto de perfil</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    :disabled="guardandoAvatarId === usuarioCredencial.id"
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-[#04C4D9]/50 bg-white px-3 py-1.5 text-xs font-bold text-[#004B97] transition hover:bg-sky-50 cursor-pointer disabled:opacity-50"
+                    @click="pedirCambioAvatarModal"
+                  >
+                    <Camera class="h-3.5 w-3.5" />
+                    <span>{{ guardandoAvatarId === usuarioCredencial.id ? 'Subiendo…' : (usuarioCredencial.avatar_url ? 'Cambiar foto' : 'Subir foto') }}</span>
+                  </button>
+                  <button
+                    v-if="usuarioCredencial.avatar_url"
+                    type="button"
+                    :disabled="guardandoAvatarId === usuarioCredencial.id"
+                    class="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100 cursor-pointer disabled:opacity-50"
+                    @click="quitarFotoUsuario(usuarioCredencial)"
+                  >
+                    <Trash2 class="h-3.5 w-3.5" />
+                    <span>Quitar</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- 2. Credenciales actuales y copiar ficha -->

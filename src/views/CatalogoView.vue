@@ -602,8 +602,8 @@ const handleSaveQuickYear = (directValue?: string) => {
   showToast(`✓ Año "${val}" agregado y seleccionado`)
 }
 
-// Control de visibilidad de filtros en vista móvil para liberar espacio vertical
-const isMobileFiltersOpen = ref<boolean>(false)
+// Control de visibilidad de filtros en vista móvil: desplegados por defecto al entrar al catálogo
+const isMobileFiltersOpen = ref<boolean>(true)
 
 const activeFilterCount = computed<number>(() => {
   let count = 0
@@ -672,7 +672,7 @@ const handleBrandKeydown = (e: KeyboardEvent) => {
 }
 
 const handleMotorKeydown = (e: KeyboardEvent) => {
-  const list = brandMotorsList.value.slice(0, 60)
+  const list = (brandMotorsList.value.length > 0 ? brandMotorsList.value : recommendedMotorsList.value).slice(0, 60)
   if (e.key === 'Enter') {
     if (list[0]) {
       e.preventDefault()
@@ -1895,6 +1895,7 @@ const editableMotorTarget = computed<Motor | null>(() => {
     return (
       brandMotorsList.value.find(m => m.codigo.toLowerCase() === q) ||
       brandMotorsList.value[0] ||
+      recommendedMotorsList.value[0] ||
       null
     )
   }
@@ -1979,7 +1980,8 @@ const filteredBrands = computed(() => {
   if (selectedMotor.value?.fabricante_id) {
     list = list.filter(f => f.id === selectedMotor.value!.fabricante_id)
   } else if (motorInput.value.trim()) {
-    const matchingBrandIds = new Set(brandMotorsList.value.map(m => m.fabricante_id).filter(Boolean))
+    const motorPool = brandMotorsList.value.length > 0 ? brandMotorsList.value : recommendedMotorsList.value
+    const matchingBrandIds = new Set(motorPool.map(m => m.fabricante_id).filter(Boolean))
     list = list.filter(f => matchingBrandIds.has(f.id))
   } else if (selectedModel.value?.fabricante_id && !selectedBrand.value) {
     list = list.filter(f => f.id === selectedModel.value!.fabricante_id)
@@ -2092,10 +2094,13 @@ const filteredModels = computed(() => {
 
   if (!selectedMotor.value && motorInput.value.trim()) {
     const mq = motorInput.value.trim().toLowerCase()
-    const motorsForInput = availableMotors.value.filter(m => {
-      const code = (m.codigo || '').toLowerCase().trim()
-      return code.startsWith(mq)
-    })
+    const startsWithMotors = availableMotors.value.filter(m =>
+      (m.codigo || '').toLowerCase().trim().startsWith(mq)
+    )
+    const motorsForInput =
+      startsWithMotors.length > 0
+        ? startsWithMotors
+        : availableMotors.value.filter(m => (m.codigo || '').toLowerCase().includes(mq))
     const matched = list.filter(m => motorsForInput.some(mot => doesMotorMatchModel(mot, m)))
     if (matched.length > 0) {
       list = matched
@@ -2451,7 +2456,7 @@ const handleClearSearch = () => {
 // =============================================================================
 // TABLA DE MOTORES DE LA MARCA (ESTILO TECDOC / AJUSA)
 // =============================================================================
-const brandMotorsList = computed<Motor[]>(() => {
+const scopedMotorsByModelAndYear = computed<Motor[]>(() => {
   let list = availableMotors.value
 
   if (selectedModel.value) {
@@ -2478,25 +2483,6 @@ const brandMotorsList = computed<Motor[]>(() => {
     }
   }
 
-  const q = motorInput.value.trim().toLowerCase()
-  const isSelectedMotorCurrent = selectedMotor.value && (
-    q === selectedMotor.value.codigo.toLowerCase().trim() ||
-    (selectedMotor.value.nombre_comercial && q === selectedMotor.value.nombre_comercial.toLowerCase().trim()) ||
-    (selectedMotor.value.denominacion_venta && q === selectedMotor.value.denominacion_venta.toLowerCase().trim())
-  )
-
-  if (q && !isSelectedMotorCurrent) {
-    const matched = list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
-    list = sortMotorsByRelevance(matched, q)
-  } else {
-    list = [...list].sort((a, b) => {
-      const ta = a.created_at ? Date.parse(a.created_at) : 0
-      const tb = b.created_at ? Date.parse(b.created_at) : 0
-      if (tb !== ta) return tb - ta
-      return String(a.codigo || '').localeCompare(String(b.codigo || ''))
-    })
-  }
-
   if (effectiveYearFilter.value) {
     const yr = Number(effectiveYearFilter.value)
     if (!isNaN(yr) && yr > 0) {
@@ -2521,7 +2507,52 @@ const brandMotorsList = computed<Motor[]>(() => {
       })
     }
   }
+
   return list
+})
+
+const isMotorSearchActive = computed<boolean>(() => {
+  const q = motorInput.value.trim().toLowerCase()
+  if (!q) return false
+  if (selectedMotor.value) {
+    const isSelectedCurrent =
+      q === selectedMotor.value.codigo.toLowerCase().trim() ||
+      (selectedMotor.value.nombre_comercial && q === selectedMotor.value.nombre_comercial.toLowerCase().trim()) ||
+      (selectedMotor.value.denominacion_venta && q === selectedMotor.value.denominacion_venta.toLowerCase().trim())
+    if (isSelectedCurrent) return false
+  }
+  return true
+})
+
+const brandMotorsList = computed<Motor[]>(() => {
+  const list = scopedMotorsByModelAndYear.value
+  const q = motorInput.value.trim().toLowerCase()
+
+  if (q && isMotorSearchActive.value) {
+    const matched = list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
+    return sortMotorsByRelevance(matched, q)
+  }
+
+  return [...list].sort((a, b) => {
+    const ta = a.created_at ? Date.parse(a.created_at) : 0
+    const tb = b.created_at ? Date.parse(b.created_at) : 0
+    if (tb !== ta) return tb - ta
+    return String(a.codigo || '').localeCompare(String(b.codigo || ''))
+  })
+})
+
+const recommendedMotorsList = computed<Motor[]>(() => {
+  if (!isMotorSearchActive.value) return []
+  const q = motorInput.value.trim().toLowerCase()
+  if (!q) return []
+
+  const exactIds = new Set(brandMotorsList.value.map(m => m.id))
+  const recs = scopedMotorsByModelAndYear.value.filter(m => {
+    if (exactIds.has(m.id)) return false
+    const code = (m.codigo || '').toLowerCase().trim()
+    return code.includes(q)
+  })
+  return sortMotorsByRelevance(recs, q)
 })
 
 const motorCurrentPage = ref<number>(1)
@@ -2533,6 +2564,26 @@ const paginatedMotors = computed(() => {
 })
 const motorStartIndex = computed(() => (motorCurrentPage.value - 1) * motorPageSize)
 const motorEndIndex = computed(() => Math.min(motorCurrentPage.value * motorPageSize, brandMotorsList.value.length))
+
+const motorTableSections = computed(() => {
+  const sections: Array<{
+    id: 'primary' | 'recommended'
+    motors: Motor[]
+  }> = [
+    {
+      id: 'primary',
+      motors: paginatedMotors.value
+    }
+  ]
+
+  if (recommendedMotorsList.value.length > 0) {
+    sections.push({
+      id: 'recommended',
+      motors: recommendedMotorsList.value
+    })
+  }
+  return sections
+})
 
 const goToFirstMotorPage = () => { motorCurrentPage.value = 1 }
 const goToPrevMotorPage = () => { if (motorCurrentPage.value > 1) motorCurrentPage.value-- }
@@ -4876,7 +4927,7 @@ onUnmounted(() => {
         <!-- Barra de Estado / Paginación Resumen -->
         <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white py-2 px-4 flex items-center justify-between text-xs font-medium">
           <span class="text-sky-100 font-mono text-[11px]">
-            Mostrando {{ motorStartIndex + 1 }}-{{ motorEndIndex }} de {{ brandMotorsList.length }} motores
+            Mostrando {{ brandMotorsList.length > 0 ? `${motorStartIndex + 1}-${motorEndIndex} de ${brandMotorsList.length}` : 0 }} motores
           </span>
           <span class="text-[11px] text-[#BFEBF2] font-semibold font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
         </div>
@@ -4920,114 +4971,122 @@ onUnmounted(() => {
             </tbody>
 
             <tbody v-else class="divide-y divide-slate-100">
-              <tr
-                v-for="mot in paginatedMotors"
-                :key="mot.id"
-                @click="handleSelectMotor(mot)"
-                :class="[
-                  'transition cursor-pointer group',
-                  selectedMotor?.id === mot.id 
-                    ? 'bg-cyan-50/80 font-bold' 
-                    : 'hover:bg-slate-50 text-slate-700'
-                ]"
-              >
-                <!-- 1. Icono de Información (i) -->
-                <td class="py-2 px-2.5 text-center align-middle border-r border-slate-100">
-                  <button
-                    type="button"
-                    @click="openMotorInfo(mot, $event)"
-                    class="p-1 rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 inline-flex items-center justify-center transition"
-                    title="Ver ficha técnica del motor"
-                  >
-                    <Info class="w-3.5 h-3.5" />
-                  </button>
-                </td>
+              <template v-for="section in motorTableSections" :key="section.id">
+                <tr v-if="section.id === 'recommended'" class="bg-slate-50/90">
+                  <td colspan="12" class="py-1.5 px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-y border-slate-200">
+                    Recomendaciones
+                  </td>
+                </tr>
 
-                <!-- 2. Número / ID -->
-                <td class="py-2 px-3 font-mono text-slate-500 text-[11px] align-middle border-r border-slate-100">
-                  {{ mot.numero_id || '—' }}
-                </td>
-
-                <!-- 3. Código de Motor -->
-                <td class="py-2 px-3.5 font-semibold text-slate-800 align-middle border-r border-slate-100">
-                  <div class="flex items-center gap-1.5 flex-wrap">
-                    <span class="font-mono font-bold text-slate-900 group-hover:text-[#038391] transition">
-                      {{ getBrandName(mot.fabricante_id) }} - {{ mot.codigo }}
-                    </span>
-                    <span 
-                      v-if="selectedMotor?.id === mot.id"
-                      class="text-[9px] px-1.5 py-0.2 rounded bg-[#147488] text-white font-bold"
+                <tr
+                  v-for="mot in section.motors"
+                  :key="`${section.id}-${mot.id}`"
+                  @click="handleSelectMotor(mot)"
+                  :class="[
+                    'transition cursor-pointer group',
+                    selectedMotor?.id === mot.id
+                      ? 'bg-cyan-50/80 font-bold'
+                      : 'hover:bg-slate-50 text-slate-700'
+                  ]"
+                >
+                  <!-- 1. Icono de Información (i) -->
+                  <td class="py-2 px-2.5 text-center align-middle border-r border-slate-100">
+                    <button
+                      type="button"
+                      @click="openMotorInfo(mot, $event)"
+                      class="p-1 rounded hover:bg-slate-200 text-slate-500 hover:text-slate-800 inline-flex items-center justify-center transition"
+                      title="Ver ficha técnica del motor"
                     >
-                      Activo
-                    </span>
+                      <Info class="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+
+                  <!-- 2. Número / ID -->
+                  <td class="py-2 px-3 font-mono text-slate-500 text-[11px] align-middle border-r border-slate-100">
+                    {{ mot.numero_id || '—' }}
+                  </td>
+
+                  <!-- 3. Código de Motor -->
+                  <td class="py-2 px-3.5 font-semibold text-slate-800 align-middle border-r border-slate-100">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="font-mono font-bold text-slate-900 group-hover:text-[#038391] transition">
+                        {{ getBrandName(mot.fabricante_id) }} - {{ mot.codigo }}
+                      </span>
+                      <span
+                        v-if="selectedMotor?.id === mot.id"
+                        class="text-[9px] px-1.5 py-0.2 rounded bg-[#147488] text-white font-bold"
+                      >
+                        Activo
+                      </span>
+                      <span
+                        v-else-if="isRecentMotor(mot)"
+                        class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold"
+                      >
+                        Reciente
+                      </span>
+                    </div>
+                  </td>
+
+                  <!-- 4. Modelo Vehicular -->
+                  <td class="py-2 px-3 font-semibold text-slate-700 align-middle border-r border-slate-100">
+                    {{ getMotorModelName(mot) }}
+                  </td>
+
+                  <!-- 5. Años -->
+                  <td class="py-2 px-3 text-center font-mono text-[11px] text-slate-600 align-middle border-r border-slate-100">
+                    {{ getMotorYearsLabel(mot) }}
+                  </td>
+
+                  <!-- 6. Denominación de Venta -->
+                  <td class="py-2 px-3.5 text-slate-600 align-middle border-r border-slate-100">
+                    {{ mot.denominacion_venta || '—' }}
+                  </td>
+
+                  <!-- 7. Cilindros -->
+                  <td class="py-2 px-2.5 text-center font-mono text-slate-800 align-middle border-r border-slate-100">
+                    {{ mot.cilindros || '—' }}
+                  </td>
+
+                  <!-- 8. Cilindrada -->
+                  <td class="py-2 px-3 font-mono text-slate-800 align-middle border-r border-slate-100">
+                    {{ mot.cilindrada_texto || (mot.cilindrada_cc ? `${mot.cilindrada_cc} cc` : '—') }}
+                  </td>
+
+                  <!-- 9. kW -->
+                  <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle border-r border-slate-100">
+                    {{ mot.kw || '—' }}
+                  </td>
+
+                  <!-- 10. CV -->
+                  <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle border-r border-slate-100">
+                    {{ mot.cv || '—' }}
+                  </td>
+
+                  <!-- 11. Repuestos Disponibles -->
+                  <td class="py-2 px-2.5 text-center align-middle border-r border-slate-100">
                     <span
-                      v-else-if="isRecentMotor(mot)"
-                      class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold"
+                      class="inline-block px-1.5 py-0.5 rounded font-mono font-bold text-[10px]"
+                      :class="(mot.parts_count || 0) > 0 ? 'bg-cyan-50 text-[#038391] border border-cyan-200' : 'bg-slate-100 text-slate-400'"
                     >
-                      Reciente
+                      {{ mot.parts_count || 0 }} pzs
                     </span>
-                  </div>
-                </td>
+                  </td>
 
-                <!-- 4. Modelo Vehicular -->
-                <td class="py-2 px-3 font-semibold text-slate-700 align-middle border-r border-slate-100">
-                  {{ getMotorModelName(mot) }}
-                </td>
+                  <!-- 12. Editar / eliminar motor -->
+                  <td class="py-2 px-2 text-center align-middle" @click.stop>
+                    <button
+                      type="button"
+                      @click="openEditMotorModal(mot, $event)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-[#004B97] hover:bg-blue-50 transition cursor-pointer"
+                      title="Editar o eliminar motor, modelo o año"
+                    >
+                      <Edit3 class="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              </template>
 
-                <!-- 5. Años -->
-                <td class="py-2 px-3 text-center font-mono text-[11px] text-slate-600 align-middle border-r border-slate-100">
-                  {{ getMotorYearsLabel(mot) }}
-                </td>
-
-                <!-- 6. Denominación de Venta -->
-                <td class="py-2 px-3.5 text-slate-600 align-middle border-r border-slate-100">
-                  {{ mot.denominacion_venta || '—' }}
-                </td>
-
-                <!-- 7. Cilindros -->
-                <td class="py-2 px-2.5 text-center font-mono text-slate-800 align-middle border-r border-slate-100">
-                  {{ mot.cilindros || '—' }}
-                </td>
-
-                <!-- 8. Cilindrada -->
-                <td class="py-2 px-3 font-mono text-slate-800 align-middle border-r border-slate-100">
-                  {{ mot.cilindrada_texto || (mot.cilindrada_cc ? `${mot.cilindrada_cc} cc` : '—') }}
-                </td>
-
-                <!-- 9. kW -->
-                <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle border-r border-slate-100">
-                  {{ mot.kw || '—' }}
-                </td>
-
-                <!-- 10. CV -->
-                <td class="py-2 px-2.5 text-center font-mono text-slate-700 align-middle border-r border-slate-100">
-                  {{ mot.cv || '—' }}
-                </td>
-
-                <!-- 11. Repuestos Disponibles -->
-                <td class="py-2 px-2.5 text-center align-middle border-r border-slate-100">
-                  <span 
-                    class="inline-block px-1.5 py-0.5 rounded font-mono font-bold text-[10px]"
-                    :class="(mot.parts_count || 0) > 0 ? 'bg-cyan-50 text-[#038391] border border-cyan-200' : 'bg-slate-100 text-slate-400'"
-                  >
-                    {{ mot.parts_count || 0 }} pzs
-                  </span>
-                </td>
-
-                <!-- 12. Editar / eliminar motor -->
-                <td class="py-2 px-2 text-center align-middle" @click.stop>
-                  <button
-                    type="button"
-                    @click="openEditMotorModal(mot, $event)"
-                    class="p-1.5 rounded-lg text-slate-400 hover:text-[#004B97] hover:bg-blue-50 transition cursor-pointer"
-                    title="Editar o eliminar motor, modelo o año"
-                  >
-                    <Edit3 class="w-3.5 h-3.5" />
-                  </button>
-                </td>
-              </tr>
-
-              <tr v-if="paginatedMotors.length === 0">
+              <tr v-if="paginatedMotors.length === 0 && recommendedMotorsList.length === 0">
                 <td colspan="12" class="py-8 text-center text-slate-400 bg-white">
                   No hay motores que coincidan con la búsqueda.
                 </td>
@@ -5039,7 +5098,7 @@ onUnmounted(() => {
         <!-- Pie de Tabla con Paginación -->
         <div class="bg-slate-50 py-2 px-3.5 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
           <span class="text-[11px] text-slate-500">Página {{ motorCurrentPage }} de {{ motorTotalPages }}</span>
-          
+
           <div class="flex items-center gap-1">
             <button
               type="button"

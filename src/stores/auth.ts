@@ -902,6 +902,21 @@ export const useAuthStore = defineStore('auth', () => {
     isPasswordRecovery.value = false
   }
 
+  function updateCurrentUserProfile(updates: { nombre?: string; avatar_url?: string | null }) {
+    if (!user.value) return
+    const nextUser: User = { ...user.value }
+    if (updates.nombre !== undefined && updates.nombre.trim()) {
+      nextUser.name = updates.nombre.trim()
+    }
+    if (updates.avatar_url !== undefined) {
+      nextUser.avatar =
+        updates.avatar_url ||
+        'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop&q=80'
+    }
+    user.value = nextUser
+    persistUser(nextUser)
+  }
+
   return {
     user,
     session,
@@ -930,5 +945,6 @@ export const useAuthStore = defineStore('auth', () => {
     requestPasswordReset,
     updateUserPassword,
     clearPasswordRecovery,
+    updateCurrentUserProfile,
   }
 })
