@@ -9,9 +9,32 @@ import {
   type Motor,
   type RepuestoTecnico
 } from './catalogService'
+import {
+  convertTemplateToGrupoInsert,
+  type FamilyTemplate,
+  type TemplateColumnDef
+} from '@/components/catalog/FamilyTemplates'
 
 export type DuplicateStrategy = 'skip' | 'update' | 'create'
-export type TemplateScope = 'general' | 'motors_only' | 'parts_only'
+export type TemplateScope = 'general' | 'motors_only' | 'parts_only' | 'families_only'
+
+export interface ParsedFamilyRow {
+  rowIndex: number
+  sheetName: string
+  codigo: string
+  nombre: string
+  categoria: string
+  subsistema: string
+  descripcion?: string
+  icono: string
+  tipo_vista: 'normal' | 'tabla'
+  titulo_primera_columna?: string
+  titulo_grupo_filas?: string
+  filas: Array<{ nombre: string; tipo_fila: 'normal' | 'central'; grupo_central?: string }>
+  columnas: TemplateColumnDef[]
+  status: 'valid' | 'warning' | 'error'
+  messages: string[]
+}
 
 export interface ParsedMotorRow {
   rowIndex: number
@@ -88,6 +111,7 @@ export interface ParsedPartRow {
 export interface CatalogImportParseResult {
   fileName: string
   format: 'excel' | 'json'
+  families: ParsedFamilyRow[]
   motors: ParsedMotorRow[]
   parts: ParsedPartRow[]
   warnings: string[]
@@ -101,6 +125,9 @@ export interface CatalogImportOptions {
 }
 
 export interface CatalogImportReport {
+  createdFamilies: number
+  updatedFamilies: number
+  skippedFamilies: number
   createdMotors: number
   skippedMotors: number
   createdParts: number
@@ -781,6 +808,338 @@ const parsePartRowObject = (
 }
 
 // =============================================================================
+// PARSEO DE FAMILIAS NUEVAS (ESTRUCTURA EQUIVALENTE A CREAR/EDITAR FAMILIA)
+// =============================================================================
+
+const parseColumnDataType = (raw: unknown): 'numero' | 'booleano' | 'seleccion' | 'texto' => {
+  const s = normalizeKey(String(raw || ''))
+  if (s === 'booleano' || s === 'bool' || s === 'si_no' || s === 'sino' || s === 'estado') {
+    return 'booleano'
+  }
+  if (s === 'seleccion' || s === 'opc' || s === 'opcion' || s === 'opciones' || s === 'lista' || s === 'select') {
+    return 'seleccion'
+  }
+  if (s === 'texto' || s === 'text' || s === 'string') {
+    return 'texto'
+  }
+  return 'numero'
+}
+
+const parseYesNo = (raw: unknown, defaultVal: boolean): boolean => {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return defaultVal
+  if (typeof raw === 'boolean') return raw
+  const s = normalizeKey(String(raw))
+  if (['si', 'true', '1', 'yes', 'activo', 'y'].includes(s)) return true
+  if (['no', 'false', '0', 'n'].includes(s)) return false
+  return defaultVal
+}
+
+const normalizeSubsistemaValue = (raw: unknown): string => {
+  const s = normalizeText(String(raw || ''))
+  if (s.includes('culat') || s.includes('tapa')) return 'Culata'
+  if (s.includes('ciguenal') || s.includes('bancad') || s.includes('biela')) return 'Cigüeñal'
+  if (s.includes('general') || s.includes('accesor') || s.includes('sello')) return 'General'
+  return 'Block'
+}
+
+const parseFilasTablaInput = (
+  raw: unknown
+): Array<{ nombre: string; tipo_fila: 'normal' | 'central'; grupo_central?: string }> => {
+  if (!raw) return []
+
+  if (Array.isArray(raw)) {
+    const out: Array<{ nombre: string; tipo_fila: 'normal' | 'central'; grupo_central?: string }> = []
+    for (const item of raw) {
+      if (typeof item === 'string') {
+        out.push(...parseFilasTablaInput(item))
+      } else if (item && typeof item === 'object') {
+        const obj = item as Record<string, unknown>
+        const nombre = String(obj.nombre ?? obj.label ?? obj.etiqueta ?? '').trim()
+        const rawTipo = normalizeKey(String(obj.tipo_fila ?? obj.tipo ?? ''))
+        const esCentral = Boolean(obj.es_fila_central) || rawTipo === 'central'
+        const grupo = String(obj.grupo_central ?? obj.grupo ?? obj.bloque ?? '').trim() || undefined
+        if (nombre || esCentral) {
+          out.push({
+            nombre: nombre || 'Fila Central',
+            tipo_fila: esCentral ? 'central' : 'normal',
+            ...(esCentral ? {} : grupo ? { grupo_central: grupo } : {})
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  const text = String(raw).trim()
+  if (!text) return []
+  if (text.startsWith('[')) {
+    try {
+      return parseFilasTablaInput(JSON.parse(text))
+    } catch {
+      // Continuar como texto plano
+    }
+  }
+
+  return text
+    .split(/[;\n|,]+/)
+    .map(token => token.trim())
+    .filter(Boolean)
+    .map(token => {
+      const centralMatch = token.match(/^\[?\s*central\s*\]?\s*[:\-]?\s*(.+)$/i)
+      if (centralMatch) {
+        return {
+          nombre: centralMatch[1]!.trim() || 'Encabezado Central',
+          tipo_fila: 'central' as const
+        }
+      }
+      const groupMatch = token.match(/^([^:=]+)\s*:\s*(.+)$/)
+      if (groupMatch) {
+        return {
+          nombre: groupMatch[2]!.trim(),
+          tipo_fila: 'normal' as const,
+          grupo_central: groupMatch[1]!.trim()
+        }
+      }
+      return {
+        nombre: token,
+        tipo_fila: 'normal' as const
+      }
+    })
+}
+
+const parseColumnDefFromObject = (raw: Record<string, unknown>): TemplateColumnDef | null => {
+  const norm = buildRowNormalizedMap(raw)
+  const etiqueta = String(
+    pickField(norm, ['etiqueta', 'nombre_columna', 'columna', 'medida', 'nombre', 'label', 'etiqueta_corta']) || ''
+  ).trim()
+  if (!etiqueta) return null
+
+  const tipoDato = parseColumnDataType(
+    pickField(norm, ['tipo_dato', 'tipo', 'datatype', 'formato'])
+  )
+  const rawUnidad = pickField(norm, ['unidad', 'unit'])
+  const unidad =
+    tipoDato === 'booleano'
+      ? ''
+      : rawUnidad !== undefined
+        ? String(rawUnidad).trim()
+        : tipoDato === 'numero'
+          ? 'mm'
+          : ''
+
+  const columnaPadre = String(
+    pickField(norm, ['columna_padre', 'grupo_columna', 'columna_central', 'grupo']) || ''
+  ).trim() || undefined
+
+  const rawOpciones = raw.opciones ?? pickField(norm, ['opciones', 'opciones_str', 'lista_opciones'])
+  const opciones = Array.isArray(rawOpciones)
+    ? rawOpciones.map(o => String(o || '').trim()).filter(Boolean)
+    : splitTokens(rawOpciones)
+
+  const clave = String(pickField(norm, ['clave', 'key']) || '').trim() || undefined
+  const descripcion = String(pickField(norm, ['descripcion', 'ayuda']) || '').trim() || undefined
+
+  return {
+    ...(clave ? { clave } : {}),
+    etiqueta,
+    ...(columnaPadre ? { columna_padre: columnaPadre } : {}),
+    ...(parseYesNo(pickField(norm, ['compartido_filas', 'compartida', 'compartido']), false)
+      ? { compartido_filas: true }
+      : {}),
+    unidad,
+    tipo_dato: tipoDato,
+    requerido: parseYesNo(pickField(norm, ['requerido', 'obligatorio']), true),
+    filtrable: parseYesNo(pickField(norm, ['filtrable', 'filtro']), true),
+    ...(descripcion ? { descripcion } : {}),
+    ...(opciones.length > 0 ? { opciones, opcionesStr: opciones.join(', ') } : {})
+  }
+}
+
+const parseInlineColumnsInput = (raw: unknown): TemplateColumnDef[] => {
+  if (!raw) return []
+
+  if (Array.isArray(raw)) {
+    const out: TemplateColumnDef[] = []
+    for (const item of raw) {
+      if (typeof item === 'string') {
+        out.push(...parseInlineColumnsInput(item))
+      } else if (item && typeof item === 'object') {
+        const col = parseColumnDefFromObject(item as Record<string, unknown>)
+        if (col) out.push(col)
+      }
+    }
+    return out
+  }
+
+  const text = String(raw).trim()
+  if (!text) return []
+  if (text.startsWith('[')) {
+    try {
+      return parseInlineColumnsInput(JSON.parse(text))
+    } catch {
+      // Continuar como texto plano
+    }
+  }
+
+  return text
+    .split(/[;\n|]+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      // Formato opcional: "Grupo > Etiqueta (mm)" o "Tipo (opc: A, B)" o "Con Pestaña (si/no)"
+      let columnaPadre: string | undefined
+      let rest = part
+      const parentSep = part.match(/^([^>]+)>\s*(.+)$/)
+      if (parentSep) {
+        columnaPadre = parentSep[1]!.trim()
+        rest = parentSep[2]!.trim()
+      }
+
+      let tipo_dato: TemplateColumnDef['tipo_dato'] = 'numero'
+      let unidad = 'mm'
+      let opciones: string[] | undefined
+
+      const parenMatch = rest.match(/^(.+?)\(([^)]+)\)\s*$/)
+      if (parenMatch) {
+        rest = parenMatch[1]!.trim()
+        const meta = parenMatch[2]!.trim()
+        const metaLow = meta.toLowerCase()
+        if (metaLow === 'si/no' || metaLow === 'sí/no' || metaLow === 'booleano' || metaLow === 'bool') {
+          tipo_dato = 'booleano'
+          unidad = ''
+        } else if (metaLow === 'texto' || metaLow === 'text') {
+          tipo_dato = 'texto'
+          unidad = ''
+        } else if (/^(opc|opciones|select|lista)\s*:/i.test(meta)) {
+          tipo_dato = 'seleccion'
+          unidad = ''
+          opciones = splitTokens(meta.replace(/^[^:]+:\s*/, ''))
+        } else {
+          tipo_dato = 'numero'
+          unidad = meta
+        }
+      }
+
+      return {
+        etiqueta: rest || part,
+        ...(columnaPadre ? { columna_padre: columnaPadre } : {}),
+        unidad,
+        tipo_dato,
+        requerido: true,
+        filtrable: true,
+        ...(opciones && opciones.length > 0 ? { opciones, opcionesStr: opciones.join(', ') } : {})
+      }
+    })
+}
+
+const buildParsedFamilyRow = (
+  rawObj: Record<string, unknown>,
+  rowIndex: number,
+  sheetName: string,
+  extraColumns: TemplateColumnDef[] = []
+): ParsedFamilyRow | null => {
+  const nonEmptyValues = Object.values(rawObj).filter(v => v !== undefined && v !== null && String(v).trim() !== '')
+  if (nonEmptyValues.length === 0) return null
+
+  const norm = buildRowNormalizedMap(rawObj)
+  const nombre = String(pickField(norm, ['nombre', 'familia', 'nombre_familia', 'titulo']) || '').trim()
+  const codigoRaw = String(pickField(norm, ['codigo', 'slug']) || '').trim()
+  const codigo =
+    codigoRaw ||
+    nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+  const categoria = String(pickField(norm, ['categoria']) || nombre).trim()
+  const subsistema = normalizeSubsistemaValue(pickField(norm, ['subsistema', 'parte_motor', 'sistema']))
+  const descripcion = String(pickField(norm, ['descripcion', 'notas']) || '').trim() || undefined
+  const icono = String(pickField(norm, ['icono', 'icon']) || 'Layers').trim() || 'Layers'
+
+  const tablaCfg = (rawObj.tabla_config && typeof rawObj.tabla_config === 'object'
+    ? (rawObj.tabla_config as Record<string, unknown>)
+    : null)
+
+  const rawTipoVista = normalizeKey(
+    String(pickField(norm, ['tipo_vista', 'vista', 'formato_visualizacion']) || '')
+  )
+  const filas = parseFilasTablaInput(
+    rawObj.filas ??
+      rawObj.filas_tabla ??
+      pickField(norm, ['filas_tabla', 'filas', 'subfilas']) ??
+      tablaCfg?.subfilas
+  )
+  const tipo_vista: 'normal' | 'tabla' =
+    rawTipoVista.includes('tabla') || (!rawTipoVista && filas.length > 0) ? 'tabla' : 'normal'
+
+  const titulo_primera_columna =
+    String(
+      pickField(norm, ['titulo_primera_columna', 'primera_columna', 'titulo_fila']) ||
+        tablaCfg?.titulo_primera_columna ||
+        ''
+    ).trim() || (tipo_vista === 'tabla' ? 'Componente' : undefined)
+
+  const titulo_grupo_filas =
+    String(
+      pickField(norm, ['titulo_grupo_filas', 'columna_central_filas', 'titulo_bloque_filas']) ||
+        tablaCfg?.titulo_grupo_filas ||
+        ''
+    ).trim() || undefined
+
+  const inlineCols = parseInlineColumnsInput(
+    rawObj.columnas ?? rawObj.parametros ?? pickField(norm, ['columnas', 'parametros', 'medidas'])
+  )
+  const singleRowCol = parseColumnDefFromObject(rawObj)
+  // Evitar usar la propia columna `nombre` de la familia como etiqueta de columna cuando no viene `etiqueta`
+  const hasExplicitColHeader =
+    pickField(norm, ['etiqueta', 'nombre_columna', 'columna', 'medida', 'label', 'etiqueta_corta']) !== undefined
+
+  const combinedCols: TemplateColumnDef[] = [...inlineCols, ...extraColumns]
+  if (hasExplicitColHeader && singleRowCol) {
+    combinedCols.push(singleRowCol)
+  }
+
+  const messages: string[] = []
+  let status: ParsedFamilyRow['status'] = 'valid'
+
+  if (!nombre) {
+    status = 'error'
+    messages.push('Falta el nombre de la familia')
+  }
+
+  if (combinedCols.length === 0) {
+    status = status === 'error' ? 'error' : 'warning'
+    messages.push('Sin columnas definidas; se creará columna por defecto "Medida 1 (mm)"')
+    combinedCols.push({
+      etiqueta: 'Medida 1',
+      unidad: 'mm',
+      tipo_dato: 'numero',
+      requerido: true,
+      filtrable: true
+    })
+  }
+
+  return {
+    rowIndex,
+    sheetName,
+    codigo,
+    nombre,
+    categoria,
+    subsistema,
+    descripcion,
+    icono,
+    tipo_vista,
+    titulo_primera_columna,
+    titulo_grupo_filas,
+    filas,
+    columnas: combinedCols,
+    status,
+    messages
+  }
+}
+
+// =============================================================================
 // LECTURA DE ARCHIVOS EXCEL / CSV / JSON
 // =============================================================================
 
@@ -791,6 +1150,7 @@ export const parseCatalogJsonText = (
   defaultGrupo?: GrupoRepuesto | null
 ): CatalogImportParseResult => {
   const parsed = JSON.parse(jsonText) as unknown
+  const families: ParsedFamilyRow[] = []
   const motors: ParsedMotorRow[] = []
   const parts: ParsedPartRow[] = []
   const warnings: string[] = []
@@ -800,10 +1160,17 @@ export const parseCatalogJsonText = (
       if (!item || typeof item !== 'object') return
       const obj = item as Record<string, unknown>
       const hasOem = obj.codigo_oem !== undefined || obj.oem !== undefined
+      const looksLikeFamily =
+        !hasOem &&
+        (Array.isArray(obj.columnas) || Array.isArray(obj.parametros) || obj.tipo_vista !== undefined)
       const looksLikeMotor =
         !hasOem &&
+        !looksLikeFamily &&
         (obj.cilindros !== undefined || obj.cilindrada_cc !== undefined || obj.codigo !== undefined)
-      if (looksLikeMotor) {
+      if (looksLikeFamily) {
+        const f = buildParsedFamilyRow(obj, idx + 1, 'JSON')
+        if (f) families.push(f)
+      } else if (looksLikeMotor) {
         const m = parseMotorRowObject(obj, idx + 1, 'JSON')
         if (m) motors.push(m)
       } else {
@@ -813,6 +1180,11 @@ export const parseCatalogJsonText = (
     })
   } else if (parsed && typeof parsed === 'object') {
     const root = parsed as Record<string, unknown>
+    const rawFamilies = Array.isArray(root.familias)
+      ? root.familias
+      : Array.isArray(root.grupos)
+        ? root.grupos
+        : []
     const rawMotors = Array.isArray(root.motores) ? root.motores : []
     const rawParts = Array.isArray(root.repuestos)
       ? root.repuestos
@@ -822,6 +1194,12 @@ export const parseCatalogJsonText = (
           ? root.productos
           : []
 
+    rawFamilies.forEach((item, idx) => {
+      if (item && typeof item === 'object') {
+        const f = buildParsedFamilyRow(item as Record<string, unknown>, idx + 1, 'JSON.familias')
+        if (f) families.push(f)
+      }
+    })
     rawMotors.forEach((item, idx) => {
       if (item && typeof item === 'object') {
         const m = parseMotorRowObject(item as Record<string, unknown>, idx + 1, 'JSON.motores')
@@ -835,14 +1213,14 @@ export const parseCatalogJsonText = (
       }
     })
 
-    if (rawMotors.length === 0 && rawParts.length === 0) {
-      warnings.push('El objeto JSON no contiene arreglos "repuestos" ni "motores".')
+    if (rawFamilies.length === 0 && rawMotors.length === 0 && rawParts.length === 0) {
+      warnings.push('El objeto JSON no contiene arreglos "familias", "repuestos" ni "motores".')
     }
   } else {
-    throw new Error('El JSON debe ser un arreglo [...] o un objeto con { "motores": [...], "repuestos": [...] }')
+    throw new Error('El JSON debe ser un arreglo [...] o un objeto con { "familias": [...], "motores": [...], "repuestos": [...] }')
   }
 
-  return { fileName, format: 'json', motors, parts, warnings }
+  return { fileName, format: 'json', families, motors, parts, warnings }
 }
 
 export const parseCatalogImportFile = async (
@@ -863,14 +1241,51 @@ export const parseCatalogImportFile = async (
 
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array' })
+  const families: ParsedFamilyRow[] = []
   const motors: ParsedMotorRow[] = []
   const parts: ParsedPartRow[] = []
   const warnings: string[] = []
 
+  // 1. Pre-recolectar hojas de columnas de familias (Columnas_Familia / Medida_Familia / Parametros)
+  const columnsByFamilyKey = new Map<string, TemplateColumnDef[]>()
+  const familySheetNames = new Set<string>()
+  const columnSheetNames = new Set<string>()
+
   for (const sheetName of workbook.SheetNames) {
     const normSheet = normalizeKey(sheetName)
-    // Ignorar la hoja informativa de instrucciones
     if (normSheet.includes('instruccion') || normSheet.includes('guia') || normSheet.includes('ayuda')) {
+      continue
+    }
+    if (normSheet.includes('columna') || normSheet.includes('medida_familia') || normSheet.includes('parametro')) {
+      columnSheetNames.add(sheetName)
+      const ws = workbook.Sheets[sheetName]
+      if (!ws) continue
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+      for (const row of rows) {
+        const norm = buildRowNormalizedMap(row)
+        const famKey = normalizeText(String(pickField(norm, ['familia', 'nombre_familia', 'grupo']) || ''))
+        const colDef = parseColumnDefFromObject(row)
+        if (famKey && colDef) {
+          const arr = columnsByFamilyKey.get(famKey) || []
+          arr.push(colDef)
+          columnsByFamilyKey.set(famKey, arr)
+        }
+      }
+    } else if (normSheet.includes('familia') || normSheet.includes('grupo')) {
+      familySheetNames.add(sheetName)
+    }
+  }
+
+  // 2. Procesar todas las hojas del libro
+  for (const sheetName of workbook.SheetNames) {
+    const normSheet = normalizeKey(sheetName)
+    // Ignorar hojas de instrucciones o hojas auxiliares de columnas ya procesadas
+    if (
+      normSheet.includes('instruccion') ||
+      normSheet.includes('guia') ||
+      normSheet.includes('ayuda') ||
+      columnSheetNames.has(sheetName)
+    ) {
       continue
     }
 
@@ -878,6 +1293,44 @@ export const parseCatalogImportFile = async (
     if (!ws) continue
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
     if (rows.length === 0) continue
+
+    if (familySheetNames.has(sheetName)) {
+      const groupedByNombre = new Map<string, ParsedFamilyRow>()
+      rows.forEach((row: Record<string, unknown>, idx: number) => {
+        const parsedRow = buildParsedFamilyRow(row, idx + 2, sheetName)
+        if (!parsedRow) return
+        const famKey = normalizeText(parsedRow.nombre || `row_${idx}`)
+        const existing = groupedByNombre.get(famKey)
+        if (existing) {
+          const newCols = parsedRow.columnas.filter(
+            c => !(parsedRow.messages.some(m => m.includes('Sin columnas')) && c.etiqueta === 'Medida 1')
+          )
+          existing.columnas.push(...newCols)
+          if (existing.filas.length === 0 && parsedRow.filas.length > 0) {
+            existing.filas = parsedRow.filas
+            existing.tipo_vista = parsedRow.tipo_vista
+          }
+        } else {
+          const extraCols = famKey ? columnsByFamilyKey.get(famKey) || [] : []
+          if (extraCols.length > 0) {
+            // Reemplazar columna placeholder si las columnas venían en hoja Columnas_Familia
+            const hasPlaceholder = parsedRow.messages.some(m => m.includes('Sin columnas'))
+            if (hasPlaceholder) {
+              parsedRow.columnas = [...extraCols]
+              parsedRow.messages = parsedRow.messages.filter(m => !m.includes('Sin columnas'))
+              if (parsedRow.messages.length === 0 && parsedRow.nombre) {
+                parsedRow.status = 'valid'
+              }
+            } else {
+              parsedRow.columnas.push(...extraCols)
+            }
+          }
+          groupedByNombre.set(famKey, parsedRow)
+        }
+      })
+      families.push(...groupedByNombre.values())
+      continue
+    }
 
     const isMotorsSheet =
       normSheet.includes('motor') && !normSheet.includes('anillo') && !normSheet.includes('repuesto')
@@ -893,13 +1346,14 @@ export const parseCatalogImportFile = async (
     })
   }
 
-  if (motors.length === 0 && parts.length === 0) {
+  if (families.length === 0 && motors.length === 0 && parts.length === 0) {
     warnings.push('No se encontraron filas con datos en el archivo Excel.')
   }
 
   return {
     fileName: file.name,
     format: 'excel',
+    families,
     motors,
     parts,
     warnings
@@ -1203,12 +1657,184 @@ const SAMPLE_MOTOR_ROW = {
   cv: 114
 }
 
+const FAMILY_TEMPLATE_COLUMNS = [
+  'nombre',
+  'subsistema',
+  'tipo_vista',
+  'titulo_primera_columna',
+  'filas_tabla',
+  'titulo_grupo_filas',
+  'descripcion'
+]
+
+const FAMILY_COLUMNS_SHEET_HEADERS = [
+  'familia',
+  'etiqueta',
+  'tipo_dato',
+  'unidad',
+  'columna_padre',
+  'opciones',
+  'compartido_filas',
+  'requerido',
+  'filtrable'
+]
+
+const SAMPLE_FAMILY_EXCEL_ROWS = [
+  {
+    nombre: 'Camisas de Cilindro',
+    subsistema: 'Block',
+    tipo_vista: 'normal',
+    titulo_primera_columna: '',
+    filas_tabla: '',
+    titulo_grupo_filas: '',
+    descripcion: 'Camisas húmedas y secas por diámetro exterior, interior y pestaña'
+  },
+  {
+    nombre: 'Cojinetes Especiales',
+    subsistema: 'Cigüeñal',
+    tipo_vista: 'tabla',
+    titulo_primera_columna: 'Componente',
+    filas_tabla: 'Biela; Bancada; [Central] Medidas en mm',
+    titulo_grupo_filas: '',
+    descripcion: 'Cojinetes en vista de tabla por medida STD y sobremedida'
+  }
+]
+
+const SAMPLE_FAMILY_COLUMNS_ROWS = [
+  {
+    familia: 'Camisas de Cilindro',
+    etiqueta: 'Diámetro Interior',
+    tipo_dato: 'numero',
+    unidad: 'mm',
+    columna_padre: '',
+    opciones: '',
+    compartido_filas: 'No',
+    requerido: 'Si',
+    filtrable: 'Si'
+  },
+  {
+    familia: 'Camisas de Cilindro',
+    etiqueta: 'Largo Total',
+    tipo_dato: 'numero',
+    unidad: 'mm',
+    columna_padre: '',
+    opciones: '',
+    compartido_filas: 'No',
+    requerido: 'Si',
+    filtrable: 'Si'
+  },
+  {
+    familia: 'Camisas de Cilindro',
+    etiqueta: 'Tipo de Camisa',
+    tipo_dato: 'seleccion',
+    unidad: '',
+    columna_padre: '',
+    opciones: 'Seca, Húmeda',
+    compartido_filas: 'No',
+    requerido: 'Si',
+    filtrable: 'Si'
+  },
+  {
+    familia: 'Camisas de Cilindro',
+    etiqueta: 'Con Pestaña',
+    tipo_dato: 'booleano',
+    unidad: '',
+    columna_padre: '',
+    opciones: '',
+    compartido_filas: 'No',
+    requerido: 'No',
+    filtrable: 'Si'
+  },
+  {
+    familia: 'Cojinetes Especiales',
+    etiqueta: 'D. Mín',
+    tipo_dato: 'numero',
+    unidad: 'mm',
+    columna_padre: 'STD',
+    opciones: '',
+    compartido_filas: 'No',
+    requerido: 'Si',
+    filtrable: 'Si'
+  },
+  {
+    familia: 'Cojinetes Especiales',
+    etiqueta: 'D. Máx',
+    tipo_dato: 'numero',
+    unidad: 'mm',
+    columna_padre: 'STD',
+    opciones: '',
+    compartido_filas: 'No',
+    requerido: 'Si',
+    filtrable: 'Si'
+  }
+]
+
 export const downloadCatalogExcelTemplate = (
   grupos: GrupoRepuesto[],
   scope: TemplateScope = 'general',
   selectedGrupo?: GrupoRepuesto | null
 ) => {
   const wb = XLSX.utils.book_new()
+
+  if (scope === 'families_only') {
+    const wsFam = XLSX.utils.json_to_sheet(SAMPLE_FAMILY_EXCEL_ROWS, { header: FAMILY_TEMPLATE_COLUMNS })
+    wsFam['!cols'] = FAMILY_TEMPLATE_COLUMNS.map(col => ({ wch: Math.max(18, col.length + 5) }))
+    XLSX.utils.book_append_sheet(wb, wsFam, 'Familias')
+
+    const wsFamCols = XLSX.utils.json_to_sheet(SAMPLE_FAMILY_COLUMNS_ROWS, {
+      header: FAMILY_COLUMNS_SHEET_HEADERS
+    })
+    wsFamCols['!cols'] = FAMILY_COLUMNS_SHEET_HEADERS.map(col => ({ wch: Math.max(16, col.length + 4) }))
+    XLSX.utils.book_append_sheet(wb, wsFamCols, 'Columnas_Familia')
+
+    const familyGuide = [
+      {
+        Campo_o_Regla: '=== HOJA FAMILIAS: CAMPOS OBLIGATORIOS ===',
+        Descripcion: 'Define el nombre y comportamiento visual (Vista Normal o Vista en Tabla), igual que en Crear/Editar Familia.'
+      },
+      {
+        Campo_o_Regla: 'nombre [Obligatorio]',
+        Descripcion: 'Nombre exacto de la familia (ej: Camisas de Cilindro, Guías de Válvula).'
+      },
+      {
+        Campo_o_Regla: '=== HOJA FAMILIAS: CAMPOS OPCIONALES ===',
+        Descripcion: 'Complete según si usará Vista Normal o Vista en Tabla.'
+      },
+      {
+        Campo_o_Regla: 'subsistema [Opcional]',
+        Descripcion: 'Block, Culata, Cigüeñal o General (por defecto Block).'
+      },
+      {
+        Campo_o_Regla: 'tipo_vista [Opcional]',
+        Descripcion: 'normal (medidas sueltas/badges) o tabla (sub-filas con columnas y sub-columnas).'
+      },
+      {
+        Campo_o_Regla: 'titulo_primera_columna / filas_tabla [Solo tabla]',
+        Descripcion: 'Encabezado de 1ra columna (ej: Componente) y filas separadas por ";" (ej: Biela; Bancada). Use [Central] Texto para filas centrales o Bloque:Fila para unir filas.'
+      },
+      {
+        Campo_o_Regla: '=== HOJA COLUMNAS_FAMILIA ===',
+        Descripcion: 'Lista las medidas/estados de cada familia enlazados por el campo "familia" (mismo nombre que en la hoja Familias).'
+      },
+      {
+        Campo_o_Regla: 'familia / etiqueta [Obligatorios]',
+        Descripcion: 'Nombre de la familia y nombre de la medida o columna (ej: Diámetro Interior).'
+      },
+      {
+        Campo_o_Regla: 'tipo_dato [Opcional]',
+        Descripcion: 'numero (Núm), booleano (Sí/No), seleccion (Opciones) o texto.'
+      },
+      {
+        Campo_o_Regla: 'unidad / columna_padre / opciones [Opcional]',
+        Descripcion: 'unidad (mm, °, pzs), columna_padre agrupa sub-columnas (ej: STD), opciones separadas por coma cuando tipo_dato = seleccion.'
+      }
+    ]
+    const wsGuide = XLSX.utils.json_to_sheet(familyGuide)
+    wsGuide['!cols'] = [{ wch: 46 }, { wch: 100 }]
+    XLSX.utils.book_append_sheet(wb, wsGuide, 'Instrucciones')
+    XLSX.writeFile(wb, 'plantilla_solo_familias_swgora.xlsx')
+    return
+  }
 
   if (scope !== 'motors_only') {
     const { partColumns, sampleParts } = buildSampleRowsForTemplate(
@@ -1334,7 +1960,46 @@ export const downloadCatalogJsonTemplate = (
   let payload: Record<string, unknown>
   let filename: string
 
-  if (scope === 'motors_only') {
+  if (scope === 'families_only') {
+    payload = {
+      _instrucciones: {
+        nota: 'Plantilla específica para importar Familias Técnicas con la misma estructura que Crear/Editar Familia.',
+        campos_obligatorios: ['nombre', 'columnas'],
+        campos_opcionales: ['subsistema', 'tipo_vista', 'titulo_primera_columna', 'filas_tabla', 'titulo_grupo_filas', 'descripcion'],
+        tipos_vista: ['normal', 'tabla'],
+        tipos_dato_columna: ['numero', 'booleano', 'seleccion', 'texto']
+      },
+      familias: [
+        {
+          nombre: 'Camisas de Cilindro',
+          subsistema: 'Block',
+          tipo_vista: 'normal',
+          descripcion: 'Camisas húmedas y secas',
+          columnas: [
+            { etiqueta: 'Diámetro Interior', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true },
+            { etiqueta: 'Largo Total', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true },
+            { etiqueta: 'Tipo de Camisa', tipo_dato: 'seleccion', opciones: ['Seca', 'Húmeda'], requerido: true, filtrable: true },
+            { etiqueta: 'Con Pestaña', tipo_dato: 'booleano', requerido: false, filtrable: true }
+          ]
+        },
+        {
+          nombre: 'Cojinetes Especiales',
+          subsistema: 'Cigüeñal',
+          tipo_vista: 'tabla',
+          titulo_primera_columna: 'Componente',
+          filas_tabla: [
+            { nombre: 'Biela', tipo_fila: 'normal' },
+            { nombre: 'Bancada', tipo_fila: 'normal' }
+          ],
+          columnas: [
+            { etiqueta: 'D. Mín', columna_padre: 'STD', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true },
+            { etiqueta: 'D. Máx', columna_padre: 'STD', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true }
+          ]
+        }
+      ]
+    }
+    filename = 'plantilla_solo_familias_swgora.json'
+  } else if (scope === 'motors_only') {
     payload = {
       _instrucciones: {
         nota: 'Plantilla específica SOLO para importar Motores (numero_id lo gestiona el sistema). Orden: primero campos obligatorios y luego opcionales.',
@@ -1439,6 +2104,7 @@ export const executeCatalogImport = async (
   parsed: CatalogImportParseResult,
   options: CatalogImportOptions,
   context: {
+    grupos?: GrupoRepuesto[]
     fabricantes: Fabricante[]
     modelos: Modelo[]
     motores: Motor[]
@@ -1446,6 +2112,9 @@ export const executeCatalogImport = async (
   }
 ): Promise<CatalogImportReport> => {
   const report: CatalogImportReport = {
+    createdFamilies: 0,
+    updatedFamilies: 0,
+    skippedFamilies: 0,
     createdMotors: 0,
     skippedMotors: 0,
     createdParts: 0,
@@ -1456,15 +2125,94 @@ export const executeCatalogImport = async (
     errors: []
   }
 
+  const validFamilies = (parsed.families || []).filter(f => f.status !== 'error')
   const validMotors = parsed.motors.filter(m => m.status !== 'error')
   const validParts = parsed.parts.filter(p => p.status !== 'error')
-  const totalSteps = validMotors.length + validParts.length
+  const totalSteps = validFamilies.length + validMotors.length + validParts.length
   let currentStep = 0
 
+  const gruposList = [...(context.grupos || [])]
   const fabList = [...context.fabricantes]
   const modList = [...context.modelos]
   const motList = [...context.motores]
   const oemIndex = await loadExistingOemIndex(context.repuestos)
+
+  // 0. Procesar Familias Técnicas nuevas o por actualizar
+  for (const fRow of validFamilies) {
+    currentStep++
+    options.onProgress?.(currentStep, totalSteps, `Familia ${fRow.nombre}`)
+    try {
+      const tpl: FamilyTemplate = {
+        id: fRow.codigo || `imp_${Date.now()}`,
+        nombre: fRow.nombre,
+        categoria: fRow.categoria || fRow.nombre,
+        subsistema: fRow.subsistema || 'Block',
+        descripcion: fRow.descripcion || `Familia ${fRow.nombre}`,
+        icono: fRow.icono || 'Layers',
+        tipo_vista: fRow.tipo_vista,
+        ...(fRow.tipo_vista === 'tabla'
+          ? {
+              tabla_config: {
+                titulo_primera_columna: fRow.titulo_primera_columna || 'Componente',
+                ...(fRow.titulo_grupo_filas ? { titulo_grupo_filas: fRow.titulo_grupo_filas } : {}),
+                modo_filas: 'subfilas' as const,
+                subfilas_activas: true,
+                subfilas:
+                  fRow.filas.length > 0 ? fRow.filas.map(r => r.nombre) : ['Componente 1'],
+                subfila_padres:
+                  fRow.filas.length > 0 ? fRow.filas.map(r => r.grupo_central || '') : [''],
+                subfila_tipos:
+                  fRow.filas.length > 0 ? fRow.filas.map(r => r.tipo_fila) : ['normal']
+              }
+            }
+          : {}),
+        columnas: fRow.columnas
+      }
+
+      const insertPayload = convertTemplateToGrupoInsert(
+        tpl,
+        fRow.nombre,
+        fRow.categoria || fRow.nombre,
+        fRow.subsistema
+      )
+
+      const normName = normalizeText(fRow.nombre)
+      const normCode = normalizeText(insertPayload.codigo || fRow.codigo)
+      const existingIdx = gruposList.findIndex(
+        g => normalizeText(g.codigo) === normCode || normalizeText(g.nombre) === normName
+      )
+      const existing = existingIdx >= 0 ? gruposList[existingIdx] : undefined
+
+      if (existing) {
+        if (options.duplicateStrategy === 'skip') {
+          report.skippedFamilies++
+          continue
+        }
+        if (options.duplicateStrategy === 'update') {
+          const updated = await catalogService.updateGrupo(existing.id, insertPayload)
+          gruposList[existingIdx] = updated
+          report.updatedFamilies++
+          continue
+        }
+        // Estrategia 'create': asegurar código único para no chocar con restricción UNIQUE de codigo
+        const baseSlug = insertPayload.codigo || fRow.codigo || `familia_${Date.now()}`
+        let uniqueSlug = `${baseSlug}_${Date.now().toString(36).slice(-4)}`
+        while (gruposList.some(g => normalizeText(g.codigo) === normalizeText(uniqueSlug))) {
+          uniqueSlug = `${baseSlug}_${Math.random().toString(36).slice(2, 6)}`
+        }
+        insertPayload.codigo = uniqueSlug
+      }
+
+      const createdGroup = await catalogService.createGrupo(insertPayload)
+      gruposList.push(createdGroup)
+      report.createdFamilies++
+    } catch (err) {
+      report.errors.push({
+        rowLabel: `${fRow.sheetName} fila ${fRow.rowIndex} (${fRow.nombre})`,
+        message: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
 
   const resolveOrCreateFabricante = async (name: string): Promise<Fabricante | undefined> => {
     const clean = name.trim()
@@ -1588,13 +2336,22 @@ export const executeCatalogImport = async (
         }
       }
 
+      // Re-enlazar categoría/subsistema si corresponde a una familia recién importada en el mismo archivo
+      const matchedRuntimeGroup = pRow.familiaRaw
+        ? resolveGrupoMatch(pRow.familiaRaw, gruposList, options.defaultGrupo)
+        : resolveGrupoMatch(pRow.categoria, gruposList, options.defaultGrupo)
+      const resolvedPartCategoria = matchedRuntimeGroup?.categoria || pRow.categoria
+      const resolvedPartSubsistema = pRow.subsistema && pRow.subsistema !== 'Motor'
+        ? pRow.subsistema
+        : (matchedRuntimeGroup?.subsistema || pRow.subsistema)
+
       const partPayload: Partial<RepuestoTecnico> = {
         motor_id: resolvedMotor?.id,
         codigo_oem: pRow.codigo_oem,
         codigos_oem_adicionales: pRow.codigos_oem_adicionales,
         nombre: pRow.nombre,
-        subsistema: pRow.subsistema,
-        categoria: pRow.categoria,
+        subsistema: resolvedPartSubsistema,
+        categoria: resolvedPartCategoria,
         precio: pRow.precio,
         stock: pRow.stock,
         estado: pRow.estado,

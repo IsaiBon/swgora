@@ -4,6 +4,7 @@ import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useTallerStore } from '@/stores/taller'
 import { perfilesService } from '@/services/perfilesService'
+import UserProfileModal from '@/components/UserProfileModal.vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   ShieldCheck,
@@ -351,6 +352,28 @@ const handleNewOrder = () => {
               </span>
             </div>
 
+            <!-- Apartado directo: Mi Perfil y Datos (para cualquier rol) -->
+            <div class="py-2.5 border-b border-slate-100">
+              <button
+                type="button"
+                @click="userMenuOpen = false; uiStore.openProfileModal()"
+                class="w-full flex items-center justify-between p-2.5 rounded-xl bg-sky-50/75 hover:bg-sky-100/80 border border-cyan-200/80 hover:border-[#04C4D9] transition-colors group cursor-pointer text-left"
+              >
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-[#004B97]/10 text-[#004B97] flex items-center justify-center">
+                    <UserIcon class="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-slate-900 group-hover:text-[#004B97] transition-colors">
+                      Mi Perfil y Datos
+                    </div>
+                    <div class="text-[10px] text-slate-500">Cambiar foto, nombre y contraseña</div>
+                  </div>
+                </div>
+                <ChevronRight class="w-4 h-4 text-slate-400 group-hover:text-[#004B97] group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </div>
+
             <!-- Acceso rápido a Módulo Taller -->
             <div v-if="authStore.canAccess('/taller')" class="py-2.5 border-b border-slate-100">
               <router-link
@@ -403,4 +426,9 @@ const handleNewOrder = () => {
       </router-link>
     </div>
   </header>
+
+  <UserProfileModal
+    :is-open="uiStore.isProfileModalOpen"
+    @close="uiStore.closeProfileModal()"
+  />
 </template>

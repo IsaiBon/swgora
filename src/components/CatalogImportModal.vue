@@ -54,7 +54,7 @@ const autoCreateEntities = ref<boolean>(true)
 // Estado de parseo, vista previa e importación
 const parseError = ref<string | null>(null)
 const parseResult = ref<CatalogImportParseResult | null>(null)
-const previewTab = ref<'repuestos' | 'motores'>('repuestos')
+const previewTab = ref<'repuestos' | 'motores' | 'familias'>('repuestos')
 
 const isImporting = ref<boolean>(false)
 const progressCurrent = ref<number>(0)
@@ -64,6 +64,7 @@ const importReport = ref<CatalogImportReport | null>(null)
 
 const resolvedTemplateScope = computed<TemplateScope>(() => {
   if (specificTarget.value === 'motors_only') return 'motors_only'
+  if (specificTarget.value === 'families_only') return 'families_only'
   return 'parts_only'
 })
 
@@ -80,6 +81,9 @@ const selectedTemplateGroup = computed(() => {
 const templateScopeHint = computed(() => {
   if (resolvedTemplateScope.value === 'motors_only') {
     return 'Incluye solo: Motores + Instrucciones'
+  }
+  if (resolvedTemplateScope.value === 'families_only') {
+    return 'Incluye: Hoja Familias + Hoja Columnas_Familia + Instrucciones'
   }
   return selectedTemplateGroup.value
     ? `Incluye solo: Repuestos (${selectedTemplateGroup.value.nombre}) + Instrucciones`
@@ -111,6 +115,19 @@ watch(
   }
 )
 
+const pickInitialPreviewTab = (res: CatalogImportParseResult): 'repuestos' | 'motores' | 'familias' => {
+  if (res.families.length > 0 && res.parts.length === 0 && res.motors.length === 0) {
+    return 'familias'
+  }
+  if (res.parts.length === 0 && res.motors.length > 0) {
+    return 'motores'
+  }
+  if (res.parts.length === 0 && res.families.length > 0) {
+    return 'familias'
+  }
+  return 'repuestos'
+}
+
 const reparseCurrentInput = async () => {
   parseError.value = null
   try {
@@ -120,10 +137,7 @@ const reparseCurrentInput = async () => {
         catalogStore.grupos,
         selectedDefaultImportGroup.value
       )
-      previewTab.value =
-        parseResult.value.parts.length === 0 && parseResult.value.motors.length > 0
-          ? 'motores'
-          : 'repuestos'
+      previewTab.value = pickInitialPreviewTab(parseResult.value)
     } else if (inputMode.value === 'paste' && rawJsonText.value.trim()) {
       parseResult.value = parseCatalogJsonText(
         rawJsonText.value,
@@ -131,10 +145,7 @@ const reparseCurrentInput = async () => {
         catalogStore.grupos,
         selectedDefaultImportGroup.value
       )
-      previewTab.value =
-        parseResult.value.parts.length === 0 && parseResult.value.motors.length > 0
-          ? 'motores'
-          : 'repuestos'
+      previewTab.value = pickInitialPreviewTab(parseResult.value)
     }
   } catch (err) {
     parseError.value = err instanceof Error ? err.message : 'No se pudo interpretar el archivo'
@@ -189,6 +200,9 @@ const handleClearLoaded = () => {
   importReport.value = null
 }
 
+const validFamiliesCount = computed(
+  () => parseResult.value?.families.filter(f => f.status !== 'error').length || 0
+)
 const validMotorsCount = computed(
   () => parseResult.value?.motors.filter(m => m.status !== 'error').length || 0
 )
@@ -198,6 +212,7 @@ const validPartsCount = computed(
 const errorRowsCount = computed(() => {
   if (!parseResult.value) return 0
   return (
+    parseResult.value.families.filter(f => f.status === 'error').length +
     parseResult.value.motors.filter(m => m.status === 'error').length +
     parseResult.value.parts.filter(p => p.status === 'error').length
   )
@@ -205,6 +220,7 @@ const errorRowsCount = computed(() => {
 const warningRowsCount = computed(() => {
   if (!parseResult.value) return 0
   return (
+    parseResult.value.families.filter(f => f.status === 'warning').length +
     parseResult.value.motors.filter(m => m.status === 'warning').length +
     parseResult.value.parts.filter(p => p.status === 'warning').length
   )
@@ -217,11 +233,12 @@ const progressPercent = computed(() => {
 
 const handleRunImport = async () => {
   if (!parseResult.value) return
-  if (validMotorsCount.value + validPartsCount.value === 0) return
+  const totalValid = validFamiliesCount.value + validMotorsCount.value + validPartsCount.value
+  if (totalValid === 0) return
 
   isImporting.value = true
   progressCurrent.value = 0
-  progressTotal.value = validMotorsCount.value + validPartsCount.value
+  progressTotal.value = totalValid
   progressLabel.value = 'Preparando importación...'
   importReport.value = null
 
@@ -239,6 +256,7 @@ const handleRunImport = async () => {
         }
       },
       {
+        grupos: catalogStore.grupos,
         fabricantes: catalogStore.fabricantes,
         modelos: catalogStore.modelos,
         motores: catalogStore.motores,
@@ -334,6 +352,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                   class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9]"
                 >
                   <option value="motors_only">Solo Motores (altas de motores y modelos)</option>
+                  <option value="families_only">Solo Familias (crear o actualizar familias, filas y columnas)</option>
                   <option value="parts_all">Solo Repuestos (todas las medidas estándar)</option>
                   <option
                     v-for="g in catalogStore.grupos"
@@ -537,6 +556,12 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">
                   Vista Previa ({{ parseResult.fileName }})
                 </h3>
+                <span
+                  v-if="parseResult.families.length > 0"
+                  class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900"
+                >
+                  Familias listas: {{ validFamiliesCount }}
+                </span>
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
                   Repuestos listos: {{ validPartsCount }}
                 </span>
@@ -562,10 +587,22 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
 
               <div class="flex items-center gap-2">
                 <div
-                  v-if="parseResult.motors.length > 0 && parseResult.parts.length > 0"
+                  v-if="[parseResult.families.length > 0, parseResult.parts.length > 0, parseResult.motors.length > 0].filter(Boolean).length > 1"
                   class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold"
                 >
                   <button
+                    v-if="parseResult.families.length > 0"
+                    type="button"
+                    @click="previewTab = 'familias'"
+                    :class="[
+                      'px-2.5 py-1 rounded-md transition cursor-pointer',
+                      previewTab === 'familias' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                    ]"
+                  >
+                    Familias ({{ parseResult.families.length }})
+                  </button>
+                  <button
+                    v-if="parseResult.parts.length > 0"
                     type="button"
                     @click="previewTab = 'repuestos'"
                     :class="[
@@ -576,6 +613,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                     Repuestos ({{ parseResult.parts.length }})
                   </button>
                   <button
+                    v-if="parseResult.motors.length > 0"
                     type="button"
                     @click="previewTab = 'motores'"
                     :class="[
@@ -606,9 +644,84 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               {{ w }}
             </div>
 
+            <!-- Tabla Preview Familias -->
+            <div
+              v-if="previewTab === 'familias'"
+              class="max-h-64 overflow-auto border border-slate-200 rounded-xl"
+            >
+              <table class="w-full text-left text-[11px] border-collapse">
+                <thead class="sticky top-0 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                  <tr>
+                    <th class="py-2 px-2.5 border-b border-slate-200">Estado</th>
+                    <th class="py-2 px-2.5 border-b border-slate-200">Nombre de Familia</th>
+                    <th class="py-2 px-2.5 border-b border-slate-200">Subsistema</th>
+                    <th class="py-2 px-2.5 border-b border-slate-200">Vista</th>
+                    <th class="py-2 px-2.5 border-b border-slate-200">Filas</th>
+                    <th class="py-2 px-2.5 border-b border-slate-200">Columnas / Medidas</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr
+                    v-for="(fam, fIdx) in parseResult.families.slice(0, 100)"
+                    :key="`prev-fam-${fIdx}`"
+                    :class="fam.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50'"
+                  >
+                    <td class="py-1.5 px-2.5 whitespace-nowrap">
+                      <span
+                        v-if="fam.status === 'valid'"
+                        class="inline-flex items-center gap-1 text-emerald-700 font-bold"
+                      >
+                        <CheckCircle2 class="w-3.5 h-3.5" /> Listo
+                      </span>
+                      <span
+                        v-else-if="fam.status === 'warning'"
+                        class="inline-flex items-center gap-1 text-amber-700 font-bold"
+                        :title="fam.messages.join(' | ')"
+                      >
+                        <AlertTriangle class="w-3.5 h-3.5" /> Aviso
+                      </span>
+                      <span
+                        v-else
+                        class="inline-flex items-center gap-1 text-rose-700 font-bold"
+                        :title="fam.messages.join(' | ')"
+                      >
+                        <XCircle class="w-3.5 h-3.5" /> Error
+                      </span>
+                      <div v-if="fam.messages.length > 0" class="text-[10px] text-slate-500">
+                        {{ fam.messages.join(' · ') }}
+                      </div>
+                    </td>
+                    <td class="py-1.5 px-2.5 font-bold text-slate-900">
+                      {{ fam.nombre || '—' }}
+                      <div class="font-mono text-[10px] text-slate-400">{{ fam.codigo }}</div>
+                    </td>
+                    <td class="py-1.5 px-2.5 text-slate-700">{{ fam.subsistema }}</td>
+                    <td class="py-1.5 px-2.5">
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                        :class="fam.tipo_vista === 'tabla' ? 'bg-blue-100 text-[#004B97]' : 'bg-slate-100 text-slate-700'"
+                      >
+                        {{ fam.tipo_vista === 'tabla' ? 'Tabla' : 'Normal' }}
+                      </span>
+                    </td>
+                    <td class="py-1.5 px-2.5 text-slate-600 max-w-[160px] truncate">
+                      {{ fam.tipo_vista === 'tabla' ? (fam.filas.map(r => r.nombre).join(', ') || '1 fila') : '—' }}
+                    </td>
+                    <td class="py-1.5 px-2.5 font-mono text-[10px] text-slate-700">
+                      {{
+                        fam.columnas
+                          .map(c => `${c.columna_padre ? `${c.columna_padre} > ` : ''}${c.etiqueta}${c.unidad ? ` (${c.unidad})` : c.tipo_dato ? ` (${c.tipo_dato})` : ''}`)
+                          .join(' · ')
+                      }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
             <!-- Tabla Preview Repuestos -->
             <div
-              v-if="previewTab === 'repuestos'"
+              v-else-if="previewTab === 'repuestos'"
               class="max-h-64 overflow-auto border border-slate-200 rounded-xl"
             >
               <table class="w-full text-left text-[11px] border-collapse">
@@ -777,6 +890,16 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div
+                v-if="importReport.createdFamilies > 0 || importReport.updatedFamilies > 0"
+                class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-indigo-200"
+              >
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">Familias creadas / act.</div>
+                <div class="text-2xl font-black font-mono text-indigo-900 mt-0.5">
+                  {{ importReport.createdFamilies }}
+                  <span v-if="importReport.updatedFamilies > 0" class="text-sm text-[#004B97]">/ {{ importReport.updatedFamilies }}</span>
+                </div>
+              </div>
               <div class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-emerald-200">
                 <div class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Motores creados</div>
                 <div class="text-2xl font-black font-mono text-emerald-900 mt-0.5">{{ importReport.createdMotors }}</div>
@@ -796,9 +919,10 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             </div>
 
             <div
-              v-if="importReport.skippedParts > 0 || importReport.skippedMotors > 0"
+              v-if="importReport.skippedFamilies > 0 || importReport.skippedParts > 0 || importReport.skippedMotors > 0"
               class="text-xs font-bold text-emerald-50 bg-black/15 rounded-xl px-3.5 py-2 inline-flex flex-wrap items-center gap-3"
             >
+              <span v-if="importReport.skippedFamilies > 0">Familias omitidas (ya existían): {{ importReport.skippedFamilies }}</span>
               <span v-if="importReport.skippedMotors > 0">Motores omitidos (ya existían): {{ importReport.skippedMotors }}</span>
               <span v-if="importReport.skippedParts > 0">Repuestos omitidos (ya existían): {{ importReport.skippedParts }}</span>
             </div>
@@ -834,7 +958,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
 
             <button
               type="button"
-              :disabled="isImporting || !parseResult || validMotorsCount + validPartsCount === 0"
+              :disabled="isImporting || !parseResult || validFamiliesCount + validMotorsCount + validPartsCount === 0"
               @click="handleRunImport"
               class="px-4 py-2 rounded-xl bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer"
             >
@@ -844,7 +968,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 {{
                   isImporting
                     ? 'Importando...'
-                    : `Importar ${validPartsCount + validMotorsCount} registro(s)`
+                    : `Importar ${validFamiliesCount + validPartsCount + validMotorsCount} registro(s)`
                 }}
               </span>
             </button>

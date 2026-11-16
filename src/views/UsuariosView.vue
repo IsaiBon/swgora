@@ -50,8 +50,10 @@ import {
 import { tallerService } from '@/services/tallerService'
 import { useRouter } from 'vue-router'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 
 const auth = useAuthStore()
+const uiStore = useUiStore()
 const router = useRouter()
 const esTallerIndependiente = computed(() => Boolean(auth.user?.isIndependent))
 
@@ -1496,6 +1498,51 @@ onMounted(() => {
     >
       {{ mensajeExito }}
     </p>
+
+    <!-- Apartado Mi Perfil Personal (cualquier usuario autenticado) -->
+    <div
+      v-if="auth.user"
+      class="studio-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-cyan-200/80 bg-gradient-to-r from-[#F4F9FD] via-white to-cyan-50/50"
+    >
+      <div class="flex items-center gap-3.5 min-w-0">
+        <div class="h-14 w-14 rounded-2xl overflow-hidden border-2 border-[#04C4D9]/60 bg-gradient-to-br from-[#0D1B3E] to-[#004B97] flex items-center justify-center text-sm font-black text-[#BFEBF2] shrink-0 shadow-xs">
+          <img
+            v-if="auth.user.avatar"
+            :src="auth.user.avatar"
+            :alt="auth.user.name"
+            class="h-full w-full object-cover"
+          />
+          <span v-else>{{ inicialesFicha(auth.user.name) }}</span>
+        </div>
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full bg-cyan-100 text-[#038391] text-[10px] font-black uppercase tracking-wider">
+              Mi Perfil Personal
+            </span>
+            <span class="text-xs font-bold text-[#004B97]">
+              {{ auth.user.role }}
+            </span>
+          </div>
+          <h2 class="text-sm sm:text-base font-extrabold text-[#0D1B3E] truncate mt-0.5">
+            {{ auth.user.name }}
+          </h2>
+          <p class="text-xs font-mono text-slate-500 truncate">
+            {{ auth.user.email }}
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <button
+          type="button"
+          @click="uiStore.openProfileModal()"
+          class="inline-flex items-center gap-1.5 rounded-xl bg-[#004B97] hover:bg-[#0D1B3E] px-4 py-2 text-xs font-bold text-white shadow-xs transition cursor-pointer"
+        >
+          <Camera class="h-3.5 w-3.5 text-[#BFEBF2]" />
+          <span>Cambiar mi foto, datos o clave</span>
+        </button>
+      </div>
+    </div>
 
     <div class="overflow-hidden studio-card">
       <div class="bg-[#F4F8FC] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">

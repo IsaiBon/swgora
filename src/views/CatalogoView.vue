@@ -3849,8 +3849,14 @@ const onCatalogImported = async (report: CatalogImportReport) => {
     importBannerReport.value = null
   }, 12000)
 
+  const summaryBits: string[] = []
+  if (report.createdFamilies > 0) summaryBits.push(`${report.createdFamilies} familias`)
+  if (report.updatedFamilies > 0) summaryBits.push(`${report.updatedFamilies} familias act.`)
+  if (report.createdMotors > 0 || summaryBits.length === 0) summaryBits.push(`${report.createdMotors} motores`)
+  if (report.createdParts > 0 || summaryBits.length <= 1) summaryBits.push(`${report.createdParts} repuestos`)
+
   showToast(
-    `✓ Importación exitosa: ${report.createdMotors} motores y ${report.createdParts} repuestos guardados`,
+    `✓ Importación exitosa: ${summaryBits.join(', ')} guardados`,
     4500
   )
 
@@ -4129,6 +4135,9 @@ onUnmounted(() => {
               ¡Importación completada exitosamente!
             </h3>
             <div class="flex flex-wrap items-center gap-2 mt-1 text-xs font-extrabold">
+              <span v-if="importBannerReport.createdFamilies > 0 || importBannerReport.updatedFamilies > 0" class="px-2.5 py-0.5 rounded-lg bg-white text-indigo-900">
+                Familias: +{{ importBannerReport.createdFamilies }}<template v-if="importBannerReport.updatedFamilies > 0"> ({{ importBannerReport.updatedFamilies }} act.)</template>
+              </span>
               <span class="px-2.5 py-0.5 rounded-lg bg-white text-emerald-900">
                 Motores nuevos: {{ importBannerReport.createdMotors }}
               </span>

@@ -18,6 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  UserCog,
 } from 'lucide-vue-next'
 
 const uiStore = useUiStore()
@@ -238,15 +239,36 @@ watch(
         </router-link>
       </nav>
 
-      <!-- Footer de Sidebar: Rol & Botón Colapsar -->
+      <!-- Footer de Sidebar: Rol / Mi Perfil & Botón Colapsar -->
       <div class="relative p-3 border-t border-white/10 space-y-2 shrink-0 bg-black/15">
-        <div
+        <button
           v-if="!uiStore.isSidebarCollapsed"
-          class="rounded-xl bg-white/[0.06] border border-white/10 p-2.5 flex items-center justify-between gap-2"
+          type="button"
+          @click="uiStore.openProfileModal(); uiStore.closeMobileSidebar()"
+          class="w-full text-left rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-[#38BDF8]/40 p-2.5 space-y-1.5 transition cursor-pointer group"
+          title="Editar mi foto de perfil, nombre y contraseña"
         >
-          <span class="text-[11px] text-blue-200/75 font-semibold">Perfil</span>
-          <RoleBadge :role="authStore.user?.role || 'Consultor'" size="sm" />
-        </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] text-blue-200/75 font-semibold">Perfil</span>
+            <RoleBadge :role="authStore.user?.role || 'Consultor'" size="sm" />
+          </div>
+          <div class="flex items-center justify-between text-[10px] font-bold text-[#BFEBF2]">
+            <span class="inline-flex items-center gap-1 truncate">
+              <UserCog class="w-3 h-3 shrink-0" />
+              <span class="truncate">Mi perfil · Editar datos y foto</span>
+            </span>
+            <ChevronRight class="w-3 h-3 opacity-70 group-hover:translate-x-0.5 transition-transform shrink-0" />
+          </div>
+        </button>
+        <button
+          v-else
+          type="button"
+          @click="uiStore.openProfileModal(); uiStore.closeMobileSidebar()"
+          class="hidden lg:flex w-full items-center justify-center py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[#BFEBF2] transition cursor-pointer"
+          title="Mi perfil · Editar datos y foto"
+        >
+          <UserCog class="w-4 h-4" />
+        </button>
 
         <button
           type="button"
