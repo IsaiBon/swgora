@@ -95,6 +95,14 @@ export const useTallerStore = defineStore('taller', () => {
     return await tallerService.uploadLoginBg(file)
   }
 
+  const uploadLoginLogo = async (file: File) => {
+    const authStore = useAuthStore()
+    if (!authStore.canCustomizeLogin) {
+      throw new Error('No tienes permisos para modificar el logotipo del inicio de sesión.')
+    }
+    return await tallerService.uploadLoginLogo(file)
+  }
+
   return {
     tallerInfo,
     isLoaded,
@@ -104,6 +112,7 @@ export const useTallerStore = defineStore('taller', () => {
     resetTallerInfo,
     updateTaller,
     uploadLogo,
-    uploadLoginBg
+    uploadLoginBg,
+    uploadLoginLogo
   }
 })

@@ -18,6 +18,19 @@ export interface TallerInfo {
   login_subtitulo?: string
   login_mensaje?: string
   login_bg_url?: string
+  login_logo_url?: string
+  login_header_marca?: string
+  login_header_descripcion?: string
+  login_header_derecha?: string
+  login_header_badge?: string
+  login_footer_izquierda?: string
+  login_footer_derecha?: string
+  login_email_label?: string
+  login_email_placeholder?: string
+  login_password_label?: string
+  login_password_placeholder?: string
+  login_forgot_text?: string
+  login_button_text?: string
   created_at?: string
   updated_at?: string
 }
@@ -34,7 +47,20 @@ export const DEFAULT_TALLER_INFO: TallerInfo = {
   login_titulo: 'JR Blanco',
   login_subtitulo: 'Taller Industrial y Rectificado de Motores',
   login_mensaje: 'Ingresa tus credenciales para acceder al sistema',
-  login_bg_url: '/images/workshop-bg.jpg'
+  login_bg_url: '/images/workshop-bg.jpg',
+  login_logo_url: '',
+  login_header_marca: 'SWGORA',
+  login_header_descripcion: 'Sistema de Gestión Operativa y Rectificación',
+  login_header_derecha: 'JR Blanco',
+  login_header_badge: 'Acceso Seguro',
+  login_footer_izquierda: `© ${new Date().getFullYear()} JR Blanco — Taller Industrial y Rectificado de Motores`,
+  login_footer_derecha: 'Apoyarte es nuestro compromiso',
+  login_email_label: 'Correo electrónico',
+  login_email_placeholder: 'nombre@jrblanco.com',
+  login_password_label: 'Contraseña',
+  login_password_placeholder: 'Ingresa tu contraseña',
+  login_forgot_text: '¿Olvidaste tu contraseña?',
+  login_button_text: 'Iniciar Sesión'
 }
 
 const LOCAL_STORAGE_KEY = 'swgora_taller_config'
@@ -178,10 +204,13 @@ export const tallerService = {
       if (!isIndependentContext && loginRes.data) {
         if (loginRes.data.eslogan) {
           try {
-            remoteLoginConfig = JSON.parse(loginRes.data.eslogan)
+            const parsed = JSON.parse(loginRes.data.eslogan)
+            if (parsed && typeof parsed === 'object') {
+              remoteLoginConfig = parsed
+            }
           } catch {}
         }
-        if (!remoteLoginConfig.login_titulo) {
+        if (Object.keys(remoteLoginConfig).length === 0) {
           remoteLoginConfig = {
             login_titulo: loginRes.data.nombre,
             login_subtitulo: loginRes.data.celular1,
@@ -191,7 +220,7 @@ export const tallerService = {
         }
       }
 
-      const activeLogin = isIndependentContext
+      const activeLogin: Partial<TallerInfo> = isIndependentContext
         ? {}
         : {
             ...localLoginConfig,
@@ -213,6 +242,23 @@ export const tallerService = {
           } catch {}
         }
 
+        const resolvedTitulo =
+          activeLogin.login_titulo !== undefined
+            ? activeLogin.login_titulo
+            : (data.login_titulo ?? defaults.login_titulo)
+        const resolvedSubtitulo =
+          activeLogin.login_subtitulo !== undefined
+            ? activeLogin.login_subtitulo
+            : (data.login_subtitulo ?? defaults.login_subtitulo)
+        const resolvedMensaje =
+          activeLogin.login_mensaje !== undefined
+            ? activeLogin.login_mensaje
+            : (data.login_mensaje ?? defaults.login_mensaje)
+        const resolvedBgUrl =
+          activeLogin.login_bg_url !== undefined
+            ? activeLogin.login_bg_url
+            : (data.login_bg_url || defaults.login_bg_url)
+
         const info: TallerInfo = {
           id: data.id || targetId,
           nombre: data.nombre || defaults.nombre,
@@ -224,25 +270,62 @@ export const tallerService = {
           iva_porcentaje: data.iva_porcentaje !== undefined && data.iva_porcentaje !== null
             ? Number(data.iva_porcentaje)
             : cachedIva,
-          login_titulo: isIndependentContext
-            ? defaults.login_titulo
-            : (activeLogin.login_titulo || data.login_titulo || defaults.login_titulo),
-          login_subtitulo: isIndependentContext
-            ? defaults.login_subtitulo
-            : (activeLogin.login_subtitulo || data.login_subtitulo || defaults.login_subtitulo),
-          login_mensaje: isIndependentContext
-            ? defaults.login_mensaje
-            : (activeLogin.login_mensaje || data.login_mensaje || defaults.login_mensaje),
-          login_bg_url: isIndependentContext
-            ? defaults.login_bg_url
-            : (activeLogin.login_bg_url || data.login_bg_url || defaults.login_bg_url),
+          login_titulo: isIndependentContext ? defaults.login_titulo : resolvedTitulo,
+          login_subtitulo: isIndependentContext ? defaults.login_subtitulo : resolvedSubtitulo,
+          login_mensaje: isIndependentContext ? defaults.login_mensaje : resolvedMensaje,
+          login_bg_url: isIndependentContext ? defaults.login_bg_url : resolvedBgUrl,
+          login_logo_url: isIndependentContext
+            ? ''
+            : (activeLogin.login_logo_url !== undefined ? activeLogin.login_logo_url : defaults.login_logo_url),
+          login_header_marca: isIndependentContext
+            ? defaults.login_header_marca
+            : (activeLogin.login_header_marca !== undefined ? activeLogin.login_header_marca : defaults.login_header_marca),
+          login_header_descripcion: isIndependentContext
+            ? defaults.login_header_descripcion
+            : (activeLogin.login_header_descripcion !== undefined ? activeLogin.login_header_descripcion : defaults.login_header_descripcion),
+          login_header_derecha: isIndependentContext
+            ? defaults.login_header_derecha
+            : (activeLogin.login_header_derecha !== undefined
+                ? activeLogin.login_header_derecha
+                : (resolvedTitulo || defaults.login_header_derecha)),
+          login_header_badge: isIndependentContext
+            ? defaults.login_header_badge
+            : (activeLogin.login_header_badge !== undefined ? activeLogin.login_header_badge : defaults.login_header_badge),
+          login_footer_izquierda: isIndependentContext
+            ? defaults.login_footer_izquierda
+            : (activeLogin.login_footer_izquierda !== undefined
+                ? activeLogin.login_footer_izquierda
+                : `© ${new Date().getFullYear()} ${resolvedTitulo || 'JR Blanco'} — ${resolvedSubtitulo || 'Taller Industrial y Rectificado de Motores'}`),
+          login_footer_derecha: isIndependentContext
+            ? defaults.login_footer_derecha
+            : (activeLogin.login_footer_derecha !== undefined
+                ? activeLogin.login_footer_derecha
+                : (data.eslogan || defaults.login_footer_derecha)),
+          login_email_label: isIndependentContext
+            ? defaults.login_email_label
+            : (activeLogin.login_email_label !== undefined ? activeLogin.login_email_label : defaults.login_email_label),
+          login_email_placeholder: isIndependentContext
+            ? defaults.login_email_placeholder
+            : (activeLogin.login_email_placeholder !== undefined ? activeLogin.login_email_placeholder : defaults.login_email_placeholder),
+          login_password_label: isIndependentContext
+            ? defaults.login_password_label
+            : (activeLogin.login_password_label !== undefined ? activeLogin.login_password_label : defaults.login_password_label),
+          login_password_placeholder: isIndependentContext
+            ? defaults.login_password_placeholder
+            : (activeLogin.login_password_placeholder !== undefined ? activeLogin.login_password_placeholder : defaults.login_password_placeholder),
+          login_forgot_text: isIndependentContext
+            ? defaults.login_forgot_text
+            : (activeLogin.login_forgot_text !== undefined ? activeLogin.login_forgot_text : defaults.login_forgot_text),
+          login_button_text: isIndependentContext
+            ? defaults.login_button_text
+            : (activeLogin.login_button_text !== undefined ? activeLogin.login_button_text : defaults.login_button_text),
           created_at: data.created_at,
           updated_at: data.updated_at
         }
 
         if (typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.setItem(storageKey, JSON.stringify(info))
-          if (!isIndependentContext && activeLogin.login_titulo) {
+          if (!isIndependentContext && Object.keys(activeLogin).length > 0) {
             window.localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(activeLogin))
           }
         }
@@ -355,62 +438,74 @@ export const tallerService = {
       logo_url: safeInfo.logo_url || defaults.logo_url,
       updated_at: new Date().toISOString()
     }
-    const fullPayload = allowLoginCustomization
+
+    const pickLoginStr = (val: string | undefined, fallback: string): string =>
+      val !== undefined ? val.trim() : fallback
+
+    const loginBundle = allowLoginCustomization
+      ? {
+          login_titulo: pickLoginStr(safeInfo.login_titulo, defaults.login_titulo || 'JR Blanco'),
+          login_subtitulo: pickLoginStr(safeInfo.login_subtitulo, defaults.login_subtitulo || 'Taller Industrial y Rectificado de Motores'),
+          login_mensaje: pickLoginStr(safeInfo.login_mensaje, defaults.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'),
+          login_bg_url: safeInfo.login_bg_url?.trim() || defaults.login_bg_url || '/images/workshop-bg.jpg',
+          login_logo_url: safeInfo.login_logo_url !== undefined ? safeInfo.login_logo_url.trim() : (defaults.login_logo_url || ''),
+          login_header_marca: pickLoginStr(safeInfo.login_header_marca, defaults.login_header_marca || 'SWGORA'),
+          login_header_descripcion: pickLoginStr(safeInfo.login_header_descripcion, defaults.login_header_descripcion || 'Sistema de Gestión Operativa y Rectificación'),
+          login_header_derecha: pickLoginStr(safeInfo.login_header_derecha, defaults.login_header_derecha || 'JR Blanco'),
+          login_header_badge: pickLoginStr(safeInfo.login_header_badge, defaults.login_header_badge || 'Acceso Seguro'),
+          login_footer_izquierda: pickLoginStr(safeInfo.login_footer_izquierda, defaults.login_footer_izquierda || `© ${new Date().getFullYear()} JR Blanco — Taller Industrial y Rectificado de Motores`),
+          login_footer_derecha: pickLoginStr(safeInfo.login_footer_derecha, defaults.login_footer_derecha || 'Apoyarte es nuestro compromiso'),
+          login_email_label: pickLoginStr(safeInfo.login_email_label, defaults.login_email_label || 'Correo electrónico') || 'Correo electrónico',
+          login_email_placeholder: pickLoginStr(safeInfo.login_email_placeholder, defaults.login_email_placeholder || 'nombre@jrblanco.com'),
+          login_password_label: pickLoginStr(safeInfo.login_password_label, defaults.login_password_label || 'Contraseña') || 'Contraseña',
+          login_password_placeholder: pickLoginStr(safeInfo.login_password_placeholder, defaults.login_password_placeholder || 'Ingresa tu contraseña'),
+          login_forgot_text: pickLoginStr(safeInfo.login_forgot_text, defaults.login_forgot_text || '¿Olvidaste tu contraseña?'),
+          login_button_text: pickLoginStr(safeInfo.login_button_text, defaults.login_button_text || 'Iniciar Sesión') || 'Iniciar Sesión',
+          logo_url: basePayload.logo_url
+        }
+      : null
+
+    const dbPayload = allowLoginCustomization && loginBundle
       ? {
           ...basePayload,
           iva_porcentaje: ivaPct,
-          login_titulo: safeInfo.login_titulo !== undefined ? safeInfo.login_titulo.trim() : (defaults.login_titulo || 'JR Blanco'),
-          login_subtitulo: safeInfo.login_subtitulo !== undefined ? safeInfo.login_subtitulo.trim() : (defaults.login_subtitulo || 'Taller Industrial y Rectificado de Motores'),
-          login_mensaje: safeInfo.login_mensaje !== undefined ? safeInfo.login_mensaje.trim() : (defaults.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'),
-          login_bg_url: safeInfo.login_bg_url || defaults.login_bg_url || '/images/workshop-bg.jpg'
+          login_titulo: loginBundle.login_titulo,
+          login_subtitulo: loginBundle.login_subtitulo,
+          login_mensaje: loginBundle.login_mensaje,
+          login_bg_url: loginBundle.login_bg_url
         }
       : {
           ...basePayload,
           iva_porcentaje: ivaPct
         }
 
+    const fullPayload: TallerInfo = allowLoginCustomization && loginBundle
+      ? {
+          ...dbPayload,
+          ...loginBundle
+        }
+      : {
+          ...dbPayload
+        }
+
     // Guardar caché local; solo el Administrador principal puede actualizar la caché global de Login
     if (typeof window !== 'undefined' && window.localStorage) {
-      if (allowLoginCustomization) {
-        const loginPayload = fullPayload as typeof fullPayload & {
-          login_titulo: string
-          login_subtitulo: string
-          login_mensaje: string
-          login_bg_url: string
-        }
-        window.localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify({
-          login_titulo: loginPayload.login_titulo,
-          login_subtitulo: loginPayload.login_subtitulo,
-          login_mensaje: loginPayload.login_mensaje,
-          login_bg_url: loginPayload.login_bg_url,
-          logo_url: loginPayload.logo_url
-        }))
+      if (allowLoginCustomization && loginBundle) {
+        window.localStorage.setItem(LOGIN_STORAGE_KEY, JSON.stringify(loginBundle))
       }
       window.localStorage.setItem(storageKey, JSON.stringify(fullPayload))
     }
 
     // Sincronizar en la nube el registro global de Login únicamente para el Administrador principal
-    if (allowLoginCustomization) {
-      const loginPayload = fullPayload as typeof fullPayload & {
-        login_titulo: string
-        login_subtitulo: string
-        login_mensaje: string
-        login_bg_url: string
-      }
+    if (allowLoginCustomization && loginBundle) {
       try {
         await supabase.from('taller').upsert({
           id: CLOUD_LOGIN_TALLER_ID,
-          nombre: loginPayload.login_titulo,
-          direccion: loginPayload.login_mensaje,
-          celular1: loginPayload.login_subtitulo,
-          logo_url: loginPayload.login_bg_url,
-          eslogan: JSON.stringify({
-            login_titulo: loginPayload.login_titulo,
-            login_subtitulo: loginPayload.login_subtitulo,
-            login_mensaje: loginPayload.login_mensaje,
-            login_bg_url: loginPayload.login_bg_url,
-            logo_url: loginPayload.logo_url
-          }),
+          nombre: loginBundle.login_titulo || 'JR Blanco',
+          direccion: loginBundle.login_mensaje,
+          celular1: loginBundle.login_subtitulo,
+          logo_url: loginBundle.login_bg_url,
+          eslogan: JSON.stringify(loginBundle),
           updated_at: new Date().toISOString()
         })
       } catch (loginCloudErr) {
@@ -421,13 +516,13 @@ export const tallerService = {
     try {
       const { data, error } = await supabase
         .from('taller')
-        .upsert(fullPayload)
+        .upsert(dbPayload)
         .select('*')
         .single()
 
       if (!error && data) {
-        const merged = (allowLoginCustomization
-          ? { ...fullPayload, ...data }
+        const merged = (allowLoginCustomization && loginBundle
+          ? { ...fullPayload, ...data, ...loginBundle }
           : { ...fullPayload, ...stripLoginFields(data as Partial<TallerInfo>) }) as TallerInfo
         if (typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.setItem(storageKey, JSON.stringify(merged))
@@ -443,8 +538,8 @@ export const tallerService = {
           .single()
 
         if (!retryIvaErr && retryIvaData) {
-          const merged = (allowLoginCustomization
-            ? { ...fullPayload, ...retryIvaData }
+          const merged = (allowLoginCustomization && loginBundle
+            ? { ...fullPayload, ...retryIvaData, ...loginBundle }
             : { ...fullPayload, ...stripLoginFields(retryIvaData as Partial<TallerInfo>) }) as TallerInfo
           if (typeof window !== 'undefined' && window.localStorage) {
             window.localStorage.setItem(storageKey, JSON.stringify(merged))
@@ -459,8 +554,8 @@ export const tallerService = {
           .select('*')
           .single()
         if (!retryErr && retryData) {
-          const merged = (allowLoginCustomization
-            ? { ...fullPayload, ...retryData }
+          const merged = (allowLoginCustomization && loginBundle
+            ? { ...fullPayload, ...retryData, ...loginBundle }
             : { ...fullPayload, ...stripLoginFields(retryData as Partial<TallerInfo>) }) as TallerInfo
           if (typeof window !== 'undefined' && window.localStorage) {
             window.localStorage.setItem(storageKey, JSON.stringify(merged))
@@ -477,7 +572,7 @@ export const tallerService = {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.setItem(storageKey, JSON.stringify(fullPayload))
     }
-    return fullPayload as TallerInfo
+    return fullPayload
   },
 
   /**
@@ -486,6 +581,16 @@ export const tallerService = {
    */
   async uploadLogo(file: File): Promise<string> {
     return this.uploadAsset(file, 'logo_taller')
+  },
+
+  /**
+   * Sube un logotipo exclusivo para la pantalla de Login en Supabase Storage (bucket 'taller')
+   */
+  async uploadLoginLogo(file: File): Promise<string> {
+    if (!canCurrentUserCustomizeLogin()) {
+      throw new Error('No tienes permisos para modificar el logotipo del inicio de sesión.')
+    }
+    return this.uploadAsset(file, 'login_logo')
   },
 
   /**

@@ -27,22 +27,54 @@ const authStore = useAuthStore()
 const tallerStore = useTallerStore()
 
 // Personalización reactiva del Login configurada por el Administrador en Módulo de Taller
-const loginLogoUrl = computed(() => tallerStore.tallerInfo.logo_url || '/logo-taller.png')
+const loginLogoUrl = computed(
+  () => tallerStore.tallerInfo.login_logo_url || tallerStore.tallerInfo.logo_url || '/logo-taller.png'
+)
 const loginTitle = computed(() => {
   return viewMode.value === 'login'
-    ? (tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco')
+    ? (tallerStore.tallerInfo.login_titulo !== undefined
+        ? tallerStore.tallerInfo.login_titulo
+        : (tallerStore.tallerInfo.nombre || 'JR Blanco'))
     : 'Restablecer Contraseña'
 })
 const loginSubtitle = computed(() => {
   return viewMode.value === 'login'
-    ? (tallerStore.tallerInfo.login_subtitulo || 'Taller Industrial y Rectificado de Motores')
+    ? (tallerStore.tallerInfo.login_subtitulo !== undefined
+        ? tallerStore.tallerInfo.login_subtitulo
+        : 'Taller Industrial y Rectificado de Motores')
     : 'Configuración de seguridad de tu cuenta'
 })
 const loginMessage = computed(() => {
   return viewMode.value === 'login'
-    ? (tallerStore.tallerInfo.login_mensaje || 'Ingresa tus credenciales para acceder al sistema')
+    ? (tallerStore.tallerInfo.login_mensaje !== undefined
+        ? tallerStore.tallerInfo.login_mensaje
+        : 'Ingresa tus credenciales para acceder al sistema')
     : 'Crea una contraseña segura para recuperar tu acceso'
 })
+const loginEmailLabel = computed(
+  () => tallerStore.tallerInfo.login_email_label?.trim() || 'Correo electrónico'
+)
+const loginEmailPlaceholder = computed(() =>
+  tallerStore.tallerInfo.login_email_placeholder !== undefined
+    ? tallerStore.tallerInfo.login_email_placeholder
+    : 'nombre@jrblanco.com'
+)
+const loginPasswordLabel = computed(
+  () => tallerStore.tallerInfo.login_password_label?.trim() || 'Contraseña'
+)
+const loginPasswordPlaceholder = computed(() =>
+  tallerStore.tallerInfo.login_password_placeholder !== undefined
+    ? tallerStore.tallerInfo.login_password_placeholder
+    : 'Ingresa tu contraseña'
+)
+const loginForgotText = computed(() =>
+  tallerStore.tallerInfo.login_forgot_text !== undefined
+    ? tallerStore.tallerInfo.login_forgot_text
+    : '¿Olvidaste tu contraseña?'
+)
+const loginButtonText = computed(
+  () => tallerStore.tallerInfo.login_button_text?.trim() || 'Iniciar Sesión'
+)
 const companyNameForRecovery = computed(() => {
   return tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco'
 })
@@ -406,13 +438,22 @@ const handleLogoError = (e: Event) => {
             />
           </div>
 
-          <h1 class="font-display text-xl sm:text-2xl font-extrabold text-[#0D1B3E] tracking-tight">
+          <h1
+            v-if="loginTitle"
+            class="font-display text-xl sm:text-2xl font-extrabold text-[#0D1B3E] tracking-tight"
+          >
             {{ loginTitle }}
           </h1>
-          <p class="text-[11px] font-bold uppercase tracking-wider text-[#004B97] mt-1">
+          <p
+            v-if="loginSubtitle"
+            class="text-[11px] font-bold uppercase tracking-wider text-[#004B97] mt-1"
+          >
             {{ loginSubtitle }}
           </p>
-          <p class="text-xs text-slate-500 mt-1">
+          <p
+            v-if="loginMessage"
+            class="text-xs text-slate-500 mt-1"
+          >
             {{ loginMessage }}
           </p>
         </div>
@@ -467,7 +508,7 @@ const handleLogoError = (e: Event) => {
                   for="login-email"
                   class="block text-xs font-semibold text-[#0F172A] mb-1.5"
                 >
-                  Correo electrónico
+                  {{ loginEmailLabel }}
                 </label>
                 <div class="relative group">
                   <div
@@ -481,7 +522,7 @@ const handleLogoError = (e: Event) => {
                     type="email"
                     inputmode="email"
                     autocomplete="email"
-                    placeholder="nombre@jrblanco.com"
+                    :placeholder="loginEmailPlaceholder"
                     :disabled="isSubmitting"
                     :aria-invalid="showLoginEmailError"
                     aria-describedby="login-email-hint"
@@ -511,14 +552,15 @@ const handleLogoError = (e: Event) => {
                     for="login-password"
                     class="block text-xs font-semibold text-[#0F172A]"
                   >
-                    Contraseña
+                    {{ loginPasswordLabel }}
                   </label>
                   <button
+                    v-if="loginForgotText"
                     type="button"
                     @click="openRecoveryModal"
                     class="text-xs font-semibold text-[#004B97] hover:text-[#04C4D9] focus-visible:outline-none focus-visible:underline underline-offset-4 cursor-pointer link-micro"
                   >
-                    ¿Olvidaste tu contraseña?
+                    {{ loginForgotText }}
                   </button>
                 </div>
 
@@ -533,7 +575,7 @@ const handleLogoError = (e: Event) => {
                     v-model="password"
                     :type="showPassword ? 'text' : 'password'"
                     autocomplete="current-password"
-                    placeholder="Ingresa tu contraseña"
+                    :placeholder="loginPasswordPlaceholder"
                     :disabled="isSubmitting"
                     @input="errorMessage = ''"
                     required
@@ -559,7 +601,7 @@ const handleLogoError = (e: Event) => {
                   class="btn-primary group w-full bg-[#004B97] hover:bg-[#003A75] text-white font-semibold py-2.5 px-5 rounded-xl text-sm shadow-md shadow-[#004B97]/20 disabled:opacity-65 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Loader2 v-if="isSubmitting" class="w-4 h-4 animate-spin text-[#04C4D9]" />
-                  <span>{{ isSubmitting ? 'Verificando credenciales...' : 'Iniciar Sesión' }}</span>
+                  <span>{{ isSubmitting ? 'Verificando credenciales...' : loginButtonText }}</span>
                   <ArrowRight
                     v-if="!isSubmitting"
                     class="btn-arrow w-4 h-4 text-[#04C4D9]"

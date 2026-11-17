@@ -3,7 +3,7 @@ import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTallerStore } from '@/stores/taller'
-import type { TallerInfo } from '@/services/tallerService'
+import { DEFAULT_TALLER_INFO, type TallerInfo } from '@/services/tallerService'
 import {
   Building2,
   Phone,
@@ -35,6 +35,12 @@ const activeTab = ref<TallerTab>('membrete')
 // Archivo de logo pendiente de guardar
 const pendingLogoFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+
+// Archivos de personalización del Login (logo exclusivo y fondo)
+const pendingLoginLogoFile = ref<File | null>(null)
+const loginLogoInputRef = ref<HTMLInputElement | null>(null)
+const pendingLoginBgFile = ref<File | null>(null)
+const loginBgInputRef = ref<HTMLInputElement | null>(null)
 
 // Validación de permisos: Administrador o Taller Independiente
 // (Solo el Administrador principal puede personalizar el Login)
@@ -72,7 +78,21 @@ const form = reactive({
   iva_porcentaje: 13,
   login_titulo: 'JR Blanco',
   login_subtitulo: 'Taller Industrial y Rectificado de Motores',
-  login_mensaje: 'Ingresa tus credenciales para acceder al sistema'
+  login_mensaje: 'Ingresa tus credenciales para acceder al sistema',
+  login_bg_url: '/images/workshop-bg.jpg',
+  login_logo_url: '',
+  login_header_marca: 'SWGORA',
+  login_header_descripcion: 'Sistema de Gestión Operativa y Rectificación',
+  login_header_derecha: 'JR Blanco',
+  login_header_badge: 'Acceso Seguro',
+  login_footer_izquierda: `© ${new Date().getFullYear()} JR Blanco — Taller Industrial y Rectificado de Motores`,
+  login_footer_derecha: 'Apoyarte es nuestro compromiso',
+  login_email_label: 'Correo electrónico',
+  login_email_placeholder: 'nombre@jrblanco.com',
+  login_password_label: 'Contraseña',
+  login_password_placeholder: 'Ingresa tu contraseña',
+  login_forgot_text: '¿Olvidaste tu contraseña?',
+  login_button_text: 'Iniciar Sesión'
 })
 
 const isSaving = ref(false)
@@ -96,13 +116,42 @@ const resetForm = () => {
   form.eslogan = current.eslogan || ''
   form.logo_url = current.logo_url || '/logo-taller.png'
   form.iva_porcentaje = current.iva_porcentaje !== undefined ? Number(current.iva_porcentaje) : 13
-  form.login_titulo = current.login_titulo || 'JR Blanco'
-  form.login_subtitulo = current.login_subtitulo || 'Taller Industrial y Rectificado de Motores'
-  form.login_mensaje = current.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'
+
+  const tituloFallback = current.login_titulo !== undefined ? current.login_titulo : (DEFAULT_TALLER_INFO.login_titulo || 'JR Blanco')
+  const subtituloFallback = current.login_subtitulo !== undefined ? current.login_subtitulo : (DEFAULT_TALLER_INFO.login_subtitulo || 'Taller Industrial y Rectificado de Motores')
+  form.login_titulo = tituloFallback
+  form.login_subtitulo = subtituloFallback
+  form.login_mensaje = current.login_mensaje !== undefined ? current.login_mensaje : (DEFAULT_TALLER_INFO.login_mensaje || 'Ingresa tus credenciales para acceder al sistema')
+  form.login_bg_url = current.login_bg_url || DEFAULT_TALLER_INFO.login_bg_url || '/images/workshop-bg.jpg'
+  form.login_logo_url = current.login_logo_url !== undefined ? current.login_logo_url : ''
+  form.login_header_marca = current.login_header_marca !== undefined ? current.login_header_marca : (DEFAULT_TALLER_INFO.login_header_marca || 'SWGORA')
+  form.login_header_descripcion = current.login_header_descripcion !== undefined ? current.login_header_descripcion : (DEFAULT_TALLER_INFO.login_header_descripcion || 'Sistema de Gestión Operativa y Rectificación')
+  form.login_header_derecha = current.login_header_derecha !== undefined ? current.login_header_derecha : (tituloFallback || 'JR Blanco')
+  form.login_header_badge = current.login_header_badge !== undefined ? current.login_header_badge : (DEFAULT_TALLER_INFO.login_header_badge || 'Acceso Seguro')
+  form.login_footer_izquierda = current.login_footer_izquierda !== undefined
+    ? current.login_footer_izquierda
+    : `© ${new Date().getFullYear()} ${tituloFallback || 'JR Blanco'} — ${subtituloFallback || 'Taller Industrial y Rectificado de Motores'}`
+  form.login_footer_derecha = current.login_footer_derecha !== undefined
+    ? current.login_footer_derecha
+    : (current.eslogan || DEFAULT_TALLER_INFO.login_footer_derecha || 'Apoyarte es nuestro compromiso')
+  form.login_email_label = current.login_email_label !== undefined ? current.login_email_label : (DEFAULT_TALLER_INFO.login_email_label || 'Correo electrónico')
+  form.login_email_placeholder = current.login_email_placeholder !== undefined ? current.login_email_placeholder : (DEFAULT_TALLER_INFO.login_email_placeholder || 'nombre@jrblanco.com')
+  form.login_password_label = current.login_password_label !== undefined ? current.login_password_label : (DEFAULT_TALLER_INFO.login_password_label || 'Contraseña')
+  form.login_password_placeholder = current.login_password_placeholder !== undefined ? current.login_password_placeholder : (DEFAULT_TALLER_INFO.login_password_placeholder || 'Ingresa tu contraseña')
+  form.login_forgot_text = current.login_forgot_text !== undefined ? current.login_forgot_text : (DEFAULT_TALLER_INFO.login_forgot_text || '¿Olvidaste tu contraseña?')
+  form.login_button_text = current.login_button_text !== undefined ? current.login_button_text : (DEFAULT_TALLER_INFO.login_button_text || 'Iniciar Sesión')
 
   pendingLogoFile.value = null
+  pendingLoginLogoFile.value = null
+  pendingLoginBgFile.value = null
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
+  }
+  if (loginLogoInputRef.value) {
+    loginLogoInputRef.value.value = ''
+  }
+  if (loginBgInputRef.value) {
+    loginBgInputRef.value.value = ''
   }
 }
 
@@ -139,6 +188,92 @@ const resetToDefaultLogo = () => {
   showToast('Se restableció el logotipo al predeterminado del taller.', 'success')
 }
 
+// Manejador de logo exclusivo del Login
+const handleLoginLogoSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('El archivo es demasiado grande. El límite máximo es 5MB.', 'error')
+    target.value = ''
+    return
+  }
+
+  pendingLoginLogoFile.value = file
+  const reader = new FileReader()
+  reader.onload = () => {
+    form.login_logo_url = reader.result as string
+    showToast('Logo del Login previsualizado. Haz clic en "Guardar Personalización de Login" para aplicarlo.', 'success')
+  }
+  reader.readAsDataURL(file)
+}
+
+const useMembreteLogoForLogin = () => {
+  form.login_logo_url = ''
+  pendingLoginLogoFile.value = null
+  if (loginLogoInputRef.value) {
+    loginLogoInputRef.value.value = ''
+  }
+  showToast('El Login usará el mismo logotipo que el Membrete de Órdenes.', 'success')
+}
+
+// Manejador de imagen de fondo para el Login
+const handleLoginBgSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  if (file.size > 8 * 1024 * 1024) {
+    showToast('La imagen de fondo es demasiado grande. El límite máximo es 8MB.', 'error')
+    target.value = ''
+    return
+  }
+
+  pendingLoginBgFile.value = file
+  const reader = new FileReader()
+  reader.onload = () => {
+    form.login_bg_url = reader.result as string
+    showToast('Imagen de fondo previsualizada. Haz clic en "Guardar Personalización de Login" para aplicarla.', 'success')
+  }
+  reader.readAsDataURL(file)
+}
+
+const resetToDefaultLoginBg = () => {
+  form.login_bg_url = '/images/workshop-bg.jpg'
+  pendingLoginBgFile.value = null
+  if (loginBgInputRef.value) {
+    loginBgInputRef.value.value = ''
+  }
+  showToast('Se restableció el fondo de pantalla al predeterminado.', 'success')
+}
+
+const resetLoginDefaults = () => {
+  if (!authStore.canCustomizeLogin) return
+  form.login_titulo = DEFAULT_TALLER_INFO.login_titulo || 'JR Blanco'
+  form.login_subtitulo = DEFAULT_TALLER_INFO.login_subtitulo || 'Taller Industrial y Rectificado de Motores'
+  form.login_mensaje = DEFAULT_TALLER_INFO.login_mensaje || 'Ingresa tus credenciales para acceder al sistema'
+  form.login_bg_url = DEFAULT_TALLER_INFO.login_bg_url || '/images/workshop-bg.jpg'
+  form.login_logo_url = ''
+  form.login_header_marca = DEFAULT_TALLER_INFO.login_header_marca || 'SWGORA'
+  form.login_header_descripcion = DEFAULT_TALLER_INFO.login_header_descripcion || 'Sistema de Gestión Operativa y Rectificación'
+  form.login_header_derecha = DEFAULT_TALLER_INFO.login_header_derecha || 'JR Blanco'
+  form.login_header_badge = DEFAULT_TALLER_INFO.login_header_badge || 'Acceso Seguro'
+  form.login_footer_izquierda = `© ${new Date().getFullYear()} JR Blanco — Taller Industrial y Rectificado de Motores`
+  form.login_footer_derecha = DEFAULT_TALLER_INFO.login_footer_derecha || 'Apoyarte es nuestro compromiso'
+  form.login_email_label = DEFAULT_TALLER_INFO.login_email_label || 'Correo electrónico'
+  form.login_email_placeholder = DEFAULT_TALLER_INFO.login_email_placeholder || 'nombre@jrblanco.com'
+  form.login_password_label = DEFAULT_TALLER_INFO.login_password_label || 'Contraseña'
+  form.login_password_placeholder = DEFAULT_TALLER_INFO.login_password_placeholder || 'Ingresa tu contraseña'
+  form.login_forgot_text = DEFAULT_TALLER_INFO.login_forgot_text || '¿Olvidaste tu contraseña?'
+  form.login_button_text = DEFAULT_TALLER_INFO.login_button_text || 'Iniciar Sesión'
+  pendingLoginLogoFile.value = null
+  pendingLoginBgFile.value = null
+  if (loginLogoInputRef.value) loginLogoInputRef.value.value = ''
+  if (loginBgInputRef.value) loginBgInputRef.value.value = ''
+  showToast('Textos e imagen del Login restablecidos a los valores por defecto. Presiona Guardar para aplicar.', 'success')
+}
+
 // Preestablecer título de Login con el nombre del taller (solo Administrador principal)
 const syncLoginTitleWithWorkshop = () => {
   if (!authStore.canCustomizeLogin) return
@@ -165,6 +300,8 @@ const handleSubmit = async () => {
   isSaving.value = true
   try {
     let finalLogoUrl = form.logo_url
+    let finalLoginLogoUrl = form.login_logo_url
+    let finalLoginBgUrl = form.login_bg_url
 
     // Si hay un logo nuevo seleccionado, subirlo a Supabase Storage
     if (pendingLogoFile.value) {
@@ -172,6 +309,23 @@ const handleSubmit = async () => {
         finalLogoUrl = await tallerStore.uploadLogo(pendingLogoFile.value)
       } catch (uploadErr) {
         console.warn('Fallo subiendo logo a Storage, usando Data URL local:', uploadErr)
+      }
+    }
+
+    if (authStore.canCustomizeLogin) {
+      if (pendingLoginLogoFile.value) {
+        try {
+          finalLoginLogoUrl = await tallerStore.uploadLoginLogo(pendingLoginLogoFile.value)
+        } catch (uploadErr) {
+          console.warn('Fallo subiendo logo del Login a Storage, usando Data URL local:', uploadErr)
+        }
+      }
+      if (pendingLoginBgFile.value) {
+        try {
+          finalLoginBgUrl = await tallerStore.uploadLoginBg(pendingLoginBgFile.value)
+        } catch (uploadErr) {
+          console.warn('Fallo subiendo fondo del Login a Storage, usando Data URL local:', uploadErr)
+        }
       }
     }
 
@@ -186,18 +340,36 @@ const handleSubmit = async () => {
     }
 
     if (authStore.canCustomizeLogin) {
-      payload.login_titulo = form.login_titulo.trim() || 'JR Blanco'
-      payload.login_subtitulo = form.login_subtitulo.trim() || 'Taller Industrial y Rectificado de Motores'
-      payload.login_mensaje = form.login_mensaje.trim() || 'Ingresa tus credenciales para acceder al sistema'
+      payload.login_titulo = form.login_titulo.trim()
+      payload.login_subtitulo = form.login_subtitulo.trim()
+      payload.login_mensaje = form.login_mensaje.trim()
+      payload.login_bg_url = finalLoginBgUrl || '/images/workshop-bg.jpg'
+      payload.login_logo_url = finalLoginLogoUrl.trim()
+      payload.login_header_marca = form.login_header_marca.trim()
+      payload.login_header_descripcion = form.login_header_descripcion.trim()
+      payload.login_header_derecha = form.login_header_derecha.trim()
+      payload.login_header_badge = form.login_header_badge.trim()
+      payload.login_footer_izquierda = form.login_footer_izquierda.trim()
+      payload.login_footer_derecha = form.login_footer_derecha.trim()
+      payload.login_email_label = form.login_email_label.trim() || 'Correo electrónico'
+      payload.login_email_placeholder = form.login_email_placeholder.trim()
+      payload.login_password_label = form.login_password_label.trim() || 'Contraseña'
+      payload.login_password_placeholder = form.login_password_placeholder.trim()
+      payload.login_forgot_text = form.login_forgot_text.trim()
+      payload.login_button_text = form.login_button_text.trim() || 'Iniciar Sesión'
     }
 
     await tallerStore.updateTaller(payload)
 
     form.logo_url = finalLogoUrl
+    form.login_logo_url = finalLoginLogoUrl
+    form.login_bg_url = finalLoginBgUrl || '/images/workshop-bg.jpg'
     pendingLogoFile.value = null
+    pendingLoginLogoFile.value = null
+    pendingLoginBgFile.value = null
     showToast(
       authStore.canCustomizeLogin
-        ? 'Información del taller y personalización del Login guardadas exitosamente.'
+        ? 'Información del taller y personalización completa del Login guardadas exitosamente.'
         : 'Información del taller guardada exitosamente.',
       'success'
     )
@@ -601,90 +773,345 @@ const handleSubmit = async () => {
     <!-- ========================================================================= -->
     <div v-else-if="authStore.canCustomizeLogin && activeTab === 'login'" class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
 
-      <!-- Columna Izquierda: Formulario de Personalización del Login (7 cols) -->
+      <!-- Columna Izquierda: Formulario Completo de Personalización del Login (7 cols) -->
       <div class="lg:col-span-7 studio-card overflow-hidden">
-        <div class="bg-[#F4F8FC] px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="bg-[#F4F8FC] px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             <span class="w-9 h-9 rounded-xl bg-[#E8F1FA] text-[#1B4978] border border-[#CFE1F4] flex items-center justify-center">
               <KeyRound class="w-4 h-4" />
             </span>
             <div>
-              <h2 class="font-display text-sm sm:text-base font-extrabold text-[#162436] tracking-tight">Personalización del Inicio de Sesión</h2>
-              <p class="text-[11px] text-slate-500">Configura los textos, mensajes y el wallpaper de la pantalla de acceso</p>
+              <h2 class="font-display text-sm sm:text-base font-extrabold text-[#162436] tracking-tight">Personalización Completa del Login</h2>
+              <p class="text-[11px] text-slate-500">Edita esquinas, insignias, textos, etiquetas, botón, logo y fondo del inicio de sesión</p>
             </div>
           </div>
+
+          <button
+            type="button"
+            @click="resetLoginDefaults"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:text-[#004b97] bg-white hover:bg-blue-50 border border-slate-200 rounded-xl transition cursor-pointer"
+            title="Restaurar todos los textos e imágenes del Login a los valores por defecto"
+          >
+            <RotateCcw class="w-3.5 h-3.5" />
+            <span>Restablecer Login</span>
+          </button>
         </div>
 
         <div class="p-5 sm:p-6 space-y-6">
 
-          <!-- 1. Título Principal en la Tarjeta de Login -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Título Principal de la Marca en Login <span class="text-rose-500">*</span>
-            </label>
-            <div class="relative">
+          <!-- SECCIÓN A: ESQUINAS Y CUADROS DE TEXTO DEL LOGIN -->
+          <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4.5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                1. Esquinas y Barras Exteriores del Login
+              </h3>
+              <span class="text-[10px] text-slate-500">Deja vacío cualquier campo si prefieres ocultarlo</span>
+            </div>
+
+            <!-- Esquina Superior Izquierda -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Esquina Sup. Izquierda · Marca / Sigla
+                </label>
+                <input
+                  v-model="form.login_header_marca"
+                  type="text"
+                  placeholder="Ej. SWGORA"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Esquina Sup. Izquierda · Descripción
+                </label>
+                <input
+                  v-model="form.login_header_descripcion"
+                  type="text"
+                  placeholder="Ej. Sistema de Gestión Operativa y Rectificación"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+            </div>
+
+            <!-- Esquina Superior Derecha -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Esquina Sup. Derecha · Texto
+                </label>
+                <input
+                  v-model="form.login_header_derecha"
+                  type="text"
+                  placeholder="Ej. JR Blanco"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Esquina Sup. Derecha · Cuadrito / Badge
+                </label>
+                <input
+                  v-model="form.login_header_badge"
+                  type="text"
+                  placeholder="Ej. Acceso Seguro"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+            </div>
+
+            <!-- Esquinas Inferiores -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Esquina Inf. Izquierda · Pie Institucional
+                </label>
+                <input
+                  v-model="form.login_footer_izquierda"
+                  type="text"
+                  placeholder="Ej. © 2026 JR Blanco — Taller Industrial..."
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Esquina Inf. Derecha · Lema / Eslogan
+                </label>
+                <input
+                  v-model="form.login_footer_derecha"
+                  type="text"
+                  placeholder="Ej. Apoyarte es nuestro compromiso"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN B: TARJETA CENTRAL DEL LOGIN -->
+          <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4.5 space-y-4">
+            <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+              2. Encabezado de la Tarjeta Central
+            </h3>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Título Principal de la Marca en Login
+              </label>
               <input
                 v-model="form.login_titulo"
                 type="text"
-                required
                 placeholder="Ej. JR Blanco"
-                class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
+                class="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
               />
             </div>
-            <p class="text-[10.5px] text-slate-400 mt-1">
-              Nombre destacado en la cabecera de la tarjeta blanca de autenticación y en la barra superior.
-            </p>
-          </div>
 
-          <!-- 2. Subtítulo o Giro Comercial -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Subtítulo / Giro Comercial
-            </label>
-            <div class="relative">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Subtítulo / Giro Comercial
+              </label>
               <input
                 v-model="form.login_subtitulo"
                 type="text"
                 placeholder="Ej. Taller Industrial y Rectificado de Motores"
-                class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
+                class="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
               />
             </div>
-            <p class="text-[10.5px] text-slate-400 mt-1">
-              Línea en color azul institucional debajo del título del taller.
-            </p>
-          </div>
 
-          <!-- 3. Mensaje de Bienvenida / Instrucción -->
-          <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Mensaje de Bienvenida / Indicación
-            </label>
-            <div class="relative">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Mensaje de Bienvenida / Indicación
+              </label>
               <input
                 v-model="form.login_mensaje"
                 type="text"
                 placeholder="Ej. Ingresa tus credenciales para acceder al sistema"
-                class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
+                class="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
               />
             </div>
-            <p class="text-[10.5px] text-slate-400 mt-1">
-              Orientación para los operarios, técnicos y administradores que inician sesión.
-            </p>
           </div>
 
-          <!-- 4. Nota informativa sobre el logotipo -->
-          <div class="bg-sky-50/70 border border-sky-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-sky-900">
-            <Sparkles class="w-4 h-4 text-[#004b97] shrink-0 mt-0.5" />
-            <div class="space-y-0.5">
-              <p class="font-bold">Logotipo sincronizado:</p>
-              <p class="text-[11px] text-sky-800">
-                La pantalla de Login utiliza el logotipo oficial configurado en la pestaña <strong>"Membrete de Órdenes & PDF"</strong>. Al cambiar el logo allí, se actualiza automáticamente en el Login.
-              </p>
+          <!-- SECCIÓN C: CAMPOS DEL FORMULARIO Y BOTÓN -->
+          <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4.5 space-y-4">
+            <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+              3. Campos de Acceso y Botón
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Etiqueta de Correo
+                </label>
+                <input
+                  v-model="form.login_email_label"
+                  type="text"
+                  placeholder="Correo electrónico"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Placeholder de Correo
+                </label>
+                <input
+                  v-model="form.login_email_placeholder"
+                  type="text"
+                  placeholder="nombre@jrblanco.com"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Etiqueta de Contraseña
+                </label>
+                <input
+                  v-model="form.login_password_label"
+                  type="text"
+                  placeholder="Contraseña"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Placeholder de Contraseña
+                </label>
+                <input
+                  v-model="form.login_password_placeholder"
+                  type="text"
+                  placeholder="Ingresa tu contraseña"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Enlace "¿Olvidaste tu contraseña?"
+                </label>
+                <input
+                  v-model="form.login_forgot_text"
+                  type="text"
+                  placeholder="¿Olvidaste tu contraseña?"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                  Texto del Botón Principal
+                </label>
+                <input
+                  v-model="form.login_button_text"
+                  type="text"
+                  placeholder="Iniciar Sesión"
+                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN D: LOGOTIPO E IMAGEN DE FONDO DEL LOGIN -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Logo exclusivo de Login -->
+            <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 space-y-3">
+              <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <ImageIcon class="w-4 h-4 text-[#04c4d9]" />
+                Logotipo del Login
+              </label>
+
+              <div class="flex items-center gap-3">
+                <div class="w-16 h-16 shrink-0 rounded-xl bg-gradient-to-br from-[#0D1B3E] to-[#004B97] p-1.5 border border-slate-200 flex items-center justify-center overflow-hidden">
+                  <img
+                    :src="form.login_logo_url || form.logo_url || '/logo-taller.png'"
+                    alt="Logo del Login"
+                    class="max-w-full max-h-full object-contain"
+                    @error="(e: any) => e.target.src = '/logo-taller.png'"
+                  />
+                </div>
+                <div class="space-y-1.5 min-w-0">
+                  <input
+                    ref="loginLogoInputRef"
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    class="hidden"
+                    @change="handleLoginLogoSelect"
+                  />
+                  <button
+                    type="button"
+                    @click="loginLogoInputRef?.click()"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-[#1E446E] hover:bg-[#19314D] rounded-lg transition cursor-pointer"
+                  >
+                    <Upload class="w-3 h-3 text-[#BFEBF2]" />
+                    <span>Cambiar Logo</span>
+                  </button>
+                  <button
+                    v-if="form.login_logo_url"
+                    type="button"
+                    @click="useMembreteLogoForLogin"
+                    class="block text-[10.5px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                  >
+                    Usar logo del Membrete
+                  </button>
+                  <p v-else class="text-[10px] text-slate-500 leading-tight">
+                    Sincronizado con el Membrete
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Imagen de fondo del Login -->
+            <div class="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 space-y-3">
+              <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <ImageIcon class="w-4 h-4 text-[#04c4d9]" />
+                Imagen de Fondo
+              </label>
+
+              <div class="flex items-center gap-3">
+                <div class="w-20 h-16 shrink-0 rounded-xl overflow-hidden border border-slate-300 bg-[#09132B] relative">
+                  <img
+                    :src="form.login_bg_url || '/images/workshop-bg.jpg'"
+                    alt="Fondo de Login"
+                    class="w-full h-full object-cover opacity-75"
+                    @error="(e: any) => e.target.src = '/images/workshop-bg.jpg'"
+                  />
+                </div>
+                <div class="space-y-1.5 min-w-0">
+                  <input
+                    ref="loginBgInputRef"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    class="hidden"
+                    @change="handleLoginBgSelect"
+                  />
+                  <button
+                    type="button"
+                    @click="loginBgInputRef?.click()"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-[#004b97] hover:bg-[#003a75] rounded-lg transition cursor-pointer"
+                  >
+                    <Upload class="w-3 h-3 text-[#BFEBF2]" />
+                    <span>Cambiar Fondo</span>
+                  </button>
+                  <button
+                    v-if="form.login_bg_url !== '/images/workshop-bg.jpg'"
+                    type="button"
+                    @click="resetToDefaultLoginBg"
+                    class="inline-flex items-center gap-1 text-[10.5px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                  >
+                    <Trash2 class="w-3 h-3" />
+                    <span>Fondo predeterminado</span>
+                  </button>
+                  <p v-else class="text-[10px] text-slate-500 leading-tight">
+                    Fondo oficial activo
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Botón de guardado dentro del formulario -->
-          <div class="pt-3 flex justify-end">
+          <div class="pt-2 flex flex-wrap items-center justify-end gap-3">
             <button
               type="button"
               @click="handleSubmit"
@@ -699,7 +1126,7 @@ const handleSubmit = async () => {
       </div>
 
       <!-- Columna Derecha: Vista Previa en Vivo del Login (5 cols) -->
-      <div class="lg:col-span-5 space-y-4">
+      <div class="lg:col-span-5 lg:sticky lg:top-20 space-y-4">
         <div class="studio-card overflow-hidden">
           <div class="bg-[#F4F8FC] px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
@@ -715,29 +1142,37 @@ const handleSubmit = async () => {
 
           <!-- Simulación exacta de AuthLayout y LoginView -->
           <div class="p-3 sm:p-4 bg-slate-900">
-            <div class="relative w-full rounded-2xl overflow-hidden bg-[#09132B] border border-slate-700/80 shadow-2xl p-4 sm:p-5 flex flex-col items-center justify-between min-h-[500px]">
-              
-              <!-- Fondo simulado predeterminado -->
+            <div class="relative w-full rounded-2xl overflow-hidden bg-[#09132B] border border-slate-700/80 shadow-2xl p-4 sm:p-5 flex flex-col items-center justify-between min-h-[540px]">
+
+              <!-- Fondo simulado reactivo -->
               <div
-                class="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none"
-                style="background-image: url('/images/workshop-bg.jpg');"
+                class="absolute inset-0 bg-cover bg-center opacity-45 pointer-events-none"
+                :style="{ backgroundImage: `url('${form.login_bg_url || '/images/workshop-bg.jpg'}')` }"
               ></div>
-              <div class="absolute inset-0 bg-gradient-to-br from-[#09132B]/95 via-[#0D1B3E]/90 to-[#004B97]/85 pointer-events-none"></div>
+              <div class="absolute inset-0 bg-gradient-to-br from-[#09132B]/80 via-[#0D1B3E]/75 to-[#004B97]/70 pointer-events-none"></div>
 
               <!-- Línea superior de acento -->
               <div class="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-[#04C4D9] via-[#2563EB] to-[#004B97] z-10"></div>
 
-              <!-- Header simulado -->
-              <div class="relative z-10 w-full flex items-center justify-between text-[9px] text-slate-300 pb-3 border-b border-white/10">
-                <div class="flex items-center gap-1.5">
-                  <span class="w-1.5 h-1.5 rounded-full bg-[#BFEBF2]"></span>
-                  <span class="font-bold text-white tracking-wider">SWGORA</span>
+              <!-- Header simulado (Esquinas superiores) -->
+              <div class="relative z-10 w-full flex items-center justify-between gap-2 text-[8.5px] text-slate-300 pb-3 border-b border-white/10">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span v-if="form.login_header_marca || form.login_header_descripcion" class="w-1.5 h-1.5 rounded-full bg-[#BFEBF2] shrink-0"></span>
+                  <span v-if="form.login_header_marca" class="font-bold text-white tracking-wider uppercase shrink-0">{{ form.login_header_marca }}</span>
+                  <span v-if="form.login_header_marca && form.login_header_descripcion" class="text-slate-500">/</span>
+                  <span v-if="form.login_header_descripcion" class="text-slate-300 truncate">{{ form.login_header_descripcion }}</span>
                 </div>
-                <span class="font-mono text-slate-400">{{ form.login_titulo || 'JR Blanco' }}</span>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span v-if="form.login_header_derecha" class="text-slate-300 truncate max-w-[85px]">{{ form.login_header_derecha }}</span>
+                  <span v-if="form.login_header_derecha && form.login_header_badge" class="text-slate-500">•</span>
+                  <span v-if="form.login_header_badge" class="px-1.5 py-0.5 rounded bg-white/[0.08] border border-white/15 text-slate-200 font-mono text-[8px]">
+                    {{ form.login_header_badge }}
+                  </span>
+                </div>
               </div>
 
               <!-- Tarjeta Blanca Simulada -->
-              <div class="relative z-10 w-full max-w-[310px] my-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-white/90">
+              <div class="relative z-10 w-full max-w-[310px] my-4 bg-white rounded-2xl shadow-xl overflow-hidden border border-white/90">
                 <!-- Barra superior de identidad -->
                 <div class="h-1 w-full bg-gradient-to-r from-[#0D1B3E] via-[#004B97] to-[#04C4D9]"></div>
 
@@ -745,7 +1180,7 @@ const handleSubmit = async () => {
                   <!-- Logo Flotante -->
                   <div class="w-14 h-14 mx-auto rounded-xl bg-gradient-to-br from-[#0D1B3E] to-[#004B97] p-1.5 shadow-md flex items-center justify-center overflow-hidden mb-2.5">
                     <img
-                      :src="form.logo_url || '/logo-taller.png'"
+                      :src="form.login_logo_url || form.logo_url || '/logo-taller.png'"
                       alt="Logo Login"
                       class="w-full h-full object-contain"
                       @error="(e: any) => e.target.src = '/logo-taller.png'"
@@ -753,23 +1188,26 @@ const handleSubmit = async () => {
                   </div>
 
                   <!-- Título Personalizado -->
-                  <h3 class="text-base font-extrabold text-[#0D1B3E] tracking-tight leading-tight">
-                    {{ form.login_titulo || 'JR Blanco' }}
+                  <h3 v-if="form.login_titulo" class="text-base font-extrabold text-[#0D1B3E] tracking-tight leading-tight">
+                    {{ form.login_titulo }}
                   </h3>
 
                   <!-- Subtítulo Personalizado -->
-                  <p class="text-[9.5px] font-bold uppercase tracking-wider text-[#004B97] mt-0.5">
-                    {{ form.login_subtitulo || 'Taller Industrial y Rectificado de Motores' }}
+                  <p v-if="form.login_subtitulo" class="text-[9.5px] font-bold uppercase tracking-wider text-[#004B97] mt-0.5">
+                    {{ form.login_subtitulo }}
                   </p>
 
                   <!-- Mensaje Personalizado -->
-                  <p class="text-[10px] text-slate-500 mt-1 leading-tight">
-                    {{ form.login_mensaje || 'Ingresa tus credenciales para acceder al sistema' }}
+                  <p v-if="form.login_mensaje" class="text-[10px] text-slate-500 mt-1 leading-tight">
+                    {{ form.login_mensaje }}
                   </p>
 
                   <!-- Campos Simulados -->
                   <div class="mt-3.5 space-y-2 text-left">
                     <div>
+                      <div class="text-[9px] font-semibold text-[#0F172A] mb-1">
+                        {{ form.login_email_label || 'Correo electrónico' }}
+                      </div>
                       <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
                           <Mail class="w-3.5 h-3.5" />
@@ -777,13 +1215,21 @@ const handleSubmit = async () => {
                         <input
                           type="text"
                           disabled
-                          placeholder="nombre@taller.com"
+                          :placeholder="form.login_email_placeholder"
                           class="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2 py-1.5 text-[10px] text-slate-400 cursor-not-allowed select-none"
                         />
                       </div>
                     </div>
 
                     <div>
+                      <div class="flex items-center justify-between gap-2 mb-1">
+                        <span class="text-[9px] font-semibold text-[#0F172A]">
+                          {{ form.login_password_label || 'Contraseña' }}
+                        </span>
+                        <span v-if="form.login_forgot_text" class="text-[8.5px] font-semibold text-[#004B97]">
+                          {{ form.login_forgot_text }}
+                        </span>
+                      </div>
                       <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
                           <Lock class="w-3.5 h-3.5" />
@@ -791,7 +1237,7 @@ const handleSubmit = async () => {
                         <input
                           type="password"
                           disabled
-                          value="••••••••••••"
+                          :placeholder="form.login_password_placeholder"
                           class="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2 py-1.5 text-[10px] text-slate-400 cursor-not-allowed select-none"
                         />
                       </div>
@@ -800,7 +1246,7 @@ const handleSubmit = async () => {
                     <!-- Botón Simulado -->
                     <div class="pt-1">
                       <div class="w-full bg-[#004B97] text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center justify-center gap-1.5 shadow-xs select-none">
-                        <span>Iniciar Sesión</span>
+                        <span>{{ form.login_button_text || 'Iniciar Sesión' }}</span>
                         <ArrowRight class="w-3 h-3 text-[#04C4D9]" />
                       </div>
                     </div>
@@ -808,10 +1254,10 @@ const handleSubmit = async () => {
                 </div>
               </div>
 
-              <!-- Footer simulado -->
-              <div class="relative z-10 w-full pt-2 border-t border-white/10 flex items-center justify-between text-[8px] text-slate-400">
-                <span>© {{ new Date().getFullYear() }} {{ form.login_titulo || 'JR Blanco' }}</span>
-                <span>{{ form.eslogan || 'Apoyarte es nuestro compromiso' }}</span>
+              <!-- Footer simulado (Esquinas inferiores) -->
+              <div class="relative z-10 w-full pt-2 border-t border-white/10 flex items-center justify-between gap-2 text-[8px] text-slate-400">
+                <span class="truncate">{{ form.login_footer_izquierda }}</span>
+                <span class="truncate text-right">{{ form.login_footer_derecha }}</span>
               </div>
 
             </div>
