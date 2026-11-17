@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authService } from '@/services/authService'
-import { perfilesService, type Perfil } from '@/services/perfilesService'
+import {
+  perfilesService,
+  parseActiveSessionToken,
+  serializeActiveDeviceSession,
+  getBrowserDeviceLabel,
+  type Perfil,
+} from '@/services/perfilesService'
 import {
   registrarCredencialUsuario,
   obtenerCandidatosPasswordUsuario,
@@ -249,17 +255,108 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const DEVICE_TOKEN_KEY = 'swgora_device_token'
+  const DEVICE_IDB_NAME = 'swgora_device_db'
+  const DEVICE_IDB_STORE = 'device'
 
-  function getOrCreateDeviceToken(): string {
-    if (typeof window === 'undefined') return 'server-device'
-    let token = localStorage.getItem(DEVICE_TOKEN_KEY)
-    if (!token) {
-      token =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-      localStorage.setItem(DEVICE_TOKEN_KEY, token)
+  function generateRawDeviceToken(): string {
+    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  }
+
+  function readDeviceTokenFromIdb(): Promise<string | null> {
+    if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+      return Promise.resolve(null)
     }
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(DEVICE_IDB_NAME, 1)
+        req.onupgradeneeded = () => {
+          const db = req.result
+          if (!db.objectStoreNames.contains(DEVICE_IDB_STORE)) {
+            db.createObjectStore(DEVICE_IDB_STORE)
+          }
+        }
+        req.onerror = () => resolve(null)
+        req.onsuccess = () => {
+          try {
+            const db = req.result
+            const tx = db.transaction(DEVICE_IDB_STORE, 'readonly')
+            const store = tx.objectStore(DEVICE_IDB_STORE)
+            const getReq = store.get(DEVICE_TOKEN_KEY)
+            getReq.onsuccess = () => {
+              const val = typeof getReq.result === 'string' && getReq.result.trim() ? getReq.result.trim() : null
+              db.close()
+              resolve(val)
+            }
+            getReq.onerror = () => {
+              db.close()
+              resolve(null)
+            }
+          } catch {
+            resolve(null)
+          }
+        }
+      } catch {
+        resolve(null)
+      }
+    })
+  }
+
+  function writeDeviceTokenToIdb(token: string): Promise<void> {
+    if (typeof window === 'undefined' || typeof indexedDB === 'undefined' || !token) {
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(DEVICE_IDB_NAME, 1)
+        req.onupgradeneeded = () => {
+          const db = req.result
+          if (!db.objectStoreNames.contains(DEVICE_IDB_STORE)) {
+            db.createObjectStore(DEVICE_IDB_STORE)
+          }
+        }
+        req.onerror = () => resolve()
+        req.onsuccess = () => {
+          try {
+            const db = req.result
+            const tx = db.transaction(DEVICE_IDB_STORE, 'readwrite')
+            tx.objectStore(DEVICE_IDB_STORE).put(token, DEVICE_TOKEN_KEY)
+            tx.oncomplete = () => {
+              db.close()
+              resolve()
+            }
+            tx.onerror = () => {
+              db.close()
+              resolve()
+            }
+          } catch {
+            resolve()
+          }
+        }
+      } catch {
+        resolve()
+      }
+    })
+  }
+
+  async function resolvePersistentDeviceToken(): Promise<string> {
+    if (typeof window === 'undefined') return 'server-device'
+    let token = localStorage.getItem(DEVICE_TOKEN_KEY)?.trim() || ''
+    if (token) {
+      void writeDeviceTokenToIdb(token)
+      return token
+    }
+
+    const fromIdb = await readDeviceTokenFromIdb()
+    if (fromIdb) {
+      localStorage.setItem(DEVICE_TOKEN_KEY, fromIdb)
+      return fromIdb
+    }
+
+    token = generateRawDeviceToken()
+    localStorage.setItem(DEVICE_TOKEN_KEY, token)
+    await writeDeviceTokenToIdb(token)
     return token
   }
 
@@ -461,32 +558,51 @@ export const useAuthStore = defineStore('auth', () => {
       )
     }
 
-    // Validación de sesión única por dispositivo
-    const deviceToken = getOrCreateDeviceToken()
-    if (perfil.sesion_unica) {
-      const activeToken = perfil.active_session_token
-      if (activeToken && activeToken !== deviceToken) {
-        session.value = null
-        user.value = null
-        persistUser(null)
+    await enforceAndClaimSingleDevice(perfil, isExplicitLogin, false)
 
+    buildAndStoreUserFromPerfil(perfil, sbUser.user_metadata?.role, false)
+  }
+
+  async function enforceAndClaimSingleDevice(
+    perfil: Perfil,
+    isExplicitLogin: boolean,
+    isVaultFlow: boolean
+  ): Promise<void> {
+    if (!perfil.sesion_unica) return
+
+    const deviceToken = await resolvePersistentDeviceToken()
+    const parsedActive = parseActiveSessionToken(perfil.active_session_token)
+
+    if (parsedActive && parsedActive.token !== deviceToken) {
+      session.value = null
+      user.value = null
+      persistUser(null)
+
+      if (!isVaultFlow) {
         try {
           await authService.signOutLocal()
         } catch (err) {
-          console.error('[AuthStore] Error cerrando sesión duplicada:', err)
+          console.error('[AuthStore] Error cerrando sesión de dispositivo no autorizado:', err)
         }
-
-        throw new Error(
-          'Esta cuenta permite solo 1 dispositivo activo y ya tiene sesión abierta en otro equipo. Solicita al administrador liberar la sesión.'
-        )
       }
 
-      if (!activeToken || isExplicitLogin) {
-        await perfilesService.claimDeviceSession(perfil.id, deviceToken)
-      }
+      throw new Error(
+        `Esta cuenta está vinculada únicamente al dispositivo "${parsedActive.label}". Solicita al administrador liberar el dispositivo para ingresar desde otro equipo.`
+      )
     }
 
-    buildAndStoreUserFromPerfil(perfil, sbUser.user_metadata?.role, false)
+    if (
+      !parsedActive ||
+      isExplicitLogin ||
+      !perfil.active_session_token?.trim().startsWith('{')
+    ) {
+      const serialized = serializeActiveDeviceSession(
+        deviceToken,
+        getBrowserDeviceLabel(),
+        parsedActive?.boundAt
+      )
+      await perfilesService.claimDeviceSession(perfil.id, serialized)
+    }
   }
 
   async function init() {
@@ -672,9 +788,13 @@ export const useAuthStore = defineStore('auth', () => {
           }
 
           await ensureBridgeSupabaseSession()
-          buildAndStoreUserFromPerfil(perfilLocal, perfilLocal.rol, true)
+          const freshPerfil =
+            (await perfilesService.getPerfilById(perfilLocal.id).catch(() => null)) ||
+            perfilLocal
+          await enforceAndClaimSingleDevice(freshPerfil, true, true)
+          buildAndStoreUserFromPerfil(freshPerfil, freshPerfil.rol, true)
           registrarCredencialUsuario({
-            id: perfilLocal.id,
+            id: freshPerfil.id,
             email: cleanEmailLower,
             password,
           })
@@ -785,21 +905,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout(): Promise<void> {
     loading.value = true
     try {
-      if (
-        user.value?.id &&
-        !user.value.isVaultSession &&
-        !user.value.id.startsWith('demo-')
-      ) {
-        try {
-          const perfil = await perfilesService.getPerfilById(user.value.id)
-          const deviceToken = getOrCreateDeviceToken()
-          if (!perfil?.active_session_token || perfil.active_session_token === deviceToken) {
-            await perfilesService.claimDeviceSession(user.value.id, null)
-          }
-        } catch {
-          // Mejor esfuerzo al liberar bloqueo de dispositivo
-        }
-      }
+      // Nota: Si la cuenta tiene `sesion_unica` activado, NO se libera `active_session_token` al cerrar sesión;
+      // el dispositivo permanece vinculado hasta que el Administrador lo libere en Usuarios.
       await authService.signOutLocal()
     } finally {
       session.value = null

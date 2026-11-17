@@ -35,7 +35,11 @@ import {
   type NuevoUsuario,
 } from '@/services/usuariosService'
 
-import { perfilesService, type Perfil } from '@/services/perfilesService'
+import {
+  perfilesService,
+  parseActiveSessionToken,
+  type Perfil,
+} from '@/services/perfilesService'
 import {
   encodeSubAdminRole,
   parseSubAdminRole,
@@ -587,6 +591,24 @@ async function cargarUsuarios() {
 
 const actualizandoSesionId = ref<string | null>(null)
 
+function getDispositivoVinculadoInfo(perfil: Perfil): { label: string; fecha?: string } | null {
+  const parsed = parseActiveSessionToken(perfil.active_session_token)
+  if (!parsed) return null
+  let fecha: string | undefined
+  if (parsed.boundAt) {
+    const d = new Date(parsed.boundAt)
+    if (!Number.isNaN(d.getTime())) {
+      fecha = d.toLocaleDateString('es-NI', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    }
+  }
+  return { label: parsed.label, fecha }
+}
+
 async function alternarSesionUnica(perfil: Perfil) {
   if (!esAdministrador.value || actualizandoSesionId.value) return
   actualizandoSesionId.value = perfil.id
@@ -599,8 +621,11 @@ async function alternarSesionUnica(perfil: Perfil) {
     if (idx !== -1 && usuarios.value[idx]) {
       usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
     }
+    if (usuarioCredencial.value?.id === perfil.id) {
+      usuarioCredencial.value = { ...usuarioCredencial.value, ...actualizado }
+    }
     mensajeExito.value = nuevoValor
-      ? `Sesión restringida a 1 dispositivo para ${perfil.nombre}.`
+      ? `Acceso fijado a 1 único dispositivo autorizado para ${perfil.nombre}.`
       : `Acceso multi-dispositivo habilitado para ${perfil.nombre}.`
   } catch (err: unknown) {
     errorLista.value =
@@ -623,7 +648,10 @@ async function liberarDispositivoUsuario(perfil: Perfil) {
     if (idx !== -1 && usuarios.value[idx]) {
       usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
     }
-    mensajeExito.value = `Bloqueo de dispositivo liberado para ${perfil.nombre}. Ya puede iniciar sesión en otro equipo.`
+    if (usuarioCredencial.value?.id === perfil.id) {
+      usuarioCredencial.value = { ...usuarioCredencial.value, ...actualizado }
+    }
+    mensajeExito.value = `Dispositivo desvinculado para ${perfil.nombre}. El próximo equipo que inicie sesión quedará vinculado como único autorizado.`
   } catch (err: unknown) {
     errorLista.value =
       err instanceof Error ? err.message : 'No se pudo liberar la sesión del dispositivo.'
@@ -1793,32 +1821,46 @@ onMounted(() => {
                 </span>
               </td>
               <td v-if="esAdministrador" class="whitespace-nowrap px-5 py-4">
-                <div class="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    :disabled="actualizandoSesionId === usuario.id"
-                    :title="usuario.sesion_unica ? 'Solo 1 dispositivo activo a la vez (clic para permitir multi-dispositivo)' : 'Múltiples dispositivos permitidos (clic para restringir a 1 dispositivo)'"
-                    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset transition cursor-pointer disabled:opacity-50"
-                    :class="usuario.sesion_unica
-                      ? 'bg-[#004B97] text-white ring-[#004B97] hover:bg-[#0D1B3E]'
-                      : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-sky-50 hover:text-[#004B97]'"
-                    @click="alternarSesionUnica(usuario)"
+                <div class="flex flex-col items-start gap-1">
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      :disabled="actualizandoSesionId === usuario.id"
+                      :title="usuario.sesion_unica ? 'Bloqueado a 1 único dispositivo fijo (clic para permitir multi-dispositivo)' : 'Múltiples dispositivos permitidos (clic para restringir a 1 dispositivo fijo)'"
+                      class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset transition cursor-pointer disabled:opacity-50"
+                      :class="usuario.sesion_unica
+                        ? 'bg-[#004B97] text-white ring-[#004B97] hover:bg-[#0D1B3E]'
+                        : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-sky-50 hover:text-[#004B97]'"
+                      @click="alternarSesionUnica(usuario)"
+                    >
+                      <Smartphone v-if="usuario.sesion_unica" class="h-3.5 w-3.5 shrink-0" />
+                      <MonitorSmartphone v-else class="h-3.5 w-3.5 shrink-0" />
+                      <span>{{ usuario.sesion_unica ? '1 Dispositivo' : 'Multi-dispositivo' }}</span>
+                    </button>
+                    <button
+                      v-if="usuario.sesion_unica && usuario.active_session_token"
+                      type="button"
+                      :disabled="actualizandoSesionId === usuario.id"
+                      title="Desvincular equipo autorizado para permitir ingreso desde otro dispositivo"
+                      class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 cursor-pointer disabled:opacity-50"
+                      @click="liberarDispositivoUsuario(usuario)"
+                    >
+                      <Unlock class="h-3 w-3 shrink-0" />
+                      <span>Liberar</span>
+                    </button>
+                  </div>
+                  <span
+                    v-if="usuario.sesion_unica"
+                    class="text-[11px] font-medium pl-1"
+                    :class="getDispositivoVinculadoInfo(usuario) ? 'text-slate-600' : 'text-slate-400'"
                   >
-                    <Smartphone v-if="usuario.sesion_unica" class="h-3.5 w-3.5 shrink-0" />
-                    <MonitorSmartphone v-else class="h-3.5 w-3.5 shrink-0" />
-                    <span>{{ usuario.sesion_unica ? '1 Dispositivo' : 'Multi-dispositivo' }}</span>
-                  </button>
-                  <button
-                    v-if="usuario.sesion_unica && usuario.active_session_token"
-                    type="button"
-                    :disabled="actualizandoSesionId === usuario.id"
-                    title="Liberar sesión activa para permitir acceso desde otro dispositivo"
-                    class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 cursor-pointer disabled:opacity-50"
-                    @click="liberarDispositivoUsuario(usuario)"
-                  >
-                    <Unlock class="h-3 w-3 shrink-0" />
-                    <span>Liberar</span>
-                  </button>
+                    <template v-if="getDispositivoVinculadoInfo(usuario)">
+                      Vinculado: {{ getDispositivoVinculadoInfo(usuario)?.label }}<template v-if="getDispositivoVinculadoInfo(usuario)?.fecha"> · {{ getDispositivoVinculadoInfo(usuario)?.fecha }}</template>
+                    </template>
+                    <template v-else>
+                      Sin equipo vinculado aún
+                    </template>
+                  </span>
                 </div>
               </td>
               <td class="whitespace-nowrap px-5 py-4 text-slate-600 font-mono text-xs tabular-nums">{{ fechaCreacion(usuario.created_at) }}</td>
@@ -2388,7 +2430,7 @@ onMounted(() => {
                   <Pencil class="h-3.5 w-3.5 text-[#004B97]" />
                   <span>Ficha del usuario</span>
                 </span>
-                <div class="flex items-center gap-1.5">
+                <div class="flex flex-wrap items-center gap-1.5">
                   <button
                     v-if="!esUsuarioSoloRuta(usuarioCredencial)"
                     type="button"
@@ -2410,6 +2452,17 @@ onMounted(() => {
                           : 'Multi-dispositivo'
                       }}
                     </span>
+                  </button>
+                  <button
+                    v-if="!esUsuarioSoloRuta(usuarioCredencial) && usuarioCredencial.sesion_unica && usuarioCredencial.active_session_token"
+                    type="button"
+                    :disabled="actualizandoSesionId === usuarioCredencial.id"
+                    title="Desvincular equipo autorizado"
+                    class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 cursor-pointer disabled:opacity-50"
+                    @click="liberarDispositivoUsuario(usuarioCredencial)"
+                  >
+                    <Unlock class="h-3 w-3" />
+                    <span>Liberar{{ getDispositivoVinculadoInfo(usuarioCredencial)?.label ? ` (${getDispositivoVinculadoInfo(usuarioCredencial)?.label})` : '' }}</span>
                   </button>
                   <button
                     v-if="puedeCambiarRol(usuarioCredencial)"

@@ -1,6 +1,67 @@
 import { supabase } from './supabase'
 import { compressImage } from './storageService'
 
+export interface ParsedActiveDeviceSession {
+  token: string
+  label: string
+  boundAt?: string
+}
+
+export function parseActiveSessionToken(raw?: string | null): ParsedActiveDeviceSession | null {
+  const clean = typeof raw === 'string' ? raw.trim() : ''
+  if (!clean) return null
+  if (clean.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(clean) as { t?: unknown; d?: unknown; at?: unknown }
+      if (typeof parsed.t === 'string' && parsed.t.trim()) {
+        return {
+          token: parsed.t.trim(),
+          label: typeof parsed.d === 'string' && parsed.d.trim() ? parsed.d.trim() : 'Dispositivo vinculado',
+          boundAt: typeof parsed.at === 'string' && parsed.at.trim() ? parsed.at.trim() : undefined,
+        }
+      }
+    } catch {
+      // Fallback a formato de token plano legado
+    }
+  }
+  return {
+    token: clean,
+    label: 'Dispositivo vinculado',
+  }
+}
+
+export function serializeActiveDeviceSession(
+  token: string,
+  label: string,
+  boundAt = new Date().toISOString()
+): string {
+  return JSON.stringify({
+    t: token,
+    d: label.trim() || 'Dispositivo vinculado',
+    at: boundAt,
+  })
+}
+
+export function getBrowserDeviceLabel(): string {
+  if (typeof navigator === 'undefined') return 'Dispositivo web'
+  const ua = navigator.userAgent || ''
+  let os = 'Equipo'
+  if (/Android/i.test(ua)) os = 'Android'
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS'
+  else if (/Windows/i.test(ua)) os = 'Windows'
+  else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS'
+  else if (/Linux/i.test(ua)) os = 'Linux'
+
+  let browser = 'Navegador'
+  if (/Edg\//i.test(ua)) browser = 'Edge'
+  else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera'
+  else if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) browser = 'Chrome'
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox'
+  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari'
+
+  return `${os} · ${browser}`
+}
+
 export interface Perfil {
   id: string
   nombre: string
@@ -748,9 +809,13 @@ export const perfilesService = {
         })
         .eq('id', id)
 
-      if (error && !isMissingSessionColumnError(error)) {
-        console.warn('[perfilesService] No se pudo actualizar active_session_token:', error.message)
+      if (error) {
+        if (!isMissingSessionColumnError(error)) {
+          console.warn('[perfilesService] No se pudo actualizar active_session_token:', error.message)
+        }
+        return
       }
+      this.updatePerfilInCache(id, { active_session_token: deviceToken })
     } catch (err) {
       console.warn('[perfilesService] Error en claimDeviceSession:', err)
     }
