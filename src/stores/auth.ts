@@ -3,8 +3,8 @@ import { ref, computed } from 'vue'
 import { authService } from '@/services/authService'
 import {
   perfilesService,
-  parseActiveSessionToken,
-  serializeActiveDeviceSession,
+  parseDeviceSessionState,
+  serializeDeviceSessionState,
   getBrowserDeviceLabel,
   type Perfil,
 } from '@/services/perfilesService'
@@ -571,9 +571,11 @@ export const useAuthStore = defineStore('auth', () => {
     if (!perfil.sesion_unica) return
 
     const deviceToken = await resolvePersistentDeviceToken()
-    const parsedActive = parseActiveSessionToken(perfil.active_session_token)
+    const state = parseDeviceSessionState(perfil.active_session_token)
+    const existingIdx = state.devices.findIndex((d) => d.token === deviceToken)
+    const currentLabel = getBrowserDeviceLabel()
 
-    if (parsedActive && parsedActive.token !== deviceToken) {
+    if (existingIdx < 0 && state.devices.length >= state.maxDevices) {
       session.value = null
       user.value = null
       persistUser(null)
@@ -586,23 +588,45 @@ export const useAuthStore = defineStore('auth', () => {
         }
       }
 
+      const deviceNames = state.devices.map((d) => d.label).join(', ')
+      const limitText = state.maxDevices === 1 ? '1 dispositivo' : `${state.maxDevices} dispositivos`
       throw new Error(
-        `Esta cuenta está vinculada únicamente al dispositivo "${parsedActive.label}". Solicita al administrador liberar el dispositivo para ingresar desde otro equipo.`
+        `Esta cuenta alcanzó su límite de ${limitText} (${deviceNames}). Solicita al administrador liberar o ampliar los dispositivos permitidos.`
       )
     }
 
-    if (
-      !parsedActive ||
-      isExplicitLogin ||
-      !perfil.active_session_token?.trim().startsWith('{')
-    ) {
-      const serialized = serializeActiveDeviceSession(
-        deviceToken,
-        getBrowserDeviceLabel(),
-        parsedActive?.boundAt
-      )
-      await perfilesService.claimDeviceSession(perfil.id, serialized)
+    const nextDevices = [...state.devices]
+    if (existingIdx >= 0) {
+      const existing = nextDevices[existingIdx]!
+      if (
+        isExplicitLogin ||
+        existing.label !== currentLabel ||
+        !perfil.active_session_token?.trim().startsWith('{')
+      ) {
+        nextDevices[existingIdx] = {
+          token: deviceToken,
+          label: currentLabel,
+          boundAt: existing.boundAt || new Date().toISOString(),
+        }
+        const serialized = serializeDeviceSessionState({
+          maxDevices: state.maxDevices,
+          devices: nextDevices,
+        })
+        await perfilesService.claimDeviceSession(perfil.id, serialized)
+      }
+      return
     }
+
+    nextDevices.push({
+      token: deviceToken,
+      label: currentLabel,
+      boundAt: new Date().toISOString(),
+    })
+    const serialized = serializeDeviceSessionState({
+      maxDevices: state.maxDevices,
+      devices: nextDevices,
+    })
+    await perfilesService.claimDeviceSession(perfil.id, serialized)
   }
 
   async function init() {

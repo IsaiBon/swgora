@@ -7,17 +7,58 @@ export interface ParsedActiveDeviceSession {
   boundAt?: string
 }
 
-export function parseActiveSessionToken(raw?: string | null): ParsedActiveDeviceSession | null {
+export interface DeviceSessionPolicyState {
+  maxDevices: number
+  devices: ParsedActiveDeviceSession[]
+}
+
+export function parseDeviceSessionState(raw?: string | null): DeviceSessionPolicyState {
   const clean = typeof raw === 'string' ? raw.trim() : ''
-  if (!clean) return null
+  if (!clean) {
+    return { maxDevices: 1, devices: [] }
+  }
   if (clean.startsWith('{')) {
     try {
-      const parsed = JSON.parse(clean) as { t?: unknown; d?: unknown; at?: unknown }
+      const parsed = JSON.parse(clean) as {
+        max?: unknown
+        devices?: unknown
+        t?: unknown
+        d?: unknown
+        at?: unknown
+      }
+
+      if (Array.isArray(parsed.devices) || typeof parsed.max === 'number') {
+        const rawMax = typeof parsed.max === 'number' && Number.isFinite(parsed.max) ? Math.floor(parsed.max) : 1
+        const maxDevices = Math.max(1, Math.min(20, rawMax))
+        const devices: ParsedActiveDeviceSession[] = []
+        const seen = new Set<string>()
+        if (Array.isArray(parsed.devices)) {
+          for (const item of parsed.devices) {
+            if (!item || typeof item !== 'object') continue
+            const row = item as { t?: unknown; d?: unknown; at?: unknown }
+            const token = typeof row.t === 'string' ? row.t.trim() : ''
+            if (!token || seen.has(token)) continue
+            seen.add(token)
+            devices.push({
+              token,
+              label: typeof row.d === 'string' && row.d.trim() ? row.d.trim() : 'Dispositivo vinculado',
+              boundAt: typeof row.at === 'string' && row.at.trim() ? row.at.trim() : undefined,
+            })
+          }
+        }
+        return { maxDevices, devices }
+      }
+
       if (typeof parsed.t === 'string' && parsed.t.trim()) {
         return {
-          token: parsed.t.trim(),
-          label: typeof parsed.d === 'string' && parsed.d.trim() ? parsed.d.trim() : 'Dispositivo vinculado',
-          boundAt: typeof parsed.at === 'string' && parsed.at.trim() ? parsed.at.trim() : undefined,
+          maxDevices: 1,
+          devices: [
+            {
+              token: parsed.t.trim(),
+              label: typeof parsed.d === 'string' && parsed.d.trim() ? parsed.d.trim() : 'Dispositivo vinculado',
+              boundAt: typeof parsed.at === 'string' && parsed.at.trim() ? parsed.at.trim() : undefined,
+            },
+          ],
         }
       }
     } catch {
@@ -25,9 +66,53 @@ export function parseActiveSessionToken(raw?: string | null): ParsedActiveDevice
     }
   }
   return {
-    token: clean,
-    label: 'Dispositivo vinculado',
+    maxDevices: 1,
+    devices: [
+      {
+        token: clean,
+        label: 'Dispositivo vinculado',
+      },
+    ],
   }
+}
+
+export function serializeDeviceSessionState(state: DeviceSessionPolicyState): string | null {
+  const maxDevices = Math.max(1, Math.min(20, Math.floor(state.maxDevices || 1)))
+  const deduped: ParsedActiveDeviceSession[] = []
+  const seen = new Set<string>()
+  for (const d of state.devices || []) {
+    const cleanToken = d.token.trim()
+    if (!cleanToken || seen.has(cleanToken)) continue
+    seen.add(cleanToken)
+    deduped.push({
+      token: cleanToken,
+      label: (d.label || 'Dispositivo vinculado').trim(),
+      boundAt: d.boundAt || new Date().toISOString(),
+    })
+  }
+  if (maxDevices === 1 && deduped.length === 0) {
+    return null
+  }
+  if (maxDevices === 1 && deduped.length === 1) {
+    const first = deduped[0]!
+    return JSON.stringify({
+      t: first.token,
+      d: first.label,
+      at: first.boundAt,
+    })
+  }
+  return JSON.stringify({
+    max: maxDevices,
+    devices: deduped.map((d) => ({
+      t: d.token,
+      d: d.label,
+      at: d.boundAt,
+    })),
+  })
+}
+
+export function parseActiveSessionToken(raw?: string | null): ParsedActiveDeviceSession | null {
+  return parseDeviceSessionState(raw).devices[0] || null
 }
 
 export function serializeActiveDeviceSession(
@@ -779,10 +864,29 @@ export const perfilesService = {
    * Al desactivarla limpia cualquier token de dispositivo activo.
    */
   async setSesionUnica(id: string, sesionUnica: boolean): Promise<Perfil> {
-    const updates: PerfilUpdate = { sesion_unica: sesionUnica }
-    if (!sesionUnica) {
-      updates.active_session_token = null
-    }
+    return this.setMaxDevicesPolicy(id, sesionUnica ? 1 : null, null)
+  },
+
+  /**
+   * Configura el límite de dispositivos autorizados para la cuenta (`null` = Multi-dispositivo libre, `1..20` = límite fijo).
+   */
+  async setMaxDevicesPolicy(
+    id: string,
+    maxDevices: number | null,
+    currentRawToken?: string | null
+  ): Promise<Perfil> {
+    const updates: PerfilUpdate =
+      maxDevices === null
+        ? { sesion_unica: false, active_session_token: null }
+        : (() => {
+            const clampedMax = Math.max(1, Math.min(20, Math.floor(maxDevices)))
+            const current = parseDeviceSessionState(currentRawToken)
+            const serialized = serializeDeviceSessionState({
+              maxDevices: clampedMax,
+              devices: current.devices.slice(0, clampedMax),
+            })
+            return { sesion_unica: true, active_session_token: serialized }
+          })()
     try {
       return await this.updatePerfil(id, updates)
     } catch (error) {
@@ -793,6 +897,28 @@ export const perfilesService = {
       }
       throw error
     }
+  },
+
+  /**
+   * Desvincula un dispositivo específico (o todos si `deviceTokenToRemove === null`), conservando el límite de dispositivos.
+   */
+  async removeBoundDevice(
+    id: string,
+    deviceTokenToRemove: string | null,
+    currentRawToken?: string | null
+  ): Promise<Perfil> {
+    const current = parseDeviceSessionState(currentRawToken)
+    const remainingDevices =
+      deviceTokenToRemove === null
+        ? []
+        : current.devices.filter((d) => d.token !== deviceTokenToRemove)
+    const serialized = serializeDeviceSessionState({
+      maxDevices: current.maxDevices,
+      devices: remainingDevices,
+    })
+    return await this.updatePerfil(id, {
+      active_session_token: serialized,
+    })
   },
 
   /**

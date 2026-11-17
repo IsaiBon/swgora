@@ -22,6 +22,8 @@ import {
   Camera,
   Trash2,
   UserCheck,
+  Plus,
+  Minus,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -39,7 +41,7 @@ import {
 
 import {
   perfilesService,
-  parseActiveSessionToken,
+  parseDeviceSessionState,
   type Perfil,
 } from '@/services/perfilesService'
 import {
@@ -631,70 +633,91 @@ async function cargarUsuarios() {
 
 const actualizandoSesionId = ref<string | null>(null)
 
-function getDispositivoVinculadoInfo(perfil: Perfil): { label: string; fecha?: string } | null {
-  const parsed = parseActiveSessionToken(perfil.active_session_token)
-  if (!parsed) return null
-  let fecha: string | undefined
-  if (parsed.boundAt) {
-    const d = new Date(parsed.boundAt)
-    if (!Number.isNaN(d.getTime())) {
-      fecha = d.toLocaleDateString('es-NI', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    }
-  }
-  return { label: parsed.label, fecha }
+function formatFechaDispositivo(boundAt?: string): string | undefined {
+  if (!boundAt) return undefined
+  const d = new Date(boundAt)
+  if (Number.isNaN(d.getTime())) return undefined
+  return d.toLocaleDateString('es-NI', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
-async function alternarSesionUnica(perfil: Perfil) {
+function getDispositivosPolicyInfo(perfil: Perfil): {
+  maxDevices: number
+  devices: Array<{ token: string; label: string; fecha?: string }>
+} {
+  const state = parseDeviceSessionState(perfil.active_session_token)
+  return {
+    maxDevices: state.maxDevices,
+    devices: state.devices.map((d) => ({
+      token: d.token,
+      label: d.label,
+      fecha: formatFechaDispositivo(d.boundAt),
+    })),
+  }
+}
+
+function syncPerfilEnEstado(perfilId: string, actualizado: Perfil) {
+  const idx = usuarios.value.findIndex((u) => u.id === perfilId)
+  if (idx !== -1 && usuarios.value[idx]) {
+    usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
+  }
+  if (usuarioCredencial.value?.id === perfilId) {
+    usuarioCredencial.value = { ...usuarioCredencial.value, ...actualizado }
+  }
+}
+
+async function cambiarLimiteDispositivos(perfil: Perfil, maxDevices: number | null) {
   if (!esAdministrador.value || actualizandoSesionId.value) return
   actualizandoSesionId.value = perfil.id
   errorLista.value = ''
   mensajeExito.value = ''
-  const nuevoValor = !perfil.sesion_unica
   try {
-    const actualizado = await perfilesService.setSesionUnica(perfil.id, nuevoValor)
-    const idx = usuarios.value.findIndex((u) => u.id === perfil.id)
-    if (idx !== -1 && usuarios.value[idx]) {
-      usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
+    const actualizado = await perfilesService.setMaxDevicesPolicy(
+      perfil.id,
+      maxDevices,
+      perfil.active_session_token
+    )
+    syncPerfilEnEstado(perfil.id, actualizado)
+    if (maxDevices === null) {
+      mensajeExito.value = `Acceso multi-dispositivo habilitado para ${perfil.nombre}.`
+    } else {
+      const noun = maxDevices === 1 ? '1 dispositivo autorizado' : `${maxDevices} dispositivos autorizados`
+      mensajeExito.value = `Límite fijado en ${noun} para ${perfil.nombre}.`
     }
-    if (usuarioCredencial.value?.id === perfil.id) {
-      usuarioCredencial.value = { ...usuarioCredencial.value, ...actualizado }
-    }
-    mensajeExito.value = nuevoValor
-      ? `Acceso fijado a 1 único dispositivo autorizado para ${perfil.nombre}.`
-      : `Acceso multi-dispositivo habilitado para ${perfil.nombre}.`
   } catch (err: unknown) {
     errorLista.value =
-      err instanceof Error ? err.message : 'No se pudo actualizar la política de sesión.'
+      err instanceof Error ? err.message : 'No se pudo actualizar la política de dispositivos.'
   } finally {
     actualizandoSesionId.value = null
   }
 }
 
-async function liberarDispositivoUsuario(perfil: Perfil) {
+async function alternarSesionUnica(perfil: Perfil) {
+  await cambiarLimiteDispositivos(perfil, perfil.sesion_unica ? null : 1)
+}
+
+async function liberarDispositivoUsuario(perfil: Perfil, deviceToken: string | null = null) {
   if (!esAdministrador.value || actualizandoSesionId.value) return
   actualizandoSesionId.value = perfil.id
   errorLista.value = ''
   mensajeExito.value = ''
   try {
-    const actualizado = await perfilesService.updatePerfil(perfil.id, {
-      active_session_token: null,
-    })
-    const idx = usuarios.value.findIndex((u) => u.id === perfil.id)
-    if (idx !== -1 && usuarios.value[idx]) {
-      usuarios.value[idx] = { ...usuarios.value[idx]!, ...actualizado }
-    }
-    if (usuarioCredencial.value?.id === perfil.id) {
-      usuarioCredencial.value = { ...usuarioCredencial.value, ...actualizado }
-    }
-    mensajeExito.value = `Dispositivo desvinculado para ${perfil.nombre}. El próximo equipo que inicie sesión quedará vinculado como único autorizado.`
+    const actualizado = await perfilesService.removeBoundDevice(
+      perfil.id,
+      deviceToken,
+      perfil.active_session_token
+    )
+    syncPerfilEnEstado(perfil.id, actualizado)
+    mensajeExito.value = deviceToken
+      ? `Dispositivo desvinculado de ${perfil.nombre}. Quedó 1 cupo libre para un nuevo equipo.`
+      : `Dispositivos desvinculados para ${perfil.nombre}. Los próximos equipos que inicien sesión ocuparán los cupos disponibles.`
   } catch (err: unknown) {
     errorLista.value =
-      err instanceof Error ? err.message : 'No se pudo liberar la sesión del dispositivo.'
+      err instanceof Error ? err.message : 'No se pudo liberar el dispositivo.'
   } finally {
     actualizandoSesionId.value = null
   }
@@ -1819,29 +1842,66 @@ onMounted(() => {
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    :disabled="actualizandoSesionId === usuario.id"
-                    class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border transition cursor-pointer"
-                    :class="usuario.sesion_unica ? 'bg-[#0D1B3E] text-white border-[#0D1B3E]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#04C4D9]'"
-                    @click="alternarSesionUnica(usuario)"
-                  >
-                    <Smartphone v-if="usuario.sesion_unica" class="h-2.5 w-2.5" />
-                    <MonitorSmartphone v-else class="h-2.5 w-2.5" />
-                    <span>{{ usuario.sesion_unica ? (getDispositivoVinculadoInfo(usuario)?.label || '1 Dispositivo') : 'Multi' }}</span>
-                  </button>
+                  <div v-if="!usuario.sesion_unica" class="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      :disabled="actualizandoSesionId === usuario.id"
+                      title="Acceso libre desde cualquier dispositivo (clic para limitar a 1 dispositivo fijo)"
+                      class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-white text-slate-600 border-slate-200 hover:border-[#04C4D9] transition cursor-pointer disabled:opacity-50"
+                      @click="alternarSesionUnica(usuario)"
+                    >
+                      <MonitorSmartphone class="h-2.5 w-2.5" />
+                      <span>Multi</span>
+                    </button>
+                  </div>
 
-                  <button
-                    v-if="usuario.sesion_unica && usuario.active_session_token"
-                    type="button"
-                    :disabled="actualizandoSesionId === usuario.id"
-                    title="Desvincular equipo"
-                    class="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer"
-                    @click="liberarDispositivoUsuario(usuario)"
-                  >
-                    <Unlock class="h-2.5 w-2.5" />
-                    <span>Liberar</span>
-                  </button>
+                  <div v-else class="inline-flex items-center gap-1">
+                    <div class="inline-flex items-center rounded-full border border-[#0D1B3E] bg-[#0D1B3E] text-white overflow-hidden">
+                      <button
+                        type="button"
+                        :disabled="actualizandoSesionId === usuario.id"
+                        :title="getDispositivosPolicyInfo(usuario).devices.length ? `Vinculados: ${getDispositivosPolicyInfo(usuario).devices.map(d => d.label).join(', ')} (clic para cambiar a Multi-dispositivo)` : `Límite: ${getDispositivosPolicyInfo(usuario).maxDevices} dispositivo(s) (clic para Multi-dispositivo)`"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold hover:bg-[#19314D] transition cursor-pointer disabled:opacity-50"
+                        @click="alternarSesionUnica(usuario)"
+                      >
+                        <Smartphone class="h-2.5 w-2.5 text-[#04C4D9]" />
+                        <span class="font-mono tabular-nums">{{ getDispositivosPolicyInfo(usuario).devices.length }}/{{ getDispositivosPolicyInfo(usuario).maxDevices }}</span>
+                        <span>disp.</span>
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="actualizandoSesionId === usuario.id || getDispositivosPolicyInfo(usuario).maxDevices <= 1"
+                        title="Reducir límite de dispositivos"
+                        :aria-label="`Reducir límite de dispositivos de ${usuario.nombre}`"
+                        class="border-l border-white/15 px-1.5 py-0.5 hover:bg-white/15 transition cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+                        @click="cambiarLimiteDispositivos(usuario, getDispositivosPolicyInfo(usuario).maxDevices - 1)"
+                      >
+                        <Minus class="h-2.5 w-2.5" />
+                      </button>
+                      <button
+                        type="button"
+                        :disabled="actualizandoSesionId === usuario.id || getDispositivosPolicyInfo(usuario).maxDevices >= 20"
+                        title="Agregar otro dispositivo permitido"
+                        :aria-label="`Agregar cupo de dispositivo para ${usuario.nombre}`"
+                        class="border-l border-white/15 px-1.5 py-0.5 hover:bg-[#04C4D9] hover:text-[#0D1B3E] transition cursor-pointer disabled:opacity-35"
+                        @click="cambiarLimiteDispositivos(usuario, getDispositivosPolicyInfo(usuario).maxDevices + 1)"
+                      >
+                        <Plus class="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+
+                    <button
+                      v-if="getDispositivosPolicyInfo(usuario).devices.length > 0"
+                      type="button"
+                      :disabled="actualizandoSesionId === usuario.id"
+                      :title="`Desvincular: ${getDispositivosPolicyInfo(usuario).devices.map(d => d.label).join(', ')}`"
+                      class="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer disabled:opacity-50"
+                      @click="liberarDispositivoUsuario(usuario)"
+                    >
+                      <Unlock class="h-2.5 w-2.5" />
+                      <span>Liberar</span>
+                    </button>
+                  </div>
                 </div>
               </td>
 
@@ -2439,22 +2499,37 @@ onMounted(() => {
                     <span>
                       {{
                         usuarioCredencial.sesion_unica
-                          ? '1 Dispositivo'
+                          ? `${getDispositivosPolicyInfo(usuarioCredencial).maxDevices} ${getDispositivosPolicyInfo(usuarioCredencial).maxDevices === 1 ? 'Dispositivo' : 'Dispositivos'}`
                           : 'Multi-dispositivo'
                       }}
                     </span>
                   </button>
-                  <button
-                    v-if="!esUsuarioSoloRuta(usuarioCredencial) && usuarioCredencial.sesion_unica && usuarioCredencial.active_session_token"
-                    type="button"
-                    :disabled="actualizandoSesionId === usuarioCredencial.id"
-                    title="Desvincular equipo autorizado"
-                    class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 cursor-pointer disabled:opacity-50"
-                    @click="liberarDispositivoUsuario(usuarioCredencial)"
+                  <div
+                    v-if="!esUsuarioSoloRuta(usuarioCredencial) && usuarioCredencial.sesion_unica"
+                    class="inline-flex items-center rounded-full border border-slate-200 bg-white overflow-hidden"
                   >
-                    <Unlock class="h-3 w-3" />
-                    <span>Liberar{{ getDispositivoVinculadoInfo(usuarioCredencial)?.label ? ` (${getDispositivoVinculadoInfo(usuarioCredencial)?.label})` : '' }}</span>
-                  </button>
+                    <button
+                      type="button"
+                      :disabled="actualizandoSesionId === usuarioCredencial.id || getDispositivosPolicyInfo(usuarioCredencial).maxDevices <= 1"
+                      title="Quitar cupo"
+                      class="px-2 py-1 text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+                      @click="cambiarLimiteDispositivos(usuarioCredencial, getDispositivosPolicyInfo(usuarioCredencial).maxDevices - 1)"
+                    >
+                      <Minus class="h-3 w-3" />
+                    </button>
+                    <span class="px-1.5 font-mono text-[11px] font-bold text-[#0D1B3E] tabular-nums">
+                      {{ getDispositivosPolicyInfo(usuarioCredencial).maxDevices }}
+                    </span>
+                    <button
+                      type="button"
+                      :disabled="actualizandoSesionId === usuarioCredencial.id || getDispositivosPolicyInfo(usuarioCredencial).maxDevices >= 20"
+                      title="Permitir 1 dispositivo más"
+                      class="px-2 py-1 text-[#004B97] hover:bg-sky-50 cursor-pointer disabled:opacity-35"
+                      @click="cambiarLimiteDispositivos(usuarioCredencial, getDispositivosPolicyInfo(usuarioCredencial).maxDevices + 1)"
+                    >
+                      <Plus class="h-3 w-3" />
+                    </button>
+                  </div>
                   <button
                     v-if="puedeCambiarRol(usuarioCredencial)"
                     type="button"
@@ -2464,6 +2539,71 @@ onMounted(() => {
                     Cambiar rol
                   </button>
                 </div>
+              </div>
+
+              <!-- Lista de dispositivos vinculados en Ficha -->
+              <div
+                v-if="!esUsuarioSoloRuta(usuarioCredencial) && usuarioCredencial.sesion_unica"
+                class="rounded-xl border border-slate-200 bg-white p-3 space-y-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-[11px] font-bold text-[#0D1B3E]">
+                    Dispositivos autorizados ({{ getDispositivosPolicyInfo(usuarioCredencial).devices.length }}/{{ getDispositivosPolicyInfo(usuarioCredencial).maxDevices }})
+                  </span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      :disabled="actualizandoSesionId === usuarioCredencial.id || getDispositivosPolicyInfo(usuarioCredencial).maxDevices >= 20"
+                      class="inline-flex items-center gap-1 rounded-lg border border-[#04C4D9]/60 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-[#004B97] hover:bg-[#004B97] hover:text-white transition cursor-pointer disabled:opacity-40"
+                      @click="cambiarLimiteDispositivos(usuarioCredencial, getDispositivosPolicyInfo(usuarioCredencial).maxDevices + 1)"
+                    >
+                      <Plus class="h-2.5 w-2.5" />
+                      <span>Agregar cupo</span>
+                    </button>
+                    <button
+                      v-if="getDispositivosPolicyInfo(usuarioCredencial).devices.length > 0"
+                      type="button"
+                      :disabled="actualizandoSesionId === usuarioCredencial.id"
+                      class="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer disabled:opacity-50"
+                      @click="liberarDispositivoUsuario(usuarioCredencial, null)"
+                    >
+                      <Unlock class="h-2.5 w-2.5" />
+                      <span>Liberar todos</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  v-if="getDispositivosPolicyInfo(usuarioCredencial).devices.length === 0"
+                  class="text-[11px] text-slate-500"
+                >
+                  Aún no hay equipos vinculados. Los primeros {{ getDispositivosPolicyInfo(usuarioCredencial).maxDevices }} que inicien sesión quedarán autorizados.
+                </div>
+
+                <ul v-else class="space-y-1.5">
+                  <li
+                    v-for="(dev, devIdx) in getDispositivosPolicyInfo(usuarioCredencial).devices"
+                    :key="dev.token"
+                    class="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-1.5 text-[11px]"
+                  >
+                    <div class="flex items-center gap-2 min-w-0">
+                      <Smartphone class="h-3.5 w-3.5 shrink-0 text-[#004B97]" />
+                      <span class="font-bold text-[#0D1B3E] truncate">{{ dev.label }}</span>
+                      <span class="font-mono text-[10px] text-slate-400 shrink-0">#{{ devIdx + 1 }}</span>
+                      <span v-if="dev.fecha" class="font-mono text-[10px] text-slate-500 shrink-0">{{ dev.fecha }}</span>
+                    </div>
+                    <button
+                      type="button"
+                      :disabled="actualizandoSesionId === usuarioCredencial.id"
+                      title="Quitar solo este dispositivo"
+                      class="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer shrink-0 disabled:opacity-50"
+                      @click="liberarDispositivoUsuario(usuarioCredencial, dev.token)"
+                    >
+                      <Unlock class="h-2.5 w-2.5" />
+                      <span>Quitar</span>
+                    </button>
+                  </li>
+                </ul>
               </div>
 
               <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="guardarNombreFichaUsuario">
