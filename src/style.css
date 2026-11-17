@@ -473,3 +473,94 @@ html, body, #app {
     break-inside: avoid !important;
   }
 }
+
+/* Consola compacta de control de usuarios */
+.users-console {
+  border-radius: 16px;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+}
+
+.users-console-header {
+  background: #0d1b3e;
+  color: #ffffff;
+  padding: 12px 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  border-bottom: 1px solid #1b315e;
+}
+
+.users-console-header-sub {
+  color: #bae6fd;
+}
+
+.users-console-tab-active {
+  background: #04c4d9;
+  color: #0d1b3e;
+  border-color: #04c4d9;
+}
+
+.users-console-tab-idle {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.users-console-tab-idle:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.users-console-input {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.users-console-input::placeholder {
+  color: #cbd5e1;
+}
+
+.users-console-input:focus {
+  background: #ffffff;
+  color: #0d1b3e;
+  border-color: #04c4d9;
+}
+
+.users-console-table th,
+.users-console-table td {
+  padding: 13px 16px;
+  vertical-align: middle;
+}
+
+.users-console-table tbody tr:hover {
+  background: #f4f8fc;
+}
+
+.users-console-row-inactiva {
+  background: #f8fafc;
+}
+
+.users-console-row-inactiva .users-console-user-meta {
+  opacity: 0.72;
+}
+
+.users-console-tab-inactivos {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.users-console-tab-inactivos:hover {
+  background: rgba(245, 158, 11, 0.28);
+  color: #ffffff;
+}
+
+.users-console-tab-inactivos-active {
+  background: #f59e0b;
+  color: #0d1b3e;
+  border-color: #f59e0b;
+}

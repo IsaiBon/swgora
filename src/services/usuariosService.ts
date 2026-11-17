@@ -1651,34 +1651,37 @@ export async function crearUsuario(
   return { id: newUserId, persistedInDb }
 }
 
-export async function desactivarUsuario(
+async function cambiarEstadoUsuario(
   usuarioId: string,
+  nuevoEstado: 'Activo' | 'Inactivo',
   email?: string | null
 ): Promise<void> {
-  try {
-    const { data, error } = await supabase.functions.invoke(
-      'desactivar-usuario',
-      {
-        body: { usuarioId },
-      }
-    )
+  if (nuevoEstado === 'Inactivo') {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'desactivar-usuario',
+        {
+          body: { usuarioId },
+        }
+      )
 
-    if (
-      !error &&
-      data?.usuario?.id === usuarioId &&
-      data?.usuario?.estado === 'Inactivo'
-    ) {
-      perfilesService.updatePerfilInCache(usuarioId, { estado: 'Inactivo' })
-      return
+      if (
+        !error &&
+        data?.usuario?.id === usuarioId &&
+        data?.usuario?.estado === 'Inactivo'
+      ) {
+        perfilesService.updatePerfilInCache(usuarioId, { estado: 'Inactivo' })
+        return
+      }
+    } catch {
+      // Continuar con respaldo directo en tabla perfiles
     }
-  } catch {
-    // Continuar con respaldo directo en tabla perfiles
   }
 
   const { data: updatedRow, error: dbError } = await supabase
     .from('perfiles')
     .update({
-      estado: 'Inactivo',
+      estado: nuevoEstado,
       updated_at: new Date().toISOString(),
     })
     .eq('id', usuarioId)
@@ -1686,7 +1689,7 @@ export async function desactivarUsuario(
     .maybeSingle()
 
   if (!dbError && updatedRow?.id === usuarioId) {
-    perfilesService.updatePerfilInCache(usuarioId, { estado: 'Inactivo' })
+    perfilesService.updatePerfilInCache(usuarioId, { estado: nuevoEstado })
     return
   }
 
@@ -1694,10 +1697,10 @@ export async function desactivarUsuario(
     await updatePerfilViaUserSession({
       usuarioId,
       email,
-      payload: { estado: 'Inactivo' },
+      payload: { estado: nuevoEstado },
     })
   ) {
-    perfilesService.updatePerfilInCache(usuarioId, { estado: 'Inactivo' })
+    perfilesService.updatePerfilInCache(usuarioId, { estado: nuevoEstado })
     return
   }
 
@@ -1706,17 +1709,32 @@ export async function desactivarUsuario(
     email,
   })
   if (cached?.localOnly) {
-    perfilesService.updatePerfilInCache(usuarioId, { estado: 'Inactivo' })
+    perfilesService.updatePerfilInCache(usuarioId, { estado: nuevoEstado })
     return
   }
 
+  const verbo = nuevoEstado === 'Activo' ? 'activar' : 'desactivar'
   if (dbError) {
-    throw new Error('No se pudo desactivar el usuario. Intenta nuevamente.')
+    throw new Error(`No se pudo ${verbo} el usuario. Intenta nuevamente.`)
   }
 
   throw new Error(
-    'No se pudo desactivar el usuario en Supabase por permisos RLS o falta de sesión activa.'
+    `No se pudo ${verbo} el usuario en Supabase por permisos RLS o falta de sesión activa.`
   )
+}
+
+export async function desactivarUsuario(
+  usuarioId: string,
+  email?: string | null
+): Promise<void> {
+  return cambiarEstadoUsuario(usuarioId, 'Inactivo', email)
+}
+
+export async function activarUsuario(
+  usuarioId: string,
+  email?: string | null
+): Promise<void> {
+  return cambiarEstadoUsuario(usuarioId, 'Activo', email)
 }
 
 export async function eliminarUsuario(

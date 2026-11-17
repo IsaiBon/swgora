@@ -21,10 +21,12 @@ import {
   RefreshCw,
   Camera,
   Trash2,
+  UserCheck,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
   desactivarUsuario,
+  activarUsuario,
   eliminarUsuario,
   cambiarRolUsuario,
   obtenerCredencialUsuario,
@@ -81,7 +83,7 @@ const rolesBase = [
 const rutas = ref<RutaSucursal[]>([])
 const rutaNuevoUsuarioId = ref('')
 const nombreTallerIndependiente = ref('')
-const filtroTipoCuenta = ref<'todos' | 'internos' | 'independientes'>('todos')
+const filtroTipoCuenta = ref<'todos' | 'activas' | 'internos' | 'independientes' | 'inactivos'>('todos')
 
 const roles = computed(() => {
   let list = [...rolesBase]
@@ -300,6 +302,10 @@ function normalizarBusqueda(texto: string): string {
   return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
+const totalCuentasDesactivadas = computed(
+  () => usuarios.value.filter((u) => u.estado === 'Inactivo').length
+)
+
 const totalCuentasIndependientes = computed(
   () =>
     usuarios.value.filter((u) => parseIndependentRole(u.rol).isIndependent)
@@ -312,6 +318,8 @@ const totalCuentasInternas = computed(
 
 const usuariosFiltrados = computed(() => {
   const baseList = usuarios.value.filter((usuario) => {
+    if (filtroTipoCuenta.value === 'inactivos') return usuario.estado === 'Inactivo'
+    if (filtroTipoCuenta.value === 'activas') return usuario.estado !== 'Inactivo'
     const esInd = parseIndependentRole(usuario.rol).isIndependent
     if (filtroTipoCuenta.value === 'independientes') return esInd
     if (filtroTipoCuenta.value === 'internos') return !esInd
@@ -408,12 +416,44 @@ function puedeEliminar(perfil: Perfil): boolean {
   )
 }
 
+const activandoUsuarioId = ref<string | null>(null)
+
 function puedeDesactivar(perfil: Perfil): boolean {
   return (
     !esUsuarioSoloRuta(perfil) &&
     perfil.estado !== 'Inactivo' &&
     puedeEliminar(perfil)
   )
+}
+
+function puedeActivar(perfil: Perfil): boolean {
+  return (
+    !esUsuarioSoloRuta(perfil) &&
+    perfil.estado === 'Inactivo' &&
+    puedeEliminar(perfil)
+  )
+}
+
+async function activarCuentaUsuario(perfil: Perfil) {
+  if (!puedeActivar(perfil) || activandoUsuarioId.value) return
+  activandoUsuarioId.value = perfil.id
+  errorLista.value = ''
+  mensajeExito.value = ''
+  try {
+    await activarUsuario(perfil.id, perfil.email)
+    const fila = usuarios.value.find((u) => u.id === perfil.id)
+    if (fila) fila.estado = 'Activo'
+    if (usuarioCredencial.value?.id === perfil.id) {
+      usuarioCredencial.value = { ...usuarioCredencial.value, estado: 'Activo' }
+    }
+    mensajeExito.value = `La cuenta de ${perfil.nombre} fue activada nuevamente.`
+    await cargarUsuarios()
+  } catch (err: unknown) {
+    errorLista.value =
+      err instanceof Error ? err.message : 'No se pudo activar la cuenta.'
+  } finally {
+    activandoUsuarioId.value = null
+  }
 }
 
 function puedeConfirmar(perfil: Perfil): boolean {
@@ -1572,127 +1612,114 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="overflow-hidden studio-card">
-      <div class="bg-[#F4F8FC] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-        <div class="flex items-center gap-3">
-          <span class="w-9 h-9 rounded-xl bg-[#E8F1FA] text-[#1B4978] border border-[#CFE1F4] flex items-center justify-center">
-            <ShieldCheck class="h-4 w-4" />
-          </span>
-          <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0D1B3E] tracking-tight">Usuarios registrados</h2>
+    <div class="overflow-hidden studio-card users-console">
+      <div class="users-console-header">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2">
+            <ShieldCheck class="h-4 w-4 text-[#04C4D9]" />
+            <h2 class="font-display text-sm font-extrabold tracking-tight">Control de Usuarios</h2>
+            <span class="users-console-header-sub font-mono text-[11px] font-bold tabular-nums">
+              ({{ usuariosFiltrados.length }}/{{ usuarios.length }})
+            </span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1">
+            <template v-if="!esTallerIndependiente">
+              <button
+                type="button"
+                class="rounded-full border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer"
+                :class="filtroTipoCuenta === 'todos' ? 'users-console-tab-active' : 'users-console-tab-idle'"
+                @click="filtroTipoCuenta = 'todos'"
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                class="rounded-full border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer"
+                :class="filtroTipoCuenta === 'internos' ? 'users-console-tab-active' : 'users-console-tab-idle'"
+                @click="filtroTipoCuenta = 'internos'"
+              >
+                Internos ({{ totalCuentasInternas }})
+              </button>
+              <button
+                type="button"
+                class="rounded-full border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer"
+                :class="filtroTipoCuenta === 'independientes' ? 'users-console-tab-active' : 'users-console-tab-idle'"
+                @click="filtroTipoCuenta = 'independientes'"
+              >
+                Talleres ({{ totalCuentasIndependientes }})
+              </button>
+            </template>
+            <button
+              type="button"
+              class="rounded-full border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer"
+              :class="filtroTipoCuenta === 'inactivos' ? 'users-console-tab-inactivos-active' : (totalCuentasDesactivadas > 0 ? 'users-console-tab-inactivos' : 'users-console-tab-idle')"
+              @click="filtroTipoCuenta = filtroTipoCuenta === 'inactivos' ? 'todos' : 'inactivos'"
+            >
+              Desactivadas ({{ totalCuentasDesactivadas }})
+            </button>
+          </div>
         </div>
+
         <div class="flex flex-wrap items-center gap-2">
+          <div class="relative w-48 sm:w-56">
+            <label for="buscar-usuarios" class="sr-only">Buscar usuarios</label>
+            <Search aria-hidden="true" class="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-300" />
+            <input
+              id="buscar-usuarios"
+              v-model="busqueda"
+              type="search"
+              autocomplete="off"
+              placeholder="Filtrar cuenta…"
+              aria-controls="tabla-usuarios"
+              class="users-console-input w-full rounded-lg border py-1.5 pl-8 pr-2.5 text-xs outline-none transition"
+            />
+          </div>
+
           <button
             v-if="esAdministrador && usuariosFiltrados.length"
             type="button"
-            class="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition active:scale-[0.97] cursor-pointer"
-            :class="
-              mostrarTodasCredenciales
-                ? 'border-[#147488] bg-[#147488] text-white shadow-sm'
-                : 'border-slate-200 bg-slate-50 text-[#1B4978] hover:bg-[#E8F1FA] hover:border-[#CFE1F4]'
-            "
+            class="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition cursor-pointer"
+            :class="mostrarTodasCredenciales ? 'users-console-tab-active' : 'users-console-tab-idle'"
             @click="mostrarTodasCredenciales = !mostrarTodasCredenciales"
           >
             <EyeOff v-if="mostrarTodasCredenciales" class="h-3.5 w-3.5" />
             <Eye v-else class="h-3.5 w-3.5" />
-            <span>
-              {{
-                mostrarTodasCredenciales
-                  ? 'Ocultar todas las credenciales'
-                  : 'Ver todas las credenciales'
-              }}
-            </span>
+            <span>Claves</span>
           </button>
 
           <button
             type="button"
             :disabled="cargandoUsuarios || desactivando"
-            class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-[#0D1B3E] transition hover:bg-blue-50 hover:text-[#004B97] hover:border-blue-200 disabled:opacity-50 cursor-pointer"
+            title="Recargar usuarios"
+            class="rounded-lg border p-1.5 users-console-tab-idle transition cursor-pointer disabled:opacity-50"
             @click="cargarUsuarios"
           >
-            {{ cargandoUsuarios ? 'Cargando…' : 'Actualizar' }}
+            <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': cargandoUsuarios }" />
           </button>
         </div>
       </div>
 
-      <div class="space-y-4 border-b border-slate-100 bg-slate-50/70 p-5">
-        <div
-          v-if="!esTallerIndependiente"
-          class="flex flex-wrap items-center gap-2"
-        >
-          <button
-            type="button"
-            class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all active:scale-[0.97] cursor-pointer border"
-            :class="
-              filtroTipoCuenta === 'todos'
-                ? 'bg-[#1E446E] text-white border-[#1E446E] shadow-sm'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-[#9AD2DC] hover:text-[#0F1E2E]'
-            "
-            @click="filtroTipoCuenta = 'todos'"
-          >
-            Todos ({{ usuarios.length }})
-          </button>
-          <button
-            type="button"
-            class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all active:scale-[0.97] cursor-pointer border"
-            :class="
-              filtroTipoCuenta === 'internos'
-                ? 'bg-[#1E446E] text-white border-[#1E446E] shadow-sm'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-[#9AD2DC] hover:text-[#0F1E2E]'
-            "
-            @click="filtroTipoCuenta = 'internos'"
-          >
-            Equipo interno y rutas ({{ totalCuentasInternas }})
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all active:scale-[0.97] cursor-pointer border"
-            :class="
-              filtroTipoCuenta === 'independientes'
-                ? 'bg-[#147488] text-white border-[#147488] shadow-sm'
-                : 'bg-[#E3F5F8] text-[#12697A] border-[#C1E8EF] hover:bg-[#D5F2F6]'
-            "
-            @click="filtroTipoCuenta = 'independientes'"
-          >
-            <Wrench class="h-3.5 w-3.5" />
-            <span>Talleres independientes ({{ totalCuentasIndependientes }})</span>
-          </button>
-        </div>
-
-        <div class="flex flex-wrap items-end justify-between gap-3">
-          <div class="w-full sm:max-w-sm">
-            <label for="buscar-usuarios" class="mb-1.5 block text-xs font-bold text-[#0D1B3E]">Buscar usuarios</label>
-            <div class="relative group">
-              <Search aria-hidden="true" class="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400 transition-colors group-focus-within:text-[#004B97]" />
-              <input
-                id="buscar-usuarios"
-                v-model="busqueda"
-                type="search"
-                autocomplete="off"
-                placeholder="Nombre, correo, ruta o taller"
-                aria-controls="tabla-usuarios"
-                class="w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
-              />
-            </div>
-          </div>
-          <p v-if="!cargandoUsuarios && !errorLista" role="status" class="text-xs font-medium text-slate-500 tabular-nums">
-            {{ usuariosFiltrados.length }} de {{ usuarios.length }} usuarios cargados
-          </p>
-        </div>
-      </div>
-
-      <p v-if="errorLista" role="alert" class="m-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">
+      <p v-if="errorLista" role="alert" class="m-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
         {{ errorLista }}
       </p>
-      <p v-if="cargandoUsuarios && !usuarios.length" role="status" class="p-5 text-sm text-slate-500">
+      <p v-if="cargandoUsuarios && !usuarios.length" role="status" class="p-4 text-xs text-slate-500">
         Cargando usuarios…
       </p>
-      <p v-else-if="!usuarios.length && !errorLista" class="p-5 text-sm text-slate-500">
+      <p v-else-if="!usuarios.length && !errorLista" class="p-4 text-xs text-slate-500">
         No hay usuarios para mostrar.
       </p>
-
-      <div v-if="!cargandoUsuarios && usuarios.length && !usuariosFiltrados.length && !errorLista" class="p-5 text-sm text-slate-500">
-        <p>No se encontraron usuarios con esa búsqueda.</p>
-        <button type="button" class="mt-2 font-bold text-[#004B97] hover:text-[#04C4D9] hover:underline cursor-pointer" @click="busqueda = ''">Limpiar búsqueda</button>
+      <div v-if="!cargandoUsuarios && usuarios.length && !usuariosFiltrados.length && !errorLista" class="p-4 text-xs text-slate-500 flex flex-wrap items-center gap-2">
+        <span>
+          {{ filtroTipoCuenta === 'inactivos' ? 'No hay cuentas desactivadas.' : `Sin resultados para "${busqueda}".` }}
+        </span>
+        <button
+          type="button"
+          class="font-bold text-[#004B97] hover:underline cursor-pointer"
+          @click="busqueda = ''; filtroTipoCuenta = 'todos'"
+        >
+          Ver todas
+        </button>
       </div>
 
       <div v-if="usuariosFiltrados.length" class="overflow-x-auto" :aria-busy="cargandoUsuarios">
@@ -1703,204 +1730,168 @@ onMounted(() => {
           class="hidden"
           @change="alSeleccionarArchivoAvatar($event, false)"
         />
-        <table id="tabla-usuarios" class="w-full text-left text-sm">
-          <caption class="sr-only">Usuarios, credenciales, roles y acciones de administración</caption>
-          <thead class="studio-table-head">
+        <table id="tabla-usuarios" class="users-console-table w-full text-left text-xs">
+          <caption class="sr-only">Consola compacta de usuarios</caption>
+          <thead class="bg-slate-50 border-b border-slate-200 text-slate-500">
             <tr>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Usuario</th>
-              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Credenciales</th>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Rol</th>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Estado</th>
-              <th v-if="esAdministrador" scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Sesión</th>
-              <th scope="col" class="px-5 py-3.5 text-xs font-bold uppercase tracking-wider">Fecha de creación</th>
-              <th scope="col" class="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider">Acciones</th>
+              <th scope="col" class="text-[11px] font-bold uppercase tracking-wider">Cuenta</th>
+              <th scope="col" class="text-[11px] font-bold uppercase tracking-wider">Rol</th>
+              <th v-if="esAdministrador" scope="col" class="text-[11px] font-bold uppercase tracking-wider">Seguridad y clave</th>
+              <th scope="col" class="text-right text-[11px] font-bold uppercase tracking-wider">Gestión</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr v-for="usuario in usuariosFiltrados" :key="usuario.id" class="transition-colors hover:bg-sky-50/45">
-              <td class="px-5 py-4">
-                <div class="flex items-center gap-3">
-                  <div class="relative shrink-0 group/avatar">
-                    <div class="h-10 w-10 rounded-full overflow-hidden border border-slate-200 bg-gradient-to-br from-[#0D1B3E] to-[#004B97] flex items-center justify-center text-xs font-black text-[#BFEBF2] shadow-2xs">
-                      <img
-                        v-if="usuario.avatar_url"
-                        :src="usuario.avatar_url"
-                        :alt="usuario.nombre"
-                        class="h-full w-full object-cover"
-                      />
+            <tr
+              v-for="usuario in usuariosFiltrados"
+              :key="usuario.id"
+              class="transition-colors"
+              :class="{ 'users-console-row-inactiva': usuario.estado === 'Inactivo' }"
+            >
+              <td>
+                <div class="flex items-center gap-2.5 users-console-user-meta">
+                  <div class="relative shrink-0">
+                    <div class="h-8 w-8 rounded-full overflow-hidden border border-slate-200 bg-[#0D1B3E] flex items-center justify-center text-[10px] font-black text-[#BFEBF2]">
+                      <img v-if="usuario.avatar_url" :src="usuario.avatar_url" :alt="usuario.nombre" class="h-full w-full object-cover" />
                       <span v-else>{{ inicialesFicha(usuario.nombre) }}</span>
                     </div>
+                    <span
+                      :title="usuario.estado"
+                      class="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white"
+                      :class="usuario.estado === 'Activo' ? 'bg-[#04C4D9]' : 'bg-amber-500'"
+                    ></span>
                     <button
                       v-if="puedeEditarFoto(usuario)"
                       type="button"
-                      :disabled="guardandoAvatarId === usuario.id"
-                      :title="`Cambiar foto de perfil de ${usuario.nombre}`"
-                      :aria-label="`Cambiar foto de perfil de ${usuario.nombre}`"
-                      class="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-white border border-slate-300 text-[#004B97] hover:bg-[#004B97] hover:text-white shadow-xs flex items-center justify-center transition cursor-pointer disabled:opacity-50"
+                      :title="`Cambiar foto de ${usuario.nombre}`"
+                      :aria-label="`Cambiar foto de ${usuario.nombre}`"
+                      class="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-white border border-slate-300 text-[#004B97] hover:bg-[#004B97] hover:text-white flex items-center justify-center cursor-pointer"
                       @click="pedirCambioAvatarTabla(usuario)"
                     >
-                      <RefreshCw v-if="guardandoAvatarId === usuario.id" class="h-2.5 w-2.5 animate-spin" />
-                      <Camera v-else class="h-2.5 w-2.5" />
+                      <Camera class="h-2 w-2" />
                     </button>
                   </div>
                   <div class="min-w-0">
-                    <p class="font-bold text-[#0D1B3E]">{{ usuario.nombre }}</p>
-                    <p class="mt-0.5 text-xs text-slate-500">{{ usuario.email }}</p>
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-bold text-[#0D1B3E] truncate max-w-[180px]">{{ usuario.nombre }}</span>
+                      <span
+                        v-if="usuario.estado === 'Inactivo'"
+                        class="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-800 border border-amber-200"
+                      >
+                        Desactivada
+                      </span>
+                      <span class="font-mono text-[10px] text-slate-400 tabular-nums">{{ fechaCreacion(usuario.created_at) }}</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 truncate max-w-[220px]">{{ usuario.email }}</p>
                   </div>
                 </div>
               </td>
 
-              <!-- Columna de Credenciales (Solo Administrador) -->
-              <td v-if="esAdministrador" class="whitespace-nowrap px-5 py-4">
-                <div class="inline-flex items-center gap-2 rounded-xl border border-[#004B97]/15 bg-sky-50/60 px-3 py-1.5">
-                  <KeyRound class="h-3.5 w-3.5 shrink-0 text-[#004B97]" />
-                  <div class="text-xs">
-                    <span
-                      v-if="esCredencialVisible(usuario.id)"
-                      class="font-mono font-bold text-[#0D1B3E]"
-                    >
-                      {{ credencialDeUsuario(usuario) || 'Sin registrar' }}
+              <td class="whitespace-nowrap">
+                <span class="inline-flex rounded-full px-2.5 py-0.5 text-[11px] ring-1 ring-inset" :class="claseRol(usuario.rol)">
+                  {{ nombreRol(usuario.rol) }}
+                </span>
+              </td>
+
+              <td v-if="esAdministrador" class="whitespace-nowrap">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="inline-flex items-center gap-1 text-[11px]">
+                    <span class="font-mono tabular-nums" :class="esCredencialVisible(usuario.id) ? 'font-bold text-[#0D1B3E]' : 'text-slate-400'">
+                      {{ esCredencialVisible(usuario.id) ? (credencialDeUsuario(usuario) || '—') : '••••••' }}
                     </span>
-                    <span
-                      v-else
-                      class="font-mono tracking-widest text-slate-400"
+                    <button
+                      type="button"
+                      class="p-0.5 text-slate-400 hover:text-[#004B97] cursor-pointer"
+                      :aria-label="esCredencialVisible(usuario.id) ? `Ocultar clave de ${usuario.nombre}` : `Ver clave de ${usuario.nombre}`"
+                      @click="alternarVisibilidadCredencial(usuario.id)"
                     >
-                      ••••••••
-                    </span>
+                      <EyeOff v-if="esCredencialVisible(usuario.id)" class="h-3 w-3" />
+                      <Eye v-else class="h-3 w-3" />
+                    </button>
+                    <button
+                      v-if="credencialDeUsuario(usuario)"
+                      type="button"
+                      class="p-0.5 text-slate-400 hover:text-[#004B97] cursor-pointer"
+                      :aria-label="`Copiar clave de ${usuario.nombre}`"
+                      @click="copiarTexto(credencialDeUsuario(usuario)!, `pwd-${usuario.id}`)"
+                    >
+                      <Check v-if="copiadoId === `pwd-${usuario.id}`" class="h-3 w-3 text-[#038391]" />
+                      <Copy v-else class="h-3 w-3" />
+                    </button>
                   </div>
 
                   <button
                     type="button"
-                    class="rounded-lg p-1 text-slate-500 transition hover:bg-white hover:text-[#004B97] cursor-pointer"
-                    :title="esCredencialVisible(usuario.id) ? 'Ocultar contraseña' : 'Ver contraseña'"
-                    :aria-label="esCredencialVisible(usuario.id) ? `Ocultar contraseña de ${usuario.nombre}` : `Ver contraseña de ${usuario.nombre}`"
-                    @click="alternarVisibilidadCredencial(usuario.id)"
+                    :disabled="actualizandoSesionId === usuario.id"
+                    class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border transition cursor-pointer"
+                    :class="usuario.sesion_unica ? 'bg-[#0D1B3E] text-white border-[#0D1B3E]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#04C4D9]'"
+                    @click="alternarSesionUnica(usuario)"
                   >
-                    <EyeOff v-if="esCredencialVisible(usuario.id)" class="h-3.5 w-3.5" />
-                    <Eye v-else class="h-3.5 w-3.5" />
+                    <Smartphone v-if="usuario.sesion_unica" class="h-2.5 w-2.5" />
+                    <MonitorSmartphone v-else class="h-2.5 w-2.5" />
+                    <span>{{ usuario.sesion_unica ? (getDispositivoVinculadoInfo(usuario)?.label || '1 Dispositivo') : 'Multi' }}</span>
                   </button>
 
                   <button
-                    v-if="credencialDeUsuario(usuario)"
+                    v-if="usuario.sesion_unica && usuario.active_session_token"
                     type="button"
-                    class="rounded-lg p-1 text-slate-500 transition hover:bg-white hover:text-[#004B97] cursor-pointer"
-                    title="Copiar contraseña"
-                    :aria-label="`Copiar contraseña de ${usuario.nombre}`"
-                    @click="copiarTexto(credencialDeUsuario(usuario)!, `pwd-${usuario.id}`)"
+                    :disabled="actualizandoSesionId === usuario.id"
+                    title="Desvincular equipo"
+                    class="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer"
+                    @click="liberarDispositivoUsuario(usuario)"
                   >
-                    <Check v-if="copiadoId === `pwd-${usuario.id}`" class="h-3.5 w-3.5 text-[#038391]" />
-                    <Copy v-else class="h-3.5 w-3.5" />
+                    <Unlock class="h-2.5 w-2.5" />
+                    <span>Liberar</span>
                   </button>
+                </div>
+              </td>
 
+              <td class="whitespace-nowrap text-right">
+                <div class="inline-flex items-center justify-end gap-1">
                   <button
+                    v-if="puedeActivar(usuario)"
                     type="button"
-                    class="rounded-lg bg-[#004B97] px-2.5 py-0.5 text-[11px] font-bold text-white transition hover:bg-[#0D1B3E] cursor-pointer"
-                    :title="`Ver o gestionar credenciales de ${usuario.nombre}`"
+                    :disabled="activandoUsuarioId === usuario.id || cargandoUsuarios"
+                    class="inline-flex items-center gap-1 rounded-lg bg-[#147488] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#0D1B3E] disabled:opacity-50 cursor-pointer"
+                    @click="activarCuentaUsuario(usuario)"
+                  >
+                    <RefreshCw v-if="activandoUsuarioId === usuario.id" class="h-3 w-3 animate-spin" />
+                    <UserCheck v-else class="h-3 w-3" />
+                    <span>{{ activandoUsuarioId === usuario.id ? 'Activando…' : 'Activar' }}</span>
+                  </button>
+                  <button
+                    v-if="esAdministrador"
+                    type="button"
+                    class="rounded-lg bg-[#004B97] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#0D1B3E] cursor-pointer"
                     @click="abrirModalCredenciales(usuario, $event)"
                   >
                     Ficha
                   </button>
-                </div>
-              </td>
-
-              <td class="whitespace-nowrap px-5 py-4">
-                <span class="inline-flex rounded-full px-3 py-1 text-xs ring-1 ring-inset" :class="claseRol(usuario.rol)">
-                  {{ nombreRol(usuario.rol) }}
-                </span>
-              </td>
-              <td class="px-5 py-4">
-                <span
-                  class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset"
-                  :class="usuario.estado === 'Activo' ? 'bg-cyan-50 text-[#038391] ring-cyan-200' : 'bg-slate-100 text-slate-500 ring-slate-200'"
-                >
-                  <span
-                    class="h-1.5 w-1.5 rounded-full"
-                    :class="usuario.estado === 'Activo' ? 'bg-[#04C4D9]' : 'bg-slate-400'"
-                  ></span>
-                  {{ usuario.estado }}
-                </span>
-              </td>
-              <td v-if="esAdministrador" class="whitespace-nowrap px-5 py-4">
-                <div class="flex flex-col items-start gap-1">
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      :disabled="actualizandoSesionId === usuario.id"
-                      :title="usuario.sesion_unica ? 'Bloqueado a 1 único dispositivo fijo (clic para permitir multi-dispositivo)' : 'Múltiples dispositivos permitidos (clic para restringir a 1 dispositivo fijo)'"
-                      class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset transition cursor-pointer disabled:opacity-50"
-                      :class="usuario.sesion_unica
-                        ? 'bg-[#004B97] text-white ring-[#004B97] hover:bg-[#0D1B3E]'
-                        : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-sky-50 hover:text-[#004B97]'"
-                      @click="alternarSesionUnica(usuario)"
-                    >
-                      <Smartphone v-if="usuario.sesion_unica" class="h-3.5 w-3.5 shrink-0" />
-                      <MonitorSmartphone v-else class="h-3.5 w-3.5 shrink-0" />
-                      <span>{{ usuario.sesion_unica ? '1 Dispositivo' : 'Multi-dispositivo' }}</span>
-                    </button>
-                    <button
-                      v-if="usuario.sesion_unica && usuario.active_session_token"
-                      type="button"
-                      :disabled="actualizandoSesionId === usuario.id"
-                      title="Desvincular equipo autorizado para permitir ingreso desde otro dispositivo"
-                      class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 cursor-pointer disabled:opacity-50"
-                      @click="liberarDispositivoUsuario(usuario)"
-                    >
-                      <Unlock class="h-3 w-3 shrink-0" />
-                      <span>Liberar</span>
-                    </button>
-                  </div>
-                  <span
-                    v-if="usuario.sesion_unica"
-                    class="text-[11px] font-medium pl-1"
-                    :class="getDispositivoVinculadoInfo(usuario) ? 'text-slate-600' : 'text-slate-400'"
+                  <button
+                    v-if="puedeCambiarRol(usuario)"
+                    type="button"
+                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-[#004B97] hover:border-[#004B97] cursor-pointer"
+                    @click="abrirCambioRol(usuario, $event)"
                   >
-                    <template v-if="getDispositivoVinculadoInfo(usuario)">
-                      Vinculado: {{ getDispositivoVinculadoInfo(usuario)?.label }}<template v-if="getDispositivoVinculadoInfo(usuario)?.fecha"> · {{ getDispositivoVinculadoInfo(usuario)?.fecha }}</template>
-                    </template>
-                    <template v-else>
-                      Sin equipo vinculado aún
-                    </template>
-                  </span>
+                    Rol
+                  </button>
+                  <button
+                    v-if="puedeDesactivar(usuario)"
+                    type="button"
+                    class="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer"
+                    @click="pedirDesactivacion(usuario, $event)"
+                  >
+                    Pausar
+                  </button>
+                  <button
+                    v-if="puedeEliminar(usuario)"
+                    type="button"
+                    :aria-label="`Eliminar a ${usuario.nombre}`"
+                    class="rounded-lg border border-rose-200 bg-rose-50 p-1 text-rose-700 hover:bg-rose-600 hover:text-white cursor-pointer"
+                    @click="pedirEliminacion(usuario, $event)"
+                  >
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              </td>
-              <td class="whitespace-nowrap px-5 py-4 text-slate-600 font-mono text-xs tabular-nums">{{ fechaCreacion(usuario.created_at) }}</td>
-              <td class="whitespace-nowrap px-5 py-4 text-right">
-                <button
-                  v-if="esAdministrador"
-                  type="button"
-                  :aria-label="`Ver credenciales de ${usuario.nombre}`"
-                  class="mr-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0D1B3E] transition hover:border-[#04C4D9] hover:bg-sky-50 cursor-pointer"
-                  @click="abrirModalCredenciales(usuario, $event)"
-                >
-                  Credenciales
-                </button>
-                <button
-                  v-if="puedeCambiarRol(usuario)"
-                  type="button"
-                  :disabled="cargandoUsuarios || guardandoRol || desactivando || !!errorLista"
-                  :aria-label="`Cambiar rol de ${usuario.nombre}`"
-                  class="mr-2 rounded-xl border border-[#04C4D9]/50 bg-sky-50 px-3 py-1.5 text-xs font-bold text-[#004B97] transition hover:bg-[#004B97] hover:text-white disabled:opacity-50 cursor-pointer"
-                  @click="abrirCambioRol(usuario, $event)"
-                >Cambiar rol</button>
-                <button
-                  v-if="puedeDesactivar(usuario)"
-                  type="button"
-                  :disabled="cargandoUsuarios || desactivando || !!errorLista"
-                  :aria-label="`Desactivar a ${usuario.nombre}`"
-                  class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50 cursor-pointer"
-                  @click="pedirDesactivacion(usuario, $event)"
-                >Desactivar</button>
-                <button
-                  v-if="puedeEliminar(usuario)"
-                  type="button"
-                  :disabled="cargandoUsuarios || desactivando || !!errorLista"
-                  :aria-label="`Eliminar a ${usuario.nombre}`"
-                  class="ml-2 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
-                  @click="pedirEliminacion(usuario, $event)"
-                >Eliminar</button>
-                <span v-if="!puedeEliminar(usuario)" class="text-xs font-medium text-slate-400">
-                  {{ usuario.id === auth.user?.id ? 'Tu cuenta' : usuario.estado === 'Inactivo' ? 'Desactivado' : 'Cuenta protegida' }}
-                </span>
               </td>
             </tr>
           </tbody>
