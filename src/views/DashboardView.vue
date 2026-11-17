@@ -26,7 +26,11 @@ import {
   BarChart3, 
   Search, 
   CalendarDays,
-  MapPin
+  MapPin,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Check
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -42,7 +46,27 @@ let toastTimeout: any = null
 
 // Filtros Reactivos de Período Temporal
 type TimePeriod = 'hoy' | 'semana' | 'mes' | 'ano' | 'todo' | 'personalizado'
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+] as const
+const MONTH_SHORT_NAMES = [
+  'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+] as const
+
+const nowTick = ref(new Date())
+let clockInterval: ReturnType<typeof setInterval> | null = null
+
+const currentYear = computed(() => nowTick.value.getFullYear())
+const currentMonth = computed(() => nowTick.value.getMonth())
+
 const selectedPeriod = ref<TimePeriod>('mes')
+const selectedYear = ref<number>(new Date().getFullYear())
+const selectedMonth = ref<number>(new Date().getMonth())
+const isMonthDropdownOpen = ref(false)
+const isYearDropdownOpen = ref(false)
+const periodSelectorRef = ref<HTMLElement | null>(null)
 const customStartDate = ref('')
 const customEndDate = ref('')
 
@@ -120,7 +144,20 @@ const clearClientFilter = () => {
 }
 
 const handleClickOutsideClientSearch = (event: MouseEvent) => {
-  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(target)) {
+    isClientDropdownOpen.value = false
+  }
+  if (periodSelectorRef.value && !periodSelectorRef.value.contains(target)) {
+    isMonthDropdownOpen.value = false
+    isYearDropdownOpen.value = false
+  }
+}
+
+const handlePeriodEscape = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    isMonthDropdownOpen.value = false
+    isYearDropdownOpen.value = false
     isClientDropdownOpen.value = false
   }
 }
@@ -132,6 +169,19 @@ onMounted(async () => {
   }
 
   document.addEventListener('click', handleClickOutsideClientSearch)
+  document.addEventListener('keydown', handlePeriodEscape)
+  clockInterval = setInterval(() => {
+    const nextNow = new Date()
+    const prevDateKey = `${nowTick.value.getFullYear()}-${nowTick.value.getMonth()}-${nowTick.value.getDate()}`
+    const nextDateKey = `${nextNow.getFullYear()}-${nextNow.getMonth()}-${nextNow.getDate()}`
+    if (prevDateKey !== nextDateKey) {
+      const wasOnCurrentYear = selectedYear.value === nowTick.value.getFullYear()
+      const wasOnCurrentMonth = selectedMonth.value === nowTick.value.getMonth() && wasOnCurrentYear
+      nowTick.value = nextNow
+      if (wasOnCurrentYear) selectedYear.value = nextNow.getFullYear()
+      if (wasOnCurrentMonth) selectedMonth.value = nextNow.getMonth()
+    }
+  }, 60000)
 
   // Inicializar fechas para filtro personalizado (últimos 30 días)
   const today = new Date()
@@ -144,6 +194,11 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutsideClientSearch)
+  document.removeEventListener('keydown', handlePeriodEscape)
+  if (clockInterval) {
+    clearInterval(clockInterval)
+    clockInterval = null
+  }
 })
 
 // === FILTRADO TEMPORAL Y DE CUENTA REACTIVO ===
@@ -160,8 +215,127 @@ const parseOrderDate = (order: Order): Date => {
   return new Date()
 }
 
+// Lista dinámica de años disponibles (últimos años + todos los años con órdenes registradas)
+const availableYears = computed<number[]>(() => {
+  const yearsSet = new Set<number>()
+  const curY = currentYear.value
+  let minY = curY - 6
+  let maxY = curY
+
+  orders.value.forEach(order => {
+    const y = parseOrderDate(order).getFullYear()
+    if (y >= 2000 && y <= curY + 5) {
+      yearsSet.add(y)
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  })
+
+  const list: number[] = []
+  for (let y = maxY; y >= minY; y--) {
+    list.push(y)
+  }
+  return list
+})
+
+const orderCountByYear = computed<Record<number, number>>(() => {
+  const counts: Record<number, number> = {}
+  orders.value.forEach(order => {
+    const y = parseOrderDate(order).getFullYear()
+    counts[y] = (counts[y] || 0) + 1
+  })
+  return counts
+})
+
+const orderCountByMonthInSelectedYear = computed<Record<number, number>>(() => {
+  const counts: Record<number, number> = {}
+  orders.value.forEach(order => {
+    const d = parseOrderDate(order)
+    if (d.getFullYear() === selectedYear.value) {
+      const m = d.getMonth()
+      counts[m] = (counts[m] || 0) + 1
+    }
+  })
+  return counts
+})
+
+const selectSimplePeriod = (period: 'hoy' | 'semana' | 'todo' | 'personalizado') => {
+  selectedPeriod.value = period
+  isMonthDropdownOpen.value = false
+  isYearDropdownOpen.value = false
+}
+
+const activateCurrentMonth = () => {
+  const wasCustomMonth =
+    selectedPeriod.value === 'mes' &&
+    (selectedMonth.value !== currentMonth.value || selectedYear.value !== currentYear.value)
+  if (selectedPeriod.value !== 'mes' || wasCustomMonth) {
+    selectedYear.value = currentYear.value
+    selectedMonth.value = currentMonth.value
+    selectedPeriod.value = 'mes'
+    isMonthDropdownOpen.value = false
+  } else {
+    isMonthDropdownOpen.value = !isMonthDropdownOpen.value
+  }
+  isYearDropdownOpen.value = false
+}
+
+const toggleMonthDropdown = () => {
+  isYearDropdownOpen.value = false
+  isMonthDropdownOpen.value = !isMonthDropdownOpen.value
+}
+
+const pickMonth = (monthIndex: number) => {
+  selectedMonth.value = monthIndex
+  selectedPeriod.value = 'mes'
+  isMonthDropdownOpen.value = false
+}
+
+const activateCurrentYear = () => {
+  const wasCustomYear = selectedPeriod.value === 'ano' && selectedYear.value !== currentYear.value
+  if (selectedPeriod.value !== 'ano' || wasCustomYear) {
+    selectedYear.value = currentYear.value
+    selectedPeriod.value = 'ano'
+    isYearDropdownOpen.value = false
+  } else {
+    isYearDropdownOpen.value = !isYearDropdownOpen.value
+  }
+  isMonthDropdownOpen.value = false
+}
+
+const toggleYearDropdown = () => {
+  isMonthDropdownOpen.value = false
+  isYearDropdownOpen.value = !isYearDropdownOpen.value
+}
+
+const pickYear = (year: number) => {
+  selectedYear.value = year
+  selectedPeriod.value = 'ano'
+  isYearDropdownOpen.value = false
+}
+
+const monthButtonLabel = computed(() => {
+  if (
+    selectedPeriod.value === 'mes' &&
+    (selectedMonth.value !== currentMonth.value || selectedYear.value !== currentYear.value)
+  ) {
+    const shortName = MONTH_NAMES[selectedMonth.value] || 'Mes'
+    return selectedYear.value !== currentYear.value
+      ? `${MONTH_SHORT_NAMES[selectedMonth.value]} ${selectedYear.value}`
+      : shortName
+  }
+  return 'Mes Actual'
+})
+
+const yearButtonLabel = computed(() => {
+  if (selectedPeriod.value === 'ano' && selectedYear.value !== currentYear.value) {
+    return `Año ${selectedYear.value}`
+  }
+  return `Año ${currentYear.value}`
+})
+
 const filteredOrders = computed(() => {
-  const now = new Date()
+  const now = nowTick.value
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 
@@ -176,9 +350,11 @@ const filteredOrders = computed(() => {
       const oneWeekAgo = new Date(now.getTime() - 7 * 86400000)
       matchesPeriod = orderDate >= oneWeekAgo && orderDate <= now
     } else if (selectedPeriod.value === 'mes') {
-      matchesPeriod = orderDate.getFullYear() === now.getFullYear() && orderDate.getMonth() === now.getMonth()
+      matchesPeriod =
+        orderDate.getFullYear() === selectedYear.value &&
+        orderDate.getMonth() === selectedMonth.value
     } else if (selectedPeriod.value === 'ano') {
-      matchesPeriod = orderDate.getFullYear() === now.getFullYear()
+      matchesPeriod = orderDate.getFullYear() === selectedYear.value
     } else if (selectedPeriod.value === 'personalizado') {
       if (customStartDate.value) {
         const start = new Date(`${customStartDate.value}T00:00:00`)
@@ -234,17 +410,16 @@ const filteredOrders = computed(() => {
 
 // Período amigable mostrado en texto
 const periodDescription = computed(() => {
-  const now = new Date()
-  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  const now = nowTick.value
   switch (selectedPeriod.value) {
     case 'hoy':
       return `Hoy (${now.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })})`
     case 'semana':
       return 'Últimos 7 días'
     case 'mes':
-      return `${monthNames[now.getMonth()]} ${now.getFullYear()}`
+      return `${MONTH_NAMES[selectedMonth.value]} ${selectedYear.value}`
     case 'ano':
-      return `Año ${now.getFullYear()}`
+      return `Año ${selectedYear.value}`
     case 'personalizado':
       return `${customStartDate.value || 'Inicio'} a ${customEndDate.value || 'Hoy'}`
     case 'todo':
@@ -437,7 +612,7 @@ const componentStats = computed<ComponentStat[]>(() => {
   })
 })
 
-// === TENDENCIAS MENSUALES (CARGA DE TRABAJO 2026) ===
+// === TENDENCIAS MENSUALES (CARGA DE TRABAJO ANUAL DINÁMICA) ===
 interface MonthTrend {
   monthIndex: number
   monthShort: string
@@ -447,25 +622,29 @@ interface MonthTrend {
   isCurrent: boolean
 }
 
+const chartYear = computed(() =>
+  selectedPeriod.value === 'ano' || selectedPeriod.value === 'mes'
+    ? selectedYear.value
+    : currentYear.value
+)
+
 const monthlyTrends = computed<MonthTrend[]>(() => {
-  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-  const fullMonths = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-  const currentMonth = new Date().getMonth()
-  const currentYear = new Date().getFullYear()
+  const curMonth = currentMonth.value
+  const curYear = currentYear.value
+  const targetYear = chartYear.value
 
   // Base de 12 meses
-  const trends: MonthTrend[] = months.map((m, idx) => ({
+  const trends: MonthTrend[] = MONTH_SHORT_NAMES.map((m, idx) => ({
     monthIndex: idx,
     monthShort: m,
-    monthFull: fullMonths[idx],
+    monthFull: MONTH_NAMES[idx] || m,
     orderCount: 0,
     revenue: 0,
-    isCurrent: idx === currentMonth
+    isCurrent: idx === curMonth && targetYear === curYear
   }))
 
-  // Considerar todas las órdenes del año actual (o filtradas si hay cliente seleccionado)
+  // Considerar todas las órdenes del año seleccionado (o actual) respetando cliente si hay filtro
   orders.value.forEach(order => {
-    // Si hay filtro de cliente, respetarlo en la tendencia
     if (selectedClient.value) {
       const c = selectedClient.value
       const targetId = (c.id || '').toLowerCase()
@@ -486,11 +665,14 @@ const monthlyTrends = computed<MonthTrend[]>(() => {
     }
 
     const orderDate = parseOrderDate(order)
-    if (orderDate.getFullYear() === currentYear && order.status !== 'Cancelada') {
+    if (orderDate.getFullYear() === targetYear && order.status !== 'Cancelada') {
       const mIdx = orderDate.getMonth()
       if (mIdx >= 0 && mIdx < 12) {
-        trends[mIdx].orderCount++
-        trends[mIdx].revenue += order.total || 0
+        const entry = trends[mIdx]
+        if (entry) {
+          entry.orderCount++
+          entry.revenue += order.total || 0
+        }
       }
     }
   })
@@ -679,7 +861,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
         </div>
 
         <!-- Header & Selector de Período -->
-        <div class="relative z-10 flex flex-col gap-4">
+        <div class="relative z-30 flex flex-col gap-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm">
               <span class="w-2 h-2 rounded-full bg-[#BFEBF2] animate-pulse shrink-0"></span>
@@ -692,10 +874,13 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
             </div>
 
             <!-- Selector Segmentado de Período -->
-            <div class="inline-flex items-center p-1 bg-[#09132B]/45 backdrop-blur-md border border-white/15 rounded-xl gap-1 flex-wrap">
+            <div
+              ref="periodSelectorRef"
+              class="relative z-30 inline-flex items-center p-1 bg-[#09132B]/45 backdrop-blur-md border border-white/15 rounded-xl gap-1 flex-wrap"
+            >
               <button
                 type="button"
-                @click="selectedPeriod = 'hoy'"
+                @click="selectSimplePeriod('hoy')"
                 :class="[
                   'px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
                   selectedPeriod === 'hoy'
@@ -707,7 +892,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               </button>
               <button
                 type="button"
-                @click="selectedPeriod = 'semana'"
+                @click="selectSimplePeriod('semana')"
                 :class="[
                   'px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
                   selectedPeriod === 'semana'
@@ -717,33 +902,214 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               >
                 Esta Semana
               </button>
+
+              <!-- Mes Actual + Desplegable de todos los meses -->
+              <div class="relative inline-flex items-center">
+                <div
+                  :class="[
+                    'inline-flex items-center rounded-lg transition-all duration-150',
+                    selectedPeriod === 'mes'
+                      ? 'bg-white text-[#0D1B3E] shadow-sm'
+                      : 'text-blue-100/80 hover:text-white hover:bg-white/10'
+                  ]"
+                >
+                  <button
+                    type="button"
+                    @click="activateCurrentMonth"
+                    class="pl-2.5 pr-1 py-1.5 text-xs font-bold whitespace-nowrap active:scale-[0.97] cursor-pointer"
+                    :title="selectedPeriod === 'mes' && (selectedMonth !== currentMonth || selectedYear !== currentYear) ? `Volver a ${MONTH_NAMES[currentMonth]} ${currentYear}` : 'Filtrar por mes'"
+                  >
+                    {{ monthButtonLabel }}
+                  </button>
+                  <button
+                    type="button"
+                    @click.stop="toggleMonthDropdown"
+                    :aria-expanded="isMonthDropdownOpen"
+                    aria-label="Elegir mes del año"
+                    :class="[
+                      'pr-2 pl-0.5 py-1.5 rounded-r-lg transition-colors cursor-pointer',
+                      selectedPeriod === 'mes'
+                        ? 'text-[#004B97] hover:text-[#0D1B3E]'
+                        : 'text-blue-100/75 hover:text-white'
+                    ]"
+                  >
+                    <ChevronDown
+                      class="w-3.5 h-3.5 transition-transform duration-150"
+                      :class="{ 'rotate-180': isMonthDropdownOpen }"
+                    />
+                  </button>
+                </div>
+
+                <Transition name="popover-pop">
+                  <div
+                    v-if="isMonthDropdownOpen"
+                    class="origin-top left-0 sm:left-auto sm:right-0 absolute top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 text-slate-900"
+                  >
+                    <div class="px-3.5 py-2.5 bg-[#19314D] text-white flex items-center justify-between gap-2">
+                      <span class="text-[10px] font-mono uppercase tracking-wider font-bold text-[#BFEBF2]">
+                        Meses del Año
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <button
+                          type="button"
+                          @click.stop="selectedYear = Math.max(availableYears[availableYears.length - 1] || currentYear - 6, selectedYear - 1)"
+                          class="p-1 rounded-md hover:bg-white/15 text-slate-200 cursor-pointer"
+                          title="Año anterior"
+                        >
+                          <ChevronLeft class="w-3.5 h-3.5" />
+                        </button>
+                        <span class="font-mono text-xs font-extrabold px-1.5 tabular-nums">{{ selectedYear }}</span>
+                        <button
+                          type="button"
+                          @click.stop="selectedYear = Math.min(availableYears[0] || currentYear, selectedYear + 1)"
+                          class="p-1 rounded-md hover:bg-white/15 text-slate-200 cursor-pointer"
+                          title="Año siguiente"
+                        >
+                          <ChevronRight class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="p-2.5 grid grid-cols-3 gap-1.5">
+                      <button
+                        v-for="(mName, idx) in MONTH_NAMES"
+                        :key="mName"
+                        type="button"
+                        @click="pickMonth(idx)"
+                        :class="[
+                          'relative px-2 py-2 rounded-xl text-left transition-all cursor-pointer border',
+                          selectedPeriod === 'mes' && selectedMonth === idx
+                            ? 'bg-[#004B97] text-white border-[#004B97] shadow-xs'
+                            : idx === currentMonth && selectedYear === currentYear
+                              ? 'bg-cyan-50/90 text-[#0D1B3E] border-[#04C4D9]/60 hover:bg-cyan-100/70'
+                              : 'bg-slate-50/80 text-slate-700 border-slate-200/70 hover:bg-blue-50/70 hover:border-blue-200'
+                        ]"
+                      >
+                        <div class="flex items-center justify-between gap-1">
+                          <span class="text-[11px] font-bold truncate">{{ mName }}</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-0.5 text-[9px] font-mono">
+                          <span
+                            :class="selectedPeriod === 'mes' && selectedMonth === idx ? 'text-sky-200' : 'text-slate-400'"
+                          >
+                            {{ orderCountByMonthInSelectedYear[idx] || 0 }} órd.
+                          </span>
+                          <span
+                            v-if="idx === currentMonth && selectedYear === currentYear"
+                            :class="[
+                              'font-bold uppercase',
+                              selectedPeriod === 'mes' && selectedMonth === idx ? 'text-[#BFEBF2]' : 'text-[#038391]'
+                            ]"
+                          >
+                            Actual
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+
+                    <div class="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                      <span class="text-[10px] text-slate-500 font-medium">
+                        Hoy: {{ MONTH_NAMES[currentMonth] }} {{ currentYear }}
+                      </span>
+                      <button
+                        type="button"
+                        @click="selectedYear = currentYear; pickMonth(currentMonth)"
+                        class="text-[11px] font-bold text-[#004B97] hover:underline cursor-pointer"
+                      >
+                        Ir al mes actual
+                      </button>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
+
+              <!-- Año Actual + Desplegable de todos los años -->
+              <div class="relative inline-flex items-center">
+                <div
+                  :class="[
+                    'inline-flex items-center rounded-lg transition-all duration-150',
+                    selectedPeriod === 'ano'
+                      ? 'bg-white text-[#0D1B3E] shadow-sm'
+                      : 'text-blue-100/80 hover:text-white hover:bg-white/10'
+                  ]"
+                >
+                  <button
+                    type="button"
+                    @click="activateCurrentYear"
+                    class="pl-2.5 pr-1 py-1.5 text-xs font-bold whitespace-nowrap active:scale-[0.97] cursor-pointer"
+                    :title="selectedPeriod === 'ano' && selectedYear !== currentYear ? `Volver a Año ${currentYear}` : `Filtrar por año ${currentYear}`"
+                  >
+                    {{ yearButtonLabel }}
+                  </button>
+                  <button
+                    type="button"
+                    @click.stop="toggleYearDropdown"
+                    :aria-expanded="isYearDropdownOpen"
+                    aria-label="Elegir año"
+                    :class="[
+                      'pr-2 pl-0.5 py-1.5 rounded-r-lg transition-colors cursor-pointer',
+                      selectedPeriod === 'ano'
+                        ? 'text-[#004B97] hover:text-[#0D1B3E]'
+                        : 'text-blue-100/75 hover:text-white'
+                    ]"
+                  >
+                    <ChevronDown
+                      class="w-3.5 h-3.5 transition-transform duration-150"
+                      :class="{ 'rotate-180': isYearDropdownOpen }"
+                    />
+                  </button>
+                </div>
+
+                <Transition name="popover-pop">
+                  <div
+                    v-if="isYearDropdownOpen"
+                    class="origin-top right-0 absolute top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 text-slate-900"
+                  >
+                    <div class="px-3.5 py-2.5 bg-[#19314D] text-white flex items-center justify-between text-[10px] font-mono uppercase tracking-wider font-bold">
+                      <span class="text-[#BFEBF2]">Todos los Años</span>
+                      <span class="text-slate-300">{{ availableYears.length }} disp.</span>
+                    </div>
+
+                    <div class="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+                      <button
+                        v-for="yr in availableYears"
+                        :key="yr"
+                        type="button"
+                        @click="pickYear(yr)"
+                        :class="[
+                          'w-full px-3.5 py-2.5 flex items-center justify-between gap-2 transition-colors cursor-pointer',
+                          selectedPeriod === 'ano' && selectedYear === yr
+                            ? 'bg-blue-50 text-[#004B97] font-extrabold'
+                            : 'hover:bg-slate-50 text-slate-700 font-semibold'
+                        ]"
+                      >
+                        <div class="flex items-center gap-2">
+                          <span class="font-mono tabular-nums">Año {{ yr }}</span>
+                          <span
+                            v-if="yr === currentYear"
+                            class="px-1.5 py-0.5 rounded-md bg-cyan-50 text-[#038391] border border-cyan-200 text-[9px] font-mono font-bold uppercase"
+                          >
+                            Actual
+                          </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-mono text-[10px] text-slate-400">
+                            {{ orderCountByYear[yr] || 0 }} órd.
+                          </span>
+                          <Check
+                            v-if="selectedPeriod === 'ano' && selectedYear === yr"
+                            class="w-3.5 h-3.5 text-[#004B97]"
+                          />
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
+
               <button
                 type="button"
-                @click="selectedPeriod = 'mes'"
-                :class="[
-                  'px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
-                  selectedPeriod === 'mes'
-                    ? 'bg-white text-[#0D1B3E] shadow-sm'
-                    : 'text-blue-100/80 hover:text-white hover:bg-white/10'
-                ]"
-              >
-                Mes Actual
-              </button>
-              <button
-                type="button"
-                @click="selectedPeriod = 'ano'"
-                :class="[
-                  'px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
-                  selectedPeriod === 'ano'
-                    ? 'bg-white text-[#0D1B3E] shadow-sm'
-                    : 'text-blue-100/80 hover:text-white hover:bg-white/10'
-                ]"
-              >
-                Año 2026
-              </button>
-              <button
-                type="button"
-                @click="selectedPeriod = 'todo'"
+                @click="selectSimplePeriod('todo')"
                 :class="[
                   'px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
                   selectedPeriod === 'todo'
@@ -755,7 +1121,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               </button>
               <button
                 type="button"
-                @click="selectedPeriod = 'personalizado'"
+                @click="selectSimplePeriod('personalizado')"
                 :class="[
                   'px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-[0.97] cursor-pointer',
                   selectedPeriod === 'personalizado'
@@ -1313,7 +1679,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               </span>
               <div class="min-w-0">
                 <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0F1E2E] tracking-tight">
-                  Tendencias de Carga Mensual (2026)
+                  Tendencias de Carga Mensual ({{ chartYear }})
                 </h2>
                 <p class="text-[11px] text-slate-500 truncate">
                   Evolución de órdenes de rectificación y facturación anual
