@@ -854,7 +854,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
     <section class="relative z-20 grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
 
       <!-- Hero Command Banner (8 cols) -->
-      <div class="xl:col-span-8 studio-hero-banner p-6 sm:p-7 text-white relative z-20 overflow-visible flex flex-col justify-between gap-5">
+      <div class="xl:col-span-8 min-w-0 studio-hero-banner p-4 sm:p-7 text-white relative z-20 overflow-visible flex flex-col justify-between gap-5">
         <!-- Halo ambiental cian (con recorte propio para no cortar el desplegable) -->
         <div class="pointer-events-none absolute inset-0 overflow-hidden rounded-[22px]">
           <div class="absolute -top-16 -right-12 w-64 h-64 rounded-full bg-[#04C4D9]/25 blur-3xl"></div>
@@ -863,9 +863,9 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
         <!-- Header & Selector de Período -->
         <div class="relative z-30 flex flex-col gap-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm">
+            <div class="inline-flex max-w-full flex-wrap items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm">
               <span class="w-2 h-2 rounded-full bg-[#BFEBF2] animate-pulse shrink-0"></span>
-              <span class="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#BFEBF2] whitespace-nowrap">
+              <span class="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#BFEBF2] truncate">
                 JR BLANCO STUDIO · TELEMETRÍA
               </span>
               <span class="font-mono text-[10px] text-white/90 font-semibold border-l border-white/20 pl-2 whitespace-nowrap">
@@ -876,7 +876,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
             <!-- Selector Segmentado de Período -->
             <div
               ref="periodSelectorRef"
-              class="relative z-30 inline-flex items-center p-1 bg-[#09132B]/45 backdrop-blur-md border border-white/15 rounded-xl gap-1 flex-wrap"
+              class="relative z-30 w-full sm:w-auto inline-flex items-center p-1 bg-[#09132B]/45 backdrop-blur-md border border-white/15 rounded-xl gap-1 flex-wrap"
             >
               <button
                 type="button"
@@ -904,7 +904,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               </button>
 
               <!-- Mes Actual + Desplegable de todos los meses -->
-              <div class="relative inline-flex items-center">
+              <div class="static sm:relative inline-flex items-center">
                 <div
                   :class="[
                     'inline-flex items-center rounded-lg transition-all duration-150',
@@ -943,7 +943,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                 <Transition name="popover-pop">
                   <div
                     v-if="isMonthDropdownOpen"
-                    class="origin-top left-0 sm:left-auto sm:right-0 absolute top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 text-slate-900"
+                    class="origin-top left-0 right-0 sm:left-auto sm:right-0 absolute top-full mt-2 w-full sm:w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 text-slate-900"
                   >
                     <div class="px-3.5 py-2.5 bg-[#19314D] text-white flex items-center justify-between gap-2">
                       <span class="text-[10px] font-mono uppercase tracking-wider font-bold text-[#BFEBF2]">
@@ -970,7 +970,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                       </div>
                     </div>
 
-                    <div class="p-2.5 grid grid-cols-3 gap-1.5">
+                    <div class="p-2.5 grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[55vh] overflow-y-auto">
                       <button
                         v-for="(mName, idx) in MONTH_NAMES"
                         :key="mName"
@@ -1024,7 +1024,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               </div>
 
               <!-- Año Actual + Desplegable de todos los años -->
-              <div class="relative inline-flex items-center">
+              <div class="static sm:relative inline-flex items-center">
                 <div
                   :class="[
                     'inline-flex items-center rounded-lg transition-all duration-150',
@@ -1063,7 +1063,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                 <Transition name="popover-pop">
                   <div
                     v-if="isYearDropdownOpen"
-                    class="origin-top right-0 absolute top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 text-slate-900"
+                    class="origin-top left-0 right-0 sm:left-auto sm:right-0 absolute top-full mt-2 w-full sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 text-slate-900"
                   >
                     <div class="px-3.5 py-2.5 bg-[#19314D] text-white flex items-center justify-between text-[10px] font-mono uppercase tracking-wider font-bold">
                       <span class="text-[#BFEBF2]">Todos los Años</span>
