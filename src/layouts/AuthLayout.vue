@@ -5,7 +5,7 @@ import { useTallerStore } from '@/stores/taller'
 const tallerStore = useTallerStore()
 
 onMounted(async () => {
-  await tallerStore.loadTallerInfo(true)
+  await tallerStore.loadTallerInfo(true, { forLoginScreen: true })
 })
 
 const companyDisplayName = computed(() => {

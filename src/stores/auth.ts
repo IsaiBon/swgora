@@ -237,6 +237,21 @@ export const useAuthStore = defineStore('auth', () => {
     () => normalizeRole(user.value?.role) === 'Sub-Administrador'
   )
 
+  const canCustomizeLogin = computed(() => {
+    const current = user.value
+    if (!current) return false
+    if (current.isIndependent || current.tenantId) return false
+    const membership = getUserTenantMembership({
+      id: current.id,
+      email: current.email,
+      rawRole: current.rawRole || current.role,
+    })
+    if (membership.isIndependent) return false
+    const parsedSubAdmin = parseSubAdminRole(current.rawRole || current.role)
+    if (parsedSubAdmin.isSubAdmin) return false
+    return normalizeRole(current.role) === 'Administrador'
+  })
+
   const activeTenantId = computed(() => user.value?.tenantId || null)
   const activeTenantWorkshopName = computed(
     () => user.value?.tenantWorkshopName || null
@@ -1056,6 +1071,7 @@ export const useAuthStore = defineStore('auth', () => {
     isGlobalAdmin,
     isIndependentAdmin,
     isSubAdmin,
+    canCustomizeLogin,
     activeTenantId,
     activeTenantWorkshopName,
     activeRutaId,

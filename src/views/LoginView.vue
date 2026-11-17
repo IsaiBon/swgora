@@ -237,7 +237,7 @@ watch(
 )
 
 onMounted(async () => {
-  await tallerStore.loadTallerInfo(true)
+  await tallerStore.loadTallerInfo(true, { forLoginScreen: true })
   inspectUrlForAuthFlow()
 })
 

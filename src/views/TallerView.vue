@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTallerStore } from '@/stores/taller'
+import type { TallerInfo } from '@/services/tallerService'
 import {
   Building2,
   Phone,
@@ -36,10 +37,25 @@ const pendingLogoFile = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 // Validación de permisos: Administrador o Taller Independiente
+// (Solo el Administrador principal puede personalizar el Login)
+watch(
+  () => authStore.canCustomizeLogin,
+  (allowed) => {
+    if (!allowed && activeTab.value === 'login') {
+      activeTab.value = 'membrete'
+    }
+  },
+  { immediate: true }
+)
+
 onMounted(async () => {
   if (!authStore.canAccess('/taller')) {
     router.replace(authStore.defaultRoute)
     return
+  }
+
+  if (!authStore.canCustomizeLogin) {
+    activeTab.value = 'membrete'
   }
 
   await tallerStore.loadTallerInfo(true)
@@ -123,8 +139,9 @@ const resetToDefaultLogo = () => {
   showToast('Se restableció el logotipo al predeterminado del taller.', 'success')
 }
 
-// Preestablecer título de Login con el nombre del taller
+// Preestablecer título de Login con el nombre del taller (solo Administrador principal)
 const syncLoginTitleWithWorkshop = () => {
+  if (!authStore.canCustomizeLogin) return
   if (form.nombre.trim()) {
     form.login_titulo = form.nombre.trim()
     showToast('Título del Login sincronizado con el Nombre del Taller.', 'success')
@@ -158,7 +175,7 @@ const handleSubmit = async () => {
       }
     }
 
-    await tallerStore.updateTaller({
+    const payload: Partial<TallerInfo> = {
       nombre: form.nombre.trim(),
       direccion: form.direccion.trim(),
       celular1: form.celular1.trim(),
@@ -166,14 +183,24 @@ const handleSubmit = async () => {
       eslogan: form.eslogan.trim(),
       logo_url: finalLogoUrl,
       iva_porcentaje: Number(form.iva_porcentaje),
-      login_titulo: form.login_titulo.trim() || 'JR Blanco',
-      login_subtitulo: form.login_subtitulo.trim() || 'Taller Industrial y Rectificado de Motores',
-      login_mensaje: form.login_mensaje.trim() || 'Ingresa tus credenciales para acceder al sistema'
-    })
+    }
+
+    if (authStore.canCustomizeLogin) {
+      payload.login_titulo = form.login_titulo.trim() || 'JR Blanco'
+      payload.login_subtitulo = form.login_subtitulo.trim() || 'Taller Industrial y Rectificado de Motores'
+      payload.login_mensaje = form.login_mensaje.trim() || 'Ingresa tus credenciales para acceder al sistema'
+    }
+
+    await tallerStore.updateTaller(payload)
 
     form.logo_url = finalLogoUrl
     pendingLogoFile.value = null
-    showToast('Información del taller y personalización del Login guardadas exitosamente.', 'success')
+    showToast(
+      authStore.canCustomizeLogin
+        ? 'Información del taller y personalización del Login guardadas exitosamente.'
+        : 'Información del taller guardada exitosamente.',
+      'success'
+    )
   } catch (err: any) {
     console.error('Error al guardar datos del taller:', err)
     showToast('Ocurrió un error al guardar los cambios en Supabase.', 'error')
@@ -193,14 +220,16 @@ const handleSubmit = async () => {
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15">
             <Building2 class="w-3.5 h-3.5 text-[#BFEBF2]" />
             <span class="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#BFEBF2]">
-              IDENTIDAD · MEMBRETE CORPORATIVO & PANTALLA DE ACCESO
+              {{ authStore.canCustomizeLogin ? 'IDENTIDAD · MEMBRETE CORPORATIVO & PANTALLA DE ACCESO' : 'IDENTIDAD · MEMBRETE CORPORATIVO & DOCUMENTOS PDF' }}
             </span>
           </div>
           <h1 class="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Módulo de Taller
           </h1>
           <p class="text-xs sm:text-sm text-sky-100/85 max-w-2xl">
-            Administra el logotipo y membrete oficial de órdenes y cotizaciones, y personaliza la identidad visual de la pantalla de inicio de sesión (Login).
+            {{ authStore.canCustomizeLogin
+              ? 'Administra el logotipo y membrete oficial de órdenes y cotizaciones, y personaliza la identidad visual de la pantalla de inicio de sesión (Login).'
+              : 'Administra el logotipo, datos y membrete oficial de las órdenes de trabajo y cotizaciones PDF de tu taller.' }}
           </p>
         </div>
 
@@ -243,6 +272,7 @@ const handleSubmit = async () => {
         </button>
 
         <button
+          v-if="authStore.canCustomizeLogin"
           type="button"
           @click="activeTab = 'login'"
           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer"
@@ -255,6 +285,7 @@ const handleSubmit = async () => {
         </button>
 
         <a
+          v-if="authStore.canCustomizeLogin"
           href="/login"
           target="_blank"
           rel="noopener noreferrer"
@@ -339,7 +370,7 @@ const handleSubmit = async () => {
                 </div>
 
                 <p class="text-[10.5px] text-slate-500 leading-relaxed">
-                  Admite archivos <strong>PNG, JPG, SVG o WebP</strong> (máx. 5 MB). Se recomienda una imagen cuadrada con fondo transparente para máxima fidelidad en el PDF impreso y en la pantalla de inicio de sesión.
+                  Admite archivos <strong>PNG, JPG, SVG o WebP</strong> (máx. 5 MB). Se recomienda una imagen cuadrada con fondo transparente para máxima fidelidad en el PDF impreso<template v-if="authStore.canCustomizeLogin"> y en la pantalla de inicio de sesión</template>.
                 </p>
               </div>
             </div>
@@ -353,6 +384,7 @@ const handleSubmit = async () => {
                   Nombre del Taller / Razón Social <span class="text-rose-500">*</span>
                 </label>
                 <button
+                  v-if="authStore.canCustomizeLogin"
                   type="button"
                   @click="syncLoginTitleWithWorkshop"
                   class="text-[11px] font-semibold text-[#004b97] hover:underline cursor-pointer"
@@ -437,7 +469,9 @@ const handleSubmit = async () => {
                   class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 italic focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
                 <p class="text-[10.5px] text-slate-400 mt-1">
-                  Se imprime en el pie de página del documento y al final del Login.
+                  {{ authStore.canCustomizeLogin
+                    ? 'Se imprime en el pie de página del documento y al final del Login.'
+                    : 'Se imprime en el pie de página de tus órdenes y cotizaciones PDF.' }}
                 </p>
               </div>
 
@@ -565,7 +599,7 @@ const handleSubmit = async () => {
     <!-- ========================================================================= -->
     <!-- PESTAÑA 2: PERSONALIZACIÓN DEL LOGIN -->
     <!-- ========================================================================= -->
-    <div v-else class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+    <div v-else-if="authStore.canCustomizeLogin && activeTab === 'login'" class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
 
       <!-- Columna Izquierda: Formulario de Personalización del Login (7 cols) -->
       <div class="lg:col-span-7 studio-card overflow-hidden">

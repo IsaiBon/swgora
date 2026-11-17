@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { tallerService, DEFAULT_TALLER_INFO, type TallerInfo } from '@/services/tallerService'
+import { useAuthStore } from '@/stores/auth'
 
 const syncBrowserFavicon = (logoUrl?: string) => {
   if (typeof document === 'undefined') return
@@ -29,15 +30,15 @@ export const useTallerStore = defineStore('taller', () => {
     { immediate: true }
   )
 
-  const loadTallerInfo = async (force = false) => {
-    if (isLoaded.value && !force) return tallerInfo.value
+  const loadTallerInfo = async (force = false, options?: { forLoginScreen?: boolean }) => {
+    if (isLoaded.value && !force && !options?.forLoginScreen) return tallerInfo.value
 
     isLoading.value = true
     error.value = null
     try {
-      const data = await tallerService.getTallerInfo()
+      const data = await tallerService.getTallerInfo(options)
       tallerInfo.value = data
-      isLoaded.value = true
+      isLoaded.value = !options?.forLoginScreen
       return data
     } catch (err: any) {
       error.value = err.message || 'Error al cargar información del taller'
@@ -47,11 +48,30 @@ export const useTallerStore = defineStore('taller', () => {
     }
   }
 
+  const resetTallerInfo = () => {
+    tallerInfo.value = { ...DEFAULT_TALLER_INFO }
+    isLoaded.value = false
+    error.value = null
+  }
+
   const updateTaller = async (data: Partial<TallerInfo>) => {
     isLoading.value = true
     error.value = null
     try {
-      const updated = await tallerService.updateTallerInfo(data)
+      const authStore = useAuthStore()
+      const payload: Partial<TallerInfo> = authStore.canCustomizeLogin
+        ? data
+        : {
+            ...(data.id !== undefined ? { id: data.id } : {}),
+            ...(data.nombre !== undefined ? { nombre: data.nombre } : {}),
+            ...(data.direccion !== undefined ? { direccion: data.direccion } : {}),
+            ...(data.celular1 !== undefined ? { celular1: data.celular1 } : {}),
+            ...(data.celular2 !== undefined ? { celular2: data.celular2 } : {}),
+            ...(data.eslogan !== undefined ? { eslogan: data.eslogan } : {}),
+            ...(data.logo_url !== undefined ? { logo_url: data.logo_url } : {}),
+            ...(data.iva_porcentaje !== undefined ? { iva_porcentaje: data.iva_porcentaje } : {}),
+          }
+      const updated = await tallerService.updateTallerInfo(payload)
       tallerInfo.value = updated
       isLoaded.value = true
       return updated
@@ -68,6 +88,10 @@ export const useTallerStore = defineStore('taller', () => {
   }
 
   const uploadLoginBg = async (file: File) => {
+    const authStore = useAuthStore()
+    if (!authStore.canCustomizeLogin) {
+      throw new Error('No tienes permisos para modificar el fondo del inicio de sesión.')
+    }
     return await tallerService.uploadLoginBg(file)
   }
 
@@ -77,6 +101,7 @@ export const useTallerStore = defineStore('taller', () => {
     isLoading,
     error,
     loadTallerInfo,
+    resetTallerInfo,
     updateTaller,
     uploadLogo,
     uploadLoginBg

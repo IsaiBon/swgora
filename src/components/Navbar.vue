@@ -148,6 +148,7 @@ const handleLogout = async () => {
   userMenuOpen.value = false
   uiStore.closeMobileSidebar()
   await authStore.logout()
+  tallerStore.resetTallerInfo()
   await router.replace('/login')
 }
 
