@@ -458,20 +458,58 @@ const parsePartRowObject = (
     }
   }
 
-  // Mapear parámetros dinámicos definidos en la familia resuelta
+  // Mapear parámetros dinámicos definidos en la familia resuelta (incluyendo alias con columna_padre)
+  const paramLabelCounts = new Map<string, number>()
+  for (const p of resolvedGrupo?.parametros || []) {
+    const k = normalizeKey(p.etiqueta)
+    if (k) paramLabelCounts.set(k, (paramLabelCounts.get(k) || 0) + 1)
+  }
+  const ambiguousParamLabels = new Set<string>(
+    Array.from(paramLabelCounts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([k]) => k)
+  )
+
+  const pickDynamicParamValue = (
+    targetNorm: Record<string, unknown>,
+    p: NonNullable<GrupoRepuesto['parametros']>[number]
+  ): unknown => {
+    const aliases: string[] = [p.clave]
+    const keyNoMm = p.clave.replace(/_mm$/i, '')
+    if (keyNoMm && keyNoMm !== p.clave) aliases.push(keyNoMm)
+
+    if (p.columna_padre && p.columna_padre.trim()) {
+      const padre = p.columna_padre.trim()
+      aliases.push(`${padre}_${p.etiqueta}`, `${padre} ${p.etiqueta}`)
+      if (p.etiqueta_corta && p.etiqueta_corta.trim()) {
+        aliases.push(`${padre}_${p.etiqueta_corta}`, `${padre} ${p.etiqueta_corta}`)
+      }
+    }
+
+    const normEtiqueta = normalizeKey(p.etiqueta)
+    if (!p.columna_padre || !ambiguousParamLabels.has(normEtiqueta)) {
+      aliases.push(p.etiqueta)
+      if (p.etiqueta_corta) aliases.push(p.etiqueta_corta)
+    }
+
+    const val = pickField(targetNorm, aliases)
+    if (val === undefined) return undefined
+    if (p.tipo_dato === 'numero') {
+      const n = parseNumberValue(val)
+      return n !== null ? n : undefined
+    }
+    if (p.tipo_dato === 'booleano') {
+      const s = String(val).trim().toLowerCase()
+      return s === 'si' || s === 'sí' || s === 'true' || s === '1'
+    }
+    return String(val).trim()
+  }
+
   if (resolvedGrupo?.parametros) {
     for (const p of resolvedGrupo.parametros) {
-      const val = pickField(norm, [p.clave, p.etiqueta, p.etiqueta_corta || ''])
-      if (val !== undefined) {
-        if (p.tipo_dato === 'numero') {
-          const n = parseNumberValue(val)
-          if (n !== null) dimensiones[p.clave] = n
-        } else if (p.tipo_dato === 'booleano') {
-          const s = String(val).trim().toLowerCase()
-          dimensiones[p.clave] = s === 'si' || s === 'sí' || s === 'true' || s === '1'
-        } else {
-          dimensiones[p.clave] = String(val).trim()
-        }
+      const mappedVal = pickDynamicParamValue(norm, p)
+      if (mappedVal !== undefined) {
+        dimensiones[p.clave] = mappedVal
       }
     }
   }
@@ -734,6 +772,126 @@ const parsePartRowObject = (
   if (paso_rosca_mm != null) dimensiones.paso_rosca_mm = paso_rosca_mm
   if (longitud_perno_mm != null) dimensiones.longitud_perno_mm = longitud_perno_mm
   if (cantidad_piezas != null) dimensiones.cantidad_piezas = cantidad_piezas
+
+  // Hidratar subfilas para familias tipo tabla (no anillos): soporta arreglo opcional `filas`/`subfilas` o cotas planas en la raíz
+  const isRingsLikeGroup = Boolean(
+    resolvedGrupo &&
+      (resolvedGrupo.codigo === 'anillos_motor' ||
+        resolvedGrupo.categoria.toLowerCase().includes('anillo') ||
+        resolvedGrupo.nombre.toLowerCase().includes('anillo'))
+  )
+  const rawFilasSource =
+    rawObj.filas ?? rawObj.subfilas ?? dimensiones.subfilas ?? pickField(norm, ['filas_json', 'subfilas_json'])
+  let rawFilasList: Array<Record<string, unknown>> = []
+  if (Array.isArray(rawFilasSource)) {
+    rawFilasList = rawFilasSource.filter((r): r is Record<string, unknown> => Boolean(r && typeof r === 'object'))
+  } else if (typeof rawFilasSource === 'string' && rawFilasSource.trim().startsWith('[')) {
+    try {
+      const parsedArr = JSON.parse(rawFilasSource.trim())
+      if (Array.isArray(parsedArr)) {
+        rawFilasList = parsedArr.filter((r): r is Record<string, unknown> => Boolean(r && typeof r === 'object'))
+      }
+    } catch {
+      // ignorar JSON inválido en filas
+    }
+  }
+
+  const configuredSubfilas = resolvedGrupo?.tabla_config?.subfilas || []
+  const configuredPadres = resolvedGrupo?.tabla_config?.subfila_padres || []
+  const configuredTipos = resolvedGrupo?.tabla_config?.subfila_tipos || []
+  const ROW_META_KEYS = new Set([
+    'id',
+    'fila',
+    'nombre',
+    'componente',
+    'etiqueta',
+    'posicion',
+    'codigo',
+    'codigo_fila',
+    'subcodigo',
+    'grupo',
+    'grupo_central',
+    'tipo',
+    'tipo_fila',
+    'es_fila_central',
+    'medidas'
+  ])
+
+  if (!isRingsLikeGroup && parsedRings.length === 0) {
+    if (rawFilasList.length > 0) {
+      const hydratedSubfilas = rawFilasList.map((entry, idx) => {
+        const entryNorm = buildRowNormalizedMap(entry)
+        const esCentral =
+          Boolean(entry.es_fila_central) ||
+          normalizeKey(String(entry.tipo_fila || entry.tipo || '')) === 'central' ||
+          configuredTipos[idx] === 'central'
+        const rowNombre = String(
+          pickField(entryNorm, ['fila', 'nombre', 'componente', 'etiqueta', 'posicion']) ||
+            configuredSubfilas[idx] ||
+            (esCentral ? 'Fila Central' : `Componente ${idx + 1}`)
+        ).trim()
+        const rowCodigo = esCentral
+          ? ''
+          : String(pickField(entryNorm, ['codigo', 'codigo_fila', 'subcodigo']) || '').trim()
+        const rowGrupo = esCentral
+          ? ''
+          : String(pickField(entryNorm, ['grupo', 'grupo_central']) || configuredPadres[idx] || '').trim()
+
+        const medidas: Record<string, unknown> = {}
+        if (!esCentral) {
+          if (entry.medidas && typeof entry.medidas === 'object') {
+            Object.assign(medidas, entry.medidas as Record<string, unknown>)
+          }
+          for (const [k, v] of Object.entries(entry)) {
+            if (!ROW_META_KEYS.has(normalizeKey(k)) && v !== undefined && v !== null && v !== '') {
+              medidas[k] = v
+            }
+          }
+          for (const p of resolvedGrupo?.parametros || []) {
+            const valFromRow = pickDynamicParamValue(entryNorm, p)
+            if (valFromRow !== undefined) {
+              medidas[p.clave] = valFromRow
+            } else if (medidas[p.clave] === undefined && dimensiones[p.clave] !== undefined) {
+              medidas[p.clave] = dimensiones[p.clave]
+            }
+            if (dimensiones[p.clave] === undefined && medidas[p.clave] !== undefined) {
+              dimensiones[p.clave] = medidas[p.clave]
+            }
+          }
+        }
+
+        return {
+          id: String(entry.id || `sf-${idx + 1}`),
+          tipo: esCentral ? 'central' : `fila_${idx + 1}`,
+          nombre: rowNombre,
+          codigo: rowCodigo,
+          grupo: rowGrupo,
+          ...(esCentral ? { es_fila_central: true } : {}),
+          medidas
+        }
+      })
+      dimensiones.subfilas = hydratedSubfilas
+    } else if (resolvedGrupo?.tipo_vista === 'tabla' && configuredSubfilas.length > 0) {
+      const rootParamMeasures: Record<string, unknown> = {}
+      for (const p of resolvedGrupo.parametros || []) {
+        if (dimensiones[p.clave] !== undefined && dimensiones[p.clave] !== null && dimensiones[p.clave] !== '') {
+          rootParamMeasures[p.clave] = dimensiones[p.clave]
+        }
+      }
+      dimensiones.subfilas = configuredSubfilas.map((sfName, idx) => {
+        const esCentral = configuredTipos[idx] === 'central'
+        return {
+          id: `sf-${idx + 1}`,
+          tipo: esCentral ? 'central' : `fila_${idx + 1}`,
+          nombre: sfName,
+          codigo: '',
+          grupo: esCentral ? '' : (configuredPadres[idx] || ''),
+          ...(esCentral ? { es_fila_central: true } : {}),
+          medidas: esCentral ? {} : { ...rootParamMeasures }
+        }
+      })
+    }
+  }
 
   if (fabricante) dimensiones.marca = fabricante.toUpperCase()
   if (modelos.length > 0) {
@@ -1014,6 +1172,13 @@ const parseInlineColumnsInput = (raw: unknown): TemplateColumnDef[] => {
           tipo_dato = 'seleccion'
           unidad = ''
           opciones = splitTokens(meta.replace(/^[^:]+:\s*/, ''))
+        } else if (meta.includes(',')) {
+          tipo_dato = 'seleccion'
+          unidad = ''
+          opciones = splitTokens(meta)
+        } else if (metaLow === 'numero' || metaLow === 'número' || metaLow === 'num') {
+          tipo_dato = 'numero'
+          unidad = 'mm'
         } else {
           tipo_dato = 'numero'
           unidad = meta
@@ -1143,81 +1308,200 @@ const buildParsedFamilyRow = (
 // LECTURA DE ARCHIVOS EXCEL / CSV / JSON
 // =============================================================================
 
+/**
+ * Extrae uno o varios bloques JSON válidos desde texto libre, bloques Markdown ```json```
+ * o múltiples objetos concatenados ({...}{...}) devueltos por asistentes de IA.
+ */
+const extractJsonPayloads = (rawText: string): unknown[] => {
+  const cleaned = String(rawText || '').replace(/^\uFEFF/, '').trim()
+  if (!cleaned) {
+    throw new Error('El contenido JSON está vacío.')
+  }
+
+  const candidateChunks: string[] = []
+  const fenceRegex = /```(?:json|JSON)?\s*\r?\n?([\s\S]*?)```/g
+  let fenceMatch: RegExpExecArray | null
+  while ((fenceMatch = fenceRegex.exec(cleaned)) !== null) {
+    const inner = (fenceMatch[1] || '').trim()
+    if (inner) candidateChunks.push(inner)
+  }
+
+  if (candidateChunks.length === 0) {
+    // Eliminar marcadores de bloque sueltos al inicio/fin si la IA dejó una valla sin cerrar
+    const unfenced = cleaned
+      .replace(/^```(?:json|JSON)?\s*\r?\n?/i, '')
+      .replace(/\r?\n?```\s*$/, '')
+      .trim()
+    candidateChunks.push(unfenced)
+  }
+
+  const payloads: unknown[] = []
+
+  const sliceBalancedTopLevelJson = (text: string): unknown[] => {
+    const out: unknown[] = []
+    let i = 0
+    const len = text.length
+
+    while (i < len) {
+      const ch = text[i]
+      if (ch !== '{' && ch !== '[') {
+        i++
+        continue
+      }
+
+      const start = i
+      let depth = 0
+      let inString = false
+      let escaped = false
+      let closedAt = -1
+
+      for (let j = start; j < len; j++) {
+        const c = text[j]!
+        if (inString) {
+          if (escaped) {
+            escaped = false
+          } else if (c === '\\') {
+            escaped = true
+          } else if (c === '"') {
+            inString = false
+          }
+          continue
+        }
+
+        if (c === '"') {
+          inString = true
+          continue
+        }
+        if (c === '{' || c === '[') {
+          depth++
+        } else if (c === '}' || c === ']') {
+          depth--
+          if (depth === 0) {
+            closedAt = j
+            break
+          }
+        }
+      }
+
+      if (closedAt < 0) break
+
+      const block = text.slice(start, closedAt + 1)
+      try {
+        out.push(JSON.parse(block))
+      } catch {
+        // Bloque inválido; continuar buscando siguientes bloques
+      }
+      i = closedAt + 1
+    }
+
+    return out
+  }
+
+  for (const chunk of candidateChunks) {
+    try {
+      payloads.push(JSON.parse(chunk))
+    } catch {
+      const multi = sliceBalancedTopLevelJson(chunk)
+      payloads.push(...multi)
+    }
+  }
+
+  if (payloads.length === 0) {
+    throw new Error(
+      'El texto JSON no es válido. Asegúrate de pegar JSON válido o la plantilla sin texto roto.'
+    )
+  }
+
+  return payloads
+}
+
+const filterPlaceholderSampleParts = (parts: ParsedPartRow[]): ParsedPartRow[] => {
+  const hasRealParts = parts.some(p => p.codigo_oem.toUpperCase() !== 'OEM-EJEMPLO-001')
+  return hasRealParts
+    ? parts.filter(p => p.codigo_oem.toUpperCase() !== 'OEM-EJEMPLO-001')
+    : parts
+}
+
 export const parseCatalogJsonText = (
   jsonText: string,
   fileName: string,
   grupos: GrupoRepuesto[],
   defaultGrupo?: GrupoRepuesto | null
 ): CatalogImportParseResult => {
-  const parsed = JSON.parse(jsonText) as unknown
+  const payloads = extractJsonPayloads(jsonText)
   const families: ParsedFamilyRow[] = []
   const motors: ParsedMotorRow[] = []
-  const parts: ParsedPartRow[] = []
+  const rawPartsCollected: ParsedPartRow[] = []
   const warnings: string[] = []
 
-  if (Array.isArray(parsed)) {
-    parsed.forEach((item, idx) => {
-      if (!item || typeof item !== 'object') return
-      const obj = item as Record<string, unknown>
-      const hasOem = obj.codigo_oem !== undefined || obj.oem !== undefined
-      const looksLikeFamily =
-        !hasOem &&
-        (Array.isArray(obj.columnas) || Array.isArray(obj.parametros) || obj.tipo_vista !== undefined)
-      const looksLikeMotor =
-        !hasOem &&
-        !looksLikeFamily &&
-        (obj.cilindros !== undefined || obj.cilindrada_cc !== undefined || obj.codigo !== undefined)
-      if (looksLikeFamily) {
-        const f = buildParsedFamilyRow(obj, idx + 1, 'JSON')
-        if (f) families.push(f)
-      } else if (looksLikeMotor) {
-        const m = parseMotorRowObject(obj, idx + 1, 'JSON')
-        if (m) motors.push(m)
-      } else {
-        const p = parsePartRowObject(obj, idx + 1, 'JSON', grupos, defaultGrupo)
-        if (p) parts.push(p)
-      }
-    })
-  } else if (parsed && typeof parsed === 'object') {
-    const root = parsed as Record<string, unknown>
-    const rawFamilies = Array.isArray(root.familias)
-      ? root.familias
-      : Array.isArray(root.grupos)
-        ? root.grupos
-        : []
-    const rawMotors = Array.isArray(root.motores) ? root.motores : []
-    const rawParts = Array.isArray(root.repuestos)
-      ? root.repuestos
-      : Array.isArray(root.partes)
-        ? root.partes
-        : Array.isArray(root.productos)
-          ? root.productos
+  for (const parsed of payloads) {
+    if (Array.isArray(parsed)) {
+      parsed.forEach((item, idx) => {
+        if (!item || typeof item !== 'object') return
+        const obj = item as Record<string, unknown>
+        const hasOem = obj.codigo_oem !== undefined || obj.oem !== undefined
+        const looksLikeFamily =
+          !hasOem &&
+          (Array.isArray(obj.columnas) || Array.isArray(obj.parametros) || obj.tipo_vista !== undefined)
+        const looksLikeMotor =
+          !hasOem &&
+          !looksLikeFamily &&
+          (obj.cilindros !== undefined || obj.cilindrada_cc !== undefined || obj.codigo !== undefined)
+        if (looksLikeFamily) {
+          const f = buildParsedFamilyRow(obj, idx + 1, 'JSON')
+          if (f) families.push(f)
+        } else if (looksLikeMotor) {
+          const m = parseMotorRowObject(obj, idx + 1, 'JSON')
+          if (m) motors.push(m)
+        } else {
+          const p = parsePartRowObject(obj, idx + 1, 'JSON', grupos, defaultGrupo)
+          if (p) rawPartsCollected.push(p)
+        }
+      })
+    } else if (parsed && typeof parsed === 'object') {
+      const root = parsed as Record<string, unknown>
+      const rawFamilies = Array.isArray(root.familias)
+        ? root.familias
+        : Array.isArray(root.grupos)
+          ? root.grupos
           : []
+      const rawMotors = Array.isArray(root.motores) ? root.motores : []
+      const rawParts = Array.isArray(root.repuestos)
+        ? root.repuestos
+        : Array.isArray(root.partes)
+          ? root.partes
+          : Array.isArray(root.productos)
+            ? root.productos
+            : []
 
-    rawFamilies.forEach((item, idx) => {
-      if (item && typeof item === 'object') {
-        const f = buildParsedFamilyRow(item as Record<string, unknown>, idx + 1, 'JSON.familias')
-        if (f) families.push(f)
-      }
-    })
-    rawMotors.forEach((item, idx) => {
-      if (item && typeof item === 'object') {
-        const m = parseMotorRowObject(item as Record<string, unknown>, idx + 1, 'JSON.motores')
-        if (m) motors.push(m)
-      }
-    })
-    rawParts.forEach((item, idx) => {
-      if (item && typeof item === 'object') {
-        const p = parsePartRowObject(item as Record<string, unknown>, idx + 1, 'JSON.repuestos', grupos, defaultGrupo)
-        if (p) parts.push(p)
-      }
-    })
+      rawFamilies.forEach((item, idx) => {
+        if (item && typeof item === 'object') {
+          const f = buildParsedFamilyRow(item as Record<string, unknown>, idx + 1, 'JSON.familias')
+          if (f) families.push(f)
+        }
+      })
+      rawMotors.forEach((item, idx) => {
+        if (item && typeof item === 'object') {
+          const m = parseMotorRowObject(item as Record<string, unknown>, idx + 1, 'JSON.motores')
+          if (m) motors.push(m)
+        }
+      })
+      rawParts.forEach((item, idx) => {
+        if (item && typeof item === 'object') {
+          const p = parsePartRowObject(item as Record<string, unknown>, idx + 1, 'JSON.repuestos', grupos, defaultGrupo)
+          if (p) rawPartsCollected.push(p)
+        }
+      })
 
-    if (rawFamilies.length === 0 && rawMotors.length === 0 && rawParts.length === 0) {
-      warnings.push('El objeto JSON no contiene arreglos "familias", "repuestos" ni "motores".')
+      if (payloads.length === 1 && rawFamilies.length === 0 && rawMotors.length === 0 && rawParts.length === 0) {
+        warnings.push('El objeto JSON no contiene arreglos "familias", "repuestos" ni "motores".')
+      }
     }
-  } else {
-    throw new Error('El JSON debe ser un arreglo [...] o un objeto con { "familias": [...], "motores": [...], "repuestos": [...] }')
+  }
+
+  const parts = filterPlaceholderSampleParts(rawPartsCollected)
+  if (families.length === 0 && motors.length === 0 && parts.length === 0 && warnings.length === 0) {
+    warnings.push('No se encontraron registros válidos en el JSON proporcionado.')
   }
 
   return { fileName, format: 'json', families, motors, parts, warnings }
@@ -1346,7 +1630,9 @@ export const parseCatalogImportFile = async (
     })
   }
 
-  if (families.length === 0 && motors.length === 0 && parts.length === 0) {
+  const filteredParts = filterPlaceholderSampleParts(parts)
+
+  if (families.length === 0 && motors.length === 0 && filteredParts.length === 0) {
     warnings.push('No se encontraron filas con datos en el archivo Excel.')
   }
 
@@ -1355,7 +1641,7 @@ export const parseCatalogImportFile = async (
     format: 'excel',
     families,
     motors,
-    parts,
+    parts: filteredParts,
     warnings
   }
 }
@@ -1364,14 +1650,37 @@ export const parseCatalogImportFile = async (
 // GENERACIÓN DE PLANTILLAS (EXCEL .xlsx Y JSON .json)
 // =============================================================================
 
+const getSampleValueForParam = (
+  p: NonNullable<GrupoRepuesto['parametros']>[number],
+  idx: number
+): unknown => {
+  if (p.tipo_dato === 'booleano') return 'No'
+  if (p.tipo_dato === 'seleccion') return p.opciones?.[0] || 'Estándar'
+  if (p.tipo_dato !== 'numero') return 'Estándar'
+
+  const k = p.clave.toLowerCase()
+  if (k.includes('vastago')) return 8.0
+  if (k.includes('cabeza')) return 45.0
+  if (k.includes('angulo')) return 45
+  if (k.includes('cantidad') || k.includes('piezas') || k.includes('cilindros')) return 10
+  if (k.includes('min') || k.includes('dmin')) return Number((45.0 + idx * 0.02).toFixed(2))
+  if (k.includes('max') || k.includes('dmax')) return Number((45.02 + idx * 0.02).toFixed(2))
+  if (k.includes('interior') || k.includes('_a')) return 92.0
+  if (k.includes('exterior') || k.includes('_b')) return 96.0
+  if (k.includes('largo') || k.includes('longitud') || k.includes('_c')) return 150.0
+  if (k.includes('torque')) return 85
+  return 10.5
+}
+
 const buildSampleRowsForTemplate = (
   selectedGrupo?: GrupoRepuesto | null
 ): { partColumns: string[]; sampleParts: Array<Record<string, unknown>> } => {
-  const isRings =
+  const isRings = Boolean(
     selectedGrupo &&
-    (selectedGrupo.codigo === 'anillos_motor' ||
-      selectedGrupo.categoria.toLowerCase().includes('anillo') ||
-      selectedGrupo.tipo_vista === 'tabla')
+      (selectedGrupo.codigo === 'anillos_motor' ||
+        selectedGrupo.categoria.toLowerCase().includes('anillo') ||
+        selectedGrupo.nombre.toLowerCase().includes('anillo'))
+  )
 
   const dynamicKeys = (selectedGrupo?.parametros || []).map(p => p.clave).filter(Boolean)
 
@@ -1379,13 +1688,11 @@ const buildSampleRowsForTemplate = (
     const partColumns = [
       'codigo_oem',
       'nombre',
-      'familia',
-      'subsistema',
       'fabricante',
       'motor',
       'modelos',
       'anio',
-      'catalogo_origen',
+      'familia',
       'equivalencias',
       'diametro_cilindro_mm',
       'anillo1_grosor',
@@ -1394,31 +1701,20 @@ const buildSampleRowsForTemplate = (
       'anillo2_grosor',
       'anillo2_altura',
       'anillo2_diseno',
-      'anillo3_grosor',
-      'anillo3_altura',
-      'anillo3_diseno',
-      'anillo4_grosor',
-      'anillo4_altura',
-      'anillo4_diseno',
       'anillo_aceite_grosor',
       'anillo_aceite_altura',
       'anillo_aceite_diseno',
-      'precio',
-      'stock',
-      'estado',
       'descripcion_tecnica'
     ]
     const sampleParts = [
       {
-        codigo_oem: '13011-35041, 13011-35042',
+        codigo_oem: '13011-35041',
         nombre: 'Juego Anillos Toyota 22R STD',
-        familia: selectedGrupo?.codigo || 'anillos_motor',
-        subsistema: selectedGrupo?.subsistema || 'Block',
         fabricante: 'Toyota',
         motor: '22R',
         modelos: 'Hilux, 4Runner',
         anio: '1985-1995',
-        catalogo_origen: 'OEM',
+        familia: selectedGrupo?.codigo || 'anillos_motor',
         equivalencias: 'RIK: 34245; NPR: SWT-10150',
         diametro_cilindro_mm: 92.0,
         anillo1_grosor: 1.5,
@@ -1427,83 +1723,54 @@ const buildSampleRowsForTemplate = (
         anillo2_grosor: 1.5,
         anillo2_altura: 3.8,
         anillo2_diseno: 'Raspador',
-        anillo3_grosor: '',
-        anillo3_altura: '',
-        anillo3_diseno: '',
-        anillo4_grosor: '',
-        anillo4_altura: '',
-        anillo4_diseno: '',
         anillo_aceite_grosor: 4.0,
         anillo_aceite_altura: 3.5,
         anillo_aceite_diseno: 'Plano',
-        precio: 45.0,
-        stock: 12,
-        estado: 'Disponible',
         descripcion_tecnica: 'Juego estándar 4 cilindros'
       }
     ]
     return { partColumns, sampleParts }
   }
 
-  if (selectedGrupo && dynamicKeys.length > 0) {
+  if (selectedGrupo) {
     const partColumns = [
       'codigo_oem',
       'nombre',
-      'familia',
-      'subsistema',
       'fabricante',
       'motor',
       'modelos',
       'anio',
-      'catalogo_origen',
+      'familia',
       'equivalencias',
       ...dynamicKeys,
-      'precio',
-      'stock',
-      'estado',
       'descripcion_tecnica'
     ]
     const sampleObj: Record<string, unknown> = {
       codigo_oem: 'OEM-EJEMPLO-001',
       nombre: `${selectedGrupo.nombre} Ejemplo Toyota 22R`,
-      familia: selectedGrupo.codigo,
-      subsistema: selectedGrupo.subsistema || 'Culata',
       fabricante: 'Toyota',
       motor: '22R',
       modelos: 'Hilux, Dyna',
       anio: '1988-1998',
-      catalogo_origen: 'OEM',
+      familia: selectedGrupo.codigo,
       equivalencias: 'DOKURO: DOK-101; AJUSA: AJ-202'
     }
-    for (const p of selectedGrupo.parametros) {
-      if (p.tipo_dato === 'numero') {
-        sampleObj[p.clave] = p.clave.includes('vastago') ? 8.0 : p.clave.includes('cabeza') ? 45.0 : 10.5
-      } else if (p.tipo_dato === 'booleano') {
-        sampleObj[p.clave] = 'No'
-      } else if (p.opciones && p.opciones.length > 0) {
-        sampleObj[p.clave] = p.opciones[0]
-      } else {
-        sampleObj[p.clave] = 'Estándar'
-      }
-    }
-    sampleObj.precio = 18.5
-    sampleObj.stock = 8
-    sampleObj.estado = 'Disponible'
-    sampleObj.descripcion_tecnica = 'Registro de ejemplo generado por SWGORA'
+    ;(selectedGrupo.parametros || []).forEach((p, idx) => {
+      sampleObj[p.clave] = getSampleValueForParam(p, idx)
+    })
+    sampleObj.descripcion_tecnica = 'Registro de ejemplo (reemplazar o eliminar al importar)'
     return { partColumns, sampleParts: [sampleObj] }
   }
 
-  // Plantilla general universal
+  // Plantilla general universal (campos esenciales)
   const partColumns = [
     'codigo_oem',
     'nombre',
-    'familia',
-    'subsistema',
     'fabricante',
     'motor',
     'modelos',
     'anio',
-    'catalogo_origen',
+    'familia',
     'equivalencias',
     'diametro_cabeza_mm',
     'diametro_vastago_mm',
@@ -1516,19 +1783,12 @@ const buildSampleRowsForTemplate = (
     'anillo1_altura',
     'anillo2_grosor',
     'anillo2_altura',
-    'anillo3_grosor',
-    'anillo3_altura',
-    'anillo4_grosor',
-    'anillo4_altura',
     'anillo_aceite_grosor',
     'anillo_aceite_altura',
     'medida_rosca',
     'paso_rosca_mm',
     'longitud_perno_mm',
     'cantidad_piezas',
-    'precio',
-    'stock',
-    'estado',
     'descripcion_tecnica'
   ]
 
@@ -1536,13 +1796,11 @@ const buildSampleRowsForTemplate = (
     {
       codigo_oem: '13711-35050',
       nombre: 'Válvula de Admisión Toyota 22R',
-      familia: 'valvula',
-      subsistema: 'Culata',
       fabricante: 'Toyota',
       motor: '22R',
       modelos: 'Hilux, 4Runner',
       anio: '1985-1995',
-      catalogo_origen: 'DOKURO',
+      familia: 'valvula',
       equivalencias: 'DOKURO: DI-0118; NPR: 95-3011',
       diametro_cabeza_mm: 45.0,
       diametro_vastago_mm: 8.0,
@@ -1555,31 +1813,22 @@ const buildSampleRowsForTemplate = (
       anillo1_altura: '',
       anillo2_grosor: '',
       anillo2_altura: '',
-      anillo3_grosor: '',
-      anillo3_altura: '',
-      anillo4_grosor: '',
-      anillo4_altura: '',
       anillo_aceite_grosor: '',
       anillo_aceite_altura: '',
       medida_rosca: '',
       paso_rosca_mm: '',
       longitud_perno_mm: '',
       cantidad_piezas: '',
-      precio: 14.5,
-      stock: 16,
-      estado: 'Disponible',
       descripcion_tecnica: 'Acero templado 1 ranura'
     },
     {
       codigo_oem: '13011-35041',
       nombre: 'Juego Anillos Toyota 22R STD',
-      familia: 'anillos_motor',
-      subsistema: 'Block',
       fabricante: 'Toyota',
       motor: '22R',
       modelos: 'Hilux, 4Runner',
       anio: '1985-1995',
-      catalogo_origen: 'OEM',
+      familia: 'anillos_motor',
       equivalencias: 'RIK: 34245; NPR: SWT-10150',
       diametro_cabeza_mm: '',
       diametro_vastago_mm: '',
@@ -1592,19 +1841,12 @@ const buildSampleRowsForTemplate = (
       anillo1_altura: 3.6,
       anillo2_grosor: 1.5,
       anillo2_altura: 3.8,
-      anillo3_grosor: '',
-      anillo3_altura: '',
-      anillo4_grosor: '',
-      anillo4_altura: '',
       anillo_aceite_grosor: 4.0,
       anillo_aceite_altura: 3.5,
       medida_rosca: '',
       paso_rosca_mm: '',
       longitud_perno_mm: '',
       cantidad_piezas: '',
-      precio: 45.0,
-      stock: 10,
-      estado: 'Disponible',
       descripcion_tecnica: 'Anillo 1° cromado'
     }
   ]
@@ -1661,22 +1903,10 @@ const FAMILY_TEMPLATE_COLUMNS = [
   'nombre',
   'subsistema',
   'tipo_vista',
-  'titulo_primera_columna',
+  'columnas',
   'filas_tabla',
-  'titulo_grupo_filas',
+  'titulo_primera_columna',
   'descripcion'
-]
-
-const FAMILY_COLUMNS_SHEET_HEADERS = [
-  'familia',
-  'etiqueta',
-  'tipo_dato',
-  'unidad',
-  'columna_padre',
-  'opciones',
-  'compartido_filas',
-  'requerido',
-  'filtrable'
 ]
 
 const SAMPLE_FAMILY_EXCEL_ROWS = [
@@ -1684,88 +1914,20 @@ const SAMPLE_FAMILY_EXCEL_ROWS = [
     nombre: 'Camisas de Cilindro',
     subsistema: 'Block',
     tipo_vista: 'normal',
-    titulo_primera_columna: '',
+    columnas:
+      'Diámetro Interior (mm); Diámetro Exterior (mm); Largo Total (mm); Tipo de Camisa (opc: Seca, Húmeda); Con Pestaña (si/no)',
     filas_tabla: '',
-    titulo_grupo_filas: '',
-    descripcion: 'Camisas húmedas y secas por diámetro exterior, interior y pestaña'
+    titulo_primera_columna: '',
+    descripcion: 'Camisas húmedas y secas'
   },
   {
     nombre: 'Cojinetes Especiales',
     subsistema: 'Cigüeñal',
     tipo_vista: 'tabla',
+    columnas: 'STD > D. Mín (mm); STD > D. Máx (mm); 0.25 > D. Mín (mm); 0.25 > D. Máx (mm)',
+    filas_tabla: 'Biela; Bancada',
     titulo_primera_columna: 'Componente',
-    filas_tabla: 'Biela; Bancada; [Central] Medidas en mm',
-    titulo_grupo_filas: '',
     descripcion: 'Cojinetes en vista de tabla por medida STD y sobremedida'
-  }
-]
-
-const SAMPLE_FAMILY_COLUMNS_ROWS = [
-  {
-    familia: 'Camisas de Cilindro',
-    etiqueta: 'Diámetro Interior',
-    tipo_dato: 'numero',
-    unidad: 'mm',
-    columna_padre: '',
-    opciones: '',
-    compartido_filas: 'No',
-    requerido: 'Si',
-    filtrable: 'Si'
-  },
-  {
-    familia: 'Camisas de Cilindro',
-    etiqueta: 'Largo Total',
-    tipo_dato: 'numero',
-    unidad: 'mm',
-    columna_padre: '',
-    opciones: '',
-    compartido_filas: 'No',
-    requerido: 'Si',
-    filtrable: 'Si'
-  },
-  {
-    familia: 'Camisas de Cilindro',
-    etiqueta: 'Tipo de Camisa',
-    tipo_dato: 'seleccion',
-    unidad: '',
-    columna_padre: '',
-    opciones: 'Seca, Húmeda',
-    compartido_filas: 'No',
-    requerido: 'Si',
-    filtrable: 'Si'
-  },
-  {
-    familia: 'Camisas de Cilindro',
-    etiqueta: 'Con Pestaña',
-    tipo_dato: 'booleano',
-    unidad: '',
-    columna_padre: '',
-    opciones: '',
-    compartido_filas: 'No',
-    requerido: 'No',
-    filtrable: 'Si'
-  },
-  {
-    familia: 'Cojinetes Especiales',
-    etiqueta: 'D. Mín',
-    tipo_dato: 'numero',
-    unidad: 'mm',
-    columna_padre: 'STD',
-    opciones: '',
-    compartido_filas: 'No',
-    requerido: 'Si',
-    filtrable: 'Si'
-  },
-  {
-    familia: 'Cojinetes Especiales',
-    etiqueta: 'D. Máx',
-    tipo_dato: 'numero',
-    unidad: 'mm',
-    columna_padre: 'STD',
-    opciones: '',
-    compartido_filas: 'No',
-    requerido: 'Si',
-    filtrable: 'Si'
   }
 ]
 
@@ -1778,27 +1940,28 @@ export const downloadCatalogExcelTemplate = (
 
   if (scope === 'families_only') {
     const wsFam = XLSX.utils.json_to_sheet(SAMPLE_FAMILY_EXCEL_ROWS, { header: FAMILY_TEMPLATE_COLUMNS })
-    wsFam['!cols'] = FAMILY_TEMPLATE_COLUMNS.map(col => ({ wch: Math.max(18, col.length + 5) }))
+    wsFam['!cols'] = FAMILY_TEMPLATE_COLUMNS.map(col =>
+      col === 'columnas'
+        ? { wch: 70 }
+        : col === 'filas_tabla' || col === 'descripcion'
+          ? { wch: 32 }
+          : { wch: Math.max(18, col.length + 5) }
+    )
     XLSX.utils.book_append_sheet(wb, wsFam, 'Familias')
-
-    const wsFamCols = XLSX.utils.json_to_sheet(SAMPLE_FAMILY_COLUMNS_ROWS, {
-      header: FAMILY_COLUMNS_SHEET_HEADERS
-    })
-    wsFamCols['!cols'] = FAMILY_COLUMNS_SHEET_HEADERS.map(col => ({ wch: Math.max(16, col.length + 4) }))
-    XLSX.utils.book_append_sheet(wb, wsFamCols, 'Columnas_Familia')
 
     const familyGuide = [
       {
-        Campo_o_Regla: '=== HOJA FAMILIAS: CAMPOS OBLIGATORIOS ===',
-        Descripcion: 'Define el nombre y comportamiento visual (Vista Normal o Vista en Tabla), igual que en Crear/Editar Familia.'
+        Campo_o_Regla: '=== PLANTILLA SIMPLIFICADA DE FAMILIAS (1 SOLA HOJA) ===',
+        Descripcion: 'Cada fila de la hoja Familias crea o actualiza una familia completa con todas sus medidas.'
       },
       {
         Campo_o_Regla: 'nombre [Obligatorio]',
         Descripcion: 'Nombre exacto de la familia (ej: Camisas de Cilindro, Guías de Válvula).'
       },
       {
-        Campo_o_Regla: '=== HOJA FAMILIAS: CAMPOS OPCIONALES ===',
-        Descripcion: 'Complete según si usará Vista Normal o Vista en Tabla.'
+        Campo_o_Regla: 'columnas [Obligatorio]',
+        Descripcion:
+          'Medidas separadas por ";". Formato: "Medida (mm)", "Grupo > Submedida (mm)", "Tipo (opc: A, B)" o "Estado (si/no)".'
       },
       {
         Campo_o_Regla: 'subsistema [Opcional]',
@@ -1806,31 +1969,16 @@ export const downloadCatalogExcelTemplate = (
       },
       {
         Campo_o_Regla: 'tipo_vista [Opcional]',
-        Descripcion: 'normal (medidas sueltas/badges) o tabla (sub-filas con columnas y sub-columnas).'
+        Descripcion: 'normal (medidas en ficha) o tabla (tabla con sub-filas como Biela; Bancada).'
       },
       {
-        Campo_o_Regla: 'titulo_primera_columna / filas_tabla [Solo tabla]',
-        Descripcion: 'Encabezado de 1ra columna (ej: Componente) y filas separadas por ";" (ej: Biela; Bancada). Use [Central] Texto para filas centrales o Bloque:Fila para unir filas.'
-      },
-      {
-        Campo_o_Regla: '=== HOJA COLUMNAS_FAMILIA ===',
-        Descripcion: 'Lista las medidas/estados de cada familia enlazados por el campo "familia" (mismo nombre que en la hoja Familias).'
-      },
-      {
-        Campo_o_Regla: 'familia / etiqueta [Obligatorios]',
-        Descripcion: 'Nombre de la familia y nombre de la medida o columna (ej: Diámetro Interior).'
-      },
-      {
-        Campo_o_Regla: 'tipo_dato [Opcional]',
-        Descripcion: 'numero (Núm), booleano (Sí/No), seleccion (Opciones) o texto.'
-      },
-      {
-        Campo_o_Regla: 'unidad / columna_padre / opciones [Opcional]',
-        Descripcion: 'unidad (mm, °, pzs), columna_padre agrupa sub-columnas (ej: STD), opciones separadas por coma cuando tipo_dato = seleccion.'
+        Campo_o_Regla: 'filas_tabla / titulo_primera_columna [Solo tabla]',
+        Descripcion:
+          'Solo para tipo_vista = tabla: filas separadas por ";" (ej: Biela; Bancada) y título de 1ra columna (ej: Componente).'
       }
     ]
     const wsGuide = XLSX.utils.json_to_sheet(familyGuide)
-    wsGuide['!cols'] = [{ wch: 46 }, { wch: 100 }]
+    wsGuide['!cols'] = [{ wch: 46 }, { wch: 95 }]
     XLSX.utils.book_append_sheet(wb, wsGuide, 'Instrucciones')
     XLSX.writeFile(wb, 'plantilla_solo_familias_swgora.xlsx')
     return
@@ -1851,7 +1999,7 @@ export const downloadCatalogExcelTemplate = (
     XLSX.utils.book_append_sheet(wb, wsMotors, 'Motores')
   }
 
-  // Hoja de Instrucciones adaptada al tipo de plantilla (Obligatorios primero, luego Opcionales)
+  // Hoja de Instrucciones concisa (Obligatorios primero, luego Opcionales)
   const motorInstructions: Array<{ Campo_o_Regla: string; Descripcion: string }> = [
     {
       Campo_o_Regla: '=== HOJA MOTORES: CAMPOS OBLIGATORIOS ===',
@@ -1859,76 +2007,55 @@ export const downloadCatalogExcelTemplate = (
     },
     {
       Campo_o_Regla: 'fabricante [Obligatorio]',
-      Descripcion: 'Nombre de la marca automotriz (ej: Toyota, Nissan). Si no existe, puede crearse automáticamente al importar.'
+      Descripcion: 'Nombre de la marca automotriz (ej: Toyota, Nissan).'
     },
     {
       Campo_o_Regla: 'codigo [Obligatorio]',
       Descripcion: 'Código técnico del motor (ej: 22R, 1KD-FTV, Z24).'
     },
     {
-      Campo_o_Regla: '=== HOJA MOTORES: CAMPOS OPCIONALES ===',
-      Descripcion: 'Complete solo los datos técnicos disponibles; las columnas están ordenadas después de los obligatorios.'
-    },
-    {
-      Campo_o_Regla: 'modelos [Opcional]',
-      Descripcion: 'Lista real de modelos de vehículo separados por coma (ej: Hilux, 4Runner). Alimenta el selector/filtro desplegable "Modelo" y enlaza el motor con cada vehículo.'
-    },
-    {
-      Campo_o_Regla: 'denominacion_venta [Opcional]',
-      Descripcion: 'Texto comercial descriptivo o línea/serie (ej: "Serie Pick Up / Comercial", "B Series") que se muestra en la columna "Denominación de venta" de la tabla. Si se deja vacío, toma los modelos.'
-    },
-    {
-      Campo_o_Regla: 'anios / combustible / cilindros / cilindrada_cc [Opcional]',
-      Descripcion: 'Años (ej: 1985-1995), combustible (Gasolina/Diésel) y valores numéricos del bloque (4 cilindros, 2366 cc, etc.).'
+      Campo_o_Regla: 'modelos / anios / cilindros / cilindrada_cc [Opcional]',
+      Descripcion: 'Modelos separados por coma (ej: Hilux, 4Runner), combustible y datos técnicos del bloque.'
     }
   ]
 
   const partInstructions: Array<{ Campo_o_Regla: string; Descripcion: string }> = [
     {
-      Campo_o_Regla: '=== HOJA REPUESTOS: CAMPOS OBLIGATORIOS ===',
-      Descripcion: 'Las columnas obligatorias van al inicio de la hoja.'
+      Campo_o_Regla: '=== HOJA REPUESTOS ===',
+      Descripcion: 'El único campo obligatorio es codigo_oem; las demás columnas ayudan a identificar motor y medidas.'
     },
     {
       Campo_o_Regla: 'codigo_oem [Obligatorio]',
-      Descripcion: 'Código OEM principal. Si hay varios, sepárelos por coma (ej: 13011-35041, 13011-35042).'
+      Descripcion: 'Código OEM principal. Si hay varios alternos, puedes agregarlos separados por coma.'
     },
     {
-      Campo_o_Regla: '=== HOJA REPUESTOS: CAMPOS OPCIONALES ===',
-      Descripcion: 'Si se omiten, el sistema aplica valores por defecto o deja la medida en blanco.'
-    },
-    {
-      Campo_o_Regla: 'nombre [Opcional]',
-      Descripcion: 'Nombre del repuesto. Si se deja vacío, SWGORA lo genera automáticamente con marca, modelo, familia y OEM.'
-    },
-    {
-      Campo_o_Regla: 'familia / subsistema [Opcional]',
-      Descripcion: 'Código o nombre exacto de la familia (ver lista abajo). Si se omite, usará la familia elegida al importar.'
-    },
-    {
-      Campo_o_Regla: 'fabricante / motor / modelos / anio [Opcional]',
-      Descripcion: 'Marca, código de motor y modelos separados por coma. Si activa "Crear faltantes", el sistema los registrará y enlazará.'
+      Campo_o_Regla: 'nombre / fabricante / motor / modelos / anio [Opcional]',
+      Descripcion: 'Nombre del repuesto y aplicación vehicular (si se deja nombre vacío, se genera automáticamente).'
     },
     {
       Campo_o_Regla: 'equivalencias [Opcional]',
-      Descripcion: 'Códigos alternos en formato "MARCA: CODIGO; MARCA2: CODIGO2" (ej: RIK: 34245; NPR: SWT-10150) o en columnas codigo_rik, codigo_dokuro, etc.'
-    },
-    {
-      Campo_o_Regla: 'Medidas técnicas [Opcional]',
-      Descripcion: 'En Anillos: use diametro_cilindro_mm, anillo1..anillo4 (o anillo5_grosor/altura si hay más de 3 compresión), y SIEMPRE al final anillo_aceite_grosor, anillo_aceite_altura y anillo_aceite_diseno.'
+      Descripcion: 'Códigos alternos en formato "MARCA: CODIGO; MARCA2: CODIGO2" (ej: RIK: 34245; NPR: SWT-10150).'
     }
   ]
 
   const instructionsRows: Array<{ Campo_o_Regla: string; Descripcion: string }> = []
   if (scope !== 'parts_only') instructionsRows.push(...motorInstructions)
   if (scope !== 'motors_only') {
-    instructionsRows.push(
-      ...partInstructions,
-      { Campo_o_Regla: '--- FAMILIAS DISPONIBLES EN SWGORA ---', Descripcion: '' },
-      ...grupos.map(g => ({
-        Campo_o_Regla: `${g.codigo} (${g.nombre})`,
-        Descripcion: `Categoría: ${g.categoria} | Parámetros: ${(g.parametros || []).map(p => `${p.clave}${p.unidad ? ` [${p.unidad}]` : ''}`).join(', ') || 'Estándar'}`
-      }))
-    )
+    instructionsRows.push(...partInstructions)
+    if (scope === 'parts_only' && selectedGrupo) {
+      instructionsRows.push({
+        Campo_o_Regla: `Familia fija: ${selectedGrupo.codigo} (${selectedGrupo.nombre})`,
+        Descripcion: `Medidas: ${(selectedGrupo.parametros || []).map(p => `${p.clave}${p.unidad ? ` [${p.unidad}]` : ''}`).join(', ') || 'Estándar'}`
+      })
+    } else {
+      instructionsRows.push(
+        { Campo_o_Regla: '--- FAMILIAS DISPONIBLES EN SWGORA ---', Descripcion: '' },
+        ...grupos.map(g => ({
+          Campo_o_Regla: `${g.codigo} (${g.nombre})`,
+          Descripcion: `Medidas: ${(g.parametros || []).map(p => `${p.clave}${p.unidad ? ` [${p.unidad}]` : ''}`).join(', ') || 'Estándar'}`
+        }))
+      )
+    }
   }
 
   const wsGuide = XLSX.utils.json_to_sheet(instructionsRows)
@@ -1954,7 +2081,7 @@ export const downloadCatalogJsonTemplate = (
 ) => {
   const motorSampleObj = {
     ...SAMPLE_MOTOR_ROW,
-    modelos: ['Hilux', '4Runner']
+    modelos: 'Hilux, 4Runner'
   }
 
   let payload: Record<string, unknown>
@@ -1963,9 +2090,11 @@ export const downloadCatalogJsonTemplate = (
   if (scope === 'families_only') {
     payload = {
       _instrucciones: {
-        nota: 'Plantilla específica para importar Familias Técnicas con la misma estructura que Crear/Editar Familia.',
+        instruccion_para_ia:
+          'Devuelve un ÚNICO objeto JSON válido con { "familias": [...] }. Usa tipo_vista "normal" para fichas simples o "tabla" cuando tenga filas fijas (filas_tabla).',
         campos_obligatorios: ['nombre', 'columnas'],
-        campos_opcionales: ['subsistema', 'tipo_vista', 'titulo_primera_columna', 'filas_tabla', 'titulo_grupo_filas', 'descripcion'],
+        campos_opcionales: ['subsistema', 'tipo_vista', 'filas_tabla', 'titulo_primera_columna', 'descripcion'],
+        subsistemas_validos: ['Block', 'Culata', 'Cigüeñal', 'General'],
         tipos_vista: ['normal', 'tabla'],
         tipos_dato_columna: ['numero', 'booleano', 'seleccion', 'texto']
       },
@@ -1976,10 +2105,11 @@ export const downloadCatalogJsonTemplate = (
           tipo_vista: 'normal',
           descripcion: 'Camisas húmedas y secas',
           columnas: [
-            { etiqueta: 'Diámetro Interior', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true },
-            { etiqueta: 'Largo Total', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true },
-            { etiqueta: 'Tipo de Camisa', tipo_dato: 'seleccion', opciones: ['Seca', 'Húmeda'], requerido: true, filtrable: true },
-            { etiqueta: 'Con Pestaña', tipo_dato: 'booleano', requerido: false, filtrable: true }
+            { etiqueta: 'Diámetro Interior', tipo_dato: 'numero', unidad: 'mm' },
+            { etiqueta: 'Diámetro Exterior', tipo_dato: 'numero', unidad: 'mm' },
+            { etiqueta: 'Largo Total', tipo_dato: 'numero', unidad: 'mm' },
+            { etiqueta: 'Tipo de Camisa', tipo_dato: 'seleccion', opciones: ['Seca', 'Húmeda'] },
+            { etiqueta: 'Con Pestaña', tipo_dato: 'booleano' }
           ]
         },
         {
@@ -1987,13 +2117,13 @@ export const downloadCatalogJsonTemplate = (
           subsistema: 'Cigüeñal',
           tipo_vista: 'tabla',
           titulo_primera_columna: 'Componente',
-          filas_tabla: [
-            { nombre: 'Biela', tipo_fila: 'normal' },
-            { nombre: 'Bancada', tipo_fila: 'normal' }
-          ],
+          filas_tabla: ['Biela', 'Bancada'],
+          descripcion: 'Cojinetes en vista de tabla por medida STD y sobremedida',
           columnas: [
-            { etiqueta: 'D. Mín', columna_padre: 'STD', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true },
-            { etiqueta: 'D. Máx', columna_padre: 'STD', tipo_dato: 'numero', unidad: 'mm', requerido: true, filtrable: true }
+            { etiqueta: 'D. Mín', columna_padre: 'STD', tipo_dato: 'numero', unidad: 'mm' },
+            { etiqueta: 'D. Máx', columna_padre: 'STD', tipo_dato: 'numero', unidad: 'mm' },
+            { etiqueta: 'D. Mín', columna_padre: '0.25', tipo_dato: 'numero', unidad: 'mm' },
+            { etiqueta: 'D. Máx', columna_padre: '0.25', tipo_dato: 'numero', unidad: 'mm' }
           ]
         }
       ]
@@ -2002,13 +2132,10 @@ export const downloadCatalogJsonTemplate = (
   } else if (scope === 'motors_only') {
     payload = {
       _instrucciones: {
-        nota: 'Plantilla específica SOLO para importar Motores (numero_id lo gestiona el sistema). Orden: primero campos obligatorios y luego opcionales.',
+        instruccion_para_ia:
+          'Devuelve un ÚNICO objeto JSON válido con { "motores": [...] } respetando los nombres de campo del ejemplo.',
         campos_obligatorios: ['fabricante', 'codigo'],
-        campos_opcionales: MOTOR_TEMPLATE_COLUMNS.slice(2),
-        diferencia_modelos_vs_denominacion: {
-          modelos: 'Arreglo de modelos reales enlazados al filtro desplegable "Modelo" (ej: ["Hilux", "4Runner"]).',
-          denominacion_venta: 'Texto comercial/serie mostrado en la tabla de motores (ej: "Serie Pick Up / Comercial").'
-        }
+        campos_opcionales: MOTOR_TEMPLATE_COLUMNS.slice(2)
       },
       motores: [motorSampleObj]
     }
@@ -2017,32 +2144,64 @@ export const downloadCatalogJsonTemplate = (
     const { partColumns, sampleParts } = buildSampleRowsForTemplate(
       scope === 'parts_only' ? selectedGrupo : null
     )
-    const formattedParts = sampleParts.map(p => ({
-      ...p,
-      modelos: ['Hilux', '4Runner'],
-      equivalencias: [
-        { marca_alterna: 'RIK', codigo_alterno: '34245' },
-        { marca_alterna: 'NPR', codigo_alterno: 'SWT-10150' }
-      ]
-    }))
+    const formattedParts = sampleParts.map(p => ({ ...p }))
 
     if (scope === 'parts_only') {
-      payload = {
-        _instrucciones: {
-          nota: selectedGrupo
-            ? `Plantilla específica para repuestos de la familia "${selectedGrupo.nombre}". Orden: primero campos obligatorios y luego opcionales.`
-            : 'Plantilla específica SOLO para repuestos (todas las medidas estándar). Orden: primero campos obligatorios y luego opcionales.',
-          campos_obligatorios: ['codigo_oem'],
-          campos_opcionales: partColumns.slice(1),
-          familia_seleccionada: selectedGrupo ? selectedGrupo.codigo : 'todas',
-          familias_disponibles: grupos.map(g => ({
-            codigo: g.codigo,
-            nombre: g.nombre,
-            categoria: g.categoria,
-            parametros: (g.parametros || []).map(p => p.clave)
-          }))
-        },
-        repuestos: formattedParts
+      if (selectedGrupo) {
+        const isRingsFamily =
+          selectedGrupo.codigo === 'anillos_motor' ||
+          selectedGrupo.categoria.toLowerCase().includes('anillo') ||
+          selectedGrupo.nombre.toLowerCase().includes('anillo')
+        const normalSubfilas =
+          selectedGrupo.tipo_vista === 'tabla' && !isRingsFamily
+            ? (selectedGrupo.tabla_config?.subfilas || []).filter(
+                (_, idx) => selectedGrupo.tabla_config?.subfila_tipos?.[idx] !== 'central'
+              )
+            : []
+
+        payload = {
+          _instrucciones: {
+            instruccion_para_ia: `Devuelve un ÚNICO objeto JSON válido con { "repuestos": [...] }. Mantén siempre "familia": "${selectedGrupo.codigo}" y usa únicamente los campos de medida definidos en medidas_de_esta_familia.`,
+            campos_obligatorios: ['codigo_oem'],
+            campos_opcionales: partColumns.slice(1),
+            familia_fija: {
+              codigo: selectedGrupo.codigo,
+              nombre: selectedGrupo.nombre,
+              subsistema: selectedGrupo.subsistema || 'General',
+              tipo_vista: selectedGrupo.tipo_vista || 'normal'
+            },
+            medidas_de_esta_familia: (selectedGrupo.parametros || []).map(p => ({
+              clave: p.clave,
+              nombre: p.columna_padre ? `${p.columna_padre} - ${p.etiqueta}` : p.etiqueta,
+              tipo: p.tipo_dato,
+              ...(p.unidad ? { unidad: p.unidad } : {}),
+              ...(p.opciones?.length ? { opciones: p.opciones } : {})
+            })),
+            ...(normalSubfilas.length > 0
+              ? {
+                  filas_de_tabla: normalSubfilas,
+                  nota_filas:
+                    'Si las medidas son las mismas o se aplican planas, déjalas en la raíz del repuesto. Si varían por fila, agrega opcionalmente "filas": [{ "fila": "Nombre", ... }].'
+                }
+              : {})
+          },
+          repuestos: formattedParts
+        }
+      } else {
+        payload = {
+          _instrucciones: {
+            instruccion_para_ia:
+              'Devuelve un ÚNICO objeto JSON válido con { "repuestos": [...] } indicando el código de familia correcto en cada repuesto.',
+            campos_obligatorios: ['codigo_oem'],
+            campos_opcionales: partColumns.slice(1),
+            familias_disponibles: grupos.map(g => ({
+              codigo: g.codigo,
+              nombre: g.nombre,
+              medidas: (g.parametros || []).map(p => p.clave)
+            }))
+          },
+          repuestos: formattedParts
+        }
       }
       filename = selectedGrupo
         ? `plantilla_repuestos_${selectedGrupo.codigo}.json`
@@ -2050,7 +2209,8 @@ export const downloadCatalogJsonTemplate = (
     } else {
       payload = {
         _instrucciones: {
-          nota: 'Plantilla general completa: incluye motores y repuestos en un mismo archivo. Orden: primero campos obligatorios y luego opcionales.',
+          instruccion_para_ia:
+            'Devuelve un ÚNICO objeto JSON válido con { "motores": [...], "repuestos": [...] }.',
           motores_obligatorios: ['fabricante', 'codigo'],
           motores_opcionales: MOTOR_TEMPLATE_COLUMNS.slice(2),
           repuestos_obligatorios: ['codigo_oem'],
@@ -2058,8 +2218,7 @@ export const downloadCatalogJsonTemplate = (
           familias_disponibles: grupos.map(g => ({
             codigo: g.codigo,
             nombre: g.nombre,
-            categoria: g.categoria,
-            parametros: (g.parametros || []).map(p => p.clave)
+            medidas: (g.parametros || []).map(p => p.clave)
           }))
         },
         motores: [motorSampleObj],

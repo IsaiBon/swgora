@@ -83,7 +83,7 @@ const templateScopeHint = computed(() => {
     return 'Incluye solo: Motores + Instrucciones'
   }
   if (resolvedTemplateScope.value === 'families_only') {
-    return 'Incluye: Hoja Familias + Hoja Columnas_Familia + Instrucciones'
+    return 'Incluye: Hoja Familias (todo en una sola hoja) + Instrucciones'
   }
   return selectedTemplateGroup.value
     ? `Incluye solo: Repuestos (${selectedTemplateGroup.value.nombre}) + Instrucciones`
@@ -97,6 +97,14 @@ const selectedDefaultImportGroup = computed(() => {
       g => g.id === defaultImportGroupId.value || g.codigo === defaultImportGroupId.value
     ) || null
   )
+})
+
+watch(specificTarget, newTarget => {
+  if (newTarget.startsWith('grupo:')) {
+    defaultImportGroupId.value = newTarget.slice('grupo:'.length)
+  } else {
+    defaultImportGroupId.value = ''
+  }
 })
 
 watch(
