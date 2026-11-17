@@ -24,6 +24,7 @@ import {
   UserCheck,
   Plus,
   Minus,
+  Phone,
 } from 'lucide-vue-next'
 import {
   crearUsuario,
@@ -107,6 +108,7 @@ const datos = reactive<NuevoUsuario>({
   email: '',
   password: '',
   rol: 'operador',
+  telefono: '',
 })
 
 async function abrirModal() {
@@ -114,6 +116,7 @@ async function abrirModal() {
   datos.email = ''
   datos.password = ''
   datos.rol = 'operador'
+  datos.telefono = ''
   nombreTallerIndependiente.value = ''
   rutaNuevoUsuarioId.value =
     rutas.value.find((r) => !r.subAdminId && !r.subAdminEmail)?.id ||
@@ -230,6 +233,7 @@ async function guardarUsuario() {
       email: datos.email,
       password: datos.password,
       rol: rolParaCrear,
+      telefono: datos.telefono?.trim() || null,
     })
 
     if (rutaObjetivo) {
@@ -1104,6 +1108,8 @@ const copiadoId = ref<string | null>(null)
 const usuarioCredencial = ref<Perfil | null>(null)
 const nombreEditableFicha = ref('')
 const guardandoNombreFicha = ref(false)
+const telefonoEditableFicha = ref('')
+const guardandoTelefonoFicha = ref(false)
 const guardandoAvatarId = ref<string | null>(null)
 const inputAvatarTablaRef = ref<HTMLInputElement | null>(null)
 const inputAvatarModalRef = ref<HTMLInputElement | null>(null)
@@ -1169,10 +1175,11 @@ async function copiarTexto(texto: string, clave: string) {
 async function copiarFichaAcceso(usuario: Perfil) {
   const pwd = credencialDeUsuario(usuario) || 'No registrada'
   const ind = parseIndependentRole(usuario.rol)
+  const lineaTelefono = usuario.telefono?.trim() ? `\nTeléfono: ${usuario.telefono.trim()}` : ''
   const lineaExtra = ind.isIndependent
     ? `\nModalidad: Sistema Independiente (${ind.tallerNombre || 'Taller Propio'}) · Catálogo Compartido`
     : ''
-  const ficha = `SWGORA\nNombre: ${usuario.nombre}\nUsuario (Correo): ${usuario.email}\nContraseña: ${pwd}\nRol: ${nombreRol(usuario.rol)}${lineaExtra}`
+  const ficha = `SWGORA\nNombre: ${usuario.nombre}\nUsuario (Correo): ${usuario.email}${lineaTelefono}\nContraseña: ${pwd}\nRol: ${nombreRol(usuario.rol)}${lineaExtra}`
   await copiarTexto(ficha, `ficha-${usuario.id}`)
 }
 
@@ -1183,6 +1190,7 @@ async function abrirModalCredenciales(perfil: Perfil, evento?: MouseEvent) {
   }
   usuarioCredencial.value = perfil
   nombreEditableFicha.value = perfil.nombre || ''
+  telefonoEditableFicha.value = perfil.telefono || ''
   credencialEditable.value = credencialDeUsuario(perfil) || ''
   mostrarPasswordEnModal.value = false
   esNuevaPasswordVisible.value = true
@@ -1250,6 +1258,57 @@ async function guardarNombreFichaUsuario() {
         : 'No se pudo actualizar el nombre del usuario.'
   } finally {
     guardandoNombreFicha.value = false
+  }
+}
+
+async function guardarTelefonoFichaUsuario(forzarLimpiar = false) {
+  const perfil = usuarioCredencial.value
+  if (!perfil || guardandoTelefonoFicha.value) return
+  const telefonoLimpio = forzarLimpiar
+    ? ''
+    : telefonoEditableFicha.value.trim().replace(/\s+/g, ' ')
+  const valorActual = (perfil.telefono || '').trim()
+  if (telefonoLimpio === valorActual) return
+
+  const nuevoTelefono = telefonoLimpio || null
+  guardandoTelefonoFicha.value = true
+  mensajeModalCredencial.value = ''
+
+  try {
+    let persistedInDb = false
+    if (esUsuarioSoloRuta(perfil)) {
+      perfilesService.updatePerfilInCache(perfil.id, { telefono: nuevoTelefono })
+    } else {
+      const hasSession = await perfilesService.hasLiveSupabaseSession()
+      if (hasSession) {
+        await perfilesService.updatePerfil(perfil.id, { telefono: nuevoTelefono })
+        persistedInDb = true
+      } else {
+        perfilesService.updatePerfilInCache(perfil.id, { telefono: nuevoTelefono })
+      }
+    }
+
+    perfil.telefono = nuevoTelefono
+    telefonoEditableFicha.value = nuevoTelefono || ''
+    const fila = usuarios.value.find((u) => u.id === perfil.id)
+    if (fila) {
+      fila.telefono = nuevoTelefono
+    }
+    perfilesService.cachePerfilesList(usuarios.value)
+    tipoMensajeModalCredencial.value = 'ok'
+    mensajeModalCredencial.value = nuevoTelefono
+      ? persistedInDb
+        ? 'Teléfono guardado en la ficha del usuario.'
+        : 'Teléfono guardado en la ficha (en caché local).'
+      : 'Teléfono eliminado de la ficha del usuario.'
+  } catch (err: unknown) {
+    tipoMensajeModalCredencial.value = 'error'
+    mensajeModalCredencial.value =
+      err instanceof Error
+        ? err.message
+        : 'No se pudo actualizar el teléfono del usuario.'
+  } finally {
+    guardandoTelefonoFicha.value = false
   }
 }
 
@@ -2076,6 +2135,30 @@ onMounted(() => {
 
               <div>
                 <label
+                  for="usuario-telefono"
+                  class="mb-1.5 flex items-center justify-between text-xs font-bold text-[#0D1B3E]"
+                >
+                  <span>Teléfono</span>
+                  <span class="text-[11px] font-medium text-slate-400">Opcional</span>
+                </label>
+
+                <div class="relative">
+                  <Phone class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="usuario-telefono"
+                    v-model="datos.telefono"
+                    type="tel"
+                    maxlength="30"
+                    autocomplete="tel"
+                    :disabled="guardando"
+                    class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
+                    placeholder="Ej. +503 7000-0000"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
                   for="usuario-password"
                   class="mb-1.5 block text-xs font-bold text-[#0D1B3E]"
                 >
@@ -2455,6 +2538,13 @@ onMounted(() => {
                       <ShieldCheck class="h-3 w-3" />
                       {{ nombreRol(usuarioCredencial.rol) }}
                     </span>
+                    <span
+                      v-if="usuarioCredencial.telefono"
+                      class="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 font-mono text-[11px] font-medium text-sky-100/90"
+                    >
+                      <Phone class="h-3 w-3 text-[#04C4D9]" />
+                      {{ usuarioCredencial.telefono }}
+                    </span>
                     <span class="text-[11px] text-sky-100/65">
                       Alta: {{ fechaCreacion(usuarioCredencial.created_at) }}
                     </span>
@@ -2623,6 +2713,39 @@ onMounted(() => {
                 >
                   {{ guardandoNombreFicha ? 'Guardando…' : 'Guardar nombre' }}
                 </button>
+              </form>
+
+              <form class="flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="guardarTelefonoFichaUsuario(false)">
+                <div class="relative flex-1">
+                  <Phone class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="input-telefono-ficha"
+                    v-model="telefonoEditableFicha"
+                    type="tel"
+                    maxlength="30"
+                    :disabled="guardandoTelefonoFicha"
+                    placeholder="Teléfono (opcional, ej. +503 7000-0000)"
+                    class="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3.5 py-2 text-xs font-semibold text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
+                  />
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button
+                    type="submit"
+                    :disabled="guardandoTelefonoFicha || telefonoEditableFicha.trim() === (usuarioCredencial.telefono || '')"
+                    class="rounded-xl bg-[#004B97] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0D1B3E] disabled:opacity-40 cursor-pointer"
+                  >
+                    {{ guardandoTelefonoFicha ? 'Guardando…' : 'Guardar teléfono' }}
+                  </button>
+                  <button
+                    v-if="usuarioCredencial.telefono"
+                    type="button"
+                    :disabled="guardandoTelefonoFicha"
+                    class="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 cursor-pointer"
+                    @click="guardarTelefonoFichaUsuario(true)"
+                  >
+                    Quitar
+                  </button>
+                </div>
               </form>
 
               <div v-if="puedeEditarFoto(usuarioCredencial)" class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80">

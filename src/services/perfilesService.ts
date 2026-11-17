@@ -154,6 +154,7 @@ export interface Perfil {
   rol: string
   estado: 'Activo' | 'Inactivo'
   credencial?: string | null
+  telefono?: string | null
   avatar_url?: string | null
   sesion_unica?: boolean
   active_session_token?: string | null
@@ -405,6 +406,7 @@ export async function upsertPerfilSafely(
     nombre: string
     email: string
     rol: string
+    telefono?: string | null
     avatar_url?: string | null
   }
 ): Promise<boolean> {
@@ -426,6 +428,7 @@ export async function upsertPerfilSafely(
       email: params.email,
       rol: candidateRol,
       updated_at: now,
+      ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
       ...(params.avatar_url ? { avatar_url: params.avatar_url } : {}),
     }
 
@@ -434,12 +437,32 @@ export async function upsertPerfilSafely(
       .upsert({ ...basePayload, estado: 'Activo' }, { onConflict: 'id' })
 
     let upsertOk = !primaryError
+    if (!upsertOk && params.telefono !== undefined && isMissingTelefonoColumnError(primaryError)) {
+      const { telefono: _ignoredTel, ...payloadSinTelefono } = basePayload
+      const { error: retrySinTel } = await client
+        .from('perfiles')
+        .upsert({ ...payloadSinTelefono, estado: 'Activo' }, { onConflict: 'id' })
+      upsertOk = !retrySinTel
+      if (!upsertOk) {
+        const { error: withoutEstadoSinTel } = await client
+          .from('perfiles')
+          .upsert(payloadSinTelefono, { onConflict: 'id' })
+        upsertOk = !withoutEstadoSinTel
+      }
+    }
     if (!upsertOk) {
       // Reintentar sin `estado` por compatibilidad con esquemas sin esa columna
       const { error: withoutEstadoError } = await client
         .from('perfiles')
         .upsert(basePayload, { onConflict: 'id' })
       upsertOk = !withoutEstadoError
+      if (!upsertOk && params.telefono !== undefined && isMissingTelefonoColumnError(withoutEstadoError)) {
+        const { telefono: _ignoredTel, ...payloadSinTelefono } = basePayload
+        const { error: retryBoth } = await client
+          .from('perfiles')
+          .upsert(payloadSinTelefono, { onConflict: 'id' })
+        upsertOk = !retryBoth
+      }
     }
 
     if (!upsertOk) continue
@@ -487,6 +510,16 @@ function isMissingSessionColumnError(err: unknown): boolean {
     msg.includes('sesion_unica') ||
     msg.includes('active_session_token')
   )
+}
+
+function isMissingTelefonoColumnError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string; details?: string }
+  const msg = `${e.message || ''} ${e.details || ''}`.toLowerCase()
+  return (
+    (e.code === '42703' || e.code === 'PGRST204') &&
+    msg.includes('telefono')
+  ) || msg.includes("column 'telefono'") || msg.includes('column "telefono"') || msg.includes('perfiles.telefono')
 }
 
 export const perfilesService = {
@@ -769,17 +802,45 @@ export const perfilesService = {
    * Actualiza los datos de un perfil
    */
   async updatePerfil(id: string, updates: PerfilUpdate): Promise<Perfil> {
+    const now = new Date().toISOString()
     const { data, error } = await supabase
       .from('perfiles')
       .update({
         ...updates,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq('id', id)
       .select()
       .maybeSingle()
 
     if (error) {
+      if ('telefono' in updates && isMissingTelefonoColumnError(error)) {
+        const { telefono, ...rest } = updates
+        this.updatePerfilInCache(id, { telefono: telefono ?? null })
+        if (Object.keys(rest).length > 0) {
+          const { data: restData, error: restError } = await supabase
+            .from('perfiles')
+            .update({
+              ...rest,
+              updated_at: now,
+            })
+            .eq('id', id)
+            .select()
+            .maybeSingle()
+          if (restError) throw restError
+          if (restData) {
+            const merged = mergePerfilesIntoCache(
+              [{ ...(restData as Perfil), telefono: telefono ?? null }],
+              { markLocalOnly: false }
+            )
+            return merged[0] ?? ({ ...(restData as Perfil), telefono: telefono ?? null })
+          }
+        }
+        const cached = this.getCachedPerfilByEmailOrId({ id })
+        if (cached) {
+          return { ...cached, telefono: telefono ?? null, updated_at: now }
+        }
+      }
       throw error
     }
     if (!data) {

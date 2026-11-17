@@ -14,6 +14,7 @@ export interface NuevoUsuario {
   email: string
   password: string
   rol: 'admin' | 'consultor' | 'operador' | string
+  telefono?: string | null
 }
 
 const CREDENTIALS_STORAGE_KEY = 'swgora_admin_credentials_vault'
@@ -1073,6 +1074,7 @@ function registrarPerfilYCredencial(params: {
   email: string
   rol: string
   password: string
+  telefono?: string | null
   syncedWithDb?: boolean
   skipCloudSync?: boolean
 }): void {
@@ -1086,6 +1088,7 @@ function registrarPerfilYCredencial(params: {
         email: params.email,
         rol: params.rol,
         estado: 'Activo',
+        ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
         created_at: now,
         updated_at: now,
         localOnly: isLocalOnly,
@@ -1171,6 +1174,7 @@ async function sincronizarPerfilTrasAuth(params: {
   email: string
   rol: string
   password: string
+  telefono?: string | null
   updateMetadata?: boolean
   updatePassword?: boolean
   skipCacheRegistration?: boolean
@@ -1194,6 +1198,7 @@ async function sincronizarPerfilTrasAuth(params: {
         name: params.nombre,
         role: params.rol,
         password_visible: params.password,
+        ...(params.telefono ? { telefono: params.telefono } : {}),
       }
       await isolatedClient.auth
         .updateUser(
@@ -1213,6 +1218,7 @@ async function sincronizarPerfilTrasAuth(params: {
           nombre: params.nombre,
           email: params.email,
           rol: params.rol,
+          ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
         }
       )
     }
@@ -1223,6 +1229,7 @@ async function sincronizarPerfilTrasAuth(params: {
         nombre: params.nombre,
         email: params.email,
         rol: params.rol,
+        ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
       })
     }
 
@@ -1233,6 +1240,7 @@ async function sincronizarPerfilTrasAuth(params: {
         email: params.email,
         rol: params.rol,
         password: params.password,
+        ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
         syncedWithDb: persistedInDb,
       })
     }
@@ -1253,6 +1261,7 @@ async function tryRecoverExistingAuthAccount(params: {
   email: string
   password: string
   rol: string
+  telefono?: string | null
 }): Promise<CrearUsuarioResult | null> {
   const exactVaultPwd = getExactVaultPassword({ email: params.email })
   const passwordsToTry = [params.password]
@@ -1280,6 +1289,7 @@ async function tryRecoverExistingAuthAccount(params: {
           email: params.email,
           rol: params.rol,
           password: params.password,
+          ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
           updateMetadata: true,
           updatePassword: pwdCandidate !== params.password,
         })
@@ -1338,6 +1348,7 @@ async function verifyAndRepairCreatedRole(params: {
   email: string
   desiredRol: string
   password: string
+  telefono?: string | null
   initialRoleFromResponse?: string | null
 }): Promise<{ persistedInDb: boolean; resolvedRol: string }> {
   const hasSession = await perfilesService.hasLiveSupabaseSession()
@@ -1362,6 +1373,15 @@ async function verifyAndRepairCreatedRole(params: {
     currentDbRol &&
     rolesMatchEquivalent(currentDbRol, params.desiredRol)
   ) {
+    if (params.telefono) {
+      await upsertPerfilSafely(supabase, {
+        id: params.id,
+        nombre: params.nombre,
+        email: params.email,
+        rol: currentDbRol,
+        telefono: params.telefono,
+      }).catch(() => false)
+    }
     return { persistedInDb: true, resolvedRol: currentDbRol }
   }
 
@@ -1381,6 +1401,7 @@ async function verifyAndRepairCreatedRole(params: {
       nombre: params.nombre,
       email: params.email,
       rol: params.desiredRol,
+      ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
     })
   }
 
@@ -1392,6 +1413,7 @@ async function verifyAndRepairCreatedRole(params: {
     email: params.email,
     rol: params.desiredRol,
     password: params.password,
+    ...(params.telefono !== undefined ? { telefono: params.telefono } : {}),
     updateMetadata: true,
     skipCacheRegistration: true,
   })
@@ -1429,6 +1451,7 @@ export async function crearUsuario(
   const cleanNombre = datos.nombre.trim()
   const cleanEmail = datos.email.trim().toLowerCase()
   const cleanPassword = datos.password
+  const cleanTelefono = datos.telefono?.trim() || null
   const isCustomSubAdminRole =
     datos.rol.startsWith('subadmin|') ||
     datos.rol.startsWith('independiente|') ||
@@ -1446,6 +1469,7 @@ export async function crearUsuario(
           name: cleanNombre,
           role: datos.rol,
           password_visible: cleanPassword,
+          ...(cleanTelefono ? { telefono: cleanTelefono } : {}),
         },
       },
     })
@@ -1463,6 +1487,7 @@ export async function crearUsuario(
       email: cleanEmail,
       password: cleanPassword,
       rol: datos.rol,
+      ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
     })
     if (recovered) return recovered
     throw new Error(
@@ -1488,6 +1513,7 @@ export async function crearUsuario(
                 name: cleanNombre,
                 role: adminAltRole,
                 password_visible: cleanPassword,
+                ...(cleanTelefono ? { telefono: cleanTelefono } : {}),
               },
             },
           })
@@ -1500,6 +1526,7 @@ export async function crearUsuario(
             email: cleanEmail,
             rol: adminAltRole,
             password: cleanPassword,
+            ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
             updateMetadata: false,
           })
           return {
@@ -1539,6 +1566,7 @@ export async function crearUsuario(
               email: cleanEmail,
               desiredRol: datos.rol,
               password: cleanPassword,
+              ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
               initialRoleFromResponse:
                 typeof opData.usuario.rol === 'string' ? opData.usuario.rol : null,
             })
@@ -1553,6 +1581,7 @@ export async function crearUsuario(
               email: cleanEmail,
               rol: verified.resolvedRol,
               password: cleanPassword,
+              ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
               syncedWithDb: verified.persistedInDb,
               skipCloudSync: true,
             })
@@ -1576,6 +1605,7 @@ export async function crearUsuario(
                   name: cleanNombre,
                   role: 'operador',
                   password_visible: cleanPassword,
+                  ...(cleanTelefono ? { telefono: cleanTelefono } : {}),
                 },
               },
             })
@@ -1588,6 +1618,7 @@ export async function crearUsuario(
               email: cleanEmail,
               rol: datos.rol,
               password: cleanPassword,
+              ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
               updateMetadata: true,
             })
             const vault = registrarRolEnBoveda({
@@ -1613,6 +1644,7 @@ export async function crearUsuario(
         email: cleanEmail,
         password: cleanPassword,
         rol: datos.rol,
+        ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
       })
       if (recovered) return recovered
       throw new Error(
@@ -1645,6 +1677,7 @@ export async function crearUsuario(
     email: cleanEmail,
     rol: datos.rol,
     password: cleanPassword,
+    ...(cleanTelefono !== null ? { telefono: cleanTelefono } : {}),
     updateMetadata: false,
   })
 
