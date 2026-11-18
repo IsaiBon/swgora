@@ -1198,42 +1198,39 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <div class="lg:col-span-7 xl:col-span-8 space-y-6">
         
         <!-- 1. Card Cabecera / Info de la Orden -->
-        <div class="studio-card p-5 sm:p-6 flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap sm:items-center justify-between gap-4 lg:gap-5">
-          <div class="flex-none sm:min-w-[170px]">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N° de Orden</span>
-            <div class="flex items-center gap-2 mt-1">
-              <span class="text-2xl font-black font-mono tracking-tight text-[#0D1B3E] bg-[#004B97]/8 border border-[#004B97]/20 px-3.5 py-1 rounded-xl select-all shadow-2xs">
-                {{ orderNumber || 'Asignando...' }}
-              </span>
-              <span class="text-[10px] font-bold text-[#12697A] bg-[#E3F5F8] border border-[#C1E8EF] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                Fijo (Auto)
-              </span>
+        <div class="studio-card p-4 sm:p-5">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 items-end">
+            <!-- Col 1: N° de Orden -->
+            <div class="min-w-0">
+              <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">N° de Orden</span>
+              <div class="h-[38px] flex items-center justify-between gap-1.5 bg-[#004B97]/8 border border-[#004B97]/20 px-2.5 rounded-xl shadow-2xs">
+                <span class="text-base sm:text-lg font-black font-mono tracking-tight text-[#0D1B3E] select-all truncate">
+                  {{ orderNumber || 'Asignando...' }}
+                </span>
+                <span class="text-[9px] font-bold text-[#12697A] bg-[#E3F5F8] border border-[#C1E8EF] px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                  Fijo
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div class="hidden xl:block w-px h-12 bg-slate-200/80 shrink-0"></div>
-
-          <div class="flex-none sm:min-w-[155px]">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fecha de Ingreso</span>
-            <div class="mt-1">
+            <!-- Col 2: Fecha de Ingreso -->
+            <div class="min-w-0">
+              <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Fecha de Ingreso</span>
               <input
                 v-model="orderDate"
                 type="date"
-                class="w-full text-sm font-bold text-[#0D1B3E] bg-slate-50/90 border border-slate-300 rounded-xl px-3 py-1.5 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
+                class="w-full h-[38px] text-xs sm:text-sm font-bold text-[#0D1B3E] bg-slate-50/90 border border-slate-300 rounded-xl px-2.5 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition cursor-pointer"
               />
             </div>
-          </div>
 
-          <div class="hidden xl:block w-px h-12 bg-slate-200/80 shrink-0"></div>
-
-          <div class="flex-none min-w-[150px]">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Estado</span>
-            <div class="mt-1">
-              <div class="relative inline-block w-full min-w-[145px]">
+            <!-- Col 3: Estado -->
+            <div class="min-w-0">
+              <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Estado</span>
+              <div class="relative w-full">
                 <select
                   v-model="orderStatus"
                   :class="[
-                    'w-full font-bold text-xs rounded-full pl-4 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 transition text-center shadow-2xs whitespace-nowrap',
+                    'w-full h-[38px] font-bold text-xs rounded-full pl-3 pr-7 appearance-none cursor-pointer focus:outline-none focus:ring-2 transition text-center shadow-2xs truncate',
                     orderStatus === 'Pendiente'
                       ? 'bg-[#F6F0E4] border border-[#E6DAC2] text-[#6E5835] focus:ring-[#D4C3A3]'
                       : 'bg-[#E3F5F8] border border-[#9AD2DC] text-[#12697A] focus:ring-[#147488]'
@@ -1244,26 +1241,23 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 </select>
                 <ChevronDown
                   :class="[
-                    'w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition',
+                    'w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition shrink-0',
                     orderStatus === 'Pendiente' ? 'text-[#6E5835]' : 'text-[#12697A]'
                   ]"
                 />
               </div>
             </div>
-          </div>
 
-          <div class="hidden xl:block w-px h-12 bg-slate-200/80 shrink-0"></div>
-
-          <div class="flex-1 min-w-[180px] sm:min-w-[200px]">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-              <MapPin class="w-3 h-3 text-[#147488]" />
-              <span>Ruta / Sucursal</span>
-            </span>
-            <div class="mt-1">
+            <!-- Col 4: Ruta / Sucursal -->
+            <div class="min-w-0">
+              <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
+                <MapPin class="w-3 h-3 text-[#147488] shrink-0" />
+                <span class="truncate">Ruta / Sucursal</span>
+              </span>
               <!-- Si es Sub-Administrador de Ruta: ruta fija asignada -->
               <div
                 v-if="authStore.isSubAdmin"
-                class="inline-flex items-center gap-1.5 w-full rounded-full bg-[#19314D] text-[#BFEBF2] border border-[#C1E8EF]/40 px-3 py-1.5 text-xs font-bold shadow-xs"
+                class="h-[38px] inline-flex items-center gap-1.5 w-full rounded-full bg-[#19314D] text-[#BFEBF2] border border-[#C1E8EF]/40 px-2.5 text-xs font-bold shadow-2xs min-w-0"
                 title="Esta orden pertenece automáticamente a tu ruta asignada"
               >
                 <MapPin class="w-3.5 h-3.5 text-[#BFEBF2] shrink-0" />
@@ -1273,12 +1267,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               </div>
 
               <!-- Si es Administrador General u Operador: selector de rutas -->
-              <div v-else class="relative inline-block w-full">
+              <div v-else class="relative w-full">
                 <select
                   v-model="selectedRutaId"
-                  class="w-full font-bold text-xs rounded-full px-3.5 py-2 appearance-none pr-8 cursor-pointer bg-[#004B97]/8 border border-[#004B97]/30 text-[#0D1B3E] focus:outline-none focus:ring-2 focus:ring-[#04C4D9] transition"
+                  class="w-full h-[38px] font-bold text-xs rounded-full pl-2.5 pr-7 appearance-none cursor-pointer bg-[#004B97]/8 border border-[#004B97]/30 text-[#0D1B3E] focus:outline-none focus:ring-2 focus:ring-[#04C4D9] transition truncate"
                 >
-                  <option value="">General / Sin ruta específica</option>
+                  <option value="">General / Sin ruta</option>
                   <option
                     v-for="r in availableRutas"
                     :key="r.id"
@@ -1287,7 +1281,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     {{ r.codigo }} · {{ r.nombre }}
                   </option>
                 </select>
-                <ChevronDown class="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#004B97]" />
+                <ChevronDown class="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#004B97] shrink-0" />
               </div>
             </div>
           </div>
