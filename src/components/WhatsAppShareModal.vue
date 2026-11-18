@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { Order } from '@/services/ordersService'
-import { uploadOrderPdf } from '@/services/storageService'
 import { useTallerStore } from '@/stores/taller'
 import {
-  downloadPdfBlob,
   generateOrderPdfFile,
   type GeneratedOrderPdf,
 } from '@/utils/pdfExport'
@@ -20,10 +18,8 @@ import {
 } from '@/utils/whatsappShare'
 import {
   AlertTriangle,
-  Check,
   ExternalLink,
   FileText,
-  Link2,
   Share2,
   X,
 } from 'lucide-vue-next'
@@ -53,22 +49,16 @@ let sessionCounter = 0
 // Mensaje automático para WhatsApp
 const generatedMessage = ref('')
 
-// Estado de PDF (generación en memoria, subida para enlace en wa.me y envío directo)
+// Estado de PDF para envío directo nativo
 const cachedPdf = ref<GeneratedOrderPdf | null>(null)
-const uploadedPdfUrl = ref('')
 const isNativeSharingPdf = ref(false)
-const isComboSending = ref(false)
 const pdfStatusMessage = ref<string | null>(null)
 const pdfError = ref<string | null>(null)
-const popupBlockedUrl = ref<string | null>(null)
 const renderOffscreenPdf = ref(false)
 const offscreenContainerRef = ref<HTMLElement | null>(null)
 
 const supportsNativePdfShare = computed(() => canNativeSharePdfFiles())
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
-const isPdfBusy = computed(
-  () => isNativeSharingPdf.value || isComboSending.value
-)
 
 const effectiveShowSubtotals = computed(() => {
   if (typeof props.initialShowSubtotals === 'boolean') return props.initialShowSubtotals
@@ -97,7 +87,6 @@ const buildMessage = () => {
       includeStatus: props.order.type !== 'cotizacion',
       includeObservations: Boolean(props.order.observations?.trim()),
       includeTallerContact: true,
-      pdfUrl: uploadedPdfUrl.value || undefined,
     }
   )
 }
@@ -126,10 +115,8 @@ watch(
 
     const currentSession = ++sessionCounter
     cachedPdf.value = null
-    uploadedPdfUrl.value = ''
     pdfStatusMessage.value = null
     pdfError.value = null
-    popupBlockedUrl.value = null
 
     await tallerStore.loadTallerInfo()
     if (currentSession !== sessionCounter) return
@@ -137,11 +124,6 @@ watch(
   },
   { immediate: true }
 )
-
-watch(uploadedPdfUrl, () => {
-  if (!props.isOpen || !props.order) return
-  buildMessage()
-})
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
@@ -214,16 +196,11 @@ const obtainOrderPdfFile = async (): Promise<GeneratedOrderPdf> => {
   }
 }
 
-const handleRemovePdfLink = () => {
-  uploadedPdfUrl.value = ''
-  pdfStatusMessage.value = null
-}
-
 /**
  * Envía el archivo PDF real mediante la hoja nativa del dispositivo (Android/iOS/OS compatible).
  */
 const handleNativeSharePdf = async () => {
-  if (!props.order || isPdfBusy.value || !supportsNativePdfShare.value) return
+  if (!props.order || isNativeSharingPdf.value || !supportsNativePdfShare.value) return
   isNativeSharingPdf.value = true
   pdfError.value = null
   pdfStatusMessage.value = null
@@ -244,63 +221,10 @@ const handleNativeSharePdf = async () => {
   } catch (err: any) {
     if (err?.name !== 'AbortError') {
       console.error('[WhatsAppShareModal] Error al compartir archivo PDF nativo:', err)
-      pdfError.value = 'Tu navegador no completó el envío directo del archivo. Usa "Enviar con PDF + wa.me".'
+      pdfError.value = 'Tu navegador no completó el envío directo del archivo PDF.'
     }
   } finally {
     isNativeSharingPdf.value = false
-  }
-}
-
-/**
- * Flujo de 1 clic para enviar con PDF:
- * intenta subir el PDF para incluir su enlace en wa.me; si el bucket no está disponible,
- * descarga el PDF localmente y abre wa.me para elegir el chat.
- */
-const handleSendWithPdfAndWaMe = async () => {
-  if (!props.order || isPdfBusy.value) return
-  if (!generatedMessage.value.trim()) return
-
-  isComboSending.value = true
-  pdfError.value = null
-  pdfStatusMessage.value = null
-  popupBlockedUrl.value = null
-
-  try {
-    const generated = await obtainOrderPdfFile()
-
-    if (!uploadedPdfUrl.value) {
-      const uploadRes = await uploadOrderPdf(generated.file, {
-        id: props.order.id,
-        orderNumber: props.order.orderNumber,
-        type: props.order.type,
-      })
-
-      if (uploadRes.isRemote && uploadRes.url) {
-        uploadedPdfUrl.value = uploadRes.url
-        await nextTick()
-        pdfStatusMessage.value = 'PDF subido a la nube e incluido como enlace directo en wa.me.'
-      } else {
-        downloadPdfBlob(generated.blob, generated.filename)
-        pdfStatusMessage.value =
-          'PDF descargado en tu equipo. Arrástralo al chat de WhatsApp que se abrió.'
-      }
-    }
-
-    const targetUrl = waUrl.value
-    const opened = window.open(targetUrl, '_blank', 'noopener,noreferrer')
-    if (!opened) {
-      popupBlockedUrl.value = targetUrl
-    }
-
-    emit('shared', {
-      order: props.order,
-      preset: DEFAULT_PRESET,
-    })
-  } catch (err) {
-    console.error('[WhatsAppShareModal] Error en flujo PDF + wa.me:', err)
-    pdfError.value = 'No se pudo preparar el PDF para WhatsApp.'
-  } finally {
-    isComboSending.value = false
   }
 }
 
@@ -308,7 +232,6 @@ const handleOpenWhatsApp = () => {
   if (!props.order) return
   if (!generatedMessage.value.trim()) return
 
-  popupBlockedUrl.value = null
   window.open(waUrl.value, '_blank', 'noopener,noreferrer')
   emit('shared', {
     order: props.order,
@@ -381,60 +304,30 @@ const handleCopyAndOpenEmptyChat = async () => {
 
         <!-- Body -->
         <div class="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50/70 space-y-3.5">
-          <!-- Envío con PDF -->
+          <!-- Envío de documento -->
           <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">
             <div class="flex items-center justify-between gap-2">
               <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
                 <FileText class="w-3.5 h-3.5 text-[#038391]" />
-                <span>Enviar Documento PDF</span>
-              </span>
-              <span
-                v-if="uploadedPdfUrl"
-                class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"
-              >
-                <Check class="w-3 h-3" />
-                Enlace listo
+                <span>{{ supportsNativePdfShare ? 'Enviar Documento PDF' : 'Compartir por WhatsApp (wa.me)' }}</span>
               </span>
             </div>
 
             <p class="text-xs text-slate-500 leading-relaxed">
-              Al pulsar <strong>Enviar con PDF + wa.me</strong>, el sistema genera el PDF, lo sube a la nube e incluye su enlace directo dentro del mensaje de WhatsApp{{ supportsNativePdfShare ? '; también puedes enviarlo como archivo adjunto directo desde tu dispositivo' : '' }}.
+              <template v-if="supportsNativePdfShare">
+                Puedes enviar el archivo <strong>PDF directamente</strong> desde tu dispositivo o abrir WhatsApp (<span class="font-mono font-semibold">wa.me</span>) con el detalle completo de la {{ isCotizacion ? 'cotización' : 'orden' }}.
+              </template>
+              <template v-else>
+                Se abrirá WhatsApp (<span class="font-mono font-semibold">wa.me</span>) con el detalle completo de la {{ isCotizacion ? 'cotización' : 'orden' }} listo para elegir el contacto o grupo.
+              </template>
             </p>
-
-            <!-- Estado si ya hay enlace de PDF en el mensaje -->
-            <div
-              v-if="uploadedPdfUrl"
-              class="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 space-y-1.5"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-bold flex items-center gap-1">
-                  <Link2 class="w-3.5 h-3.5 text-[#25D366]" />
-                  Enlace PDF incluido en el mensaje
-                </span>
-                <button
-                  type="button"
-                  @click="handleRemovePdfLink"
-                  class="text-[10.5px] font-semibold text-rose-600 hover:underline cursor-pointer"
-                >
-                  Quitar
-                </button>
-              </div>
-              <a
-                :href="uploadedPdfUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block font-mono text-[10px] text-[#004B97] truncate hover:underline"
-              >
-                {{ uploadedPdfUrl }}
-              </a>
-            </div>
 
             <div v-if="supportsNativePdfShare" class="grid grid-cols-1 gap-2">
               <!-- Envío nativo de archivo PDF (Android / iOS / OS compatible) -->
               <button
                 type="button"
                 @click="handleNativeSharePdf"
-                :disabled="isPdfBusy"
+                :disabled="isNativeSharingPdf"
                 class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
               >
                 <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
@@ -450,26 +343,6 @@ const handleCopyAndOpenEmptyChat = async () => {
             </p>
           </div>
 
-          <!-- Respaldo si el navegador bloqueó ventana emergente tras generar PDF -->
-          <div
-            v-if="popupBlockedUrl"
-            class="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-          >
-            <span class="text-[11px] font-semibold leading-snug">
-              El PDF ya está listo, pero el navegador bloqueó la pestaña automática. Haz clic para abrir WhatsApp:
-            </span>
-            <a
-              :href="popupBlockedUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              @click="popupBlockedUrl = null"
-              class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-[11px] font-bold transition"
-            >
-              <WhatsAppIcon class="w-3.5 h-3.5" />
-              <span>Abrir WhatsApp ahora</span>
-            </a>
-          </div>
-
           <!-- Aviso si la URL excede el límite recomendado para wa.me -->
           <div
             v-if="isUrlTooLong"
@@ -478,7 +351,7 @@ const handleCopyAndOpenEmptyChat = async () => {
             <div class="flex items-start gap-2">
               <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p class="text-[11px] leading-snug">
-                El detalle completo es extenso para un enlace <span class="font-mono font-bold">wa.me</span> y podría recortarse. Usa <strong>Copiar y abrir chat</strong> o envíalo mediante PDF.
+                El detalle completo es extenso para un enlace <span class="font-mono font-bold">wa.me</span> y podría recortarse. Usa <strong>Copiar y abrir chat</strong>.
               </p>
             </div>
             <button
@@ -501,17 +374,6 @@ const handleCopyAndOpenEmptyChat = async () => {
             class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
           >
             Cancelar
-          </button>
-
-          <button
-            type="button"
-            @click="handleSendWithPdfAndWaMe"
-            :disabled="isPdfBusy || !generatedMessage.trim()"
-            class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
-            title="Genera el PDF (lo enlaza en la nube o lo descarga) y abre wa.me en un clic"
-          >
-            <FileText class="w-3.5 h-3.5 text-[#BFEBF2]" :class="{ 'animate-pulse': isComboSending }" />
-            <span>{{ isComboSending ? 'Preparando PDF...' : 'Enviar con PDF + wa.me' }}</span>
           </button>
 
           <button
