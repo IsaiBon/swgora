@@ -389,6 +389,11 @@ function setSubtotalsPref(orderIdOrNum: string | undefined, val: boolean) {
   } catch {}
 }
 
+const getTodayLocalDateStr = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function mapDbToOrder(row: any): Order {
   const decodedTaller = decodeTallerCodigoWithRoute(row.taller_codigo)
   const fallbackRoute = rutasService.getOrderRoute(
@@ -438,7 +443,7 @@ function mapDbToOrder(row: any): Order {
     customerAddress: row.cliente_direccion || undefined,
     workshop: row.taller || undefined,
     workshopCode: decodedTaller.cleanCode || undefined,
-    date: row.fecha ? String(row.fecha).split('T')[0] : new Date().toISOString().split('T')[0],
+    date: row.fecha ? String(row.fecha).split('T')[0] : getTodayLocalDateStr(),
     deliveryDate: row.fecha_entrega ? String(row.fecha_entrega).split('T')[0] : undefined,
     status: (row.estado || 'Pendiente') as OrderStatus,
     type: (row.tipo || 'orden') as DocumentType,
@@ -479,7 +484,7 @@ function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
     setSubtotalsPref(order.orderNumber, Boolean(order.showSubtotals))
   }
 
-  const cleanDate = order.date ? String(order.date).split('T')[0] : new Date().toISOString().split('T')[0]
+  const cleanDate = order.date ? String(order.date).split('T')[0] : getTodayLocalDateStr()
   const cleanDeliveryDate = order.deliveryDate ? String(order.deliveryDate).split('T')[0] : null
 
   const routeMeta =

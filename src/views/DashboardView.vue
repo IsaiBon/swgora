@@ -258,25 +258,72 @@ const parseOrderDate = (order: Order): Date => {
   return new Date()
 }
 
-// Lista dinámica de años disponibles (últimos 6 años, año actual, futuros años y todos los años con órdenes registradas)
+const DASHBOARD_CUSTOM_YEARS_KEY = 'swgora_dashboard_custom_years_v1'
+const loadCustomDashboardYears = (): number[] => {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(DASHBOARD_CUSTOM_YEARS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed)
+      ? parsed.map(Number).filter(y => Number.isInteger(y) && y >= 1990 && y <= 2100)
+      : []
+  } catch {
+    return []
+  }
+}
+const customDashboardYears = ref<number[]>(loadCustomDashboardYears())
+const newDashboardYearInput = ref<string>('')
+
+const addCustomDashboardYear = () => {
+  const clean = newDashboardYearInput.value.trim()
+  if (!/^\d{4}$/.test(clean)) {
+    showToast('Ingresa un año válido de 4 dígitos (ej. 2027).', 'error')
+    return
+  }
+  const yr = Number(clean)
+  if (yr < 1990 || yr > 2100) {
+    showToast('El año debe estar entre 1990 y 2100.', 'error')
+    return
+  }
+  if (!customDashboardYears.value.includes(yr)) {
+    customDashboardYears.value = [...customDashboardYears.value, yr]
+    try {
+      localStorage.setItem(DASHBOARD_CUSTOM_YEARS_KEY, JSON.stringify(customDashboardYears.value))
+    } catch {
+      // Silencioso
+    }
+  }
+  newDashboardYearInput.value = ''
+  pickYear(yr)
+  showToast(`Año ${yr} agregado al Dashboard`, 'success')
+}
+
+// Lista dinámica de años disponibles (hasta año actual [2026] + años con órdenes + años agregados manualmente)
 const availableYears = computed<number[]>(() => {
   const curY = currentYear.value
-  let minY = curY - 6
-  let maxY = curY + 5
+  const minBase = curY - 6
+  const yearsSet = new Set<number>()
+
+  for (let y = curY; y >= minBase; y--) {
+    yearsSet.add(y)
+  }
 
   orders.value.forEach(order => {
     const y = parseOrderDate(order).getFullYear()
-    if (y >= 1990 && y <= curY + 25) {
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
+    if (y >= 1990 && y <= 2100) {
+      yearsSet.add(y)
     }
   })
 
-  const list: number[] = []
-  for (let y = maxY; y >= minY; y--) {
-    list.push(y)
+  customDashboardYears.value.forEach(y => {
+    if (y >= 1990 && y <= 2100) yearsSet.add(y)
+  })
+
+  if (selectedYear.value >= 1990 && selectedYear.value <= 2100) {
+    yearsSet.add(selectedYear.value)
   }
-  return list
+
+  return Array.from(yearsSet).sort((a, b) => b - a)
 })
 
 const orderCountByYear = computed<Record<number, number>>(() => {
@@ -1479,6 +1526,29 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                         </div>
                       </button>
                     </div>
+
+                    <form
+                      @submit.prevent="addCustomDashboardYear"
+                      @click.stop
+                      class="p-2 bg-slate-50 border-t border-slate-100 flex items-center gap-1.5"
+                    >
+                      <input
+                        v-model="newDashboardYearInput"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="4"
+                        placeholder="Ej. 2027"
+                        class="flex-1 min-w-0 px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg text-[#0D1B3E] placeholder-slate-400 focus:outline-none focus:border-[#04C4D9]"
+                      />
+                      <button
+                        type="submit"
+                        class="px-2.5 py-1 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                        title="Agregar año al selector"
+                      >
+                        <Plus class="w-3 h-3" />
+                        <span>Agregar</span>
+                      </button>
+                    </form>
                   </div>
                 </Transition>
               </div>

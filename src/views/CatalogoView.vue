@@ -96,7 +96,7 @@ const isYearOpen = ref<boolean>(false)
 const showAllMotors = ref<boolean>(false)
 
 const CURRENT_CATALOG_YEAR = Math.max(2026, new Date().getFullYear())
-const MAX_CATALOG_YEAR = CURRENT_CATALOG_YEAR + 2
+const MAX_CATALOG_YEAR = CURRENT_CATALOG_YEAR
 const MIN_CATALOG_YEAR = 1965
 
 const CUSTOM_YEARS_STORAGE_KEY = 'swgora_custom_years_v1'

@@ -71,9 +71,17 @@ const formErrors = ref({
 })
 const validationErrorMessage = ref<string | null>(null)
 
+const getTodayLocalYmd = () => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 // Campos Cabecera
 const orderNumber = ref('')
-const orderDate = ref(new Date().toISOString().split('T')[0])
+const orderDate = ref(getTodayLocalYmd())
 const orderStatus = ref<OrderStatus>('Pendiente')
 const docType = ref<DocumentType>('orden')
 

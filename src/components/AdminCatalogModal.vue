@@ -546,7 +546,7 @@ const commonYearsList = computed(() => {
   } catch {
     // Silencioso
   }
-  for (let y = currentYear + 2; y >= 1965; y--) {
+  for (let y = currentYear; y >= 1965; y--) {
     collected.push(String(y))
   }
   const unique = Array.from(new Set(collected))
