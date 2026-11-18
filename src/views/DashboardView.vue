@@ -1670,95 +1670,158 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
       </div>
 
       <!-- 2. TENDENCIAS DE CARGA DE TRABAJO MENSUAL (7 Columnas) -->
-      <div class="lg:col-span-7 studio-card overflow-hidden flex flex-col justify-between">
-        <div>
-          <div class="px-5 py-4 border-b border-slate-100 bg-[#F4F8FC] flex items-center justify-between gap-3">
-            <div class="flex items-center gap-3 min-w-0">
-              <span class="w-9 h-9 rounded-xl bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center shrink-0">
-                <BarChart3 class="w-4 h-4" />
-              </span>
-              <div class="min-w-0">
-                <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0F1E2E] tracking-tight">
-                  Tendencias de Carga Mensual ({{ chartYear }})
-                </h2>
-                <p class="text-[11px] text-slate-500 truncate">
-                  Evolución de órdenes de rectificación y facturación anual
-                </p>
-              </div>
-            </div>
-
-            <div v-if="peakWorkloadMonth" class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2] font-mono text-[11px] font-bold shrink-0">
-              <TrendingUp class="w-3.5 h-3.5" />
-              Pico: {{ peakWorkloadMonth.monthFull }} ({{ peakWorkloadMonth.orderCount }} ord.)
-            </div>
-          </div>
-
-          <!-- Gráfico visual de barras mensuales animado -->
-          <div class="p-4 sm:p-5">
-            <div class="grid grid-cols-12 gap-1.5 sm:gap-2.5 h-56 items-end pt-10 pb-2 px-1 border-b border-slate-200/80">
-              <div
-                v-for="month in monthlyTrends"
-                :key="month.monthIndex"
-                class="flex flex-col items-center h-full justify-end group relative"
-              >
-                <!-- Tooltip al hover -->
-                <div class="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center bg-[#19314D] text-white text-[10px] font-mono font-bold py-1.5 px-2.5 rounded-xl shadow-lg border border-white/15 pointer-events-none whitespace-nowrap">
-                  <span>{{ month.monthFull }}: {{ month.orderCount }} órdenes</span>
-                  <span class="text-[#BFEBF2]">${{ month.revenue.toFixed(0) }}</span>
-                  <div class="w-2 h-2 bg-[#19314D] rotate-45 -mb-1"></div>
-                </div>
-
-                <!-- Barra de volumen -->
-                <div
-                  class="studio-bar-rise w-full rounded-t-lg transition-[height,background-color] duration-300 relative flex items-center justify-center group-hover:opacity-90"
-                  :class="[
-                    month.isCurrent
-                      ? 'bg-[#3D9DB0] shadow-xs'
-                      : month.orderCount > 0
-                        ? 'bg-[#2B5C8F]'
-                        : 'bg-slate-200/70'
-                  ]"
-                  :style="{
-                    height: `${month.orderCount > 0 ? Math.max((month.orderCount / maxMonthlyOrders) * 100, 15) : 8}%`,
-                    animationDelay: `${month.monthIndex * 32}ms`
-                  }"
-                >
-                  <span
-                    v-if="month.orderCount > 0"
-                    class="font-mono tabular-nums text-[10px] font-extrabold text-white"
-                  >
-                    {{ month.orderCount }}
-                  </span>
-                </div>
-
-                <!-- Etiqueta de mes -->
-                <span
-                  class="font-mono text-[10px] sm:text-xs font-bold mt-2 transition-colors"
-                  :class="[month.isCurrent ? 'text-[#004B97] underline font-black' : 'text-slate-500 group-hover:text-[#0D1B3E]']"
-                >
-                  {{ month.monthShort }}
+      <div class="lg:col-span-7 h-full studio-card overflow-hidden flex flex-col justify-between">
+          <div>
+            <div class="px-5 py-4 border-b border-slate-100 bg-[#F4F8FC] flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="w-9 h-9 rounded-xl bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center shrink-0">
+                  <BarChart3 class="w-4 h-4" />
                 </span>
+                <div class="min-w-0">
+                  <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0F1E2E] tracking-tight">
+                    Tendencias de Carga Mensual ({{ chartYear }})
+                  </h2>
+                  <p class="text-[11px] text-slate-500 truncate">
+                    Haz clic en cualquier mes para filtrar el tablero y revisar su rendimiento
+                  </p>
+                </div>
+              </div>
+
+              <div v-if="peakWorkloadMonth" class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2] font-mono text-[11px] font-bold shrink-0">
+                <TrendingUp class="w-3.5 h-3.5" />
+                Pico: {{ peakWorkloadMonth.monthFull }} ({{ peakWorkloadMonth.orderCount }} ord.)
+              </div>
+            </div>
+
+            <!-- Gráfico de barras -->
+            <div class="px-4 sm:px-5 pt-4 pb-3">
+              <div class="h-[200px] grid grid-cols-12 gap-1.5 sm:gap-2.5 items-end pt-10 pb-2 px-1 border-b border-slate-200/80">
+                <button
+                  v-for="month in monthlyTrends"
+                  :key="`v1-m-${month.monthIndex}`"
+                  type="button"
+                  @click="selectedYear = chartYear; pickMonth(month.monthIndex)"
+                  class="flex flex-col items-center h-full justify-end group relative cursor-pointer focus:outline-none"
+                  :title="`Filtrar ${month.monthFull} ${chartYear}: ${month.orderCount} órdenes ($${month.revenue.toFixed(0)})`"
+                >
+                  <div class="absolute -top-11 z-20 hidden group-hover:flex flex-col items-center bg-[#19314D] text-white text-[10px] font-mono font-bold py-1.5 px-2.5 rounded-xl shadow-lg border border-white/15 pointer-events-none whitespace-nowrap">
+                    <span>{{ month.monthFull }}: {{ month.orderCount }} órd.</span>
+                    <span class="text-[#BFEBF2]">${{ month.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 }) }}</span>
+                    <div class="w-2 h-2 bg-[#19314D] rotate-45 -mb-1"></div>
+                  </div>
+
+                  <div
+                    class="studio-bar-rise w-full rounded-t-lg transition-[height,background-color] duration-300 relative flex items-center justify-center group-hover:opacity-90"
+                    :class="[
+                      selectedPeriod === 'mes' && selectedMonth === month.monthIndex && selectedYear === chartYear
+                        ? 'bg-[#04C4D9] ring-2 ring-[#004B97]/40'
+                        : month.isCurrent
+                          ? 'bg-[#3D9DB0] shadow-xs'
+                          : month.orderCount > 0
+                            ? 'bg-[#2B5C8F]'
+                            : 'bg-slate-200/70'
+                    ]"
+                    :style="{
+                      height: `${month.orderCount > 0 ? Math.max((month.orderCount / maxMonthlyOrders) * 100, 15) : 8}%`,
+                      animationDelay: `${month.monthIndex * 28}ms`
+                    }"
+                  >
+                    <span
+                      v-if="month.orderCount > 0"
+                      class="font-mono tabular-nums text-[10px] font-extrabold text-white"
+                    >
+                      {{ month.orderCount }}
+                    </span>
+                  </div>
+
+                  <span
+                    class="font-mono text-[10px] sm:text-xs font-bold mt-1.5 transition-colors"
+                    :class="[month.isCurrent ? 'text-[#004B97] underline font-black' : 'text-slate-500 group-hover:text-[#0D1B3E]']"
+                  >
+                    {{ month.monthShort }}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Bloque inferior que aprovecha el espacio vertical: Resumen financiero anual + Top meses -->
+            <div class="px-4 sm:px-5 pb-4 space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div class="rounded-xl border border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
+                  <div class="text-[11px] font-semibold text-slate-500">Facturación {{ chartYear }}</div>
+                  <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
+                    ${{ monthlyTrends.reduce((s, m) => s + m.revenue, 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                  </div>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
+                  <div class="text-[11px] font-semibold text-slate-500">Promedio por mes activo</div>
+                  <div class="font-mono tabular-nums text-base font-extrabold text-[#004B97] mt-0.5">
+                    {{
+                      monthlyTrends.filter(m => m.orderCount > 0).length > 0
+                        ? (monthlyTrends.reduce((s, m) => s + m.orderCount, 0) / monthlyTrends.filter(m => m.orderCount > 0).length).toFixed(1)
+                        : '0.0'
+                    }} órd.
+                  </div>
+                </div>
+                <div class="rounded-xl border border-[#C1E8EF] bg-[#E3F5F8]/60 px-3.5 py-2.5">
+                  <div class="text-[11px] font-semibold text-[#12697A]">Meses con actividad</div>
+                  <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
+                    {{ monthlyTrends.filter(m => m.orderCount > 0).length }} / 12
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-xl border border-slate-200/90 bg-white divide-y divide-slate-100">
+                <div class="px-3.5 py-2 bg-[#F4F8FC] flex items-center justify-between text-[11px] font-bold text-[#0F1E2E]">
+                  <span>Meses de mayor facturación en {{ chartYear }}</span>
+                  <span class="font-mono text-[10px] text-slate-500">Clic para ver órdenes</span>
+                </div>
+                <div
+                  v-if="monthlyTrends.filter(m => m.orderCount > 0).length === 0"
+                  class="px-3.5 py-3 text-xs text-slate-500"
+                >
+                  Sin órdenes registradas en {{ chartYear }}.
+                </div>
+                <button
+                  v-for="(topM, idx) in [...monthlyTrends].filter(m => m.orderCount > 0).sort((a, b) => b.revenue - a.revenue || b.orderCount - a.orderCount).slice(0, 3)"
+                  :key="`v1-top-${topM.monthIndex}`"
+                  type="button"
+                  @click="selectedYear = chartYear; pickMonth(topM.monthIndex)"
+                  class="w-full px-3.5 py-2 flex items-center justify-between gap-3 text-xs hover:bg-blue-50/40 transition-colors cursor-pointer text-left"
+                >
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span
+                      class="w-5 h-5 rounded-md font-mono text-[10px] font-bold flex items-center justify-center shrink-0"
+                      :class="idx === 0 ? 'bg-[#004B97] text-white' : 'bg-slate-100 text-slate-700'"
+                    >
+                      {{ idx + 1 }}
+                    </span>
+                    <span class="font-bold text-[#0D1B3E] truncate">{{ topM.monthFull }}</span>
+                    <span class="font-mono text-[11px] text-slate-500">{{ topM.orderCount }} órd.</span>
+                  </div>
+                  <span class="font-mono tabular-nums font-bold text-[#004B97] shrink-0">
+                    ${{ topM.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Resumen de tendencias en el pie -->
-        <div class="border-t border-slate-100 bg-slate-50/70 px-5 py-3 flex items-center justify-between text-xs text-slate-600">
-          <div class="flex items-center gap-4">
-            <span class="flex items-center gap-1.5 font-medium">
-              <span class="w-2.5 h-2.5 rounded-full bg-[#3D9DB0]"></span>
-              Mes en curso
-            </span>
-            <span class="flex items-center gap-1.5 font-medium">
-              <span class="w-2.5 h-2.5 rounded-full bg-[#004B97]"></span>
-              Meses cerrados
+          <div class="border-t border-slate-100 bg-slate-50/70 px-5 py-3 flex items-center justify-between text-xs text-slate-600">
+            <div class="flex items-center gap-4">
+              <span class="flex items-center gap-1.5 font-medium">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#3D9DB0]"></span>
+                Mes en curso
+              </span>
+              <span class="flex items-center gap-1.5 font-medium">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#2B5C8F]"></span>
+                Meses cerrados
+              </span>
+            </div>
+            <span class="font-mono tabular-nums font-bold text-[#0D1B3E]">
+              Total anual: {{ monthlyTrends.reduce((sum, m) => sum + m.orderCount, 0) }} órdenes
             </span>
           </div>
-          <span class="font-mono tabular-nums font-bold text-[#0D1B3E]">
-            Total anual: {{ monthlyTrends.reduce((sum, m) => sum + m.orderCount, 0) }} órdenes
-          </span>
-        </div>
       </div>
     </div>
 
