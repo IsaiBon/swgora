@@ -531,7 +531,7 @@ const availableModalModelos = computed(() => {
 
 const commonYearsList = computed(() => {
   const currentYear = Math.max(2026, new Date().getFullYear())
-  const years: string[] = []
+  const collected: string[] = []
   try {
     const rawCustom = typeof window !== 'undefined' ? localStorage.getItem('swgora_custom_years_v1') : null
     if (rawCustom) {
@@ -539,7 +539,7 @@ const commonYearsList = computed(() => {
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
           const clean = String(item || '').trim()
-          if (clean && !years.includes(clean)) years.push(clean)
+          if (clean) collected.push(clean)
         }
       }
     }
@@ -547,10 +547,22 @@ const commonYearsList = computed(() => {
     // Silencioso
   }
   for (let y = currentYear + 2; y >= 1965; y--) {
-    const s = String(y)
-    if (!years.includes(s)) years.push(s)
+    collected.push(String(y))
   }
-  return years
+  const unique = Array.from(new Set(collected))
+  const getMaxNum = (s: string) => {
+    const nums = Array.from(s.matchAll(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/g)).map(m => Number(m[1]))
+    return nums.length > 0 ? Math.max(...nums) : -1
+  }
+  return unique.sort((a, b) => {
+    const ya = getMaxNum(a)
+    const yb = getMaxNum(b)
+    if (yb !== ya) return yb - ya
+    const sa = /^\d{4}$/.test(a) ? 1 : 0
+    const sb = /^\d{4}$/.test(b) ? 1 : 0
+    if (sb !== sa) return sb - sa
+    return b.localeCompare(a, 'es')
+  })
 })
 
 watch(partMarca, async (newBrand) => {

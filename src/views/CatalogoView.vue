@@ -120,7 +120,27 @@ function saveCustomYearsStorage(list: string[]) {
   }
 }
 
-// Lista de años compatibles (personalizados + modelos/repuestos + dinámico 1965 - año actual+2)
+const sortYearOptionsDescending = (items: string[]): string[] => {
+  const unique = Array.from(new Set(items.map(v => v.trim()).filter(Boolean)))
+  const parseKey = (raw: string) => {
+    const nums = Array.from(raw.matchAll(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/g)).map(m => Number(m[1]))
+    const hasOpenEnd = /\b(?:act(?:ual)?|presente)\b|\+\s*$/i.test(raw)
+    const maxY = hasOpenEnd ? MAX_CATALOG_YEAR : (nums.length > 0 ? Math.max(...nums) : -1)
+    const minY = nums.length > 0 ? Math.min(...nums) : -1
+    const isSingle = /^\d{4}$/.test(raw) ? 1 : 0
+    return { maxY, minY, isSingle }
+  }
+  return unique.sort((a, b) => {
+    const ka = parseKey(a)
+    const kb = parseKey(b)
+    if (kb.maxY !== ka.maxY) return kb.maxY - ka.maxY
+    if (kb.isSingle !== ka.isSingle) return kb.isSingle - ka.isSingle
+    if (kb.minY !== ka.minY) return kb.minY - ka.minY
+    return b.localeCompare(a, 'es')
+  })
+}
+
+// Lista de años compatibles ordenada descendentemente (personalizados + modelos + dinámico 1965 - año actual+2)
 const availableYears = computed<string[]>(() => {
   const base = Array.from(
     { length: MAX_CATALOG_YEAR - MIN_CATALOG_YEAR + 1 },
@@ -131,8 +151,7 @@ const availableYears = computed<string[]>(() => {
     if (mod.anio_inicio) detected.push(String(mod.anio_inicio))
     if (mod.anio_fin) detected.push(String(mod.anio_fin))
   }
-  const combined = [...customYears.value, ...detected, ...base]
-  return Array.from(new Set(combined.map(v => v.trim()).filter(Boolean)))
+  return sortYearOptionsDescending([...customYears.value, ...detected, ...base])
 })
 
 const filteredYears = computed<string[]>(() => {
@@ -171,7 +190,7 @@ function toggleYearInFilter(yr: string) {
   if (selectedYears.value.includes(clean)) {
     selectedYears.value = selectedYears.value.filter(y => y !== clean)
   } else {
-    selectedYears.value = [...selectedYears.value, clean]
+    selectedYears.value = sortYearOptionsDescending([...selectedYears.value, clean])
   }
   yearInput.value = selectedYears.value.join(', ')
 }
@@ -702,11 +721,12 @@ const handleSaveQuickYear = (directValue?: string) => {
     }
   }
   if (updatedCustom.length !== customYears.value.length) {
+    updatedCustom = sortYearOptionsDescending(updatedCustom)
     customYears.value = updatedCustom
     saveCustomYearsStorage(updatedCustom)
   }
 
-  const nextSelected = Array.from(new Set([...selectedYears.value, ...entries]))
+  const nextSelected = sortYearOptionsDescending([...selectedYears.value, ...entries])
   selectedYears.value = nextSelected
   yearInput.value = nextSelected.join(', ')
   isQuickCreateYearOpen.value = false

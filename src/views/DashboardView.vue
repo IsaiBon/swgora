@@ -258,17 +258,15 @@ const parseOrderDate = (order: Order): Date => {
   return new Date()
 }
 
-// Lista dinámica de años disponibles (últimos años + todos los años con órdenes registradas)
+// Lista dinámica de años disponibles (últimos 6 años, año actual, futuros años y todos los años con órdenes registradas)
 const availableYears = computed<number[]>(() => {
-  const yearsSet = new Set<number>()
   const curY = currentYear.value
   let minY = curY - 6
-  let maxY = curY
+  let maxY = curY + 5
 
   orders.value.forEach(order => {
     const y = parseOrderDate(order).getFullYear()
-    if (y >= 2000 && y <= curY + 5) {
-      yearsSet.add(y)
+    if (y >= 1990 && y <= curY + 25) {
       if (y < minY) minY = y
       if (y > maxY) maxY = y
     }
