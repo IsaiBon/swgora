@@ -241,7 +241,7 @@ const openWhatsAppOrder = (order: Order) => {
 const handleWhatsAppShared = (payload: { order: Order }) => {
   const docLabel = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
   showToast(
-    `Enlace wa.me abierto para compartir ${docLabel} ${payload.order.orderNumber} por WhatsApp Business.`,
+    `PDF de ${docLabel} ${payload.order.orderNumber} compartido.`,
     'success'
   )
 }

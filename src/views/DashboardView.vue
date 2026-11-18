@@ -1170,7 +1170,7 @@ const openWhatsAppShare = (order: Order) => {
 
 const handleWhatsAppShared = (payload: { order: Order }) => {
   const label = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
-  showToast(`Enlace wa.me abierto para compartir ${label} ${payload.order.orderNumber}.`, 'success')
+  showToast(`PDF de ${label} ${payload.order.orderNumber} compartido.`, 'success')
 }
 
 const handleQuickStatusChange = async (order: Order, newStatus: OrderStatus) => {

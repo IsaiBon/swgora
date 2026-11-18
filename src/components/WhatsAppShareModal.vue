@@ -9,16 +9,12 @@ import {
 import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
 import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import {
-  WA_ME_SAFE_URL_LIMIT,
   buildOrderWhatsAppMessage,
-  buildWaMeUrl,
   canNativeSharePdfFiles,
   formatVehicleEngineLabel,
   type WhatsAppMessagePreset,
 } from '@/utils/whatsappShare'
 import {
-  AlertTriangle,
-  ExternalLink,
   FileText,
   Share2,
   X,
@@ -46,7 +42,7 @@ const tallerStore = useTallerStore()
 const DEFAULT_PRESET: WhatsAppMessagePreset = 'detailed'
 let sessionCounter = 0
 
-// Mensaje automático para WhatsApp
+// Mensaje automático que acompaña el archivo compartido
 const generatedMessage = ref('')
 
 // Estado de PDF para envío directo nativo
@@ -66,8 +62,6 @@ const effectiveShowSubtotals = computed(() => {
   return true
 })
 
-const waUrl = computed(() => buildWaMeUrl('', generatedMessage.value))
-const isUrlTooLong = computed(() => waUrl.value.length > WA_ME_SAFE_URL_LIMIT)
 const vehicleSummary = computed(() =>
   props.order ? formatVehicleEngineLabel(props.order) : ''
 )
@@ -130,31 +124,6 @@ onUnmounted(() => {
     window.removeEventListener('keydown', handleKeydown, true)
   }
 })
-
-const copyTextToClipboard = async (text: string): Promise<boolean> => {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-      return true
-    }
-  } catch {
-    // Usar respaldo con textarea temporal
-  }
-  try {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.setAttribute('readonly', '')
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
-}
 
 /**
  * Obtiene o genera el archivo PDF de la orden/cotización en memoria.
@@ -227,29 +196,6 @@ const handleNativeSharePdf = async () => {
     isNativeSharingPdf.value = false
   }
 }
-
-const handleOpenWhatsApp = () => {
-  if (!props.order) return
-  if (!generatedMessage.value.trim()) return
-
-  window.open(waUrl.value, '_blank', 'noopener,noreferrer')
-  emit('shared', {
-    order: props.order,
-    preset: DEFAULT_PRESET,
-  })
-}
-
-const handleCopyAndOpenEmptyChat = async () => {
-  if (!props.order) return
-
-  await copyTextToClipboard(generatedMessage.value)
-  const emptyChatUrl = buildWaMeUrl('', '')
-  window.open(emptyChatUrl, '_blank', 'noopener,noreferrer')
-  emit('shared', {
-    order: props.order,
-    preset: DEFAULT_PRESET,
-  })
-}
 </script>
 
 <template>
@@ -309,16 +255,16 @@ const handleCopyAndOpenEmptyChat = async () => {
             <div class="flex items-center justify-between gap-2">
               <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
                 <FileText class="w-3.5 h-3.5 text-[#038391]" />
-                <span>{{ supportsNativePdfShare ? 'Enviar Documento PDF' : 'Compartir por WhatsApp (wa.me)' }}</span>
+                <span>Enviar Documento PDF</span>
               </span>
             </div>
 
             <p class="text-xs text-slate-500 leading-relaxed">
               <template v-if="supportsNativePdfShare">
-                Puedes enviar el archivo <strong>PDF directamente</strong> desde tu dispositivo o abrir WhatsApp (<span class="font-mono font-semibold">wa.me</span>) con el detalle completo de la {{ isCotizacion ? 'cotización' : 'orden' }}.
+                Envía el archivo <strong>PDF directamente</strong> a WhatsApp a través del menú de compartir de tu dispositivo.
               </template>
               <template v-else>
-                Se abrirá WhatsApp (<span class="font-mono font-semibold">wa.me</span>) con el detalle completo de la {{ isCotizacion ? 'cotización' : 'orden' }} listo para elegir el contacto o grupo.
+                Tu navegador actual no soporta el envío directo de archivos PDF desde la web. Abre la aplicación desde tu teléfono o un navegador compatible (Chrome, Edge o Safari) para compartir el archivo PDF directamente.
               </template>
             </p>
 
@@ -328,7 +274,7 @@ const handleCopyAndOpenEmptyChat = async () => {
                 type="button"
                 @click="handleNativeSharePdf"
                 :disabled="isNativeSharingPdf"
-                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-[#25D366] hover:bg-[#1EBE5D] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
               >
                 <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
                 <span>{{ isNativeSharingPdf ? 'Preparando archivo...' : 'Enviar archivo PDF directo (App)' }}</span>
@@ -342,26 +288,6 @@ const handleCopyAndOpenEmptyChat = async () => {
               {{ pdfError }}
             </p>
           </div>
-
-          <!-- Aviso si la URL excede el límite recomendado para wa.me -->
-          <div
-            v-if="isUrlTooLong"
-            class="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-          >
-            <div class="flex items-start gap-2">
-              <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <p class="text-[11px] leading-snug">
-                El detalle completo es extenso para un enlace <span class="font-mono font-bold">wa.me</span> y podría recortarse. Usa <strong>Copiar y abrir chat</strong>.
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="handleCopyAndOpenEmptyChat"
-              class="shrink-0 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition cursor-pointer"
-            >
-              Copiar y abrir chat
-            </button>
-          </div>
         </div>
 
         <!-- Footer -->
@@ -374,17 +300,6 @@ const handleCopyAndOpenEmptyChat = async () => {
             class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
           >
             Cancelar
-          </button>
-
-          <button
-            type="button"
-            @click="handleOpenWhatsApp"
-            :disabled="!generatedMessage.trim()"
-            class="inline-flex items-center gap-2 px-4 py-2 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
-          >
-            <WhatsAppIcon class="w-4 h-4" />
-            <span>Abrir en WhatsApp (wa.me)</span>
-            <ExternalLink class="w-3.5 h-3.5 opacity-85" />
           </button>
         </div>
       </div>
