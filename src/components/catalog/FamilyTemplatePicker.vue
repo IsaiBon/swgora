@@ -41,7 +41,8 @@ import {
   GripVertical,
   Link2,
   Unlink2,
-  Ruler
+  Ruler,
+  ArrowUpDown
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -129,6 +130,35 @@ const loadTemplate = (tpl: FamilyTemplate) => {
   editDescripcion.value = tpl.descripcion
 }
 
+// Orientación de vista previa (Vertical <-> Horizontal, igual que en el catálogo)
+const TABLE_ORIENTATIONS_STORAGE_KEY = 'swgora_catalog_family_orientations_v1'
+const previewOrientation = ref<'vertical' | 'horizontal'>('vertical')
+
+const syncPreviewOrientationForGroup = (grp?: GrupoRepuesto | null) => {
+  if (!grp?.codigo || typeof localStorage === 'undefined') {
+    previewOrientation.value = 'vertical'
+    return
+  }
+  try {
+    const raw = localStorage.getItem(TABLE_ORIENTATIONS_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const val = parsed?.[grp.codigo.trim().toLowerCase()]
+      if (val === 'horizontal' || val === 'vertical') {
+        previewOrientation.value = val
+        return
+      }
+    }
+  } catch {
+    // Silencioso
+  }
+  previewOrientation.value = 'vertical'
+}
+
+const togglePreviewOrientation = () => {
+  previewOrientation.value = previewOrientation.value === 'vertical' ? 'horizontal' : 'vertical'
+}
+
 // Observar edición
 watch(
   () => props.editingGroup,
@@ -138,6 +168,7 @@ watch(
     } else {
       loadBlankTemplate()
     }
+    syncPreviewOrientationForGroup(grp)
   },
   { immediate: true }
 )
@@ -739,6 +770,52 @@ const previewSampleRows = computed<string[]>(() => {
     return customRows.map((r, i) => r?.trim() || `Fila ${i + 1}`)
   }
   return ['Fila 1']
+})
+
+const previewCentralRows = computed(() =>
+  previewSampleRows.value
+    .map((label, rIdx) => ({ label, rIdx }))
+    .filter(item => isRowCentral(item.rIdx))
+)
+
+const previewNormalRows = computed(() => {
+  const padres = currentTemplate.value.tabla_config?.subfila_padres || []
+  return previewSampleRows.value
+    .map((label, rIdx) => ({
+      label,
+      rIdx,
+      groupLabel: (padres[rIdx] || '').trim(),
+    }))
+    .filter(item => !isRowCentral(item.rIdx))
+})
+
+const previewVerticalSpecRows = computed(() => {
+  const cols = currentTemplate.value.columnas
+  const rows = cols.map((col, idx) => ({
+    col,
+    idx,
+    parent: (col.columna_padre || '').trim(),
+    label: col.etiqueta || `Col ${idx + 1}`,
+    showParent: true,
+    parentRowspan: 1,
+  }))
+  for (let i = 0; i < rows.length; i++) {
+    const cur = rows[i]!
+    const prev = i > 0 ? rows[i - 1]! : null
+    if (cur.parent && prev && prev.parent === cur.parent) {
+      cur.showParent = false
+    } else {
+      let span = 1
+      if (cur.parent) {
+        while (i + span < rows.length && rows[i + span]!.parent === cur.parent) {
+          span++
+        }
+      }
+      cur.showParent = true
+      cur.parentRowspan = span
+    }
+  }
+  return rows
 })
 
 // Validación, Borrado y Guardado
@@ -1528,21 +1605,32 @@ const handleSave = () => {
         </div>
 
         <div class="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">
-          <div class="bg-[#0a192f] text-white px-4 py-2 text-xs font-bold flex items-center justify-between">
+          <div class="bg-[#0a192f] text-white px-4 py-2 text-xs font-bold flex items-center justify-between gap-2 flex-wrap">
             <div>
               <span>{{ editNombre || 'Nueva Familia' }}</span>
               <span class="text-slate-400 font-mono text-[11px] font-normal ml-1.5">(1 registro)</span>
             </div>
-            <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-              TODOS LOS MOTORES
-            </span>
+            <div class="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                @click="togglePreviewOrientation"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-700 bg-slate-800 hover:bg-slate-700 text-[#04C4D9] text-[11px] font-bold transition cursor-pointer"
+                :title="previewOrientation === 'vertical' ? 'Cambiar vista previa a Horizontal' : 'Cambiar vista previa a Vertical'"
+              >
+                <ArrowUpDown class="w-3 h-3" />
+                <span>{{ previewOrientation === 'vertical' ? 'Vista Vertical' : 'Vista Horizontal' }}</span>
+              </button>
+              <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                TODOS LOS MOTORES
+              </span>
+            </div>
           </div>
 
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse">
-              <!-- Cabecera 2 niveles solo cuando es Vista Normal con sub-columnas agrupadas -->
+              <!-- Cabecera 2 niveles solo cuando es Vista Normal Horizontal con sub-columnas agrupadas -->
               <thead
-                v-if="currentTemplate.tipo_vista === 'normal' && hasGroupedHeaders"
+                v-if="currentTemplate.tipo_vista === 'normal' && hasGroupedHeaders && previewOrientation === 'horizontal'"
                 class="bg-slate-100/95 text-slate-600 font-bold uppercase tracking-wider text-[10px]"
               >
                 <tr>
@@ -1632,8 +1720,8 @@ const handleSave = () => {
                     Sin cruces
                   </td>
 
-                  <!-- 4A. VISTA NORMAL CON SUB-COLUMNAS -->
-                  <template v-if="currentTemplate.tipo_vista === 'normal' && hasGroupedHeaders">
+                  <!-- 4A. VISTA NORMAL CON SUB-COLUMNAS (SOLO HORIZONTAL) -->
+                  <template v-if="currentTemplate.tipo_vista === 'normal' && hasGroupedHeaders && previewOrientation === 'horizontal'">
                     <td
                       v-for="(col, colIdx) in currentTemplate.columnas"
                       :key="`pv-n-sub-${colIdx}`"
@@ -1660,7 +1748,63 @@ const handleSave = () => {
                     </td>
                   </template>
 
-                  <!-- 4B. VISTA NORMAL PLANA (chips/cotas en línea) -->
+                  <!-- 4B. VISTA NORMAL VERTICAL (TABLA ESPECIFICACIÓN ↔ VALOR) -->
+                  <td
+                    v-else-if="currentTemplate.tipo_vista === 'normal' && previewOrientation === 'vertical'"
+                    class="py-2 px-3 align-middle border-b border-slate-100"
+                  >
+                    <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono text-[11px] select-text">
+                      <table class="border-collapse">
+                        <thead>
+                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                            <th v-if="hasGroupedHeaders" class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/80 text-[#004B97] text-left">Grupo</th>
+                            <th class="px-2.5 py-1 border-r border-slate-200 text-left">Especificación</th>
+                            <th class="px-2.5 py-1 text-right">Valor / Medida</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                          <tr
+                            v-for="(vRow, vIdx) in previewVerticalSpecRows"
+                            :key="`pv-nv-${vIdx}`"
+                            class="hover:bg-slate-50/70 transition"
+                          >
+                            <td
+                              v-if="hasGroupedHeaders && vRow.showParent"
+                              :rowspan="vRow.parentRowspan"
+                              class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/40 font-black text-[#004B97] text-[10px] uppercase align-middle whitespace-nowrap"
+                            >
+                              {{ vRow.parent || 'General' }}
+                            </td>
+                            <td class="px-2.5 py-1 bg-slate-50/70 font-sans font-bold text-slate-600 border-r border-slate-200 whitespace-nowrap">
+                              {{ vRow.label }}
+                              <span v-if="vRow.col.unidad && vRow.col.tipo_dato !== 'booleano' && vRow.col.tipo_dato !== 'seleccion'" class="text-[8px] font-normal text-slate-500 lowercase">({{ vRow.col.unidad }})</span>
+                            </td>
+                            <td class="px-2.5 py-1 text-right font-bold whitespace-nowrap">
+                              <span
+                                v-if="vRow.col.tipo_dato === 'seleccion'"
+                                class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                :class="getOptionBadgeClassByIndex(0)"
+                              >
+                                {{ getParsedOptionsList(vRow.col)[0] || 'Opción' }}
+                              </span>
+                              <span
+                                v-else-if="vRow.col.tipo_dato === 'booleano'"
+                                class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-black bg-cyan-100 text-cyan-800"
+                              >
+                                Sí
+                              </span>
+                              <span v-else-if="(vRow.col.tipo_dato || 'numero') === 'numero'" class="text-slate-800">
+                                45.00
+                              </span>
+                              <span v-else class="text-slate-400 italic">—</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+
+                  <!-- 4B2. VISTA NORMAL HORIZONTAL PLANA (chips/cotas en línea) -->
                   <td
                     v-else-if="currentTemplate.tipo_vista === 'normal'"
                     class="py-2.5 px-3 align-middle border-b border-slate-100"
@@ -1698,9 +1842,130 @@ const handleSave = () => {
                     </div>
                   </td>
 
-                  <!-- 4C. VISTA EN TABLA (MINI-TABLA INCRUSTADA COMO EN LA IMAGEN 2) -->
+                  <!-- 4C. VISTA EN TABLA (ORIENTACIÓN VERTICAL U HORIZONTAL) -->
                   <td v-else class="py-2 px-3 align-middle border-b border-slate-100">
-                    <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text">
+                    <!-- ORIENTACIÓN VERTICAL -->
+                    <div
+                      v-if="previewOrientation === 'vertical'"
+                      class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text"
+                    >
+                      <table class="border-collapse text-center text-xs">
+                        <thead>
+                          <tr class="bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                            <th
+                              v-if="hasGroupedHeaders"
+                              class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/80 text-[#004B97] font-black text-left whitespace-nowrap"
+                            >
+                              Medida
+                            </th>
+                            <th class="px-2.5 py-1 border-r border-slate-200 text-left whitespace-nowrap">
+                              Parámetro
+                            </th>
+                            <th
+                              v-for="(sf, sfColIdx) in previewNormalRows"
+                              :key="`mt-vhead-${sfColIdx}`"
+                              class="px-2.5 py-1 whitespace-nowrap"
+                              :class="sfColIdx < previewNormalRows.length - 1 ? 'border-r border-slate-200' : ''"
+                            >
+                              <div class="flex flex-col items-center">
+                                <span
+                                  v-if="hasGroupedRows && sf.groupLabel"
+                                  class="text-[8px] font-black text-[#004B97] uppercase leading-tight"
+                                >
+                                  {{ sf.groupLabel }}
+                                </span>
+                                <span class="font-bold text-slate-800">{{ sf.label }}</span>
+                              </div>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px]">
+                          <tr
+                            v-for="(csf, csfIdx) in previewCentralRows"
+                            :key="`mt-vcent-${csfIdx}`"
+                            class="bg-slate-50/80"
+                          >
+                            <td
+                              :colspan="(hasGroupedHeaders ? 2 : 1) + Math.max(1, previewNormalRows.length)"
+                              class="px-2.5 py-1 font-bold text-slate-800 text-center"
+                            >
+                              {{ csf.label }}
+                            </td>
+                          </tr>
+                          <tr
+                            v-for="(vRow, vIdx) in previewVerticalSpecRows"
+                            :key="`mt-vrow-${vIdx}`"
+                            class="hover:bg-slate-50/70 transition"
+                          >
+                            <td
+                              v-if="hasGroupedHeaders && vRow.showParent"
+                              :rowspan="vRow.parentRowspan"
+                              class="px-2.5 py-1 border-r border-slate-200 bg-blue-50/40 text-left align-middle font-black text-[#004B97] text-[10px] uppercase whitespace-nowrap"
+                            >
+                              {{ vRow.parent || 'General' }}
+                            </td>
+                            <td class="px-2.5 py-1 bg-slate-50/70 font-bold text-slate-700 border-r border-slate-200 text-left whitespace-nowrap">
+                              {{ vRow.label }}
+                              <span v-if="vRow.col.unidad && vRow.col.tipo_dato !== 'booleano' && vRow.col.tipo_dato !== 'seleccion'" class="text-[8px] font-normal text-slate-500 lowercase">({{ vRow.col.unidad }})</span>
+                            </td>
+                            <template v-if="vRow.col.compartido_filas && previewNormalRows.length > 0">
+                              <td
+                                :colspan="previewNormalRows.length"
+                                class="px-2.5 py-1 font-mono font-bold text-[#004B97] bg-cyan-50/20 text-center whitespace-nowrap"
+                              >
+                                <span
+                                  v-if="vRow.col.tipo_dato === 'booleano'"
+                                  class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black bg-cyan-100 text-cyan-800"
+                                >
+                                  <Check class="w-2.5 h-2.5 text-[#038391]" />
+                                  <span>Sí</span>
+                                </span>
+                                <span
+                                  v-else-if="vRow.col.tipo_dato === 'seleccion'"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                  :class="getOptionBadgeClassByIndex(0)"
+                                >
+                                  {{ getParsedOptionsList(vRow.col)[0] || 'Opción' }}
+                                </span>
+                                <span v-else-if="(vRow.col.tipo_dato || 'numero') === 'numero'">45.00</span>
+                                <span v-else class="text-slate-400 italic">—</span>
+                              </td>
+                            </template>
+                            <template v-else>
+                              <td
+                                v-for="(_sf, sfValIdx) in previewNormalRows"
+                                :key="`mt-vcell-${vIdx}-${sfValIdx}`"
+                                class="px-2.5 py-1 font-mono font-bold text-slate-800 whitespace-nowrap"
+                                :class="sfValIdx < previewNormalRows.length - 1 ? 'border-r border-slate-200' : ''"
+                              >
+                                <span
+                                  v-if="vRow.col.tipo_dato === 'booleano'"
+                                  class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black"
+                                  :class="sfValIdx === 0 ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-500'"
+                                >
+                                  <Check v-if="sfValIdx === 0" class="w-2.5 h-2.5 text-[#038391]" />
+                                  <span>{{ sfValIdx === 0 ? 'Sí' : 'No' }}</span>
+                                </span>
+                                <span
+                                  v-else-if="vRow.col.tipo_dato === 'seleccion'"
+                                  class="inline-flex items-center px-1.5 py-0.2 rounded border font-sans font-extrabold text-[10px]"
+                                  :class="getOptionBadgeClassByIndex(getParsedOptionsList(vRow.col).length > 0 ? sfValIdx % getParsedOptionsList(vRow.col).length : 0)"
+                                >
+                                  {{ getParsedOptionsList(vRow.col).length > 0 ? getParsedOptionsList(vRow.col)[sfValIdx % getParsedOptionsList(vRow.col).length] : 'Opción' }}
+                                </span>
+                                <span v-else-if="(vRow.col.tipo_dato || 'numero') === 'numero'">
+                                  {{ (45.00 + sfValIdx * 0.25).toFixed(2) }}
+                                </span>
+                                <span v-else class="text-slate-400 italic">—</span>
+                              </td>
+                            </template>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <!-- ORIENTACIÓN HORIZONTAL -->
+                    <div v-else class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text">
                       <table class="border-collapse text-center text-xs">
                         <thead>
                           <!-- Tier 1 cuando hay sub-columnas agrupadas dentro de la mini-tabla -->
