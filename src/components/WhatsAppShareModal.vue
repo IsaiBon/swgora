@@ -259,13 +259,8 @@ const handleNativeSharePdf = async () => {
               </span>
             </div>
 
-            <p class="text-xs text-slate-500 leading-relaxed">
-              <template v-if="supportsNativePdfShare">
-                Envía el archivo <strong>PDF directamente</strong> a WhatsApp a través del menú de compartir de tu dispositivo.
-              </template>
-              <template v-else>
-                Tu navegador actual no soporta el envío directo de archivos PDF desde la web. Abre la aplicación desde tu teléfono o un navegador compatible (Chrome, Edge o Safari) para compartir el archivo PDF directamente.
-              </template>
+            <p v-if="!supportsNativePdfShare" class="text-xs text-slate-500 leading-relaxed">
+              Tu navegador actual no soporta el envío directo de archivos PDF desde la web. Abre la aplicación desde tu teléfono o un navegador compatible (Chrome, Edge o Safari) para compartir el archivo PDF directamente.
             </p>
 
             <div v-if="supportsNativePdfShare" class="grid grid-cols-1 gap-2">
