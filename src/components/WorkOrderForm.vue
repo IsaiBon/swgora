@@ -1840,41 +1840,65 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   </td>
 
                   <!-- Precio unitario editable flexible (manual o calculado automáticamente desde subtotal) -->
-                  <td class="px-4 py-2.5 text-right">
-                    <input
-                      v-model.number="op.unitPrice"
-                      @input="handleRowPriceChange(op); formErrors.noItems = false"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="$ 0.00"
-                      :class="[
-                        'w-24 text-right rounded-lg py-1 px-2 font-bold text-xs transition focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20',
-                        op.selected && (!op.unitPrice || op.unitPrice <= 0)
-                          ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900 placeholder-amber-400 ring-1 ring-amber-200'
-                          : 'border border-slate-200 bg-white text-[#0D1B3E]'
-                      ]"
-                      title="Ingresa precio unitario o escribe subtotal para cálculo automático"
-                    />
+                  <td class="px-3 py-2.5 text-right">
+                    <div class="relative inline-flex items-center w-28">
+                      <span
+                        class="absolute left-2.5 text-xs font-bold pointer-events-none select-none transition"
+                        :class="[
+                          op.selected && (!op.unitPrice || op.unitPrice <= 0)
+                            ? 'text-amber-700'
+                            : (op.unitPrice && op.unitPrice > 0 ? 'text-[#0D1B3E]' : 'text-slate-400')
+                        ]"
+                      >
+                        $
+                      </span>
+                      <input
+                        v-model.number="op.unitPrice"
+                        @input="handleRowPriceChange(op); formErrors.noItems = false"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        :class="[
+                          'w-full no-spin text-right rounded-lg py-1 pl-6 pr-2 font-bold text-xs transition focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20',
+                          op.selected && (!op.unitPrice || op.unitPrice <= 0)
+                            ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900 placeholder-amber-400 ring-1 ring-amber-200'
+                            : 'border border-slate-200 bg-white text-[#0D1B3E]'
+                        ]"
+                        title="Ingresa precio unitario o escribe subtotal para cálculo automático"
+                      />
+                    </div>
                   </td>
 
                   <!-- Subtotal editable manual o calculado en vivo -->
-                  <td class="px-4 py-2.5 text-right">
-                    <input
-                      v-model.number="op.subtotal"
-                      @input="handleRowSubtotalChange(op); formErrors.noItems = false"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="$ 0.00"
-                      :class="[
-                        'w-24 text-right rounded-lg py-1 px-2 font-bold text-xs transition focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20',
-                        op.selected && op.subtotal && op.subtotal > 0
-                          ? 'border border-blue-300 bg-blue-50/60 text-[#004B97] font-black'
-                          : 'border border-slate-200 bg-white text-[#0D1B3E]'
-                      ]"
-                      title="Ingresa el subtotal directamente o se calculará automáticamente con cantidad y precio"
-                    />
+                  <td class="px-3 py-2.5 text-right">
+                    <div class="relative inline-flex items-center w-28">
+                      <span
+                        class="absolute left-2.5 text-xs font-bold pointer-events-none select-none transition"
+                        :class="[
+                          op.selected && op.subtotal && op.subtotal > 0
+                            ? 'text-[#004B97] font-black'
+                            : 'text-slate-400'
+                        ]"
+                      >
+                        $
+                      </span>
+                      <input
+                        v-model.number="op.subtotal"
+                        @input="handleRowSubtotalChange(op); formErrors.noItems = false"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        :class="[
+                          'w-full no-spin text-right rounded-lg py-1 pl-6 pr-2 font-bold text-xs transition focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20',
+                          op.selected && op.subtotal && op.subtotal > 0
+                            ? 'border border-blue-300 bg-blue-50/60 text-[#004B97] font-black'
+                            : 'border border-slate-200 bg-white text-[#0D1B3E]'
+                        ]"
+                        title="Ingresa el subtotal directamente o se calculará automáticamente con cantidad y precio"
+                      />
+                    </div>
                   </td>
 
                   <!-- Acción de limpiar o eliminar -->
@@ -1953,31 +1977,41 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               </div>
               <div class="sm:col-span-2">
                 <label class="block text-[10px] font-bold text-slate-500 mb-1 text-right">P. Unitario ($):</label>
-                <input
-                  v-model.number="customOpPrice"
-                  @input="handleCustomOpPriceChange"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="$ 0.00"
-                  class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-right font-medium text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
-                  @keyup.enter="addCustomOperation"
-                  title="Ingresa precio unitario o escribe subtotal para cálculo automático"
-                />
+                <div class="relative flex items-center">
+                  <span class="absolute left-2.5 text-xs font-bold pointer-events-none select-none text-slate-400">
+                    $
+                  </span>
+                  <input
+                    v-model.number="customOpPrice"
+                    @input="handleCustomOpPriceChange"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    class="w-full no-spin pl-6 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-right font-medium text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
+                    @keyup.enter="addCustomOperation"
+                    title="Ingresa precio unitario o escribe subtotal para cálculo automático"
+                  />
+                </div>
               </div>
               <div class="sm:col-span-2">
                 <label class="block text-[10px] font-bold text-[#004B97] mb-1 text-right">Subtotal ($):</label>
-                <input
-                  v-model.number="customOpSubtotal"
-                  @input="handleCustomOpSubtotalChange"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="$ 0.00"
-                  class="w-full px-2.5 py-1.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-right font-bold text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
-                  @keyup.enter="addCustomOperation"
-                  title="Ingresa subtotal manual y el precio unitario se calculará automáticamente"
-                />
+                <div class="relative flex items-center">
+                  <span class="absolute left-2.5 text-xs font-bold pointer-events-none select-none text-[#004B97]/80">
+                    $
+                  </span>
+                  <input
+                    v-model.number="customOpSubtotal"
+                    @input="handleCustomOpSubtotalChange"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    class="w-full no-spin pl-6 pr-2.5 py-1.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-right font-bold text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
+                    @keyup.enter="addCustomOperation"
+                    title="Ingresa subtotal manual y el precio unitario se calculará automáticamente"
+                  />
+                </div>
               </div>
               <div class="sm:col-span-1">
                 <button
@@ -2269,13 +2303,18 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 placeholder="Nombre del repuesto"
                 class="col-span-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:border-[#04C4D9]"
               />
-              <input
-                v-model.number="customPartPrice"
-                type="number"
-                step="0.5"
-                placeholder="Precio $"
-                class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-right focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-              />
+              <div class="relative flex items-center">
+                <span class="absolute left-2.5 text-xs font-bold pointer-events-none select-none text-slate-400">
+                  $
+                </span>
+                <input
+                  v-model.number="customPartPrice"
+                  type="number"
+                  step="0.5"
+                  placeholder="0.00"
+                  class="w-full no-spin pl-6 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-right focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
             </div>
             <button
               type="button"

@@ -564,3 +564,13 @@ html, body, #app {
   color: #0d1b3e;
   border-color: #f59e0b;
 }
+
+/* Campos numéricos con formato monetario limpio sin flechas nativas */
+.no-spin::-webkit-inner-spin-button,
+.no-spin::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin {
+  -moz-appearance: textfield;
+}
