@@ -6,6 +6,8 @@ import { ordersService, type Order, type OrderStatus } from '@/services/ordersSe
 import { clientesService, type Cliente } from '@/services/clientesService'
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useAnimatedNumber } from '@/composables/useAnimatedNumber'
+import WhatsAppShareModal from '@/components/WhatsAppShareModal.vue'
+import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import { 
   Users, 
   Package, 
@@ -1156,6 +1158,31 @@ const tableFilteredOrders = computed(() => {
 
 // Cambio rápido de estado en línea (Inline Status Changer)
 const updatingOrderId = ref<string | null>(null)
+
+// Compartir orden / cotización por WhatsApp Business (wa.me)
+const whatsappModalOpen = ref(false)
+const orderToShareWhatsApp = ref<Order | null>(null)
+
+const openWhatsAppShare = (order: Order) => {
+  orderToShareWhatsApp.value = order
+  whatsappModalOpen.value = true
+}
+
+const resolveOrderFallbackPhone = (order: Order | null): string | null => {
+  if (!order) return null
+  if (order.customerPhone) return order.customerPhone
+  const match = clients.value.find(
+    (c) =>
+      (order.customerId && c.id === order.customerId) ||
+      (order.customerCode && c.codigo === order.customerCode)
+  )
+  return match?.telefono || null
+}
+
+const handleWhatsAppShared = (payload: { order: Order }) => {
+  const label = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
+  showToast(`Enlace wa.me abierto para compartir ${label} ${payload.order.orderNumber}.`, 'success')
+}
 
 const handleQuickStatusChange = async (order: Order, newStatus: OrderStatus) => {
   if (order.status === newStatus) return
@@ -2458,13 +2485,23 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
 
               <!-- 7. Acción Directa -->
               <td class="py-3 px-4 text-center">
-                <router-link
-                  :to="`/ordenes?id=${order.id}`"
-                  class="inline-flex items-center justify-center p-2 text-slate-500 hover:text-[#004B97] hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded-xl transition-all"
-                  title="Abrir orden completa"
-                >
-                  <Eye class="w-4 h-4" />
-                </router-link>
+                <div class="inline-flex items-center justify-center gap-1">
+                  <router-link
+                    :to="`/ordenes?id=${order.id}`"
+                    class="inline-flex items-center justify-center p-2 text-slate-500 hover:text-[#004B97] hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded-xl transition-all"
+                    title="Abrir orden completa"
+                  >
+                    <Eye class="w-4 h-4" />
+                  </router-link>
+                  <button
+                    type="button"
+                    @click="openWhatsAppShare(order)"
+                    class="inline-flex items-center justify-center p-2 text-slate-500 hover:text-[#25D366] hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded-xl transition-all cursor-pointer"
+                    :title="`Compartir ${order.type === 'cotizacion' ? 'cotización' : 'orden'} por WhatsApp Business (wa.me)`"
+                  >
+                    <WhatsAppIcon class="w-4 h-4" />
+                  </button>
+                </div>
               </td>
             </tr>
 
@@ -2538,6 +2575,13 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
       </div>
     </section>
 
+    <WhatsAppShareModal
+      :is-open="whatsappModalOpen"
+      :order="orderToShareWhatsApp"
+      :fallback-phone="resolveOrderFallbackPhone(orderToShareWhatsApp)"
+      @close="whatsappModalOpen = false"
+      @shared="handleWhatsAppShared"
+    />
   </div>
 </template>
 

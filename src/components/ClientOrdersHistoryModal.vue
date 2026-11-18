@@ -3,6 +3,8 @@ import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Cliente } from '@/services/clientesService'
 import { ordersService, type Order, type OrderStatus } from '@/services/ordersService'
+import WhatsAppShareModal from './WhatsAppShareModal.vue'
+import WhatsAppIcon from './WhatsAppIcon.vue'
 import {
   X,
   FileText,
@@ -25,6 +27,13 @@ const emit = defineEmits<{
 const router = useRouter()
 const orders = ref<Order[]>([])
 const loading = ref(false)
+const whatsappModalOpen = ref(false)
+const orderToShareWhatsApp = ref<Order | null>(null)
+
+const openWhatsAppOrder = (order: Order) => {
+  orderToShareWhatsApp.value = order
+  whatsappModalOpen.value = true
+}
 
 const loadOrders = async () => {
   if (!props.client) {
@@ -71,6 +80,7 @@ watch(
       loadOrders()
     } else {
       orders.value = []
+      whatsappModalOpen.value = false
     }
   },
   { immediate: true }
@@ -250,8 +260,8 @@ const formatCurrency = (val: number) => {
               </span>
             </div>
 
-            <!-- Status Badge & Total -->
-            <div class="flex items-center gap-3">
+            <!-- Status Badge, Total & WhatsApp -->
+            <div class="flex items-center gap-2.5 flex-wrap">
               <span
                 :class="[
                   'text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full border',
@@ -263,6 +273,15 @@ const formatCurrency = (val: number) => {
               <span class="text-sm sm:text-base font-extrabold text-[#0D1B3E] font-mono">
                 {{ formatCurrency(order.total) }}
               </span>
+              <button
+                type="button"
+                @click="openWhatsAppOrder(order)"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-[#25D366] text-emerald-700 hover:text-white border border-emerald-200 hover:border-[#25D366] text-[11px] font-bold transition active:scale-95 cursor-pointer"
+                :title="`Compartir ${order.type === 'cotizacion' ? 'cotización' : 'orden'} por WhatsApp Business (wa.me)`"
+              >
+                <WhatsAppIcon class="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </button>
             </div>
           </div>
 
@@ -317,5 +336,12 @@ const formatCurrency = (val: number) => {
         </button>
       </div>
     </div>
+
+    <WhatsAppShareModal
+      :is-open="whatsappModalOpen"
+      :order="orderToShareWhatsApp"
+      :fallback-phone="client?.telefono"
+      @close="whatsappModalOpen = false"
+    />
   </div>
 </template>

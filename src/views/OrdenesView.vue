@@ -11,6 +11,8 @@ import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
 import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
 import OperationsManagerModal from '@/components/OperationsManagerModal.vue'
+import WhatsAppShareModal from '@/components/WhatsAppShareModal.vue'
+import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import { exportOrderToPdf } from '@/utils/pdfExport'
 import { 
   Search, 
@@ -225,6 +227,23 @@ const filteredOrders = computed(() => {
 const openPrintOrder = (order: Order) => {
   orderToPrint.value = order
   printModalOpen.value = true
+}
+
+// Modal de compartir por WhatsApp Business (wa.me)
+const whatsappModalOpen = ref(false)
+const orderToShareWhatsApp = ref<Order | null>(null)
+
+const openWhatsAppOrder = (order: Order) => {
+  orderToShareWhatsApp.value = order
+  whatsappModalOpen.value = true
+}
+
+const handleWhatsAppShared = (payload: { order: Order }) => {
+  const docLabel = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
+  showToast(
+    `Enlace wa.me abierto para compartir ${docLabel} ${payload.order.orderNumber} por WhatsApp Business.`,
+    'success'
+  )
 }
 
 // Descarga directa de orden/cotización en formato PDF
@@ -839,6 +858,14 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                     </button>
                     <button
                       type="button"
+                      @click="openWhatsAppOrder(order)"
+                      class="p-1.5 text-slate-400 hover:text-[#25D366] hover:bg-emerald-50 rounded-xl transition active:scale-95"
+                      :title="`Compartir ${order.type === 'cotizacion' ? 'cotización' : 'orden'} por WhatsApp Business (wa.me)`"
+                    >
+                      <WhatsAppIcon class="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
                       @click="handleDeleteOrder(order.id)"
                       class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition active:scale-95"
                       title="Eliminar orden"
@@ -865,6 +892,14 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
       :is-open="printModalOpen"
       :order="orderToPrint"
       @close="printModalOpen = false"
+    />
+
+    <!-- Modal de Compartir por WhatsApp Business (wa.me) -->
+    <WhatsAppShareModal
+      :is-open="whatsappModalOpen"
+      :order="orderToShareWhatsApp"
+      @close="whatsappModalOpen = false"
+      @shared="handleWhatsAppShared"
     />
 
     <!-- Modal de Administración de Operaciones y Servicios -->
