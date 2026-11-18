@@ -27,7 +27,6 @@ import {
   ExternalLink,
   FileText,
   Link2,
-  RotateCcw,
   Share2,
   X,
 } from 'lucide-vue-next'
@@ -54,9 +53,8 @@ const tallerStore = useTallerStore()
 const DEFAULT_PRESET: WhatsAppMessagePreset = 'detailed'
 let sessionCounter = 0
 
-// Editor de mensaje
-const editableMessage = ref('')
-const isManuallyEdited = ref(false)
+// Mensaje automático para WhatsApp
+const generatedMessage = ref('')
 const copied = ref(false)
 let copyTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -86,19 +84,18 @@ const effectiveShowSubtotals = computed(() => {
   return true
 })
 
-const waUrl = computed(() => buildWaMeUrl('', editableMessage.value))
+const waUrl = computed(() => buildWaMeUrl('', generatedMessage.value))
 const isUrlTooLong = computed(() => waUrl.value.length > WA_ME_SAFE_URL_LIMIT)
 const vehicleSummary = computed(() =>
   props.order ? formatVehicleEngineLabel(props.order) : ''
 )
 
-const regenerateMessage = (force = false) => {
+const buildMessage = () => {
   if (!props.order) {
-    editableMessage.value = ''
+    generatedMessage.value = ''
     return
   }
-  if (isManuallyEdited.value && !force) return
-  editableMessage.value = buildOrderWhatsAppMessage(
+  generatedMessage.value = buildOrderWhatsAppMessage(
     props.order,
     tallerStore.tallerInfo,
     {
@@ -136,7 +133,6 @@ watch(
     if (!open || !props.order) return
 
     const currentSession = ++sessionCounter
-    isManuallyEdited.value = false
     copied.value = false
     cachedPdf.value = null
     uploadedPdfUrl.value = ''
@@ -147,15 +143,14 @@ watch(
 
     await tallerStore.loadTallerInfo()
     if (currentSession !== sessionCounter) return
-    regenerateMessage(true)
+    buildMessage()
   },
   { immediate: true }
 )
 
 watch(uploadedPdfUrl, () => {
   if (!props.isOpen || !props.order) return
-  isManuallyEdited.value = false
-  regenerateMessage(true)
+  buildMessage()
 })
 
 onUnmounted(() => {
@@ -164,15 +159,6 @@ onUnmounted(() => {
   }
   if (copyTimeout) clearTimeout(copyTimeout)
 })
-
-const handleManualTextInput = () => {
-  isManuallyEdited.value = true
-}
-
-const handleResetMessage = () => {
-  isManuallyEdited.value = false
-  regenerateMessage(true)
-}
 
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
   try {
@@ -200,7 +186,7 @@ const copyTextToClipboard = async (text: string): Promise<boolean> => {
 }
 
 const handleCopyMessage = async () => {
-  const ok = await copyTextToClipboard(editableMessage.value)
+  const ok = await copyTextToClipboard(generatedMessage.value)
   if (ok) {
     copied.value = true
     if (copyTimeout) clearTimeout(copyTimeout)
@@ -304,7 +290,7 @@ const handleNativeSharePdf = async () => {
     const docTitle = isCotizacion.value ? 'Cotización' : 'Orden de Trabajo'
     await navigator.share({
       title: `${docTitle} ${props.order.orderNumber}`,
-      text: editableMessage.value,
+      text: generatedMessage.value,
       files: [generated.file],
     })
     pdfStatusMessage.value = 'Archivo PDF compartido mediante el menú del dispositivo.'
@@ -347,7 +333,7 @@ const handleDownloadOnlyPdf = async () => {
  */
 const handleSendWithPdfAndWaMe = async () => {
   if (!props.order || isPdfBusy.value) return
-  if (!editableMessage.value.trim()) return
+  if (!generatedMessage.value.trim()) return
 
   isComboSending.value = true
   pdfError.value = null
@@ -396,7 +382,7 @@ const handleSendWithPdfAndWaMe = async () => {
 
 const handleOpenWhatsApp = () => {
   if (!props.order) return
-  if (!editableMessage.value.trim()) return
+  if (!generatedMessage.value.trim()) return
 
   popupBlockedUrl.value = null
   window.open(waUrl.value, '_blank', 'noopener,noreferrer')
@@ -430,7 +416,7 @@ const handleCopyAndOpenEmptyChat = async () => {
       @click.self="emit('close')"
     >
       <div
-        class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 popover-pop-in my-auto"
+        class="bg-white rounded-3xl shadow-2xl max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 popover-pop-in my-auto"
       >
         <!-- Header -->
         <div
@@ -472,7 +458,7 @@ const handleCopyAndOpenEmptyChat = async () => {
         <!-- Body -->
         <div class="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50/70 space-y-3.5">
           <!-- Envío con PDF -->
-          <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">
             <div class="flex items-center justify-between gap-2">
               <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
                 <FileText class="w-3.5 h-3.5 text-[#038391]" />
@@ -487,7 +473,7 @@ const handleCopyAndOpenEmptyChat = async () => {
               </span>
             </div>
 
-            <p class="text-[10.5px] text-slate-500 leading-snug">
+            <p class="text-xs text-slate-500 leading-relaxed">
               Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ', enviar el archivo PDF directo desde tu dispositivo' : '' }} o descargarlo al instante.
             </p>
 
@@ -526,7 +512,7 @@ const handleCopyAndOpenEmptyChat = async () => {
                 type="button"
                 @click="handleAttachPdfLink"
                 :disabled="isPdfBusy"
-                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#004B97] hover:bg-[#0D1B3E] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-[#004B97] hover:bg-[#0D1B3E] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
               >
                 <CloudUpload class="w-3.5 h-3.5" :class="{ 'animate-pulse': isUploadingPdf }" />
                 <span>{{ isUploadingPdf ? 'Subiendo PDF a la nube...' : 'Agregar enlace PDF al mensaje wa.me' }}</span>
@@ -538,7 +524,7 @@ const handleCopyAndOpenEmptyChat = async () => {
                 type="button"
                 @click="handleNativeSharePdf"
                 :disabled="isPdfBusy"
-                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
               >
                 <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
                 <span>{{ isNativeSharingPdf ? 'Preparando archivo...' : 'Enviar archivo PDF directo (App)' }}</span>
@@ -549,7 +535,7 @@ const handleCopyAndOpenEmptyChat = async () => {
                 type="button"
                 @click="handleDownloadOnlyPdf"
                 :disabled="isPdfBusy"
-                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer disabled:opacity-50"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer disabled:opacity-50"
                 :class="[
                   pdfDownloaded
                     ? 'bg-cyan-50 text-[#038391] border-cyan-300'
@@ -571,53 +557,12 @@ const handleCopyAndOpenEmptyChat = async () => {
               </button>
             </div>
 
-            <p v-if="pdfStatusMessage" class="text-[10.5px] font-semibold text-[#038391] leading-snug">
+            <p v-if="pdfStatusMessage" class="text-[11px] font-semibold text-[#038391] leading-snug">
               {{ pdfStatusMessage }}
             </p>
-            <p v-if="pdfError" class="text-[10.5px] font-semibold text-rose-600 leading-snug">
+            <p v-if="pdfError" class="text-[11px] font-semibold text-rose-600 leading-snug">
               {{ pdfError }}
             </p>
-          </div>
-
-          <!-- Vista Previa Editable -->
-          <div class="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2 shadow-sm">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E]">
-                  Vista Previa del Mensaje (Editable)
-                </span>
-                <span
-                  v-if="isManuallyEdited"
-                  class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
-                >
-                  Editado
-                </span>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <button
-                  v-if="isManuallyEdited"
-                  type="button"
-                  @click="handleResetMessage"
-                  class="inline-flex items-center gap-1 text-[11px] font-bold text-[#004B97] hover:underline cursor-pointer"
-                  title="Volver a generar el texto automático"
-                >
-                  <RotateCcw class="w-3 h-3" />
-                  <span>Restablecer</span>
-                </button>
-                <span class="font-mono text-[10px] text-slate-400">
-                  {{ editableMessage.length }} car.
-                </span>
-              </div>
-            </div>
-
-            <textarea
-              v-model="editableMessage"
-              @input="handleManualTextInput"
-              rows="13"
-              aria-label="Mensaje a enviar por WhatsApp"
-              class="w-full min-h-[260px] p-3 text-xs leading-relaxed text-slate-800 bg-[#F4FBF6]/60 border border-emerald-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 resize-y font-sans"
-            ></textarea>
           </div>
 
           <!-- Respaldo si el navegador bloqueó ventana emergente tras generar PDF -->
@@ -648,7 +593,7 @@ const handleCopyAndOpenEmptyChat = async () => {
             <div class="flex items-start gap-2">
               <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p class="text-[11px] leading-snug">
-                El detalle es extenso para la URL de <span class="font-mono font-bold">wa.me</span> y podría recortarse en algunos navegadores. Puedes acortar el texto arriba o copiarlo y pegarlo en el chat.
+                El detalle completo es extenso para un enlace <span class="font-mono font-bold">wa.me</span> y podría recortarse. Usa <strong>Copiar y abrir chat</strong> o envíalo mediante PDF.
               </p>
             </div>
             <button
@@ -692,7 +637,7 @@ const handleCopyAndOpenEmptyChat = async () => {
             <button
               type="button"
               @click="handleSendWithPdfAndWaMe"
-              :disabled="isPdfBusy || !editableMessage.trim()"
+              :disabled="isPdfBusy || !generatedMessage.trim()"
               class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
               title="Genera el PDF (lo enlaza en la nube o lo descarga) y abre wa.me en un clic"
             >
@@ -703,7 +648,7 @@ const handleCopyAndOpenEmptyChat = async () => {
             <button
               type="button"
               @click="handleOpenWhatsApp"
-              :disabled="!editableMessage.trim()"
+              :disabled="!generatedMessage.trim()"
               class="inline-flex items-center gap-2 px-4 py-2 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
             >
               <WhatsAppIcon class="w-4 h-4" />
