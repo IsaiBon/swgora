@@ -1275,9 +1275,41 @@ const isCurrentGroupRingsTable = computed<boolean>(() => {
   return compId === 'anillos_motor' || grpCode === 'anillos_motor' || cat === 'anillos' || cat.includes('anillo')
 })
 
-// Orientación de tabla (Horizontal <-> Vertical), por defecto Vertical para Casquetería / Cojinetes
-const tableOrientations = ref<Record<string, 'vertical' | 'horizontal'>>({})
-const modalTableOrientation = ref<'vertical' | 'horizontal'>('horizontal')
+// Orientación de tabla (Horizontal <-> Vertical), predeterminado Vertical y persistente por familia
+const TABLE_ORIENTATIONS_STORAGE_KEY = 'swgora_catalog_family_orientations_v1'
+
+function loadSavedTableOrientations(): Record<string, 'vertical' | 'horizontal'> {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(TABLE_ORIENTATIONS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return {}
+    const clean: Record<string, 'vertical' | 'horizontal'> = {}
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      const cleanKey = String(k).trim().toLowerCase()
+      if (cleanKey && (v === 'vertical' || v === 'horizontal')) {
+        clean[cleanKey] = v
+      }
+    }
+    return clean
+  } catch {
+    return {}
+  }
+}
+
+function saveTableOrientations(map: Record<string, 'vertical' | 'horizontal'>): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TABLE_ORIENTATIONS_STORAGE_KEY, JSON.stringify(map))
+  } catch {
+    // Ignorar errores de cuota de almacenamiento
+  }
+}
+
+const tableOrientations = ref<Record<string, 'vertical' | 'horizontal'>>(loadSavedTableOrientations())
+const modalTableOrientation = ref<'vertical' | 'horizontal'>('vertical')
+const modalOrientationKey = ref<string>('global')
 const previewPdfUrl = ref<string | null>(null)
 
 const isCasqueteriaOrCojinetesContext = computed<boolean>(() => {
@@ -1297,37 +1329,43 @@ const isCasqueteriaOrCojinetesContext = computed<boolean>(() => {
   )
 })
 
-const getPartIsBearingLike = (part?: RepuestoTecnico | null): boolean => {
-  if (!part) return isCasqueteriaOrCojinetesContext.value
-  const cat = (part.categoria || '').toLowerCase()
-  const nom = (part.nombre || '').toLowerCase()
-  const sub = (part.subsistema || '').toLowerCase()
-  return (
-    Boolean(part.tipo_cojinete) ||
-    cat.includes('casquet') ||
-    cat.includes('cojinet') ||
-    cat.includes('metal') ||
-    nom.includes('cojinete') ||
-    nom.includes('casquete') ||
-    sub === 'cigüeñal' ||
-    sub === 'bielas'
-  )
-}
-
 const currentOrientationKey = computed<string>(() => {
-  return currentGroupDefinition.value?.codigo || selectedComponent.value?.id || 'global'
+  const raw =
+    currentGroupDefinition.value?.codigo ||
+    selectedComponent.value?.id ||
+    selectedComponent.value?.category ||
+    'global'
+  return String(raw).trim().toLowerCase() || 'global'
 })
 
 const currentTableOrientation = computed<'vertical' | 'horizontal'>(() => {
   const key = currentOrientationKey.value
   const saved = tableOrientations.value[key]
   if (saved) return saved
-  return isCasqueteriaOrCojinetesContext.value ? 'vertical' : 'horizontal'
+  return 'vertical'
 })
 
 const toggleCurrentTableOrientation = () => {
   const key = currentOrientationKey.value
-  tableOrientations.value[key] = currentTableOrientation.value === 'vertical' ? 'horizontal' : 'vertical'
+  const next: 'vertical' | 'horizontal' =
+    currentTableOrientation.value === 'vertical' ? 'horizontal' : 'vertical'
+  tableOrientations.value = {
+    ...tableOrientations.value,
+    [key]: next,
+  }
+  saveTableOrientations(tableOrientations.value)
+}
+
+const toggleModalTableOrientation = () => {
+  const next: 'vertical' | 'horizontal' =
+    modalTableOrientation.value === 'vertical' ? 'horizontal' : 'vertical'
+  modalTableOrientation.value = next
+  const key = modalOrientationKey.value || currentOrientationKey.value
+  tableOrientations.value = {
+    ...tableOrientations.value,
+    [key]: next,
+  }
+  saveTableOrientations(tableOrientations.value)
 }
 
 const isTechnicalOrientationAvailable = computed<boolean>(() => {
@@ -2947,6 +2985,65 @@ watch(tableSearchFilter, (val) => {
   }, 150)
 }, { immediate: true })
 
+const BASE_CATALOG_BRANDS = [
+  'Dokuro',
+  'Rik',
+  'NPR',
+  'MRK',
+  'NDC',
+  'Ajusa',
+  'Pioneer',
+  'Taiho',
+  'Toto',
+  'TIK',
+  'TP',
+  'Hastings',
+  'Mahle',
+  'Cofap',
+  'Federal Mogul',
+  'OEM',
+] as const
+
+const availableCatalogBrands = computed<string[]>(() => {
+  const byKey = new Map<string, string>()
+  const register = (raw?: unknown) => {
+    const clean = String(raw || '').trim()
+    if (!clean || clean === '—' || clean === '-') return
+    const key = clean.toLowerCase()
+    if (!byKey.has(key)) {
+      byKey.set(key, clean)
+    }
+  }
+
+  for (const b of BASE_CATALOG_BRANDS) {
+    register(b)
+  }
+
+  for (const r of catalogStore.repuestos) {
+    register(getPartCatalogBrand(r))
+    register(r.catalogo_origen)
+    const spec = (r.especificaciones_tecnicas || {}) as Record<string, any>
+    register(spec.marca_catalogo)
+    if (spec.codigo_dokuro) register('Dokuro')
+    if (spec.codigo_rik) register('Rik')
+    if (spec.codigo_npr) register('NPR')
+    if (spec.codigo_mrk) register('MRK')
+    if (spec.codigo_taiho) register('Taiho')
+    if (spec.codigo_ajusa) register('Ajusa')
+    if (Array.isArray(r.equivalencias)) {
+      for (const eq of r.equivalencias) {
+        register(eq?.marca_alterna)
+      }
+    }
+  }
+
+  const baseCount = BASE_CATALOG_BRANDS.length
+  const entries = Array.from(byKey.values())
+  const basePart = entries.slice(0, baseCount)
+  const extraPart = entries.slice(baseCount).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+  return [...basePart, ...extraPart]
+})
+
 const tableBrandFilter = ref<string>('Todas las marcas')
 
 const extractNormalizedRings = (r: RepuestoTecnico) => {
@@ -3431,11 +3528,14 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     )
   }
 
-  // 4. Filtro de marca de catálogo alterno (reparado para Dokuro, Rik, NDC, Taiho, Ajusa, Pioneer)
+  // 4. Filtro de marca de catálogo alterno (todas las marcas disponibles)
   if (tableBrandFilter.value !== 'Todas las marcas') {
     const b = tableBrandFilter.value.toLowerCase().trim()
     list = list.filter(r => {
-      // 1. Catálogo origen
+      // 1. Catálogo origen y marca resuelta
+      const resolvedBrand = (getPartCatalogBrand(r) || '').toLowerCase()
+      if (resolvedBrand.includes(b)) return true
+
       const origen = String(r.catalogo_origen || '').toLowerCase()
       if (origen.includes(b)) return true
 
@@ -3452,6 +3552,7 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
       if (b === 'npr' && (spec.codigo_npr || spec.marca_catalogo === 'NPR')) return true
       if (b === 'mrk' && (spec.codigo_mrk || spec.marca_catalogo === 'MRK' || spec.catalogo === 'MRK' || (r.dimensiones as any)?.catalogo === 'MRK')) return true
       if (b === 'taiho' && spec.codigo_taiho) return true
+      if (b === 'ajusa' && spec.codigo_ajusa) return true
 
       // 3. Equivalencias cruzadas
       if (r.equivalencias?.some(eq => 
@@ -3792,7 +3893,12 @@ const closeLightbox = () => {
 
 const openTechnicalSheet = (part: RepuestoTecnico) => {
   modalPart.value = part
-  modalTableOrientation.value = getPartIsBearingLike(part) ? 'vertical' : currentTableOrientation.value
+  const partGroup = resolveGroupDefinitionForPart(part)
+  const key = String(
+    partGroup?.codigo || resolveGroupIdFromPart(part) || currentOrientationKey.value
+  ).trim().toLowerCase() || 'global'
+  modalOrientationKey.value = key
+  modalTableOrientation.value = tableOrientations.value[key] || currentTableOrientation.value
   previewPdfUrl.value = null
   isTechnicalModalOpen.value = true
 }
@@ -5834,12 +5940,13 @@ onUnmounted(() => {
                 class="px-2.5 py-1 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none"
               >
                 <option value="Todas las marcas">Todas las marcas</option>
-                <option value="Rik">Rik</option>
-                <option value="NPR">NPR</option>
-                <option value="MRK">MRK</option>
-                <option value="Ajusa">Ajusa</option>
-                <option value="NDC">NDC</option>
-                <option value="Pioneer">Pioneer</option>
+                <option
+                  v-for="marca in availableCatalogBrands"
+                  :key="marca"
+                  :value="marca"
+                >
+                  {{ marca }}
+                </option>
               </select>
             </div>
           </div>
@@ -7166,7 +7273,7 @@ onUnmounted(() => {
                 <div class="flex items-center gap-2 ml-auto">
                   <button
                     type="button"
-                    @click="modalTableOrientation = modalTableOrientation === 'vertical' ? 'horizontal' : 'vertical'"
+                    @click="toggleModalTableOrientation"
                     class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition cursor-pointer"
                     :title="modalTableOrientation === 'vertical' ? 'Cambiar a tabla horizontal' : 'Cambiar a tabla vertical'"
                   >
@@ -7280,7 +7387,7 @@ onUnmounted(() => {
                 </h4>
                 <button
                   type="button"
-                  @click="modalTableOrientation = modalTableOrientation === 'vertical' ? 'horizontal' : 'vertical'"
+                  @click="toggleModalTableOrientation"
                   class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition cursor-pointer"
                 >
                   <ArrowUpDown class="w-3 h-3 text-[#038391]" />
