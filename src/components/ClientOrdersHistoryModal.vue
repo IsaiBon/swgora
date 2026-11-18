@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Cliente } from '@/services/clientesService'
 import { ordersService, type Order, type OrderStatus } from '@/services/ordersService'
-import WhatsAppShareModal from './WhatsAppShareModal.vue'
+import DirectOrderPdfShare from './DirectOrderPdfShare.vue'
 import WhatsAppIcon from './WhatsAppIcon.vue'
 import {
   X,
@@ -27,13 +27,38 @@ const emit = defineEmits<{
 const router = useRouter()
 const orders = ref<Order[]>([])
 const loading = ref(false)
-const whatsappModalOpen = ref(false)
-const orderToShareWhatsApp = ref<Order | null>(null)
+const directShareRef = ref<InstanceType<typeof DirectOrderPdfShare> | null>(null)
+const sharingWhatsAppOrderId = ref<string | null>(null)
+const shareNotice = ref<{ text: string; type: 'success' | 'error' } | null>(null)
+let shareNoticeTimer: ReturnType<typeof setTimeout> | null = null
 
-const openWhatsAppOrder = (order: Order) => {
-  orderToShareWhatsApp.value = order
-  whatsappModalOpen.value = true
+const showShareNotice = (text: string, type: 'success' | 'error') => {
+  if (shareNoticeTimer) clearTimeout(shareNoticeTimer)
+  shareNotice.value = { text, type }
+  shareNoticeTimer = setTimeout(() => {
+    shareNotice.value = null
+  }, 4500)
 }
+
+const handleShareWhatsAppOrder = async (order: Order) => {
+  if (sharingWhatsAppOrderId.value || !directShareRef.value) return
+  sharingWhatsAppOrderId.value = order.id
+  try {
+    const result = await directShareRef.value.shareOrder(order)
+    const docLabel = order.type === 'cotizacion' ? 'Cotización' : 'Orden'
+    if (result.status === 'shared') {
+      showShareNotice(`PDF de ${docLabel} ${order.orderNumber} compartido.`, 'success')
+    } else if (result.status === 'unsupported' || result.status === 'error') {
+      showShareNotice(result.message, 'error')
+    }
+  } finally {
+    sharingWhatsAppOrderId.value = null
+  }
+}
+
+onUnmounted(() => {
+  if (shareNoticeTimer) clearTimeout(shareNoticeTimer)
+})
 
 const loadOrders = async () => {
   if (!props.client) {
@@ -80,7 +105,7 @@ watch(
       loadOrders()
     } else {
       orders.value = []
-      whatsappModalOpen.value = false
+      shareNotice.value = null
     }
   },
   { immediate: true }
@@ -209,6 +234,19 @@ const formatCurrency = (val: number) => {
         </button>
       </div>
 
+      <!-- Feedback del envío directo de PDF -->
+      <div
+        v-if="shareNotice"
+        :class="[
+          'px-6 py-2.5 text-xs font-semibold border-b',
+          shareNotice.type === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : 'bg-rose-50 text-rose-800 border-rose-200'
+        ]"
+      >
+        {{ shareNotice.text }}
+      </div>
+
       <!-- Modal Body (Orders List) -->
       <div class="p-6 overflow-y-auto flex-1 space-y-3.5 bg-slate-50/70">
         <!-- Loading Spinner -->
@@ -275,12 +313,16 @@ const formatCurrency = (val: number) => {
               </span>
               <button
                 type="button"
-                @click="openWhatsAppOrder(order)"
-                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-[#25D366] text-emerald-700 hover:text-white border border-emerald-200 hover:border-[#25D366] text-[11px] font-bold transition active:scale-95 cursor-pointer"
+                @click="handleShareWhatsAppOrder(order)"
+                :disabled="sharingWhatsAppOrderId === order.id"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-[#25D366] text-emerald-700 hover:text-white border border-emerald-200 hover:border-[#25D366] text-[11px] font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
                 title="Compartir por WhatsApp"
               >
-                <WhatsAppIcon class="w-3.5 h-3.5" />
-                <span>WhatsApp</span>
+                <WhatsAppIcon
+                  class="w-3.5 h-3.5"
+                  :class="{ 'animate-pulse': sharingWhatsAppOrderId === order.id }"
+                />
+                <span>{{ sharingWhatsAppOrderId === order.id ? 'Preparando...' : 'WhatsApp' }}</span>
               </button>
             </div>
           </div>
@@ -337,10 +379,6 @@ const formatCurrency = (val: number) => {
       </div>
     </div>
 
-    <WhatsAppShareModal
-      :is-open="whatsappModalOpen"
-      :order="orderToShareWhatsApp"
-      @close="whatsappModalOpen = false"
-    />
+    <DirectOrderPdfShare ref="directShareRef" />
   </div>
 </template>

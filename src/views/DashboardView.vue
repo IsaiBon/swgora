@@ -6,7 +6,7 @@ import { ordersService, type Order, type OrderStatus } from '@/services/ordersSe
 import { clientesService, type Cliente } from '@/services/clientesService'
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useAnimatedNumber } from '@/composables/useAnimatedNumber'
-import WhatsAppShareModal from '@/components/WhatsAppShareModal.vue'
+import DirectOrderPdfShare from '@/components/DirectOrderPdfShare.vue'
 import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import { 
   Users, 
@@ -1159,18 +1159,24 @@ const tableFilteredOrders = computed(() => {
 // Cambio rápido de estado en línea (Inline Status Changer)
 const updatingOrderId = ref<string | null>(null)
 
-// Compartir orden / cotización por WhatsApp Business (wa.me)
-const whatsappModalOpen = ref(false)
-const orderToShareWhatsApp = ref<Order | null>(null)
+// Envío directo de archivo PDF mediante hoja nativa del dispositivo
+const directShareRef = ref<InstanceType<typeof DirectOrderPdfShare> | null>(null)
+const sharingWhatsAppOrderId = ref<string | null>(null)
 
-const openWhatsAppShare = (order: Order) => {
-  orderToShareWhatsApp.value = order
-  whatsappModalOpen.value = true
-}
-
-const handleWhatsAppShared = (payload: { order: Order }) => {
-  const label = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
-  showToast(`PDF de ${label} ${payload.order.orderNumber} compartido.`, 'success')
+const handleShareWhatsAppOrder = async (order: Order) => {
+  if (sharingWhatsAppOrderId.value || !directShareRef.value) return
+  sharingWhatsAppOrderId.value = order.id
+  try {
+    const result = await directShareRef.value.shareOrder(order)
+    const label = order.type === 'cotizacion' ? 'Cotización' : 'Orden'
+    if (result.status === 'shared') {
+      showToast(`PDF de ${label} ${order.orderNumber} compartido.`, 'success')
+    } else if (result.status === 'unsupported' || result.status === 'error') {
+      showToast(result.message, 'error')
+    }
+  } finally {
+    sharingWhatsAppOrderId.value = null
+  }
 }
 
 const handleQuickStatusChange = async (order: Order, newStatus: OrderStatus) => {
@@ -2484,11 +2490,15 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                   </router-link>
                   <button
                     type="button"
-                    @click="openWhatsAppShare(order)"
-                    class="inline-flex items-center justify-center p-2 text-slate-500 hover:text-[#25D366] hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded-xl transition-all cursor-pointer"
+                    @click="handleShareWhatsAppOrder(order)"
+                    :disabled="sharingWhatsAppOrderId === order.id"
+                    class="inline-flex items-center justify-center p-2 text-slate-500 hover:text-[#25D366] hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded-xl transition-all cursor-pointer disabled:opacity-50"
                     title="Compartir por WhatsApp"
                   >
-                    <WhatsAppIcon class="w-4 h-4" />
+                    <WhatsAppIcon
+                      class="w-4 h-4"
+                      :class="{ 'animate-pulse text-[#25D366]': sharingWhatsAppOrderId === order.id }"
+                    />
                   </button>
                 </div>
               </td>
@@ -2564,12 +2574,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
       </div>
     </section>
 
-    <WhatsAppShareModal
-      :is-open="whatsappModalOpen"
-      :order="orderToShareWhatsApp"
-      @close="whatsappModalOpen = false"
-      @shared="handleWhatsAppShared"
-    />
+    <DirectOrderPdfShare ref="directShareRef" />
   </div>
 </template>
 

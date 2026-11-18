@@ -11,7 +11,7 @@ import WorkOrderForm from '@/components/WorkOrderForm.vue'
 import WorkOrderPrintModal from '@/components/WorkOrderPrintModal.vue'
 import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
 import OperationsManagerModal from '@/components/OperationsManagerModal.vue'
-import WhatsAppShareModal from '@/components/WhatsAppShareModal.vue'
+import DirectOrderPdfShare from '@/components/DirectOrderPdfShare.vue'
 import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import { exportOrderToPdf } from '@/utils/pdfExport'
 import { 
@@ -229,21 +229,24 @@ const openPrintOrder = (order: Order) => {
   printModalOpen.value = true
 }
 
-// Modal de compartir por WhatsApp Business (wa.me)
-const whatsappModalOpen = ref(false)
-const orderToShareWhatsApp = ref<Order | null>(null)
+// Envío directo de archivo PDF mediante hoja nativa del dispositivo
+const directShareRef = ref<InstanceType<typeof DirectOrderPdfShare> | null>(null)
+const sharingWhatsAppOrderId = ref<string | null>(null)
 
-const openWhatsAppOrder = (order: Order) => {
-  orderToShareWhatsApp.value = order
-  whatsappModalOpen.value = true
-}
-
-const handleWhatsAppShared = (payload: { order: Order }) => {
-  const docLabel = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
-  showToast(
-    `PDF de ${docLabel} ${payload.order.orderNumber} compartido.`,
-    'success'
-  )
+const handleShareWhatsAppOrder = async (order: Order) => {
+  if (sharingWhatsAppOrderId.value || !directShareRef.value) return
+  sharingWhatsAppOrderId.value = order.id
+  try {
+    const result = await directShareRef.value.shareOrder(order)
+    const docLabel = order.type === 'cotizacion' ? 'Cotización' : 'Orden'
+    if (result.status === 'shared') {
+      showToast(`PDF de ${docLabel} ${order.orderNumber} compartido.`, 'success')
+    } else if (result.status === 'unsupported' || result.status === 'error') {
+      showToast(result.message, 'error')
+    }
+  } finally {
+    sharingWhatsAppOrderId.value = null
+  }
 }
 
 // Descarga directa de orden/cotización en formato PDF
@@ -858,11 +861,15 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                     </button>
                     <button
                       type="button"
-                      @click="openWhatsAppOrder(order)"
-                      class="p-1.5 text-slate-400 hover:text-[#25D366] hover:bg-emerald-50 rounded-xl transition active:scale-95"
+                      @click="handleShareWhatsAppOrder(order)"
+                      :disabled="sharingWhatsAppOrderId === order.id"
+                      class="p-1.5 text-slate-400 hover:text-[#25D366] hover:bg-emerald-50 rounded-xl transition active:scale-95 disabled:opacity-50"
                       title="Compartir por WhatsApp"
                     >
-                      <WhatsAppIcon class="w-4 h-4" />
+                      <WhatsAppIcon
+                        class="w-4 h-4"
+                        :class="{ 'animate-pulse text-[#25D366]': sharingWhatsAppOrderId === order.id }"
+                      />
                     </button>
                     <button
                       type="button"
@@ -894,13 +901,8 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
       @close="printModalOpen = false"
     />
 
-    <!-- Modal de Compartir por WhatsApp Business (wa.me) -->
-    <WhatsAppShareModal
-      :is-open="whatsappModalOpen"
-      :order="orderToShareWhatsApp"
-      @close="whatsappModalOpen = false"
-      @shared="handleWhatsAppShared"
-    />
+    <!-- Envío directo de PDF por aplicación nativa -->
+    <DirectOrderPdfShare ref="directShareRef" />
 
     <!-- Modal de Administración de Operaciones y Servicios -->
     <OperationsManagerModal

@@ -3,9 +3,9 @@ import { computed, watch, onUnmounted, ref } from 'vue'
 import type { Order } from '@/services/ordersService'
 import { Printer, Download, X, FileText } from 'lucide-vue-next'
 import WorkOrderDocument from './WorkOrderDocument.vue'
-import WhatsAppShareModal from './WhatsAppShareModal.vue'
+import DirectOrderPdfShare from './DirectOrderPdfShare.vue'
 import WhatsAppIcon from './WhatsAppIcon.vue'
-import { exportOrderToPdf, generateOrderPdfFile, type GeneratedOrderPdf } from '@/utils/pdfExport'
+import { exportOrderToPdf } from '@/utils/pdfExport'
 
 const props = defineProps<{
   order: Order | null
@@ -16,11 +16,22 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const whatsappModalOpen = ref(false)
+const directShareRef = ref<InstanceType<typeof DirectOrderPdfShare> | null>(null)
+const isSharingWhatsApp = ref(false)
+const shareFeedback = ref<{ text: string; type: 'success' | 'error' } | null>(null)
+let shareFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
-// Cerrar al presionar la tecla Escape (solo si el sub-modal de WhatsApp no está abierto)
+const showShareFeedback = (text: string, type: 'success' | 'error') => {
+  if (shareFeedbackTimer) clearTimeout(shareFeedbackTimer)
+  shareFeedback.value = { text, type }
+  shareFeedbackTimer = setTimeout(() => {
+    shareFeedback.value = null
+  }, 4500)
+}
+
+// Cerrar al presionar la tecla Escape
 const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && props.isOpen && !whatsappModalOpen.value) {
+  if (e.key === 'Escape' && props.isOpen) {
     emit('close')
   }
 }
@@ -30,7 +41,7 @@ watch(
   () => props.isOpen,
   (open) => {
     if (!open) {
-      whatsappModalOpen.value = false
+      shareFeedback.value = null
     }
     if (typeof document !== 'undefined') {
       if (open) {
@@ -46,6 +57,7 @@ watch(
 )
 
 onUnmounted(() => {
+  if (shareFeedbackTimer) clearTimeout(shareFeedbackTimer)
   if (typeof document !== 'undefined') {
     document.body.classList.remove('printing-modal-active')
     window.removeEventListener('keydown', handleKeydown)
@@ -97,15 +109,23 @@ const handleDownload = async () => {
   }
 }
 
-const generatePdfFile = async (): Promise<GeneratedOrderPdf | null> => {
-  if (!props.order) return null
-  const el = document.getElementById('printable-work-order')
-  if (!el) return null
-  const orderToExport = {
-    ...props.order,
-    showSubtotals: showSubtotalsOverride.value
+const handleShareWhatsApp = async () => {
+  if (!props.order || isSharingWhatsApp.value || !directShareRef.value) return
+  isSharingWhatsApp.value = true
+  try {
+    const el = document.getElementById('printable-work-order')
+    const result = await directShareRef.value.shareOrder(props.order, {
+      sourceElement: el,
+      showSubtotals: showSubtotalsOverride.value,
+    })
+    if (result.status === 'shared') {
+      showShareFeedback('Archivo PDF compartido correctamente.', 'success')
+    } else if (result.status === 'unsupported' || result.status === 'error') {
+      showShareFeedback(result.message, 'error')
+    }
+  } finally {
+    isSharingWhatsApp.value = false
   }
-  return await generateOrderPdfFile(el, orderToExport)
 }
 </script>
 
@@ -207,12 +227,13 @@ const generatePdfFile = async (): Promise<GeneratedOrderPdf | null> => {
             </button>
             <button
               type="button"
-              @click="whatsappModalOpen = true"
-              class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-95 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
+              @click="handleShareWhatsApp"
+              :disabled="isSharingWhatsApp"
+              class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-95 text-white text-xs font-bold rounded-xl shadow transition disabled:opacity-50 cursor-pointer"
               title="Compartir por WhatsApp"
             >
-              <WhatsAppIcon class="w-3.5 h-3.5" />
-              <span>WhatsApp</span>
+              <WhatsAppIcon class="w-3.5 h-3.5" :class="{ 'animate-pulse': isSharingWhatsApp }" />
+              <span>{{ isSharingWhatsApp ? 'Preparando PDF...' : 'WhatsApp' }}</span>
             </button>
             <button
               type="button"
@@ -224,6 +245,26 @@ const generatePdfFile = async (): Promise<GeneratedOrderPdf | null> => {
               <span class="hidden sm:inline">Cerrar (Esc)</span>
             </button>
           </div>
+        </div>
+
+        <!-- Notificación breve de envío directo (oculta en impresión) -->
+        <div
+          v-if="shareFeedback"
+          class="px-5 py-2 text-xs font-semibold flex items-center justify-between gap-2 shrink-0 print:hidden"
+          :class="
+            shareFeedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-b border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-b border-rose-200'
+          "
+        >
+          <span>{{ shareFeedback.text }}</span>
+          <button
+            type="button"
+            @click="shareFeedback = null"
+            class="opacity-70 hover:opacity-100 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
 
         <!-- 2. Contenedor scrollable interno para adaptar el documento -->
@@ -255,11 +296,5 @@ const generatePdfFile = async (): Promise<GeneratedOrderPdf | null> => {
     </div>
   </Teleport>
 
-  <WhatsAppShareModal
-    :is-open="whatsappModalOpen"
-    :order="order"
-    :initial-show-subtotals="showSubtotalsOverride"
-    :on-generate-pdf="generatePdfFile"
-    @close="whatsappModalOpen = false"
-  />
+  <DirectOrderPdfShare ref="directShareRef" />
 </template>
