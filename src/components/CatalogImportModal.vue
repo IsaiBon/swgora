@@ -10,6 +10,9 @@ import {
   type CatalogImportParseResult,
   type CatalogImportReport,
   type DuplicateStrategy,
+  type ParsedFamilyRow,
+  type ParsedMotorRow,
+  type ParsedPartRow,
   type TemplateScope
 } from '@/services/catalogImportService'
 import {
@@ -24,7 +27,9 @@ import {
   Loader2,
   ClipboardPaste,
   Layers,
-  Info
+  Info,
+  Trash2,
+  SlidersHorizontal
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -206,6 +211,233 @@ const handleClearLoaded = () => {
   parseResult.value = null
   parseError.value = null
   importReport.value = null
+  expandedPartIdx.value = null
+}
+
+// =============================================================================
+// EDICIÓN EN VIVO EN VISTA PREVIA ANTES DE IMPORTAR
+// =============================================================================
+const expandedPartIdx = ref<number | null>(null)
+
+const SQL_COTA_FIELDS: Array<{ key: keyof ParsedPartRow; label: string; isText?: boolean }> = [
+  { key: 'diametro_cilindro_mm', label: 'Diám. Cilindro (mm)' },
+  { key: 'espesor_anillo1_mm', label: '1° Anillo (mm)' },
+  { key: 'espesor_anillo2_mm', label: '2° Anillo (mm)' },
+  { key: 'espesor_anillo3_mm', label: '3° Anillo (mm)' },
+  { key: 'espesor_aceite_mm', label: 'Anillo Aceite (mm)' },
+  { key: 'diametro_cabeza_mm', label: 'Ø Cabeza Válv. (mm)' },
+  { key: 'diametro_vastago_mm', label: 'Ø Vástago (mm)' },
+  { key: 'longitud_total_mm', label: 'Long. Total (mm)' },
+  { key: 'angulo_asiento_grados', label: 'Ángulo (°)' },
+  { key: 'diametro_interior_mm', label: 'Diám. Int. (mm)' },
+  { key: 'diametro_exterior_mm', label: 'Diám. Ext. (mm)' },
+  { key: 'altura_mm', label: 'Altura (mm)' },
+  { key: 'medida_rosca', label: 'Medida Rosca', isText: true },
+  { key: 'paso_rosca_mm', label: 'Paso Rosca (mm)' },
+  { key: 'longitud_perno_mm', label: 'Long. Perno (mm)' },
+  { key: 'cantidad_piezas', label: 'Cant. Piezas' },
+]
+
+const revalidateFamilyRow = (fam: ParsedFamilyRow) => {
+  const msgs: string[] = []
+  let st: ParsedFamilyRow['status'] = 'valid'
+  if (!fam.nombre.trim()) {
+    st = 'error'
+    msgs.push('Falta el nombre de la familia')
+  }
+  if (!fam.columnas || fam.columnas.length === 0) {
+    if (st === 'valid') st = 'warning'
+    msgs.push('Sin columnas definidas')
+  }
+  fam.status = st
+  fam.messages = msgs
+}
+
+const onFamilyFilasInput = (fam: ParsedFamilyRow, val: string) => {
+  const names = val
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+  fam.filas = names.map(nombre => ({ nombre, tipo_fila: 'normal' as const }))
+  revalidateFamilyRow(fam)
+}
+
+const removePreviewFamily = (idx: number) => {
+  if (!parseResult.value) return
+  parseResult.value.families.splice(idx, 1)
+}
+
+const revalidatePartRow = (row: ParsedPartRow) => {
+  const msgs: string[] = []
+  let st: ParsedPartRow['status'] = 'valid'
+  if (!String(row.codigo_oem || '').trim()) {
+    st = 'error'
+    msgs.push('Falta codigo_oem')
+  }
+  if (!String(row.nombre || '').trim()) {
+    st = 'error'
+    msgs.push('Falta nombre del repuesto')
+  }
+  if (String(row.motorCodigo || '').trim() && !String(row.fabricante || '').trim()) {
+    if (st === 'valid') st = 'warning'
+    msgs.push('Motor indicado sin fabricante')
+  }
+  row.status = st
+  row.messages = msgs
+}
+
+const onPartFamilyChange = (row: ParsedPartRow, value: string) => {
+  row.familiaRaw = value
+  const fromStore = catalogStore.grupos.find(
+    g => g.codigo === value || g.nombre === value
+  )
+  if (fromStore) {
+    row.resolvedGrupoCodigo = fromStore.codigo
+    row.resolvedGrupoNombre = fromStore.nombre
+    row.categoria = fromStore.categoria
+    if (!row.subsistema || row.subsistema === 'Motor') {
+      row.subsistema = fromStore.subsistema || 'Motor'
+    }
+  } else {
+    const fromImport = parseResult.value?.families.find(
+      f => f.codigo === value || f.nombre === value
+    )
+    if (fromImport) {
+      row.resolvedGrupoCodigo = fromImport.codigo
+      row.resolvedGrupoNombre = fromImport.nombre
+      row.categoria = fromImport.categoria
+      row.subsistema = fromImport.subsistema || row.subsistema
+    } else if (value.trim()) {
+      row.resolvedGrupoNombre = value.trim()
+      row.categoria = value.trim()
+    }
+  }
+  revalidatePartRow(row)
+}
+
+const onPartModelsInput = (row: ParsedPartRow, val: string) => {
+  row.modelos = val
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+  if (row.modelos.length > 0) {
+    row.dimensiones.modelo = row.modelos.map(m => m.toUpperCase()).join(' / ')
+    row.dimensiones.modelos = row.modelos.map(m => m.toUpperCase())
+  } else {
+    delete row.dimensiones.modelo
+    delete row.dimensiones.modelos
+  }
+}
+
+const onPartOemAdicionalesInput = (row: ParsedPartRow, val: string) => {
+  row.codigos_oem_adicionales = val
+    .split(',')
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean)
+}
+
+const formatEquivalenciasText = (row: ParsedPartRow): string => {
+  return row.equivalencias
+    .map(e => (e.marca_alterna ? `${e.marca_alterna}: ${e.codigo_alterno}` : e.codigo_alterno))
+    .join('; ')
+}
+
+const onPartEquivalenciasInput = (row: ParsedPartRow, val: string) => {
+  const entries = val
+    .split(/[;\n]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+  row.equivalencias = entries.map(entry => {
+    const colonIdx = entry.indexOf(':')
+    if (colonIdx > 0) {
+      return {
+        marca_alterna: entry.slice(0, colonIdx).trim(),
+        codigo_alterno: entry.slice(colonIdx + 1).trim(),
+      }
+    }
+    return { marca_alterna: 'Alterno', codigo_alterno: entry }
+  })
+}
+
+const onPartYearInput = (row: ParsedPartRow, val: string) => {
+  row.anio = val.trim() || undefined
+  if (row.anio) {
+    row.dimensiones.ano = row.anio
+  } else {
+    delete row.dimensiones.ano
+  }
+}
+
+const getEditableDimensionKeys = (row: ParsedPartRow): string[] => {
+  return Object.keys(row.dimensiones || {}).filter(
+    k =>
+      typeof row.dimensiones[k] !== 'object' &&
+      !['marca', 'modelo', 'modelos', 'ano', 'codigos_oem_adicionales'].includes(k)
+  )
+}
+
+const getVisibleSqlCotaFields = (row: ParsedPartRow) => {
+  return SQL_COTA_FIELDS.filter(
+    f => row[f.key] !== undefined && row[f.key] !== null && row[f.key] !== ''
+  )
+}
+
+const onPartSqlCotaInput = (row: ParsedPartRow, key: keyof ParsedPartRow, isText: boolean | undefined, val: string) => {
+  const clean = val.trim()
+  if (!clean) {
+    ;(row as any)[key] = null
+    return
+  }
+  if (isText) {
+    ;(row as any)[key] = clean
+  } else {
+    const num = Number(clean)
+    ;(row as any)[key] = isNaN(num) ? null : num
+  }
+}
+
+const onPartDimInput = (row: ParsedPartRow, dimKey: string, val: string) => {
+  const clean = val.trim()
+  if (!clean) {
+    delete row.dimensiones[dimKey]
+    return
+  }
+  const num = Number(clean)
+  row.dimensiones[dimKey] = !isNaN(num) && clean !== '' ? num : clean
+}
+
+const removePreviewPart = (idx: number) => {
+  if (!parseResult.value) return
+  parseResult.value.parts.splice(idx, 1)
+  if (expandedPartIdx.value === idx) expandedPartIdx.value = null
+  else if (expandedPartIdx.value !== null && expandedPartIdx.value > idx) expandedPartIdx.value--
+}
+
+const revalidateMotorRow = (m: ParsedMotorRow) => {
+  const msgs: string[] = []
+  let st: ParsedMotorRow['status'] = 'valid'
+  if (!String(m.codigo || '').trim()) {
+    st = 'error'
+    msgs.push('Falta el código de motor')
+  }
+  if (!String(m.fabricante || '').trim()) {
+    st = 'error'
+    msgs.push('Falta el fabricante / marca')
+  }
+  m.status = st
+  m.messages = msgs
+}
+
+const onMotorModelsInput = (m: ParsedMotorRow, val: string) => {
+  m.modelos = val
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+const removePreviewMotor = (idx: number) => {
+  if (!parseResult.value) return
+  parseResult.value.motors.splice(idx, 1)
 }
 
 const validFamiliesCount = computed(
@@ -564,6 +796,9 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">
                   Vista Previa ({{ parseResult.fileName }})
                 </h3>
+                <span class="text-[10px] font-semibold text-[#038391] bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-full">
+                  Editable antes de importar
+                </span>
                 <span
                   v-if="parseResult.families.length > 0"
                   class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900"
@@ -652,29 +887,30 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               {{ w }}
             </div>
 
-            <!-- Tabla Preview Familias -->
+            <!-- Tabla Preview Familias (Editable antes de importar) -->
             <div
               v-if="previewTab === 'familias'"
-              class="max-h-64 overflow-auto border border-slate-200 rounded-xl"
+              class="max-h-72 overflow-auto border border-slate-200 rounded-xl"
             >
               <table class="w-full text-left text-[11px] border-collapse">
-                <thead class="sticky top-0 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                <thead class="sticky top-0 z-10 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
                   <tr>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Estado</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Nombre de Familia</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Subsistema</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Vista</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Filas</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Columnas / Medidas</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Estado</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Nombre de Familia</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Subsistema</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Vista</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Filas</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Columnas / Medidas</th>
+                    <th class="py-2 px-2 border-b border-slate-200 text-right">Quitar</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                   <tr
                     v-for="(fam, fIdx) in parseResult.families.slice(0, 100)"
                     :key="`prev-fam-${fIdx}`"
-                    :class="fam.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50'"
+                    :class="fam.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50/70'"
                   >
-                    <td class="py-1.5 px-2.5 whitespace-nowrap">
+                    <td class="py-1.5 px-2 whitespace-nowrap align-top">
                       <span
                         v-if="fam.status === 'valid'"
                         class="inline-flex items-center gap-1 text-emerald-700 font-bold"
@@ -695,111 +931,324 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                       >
                         <XCircle class="w-3.5 h-3.5" /> Error
                       </span>
-                      <div v-if="fam.messages.length > 0" class="text-[10px] text-slate-500">
+                      <div v-if="fam.messages.length > 0" class="text-[10px] text-slate-500 max-w-[130px]">
                         {{ fam.messages.join(' · ') }}
                       </div>
                     </td>
-                    <td class="py-1.5 px-2.5 font-bold text-slate-900">
-                      {{ fam.nombre || '—' }}
-                      <div class="font-mono text-[10px] text-slate-400">{{ fam.codigo }}</div>
+                    <td class="py-1.5 px-2 align-top space-y-1">
+                      <input
+                        v-model="fam.nombre"
+                        @input="revalidateFamilyRow(fam)"
+                        type="text"
+                        placeholder="Nombre familia *"
+                        class="w-40 px-2 py-1 rounded border border-slate-200 bg-white font-bold text-slate-900 text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                      />
+                      <input
+                        v-model="fam.codigo"
+                        type="text"
+                        placeholder="codigo_slug"
+                        class="block w-40 px-2 py-0.5 rounded border border-slate-100 bg-slate-50 font-mono text-[10px] text-slate-500 focus:outline-none focus:border-[#04C4D9]"
+                      />
                     </td>
-                    <td class="py-1.5 px-2.5 text-slate-700">{{ fam.subsistema }}</td>
-                    <td class="py-1.5 px-2.5">
-                      <span
-                        class="px-1.5 py-0.5 rounded text-[10px] font-bold"
-                        :class="fam.tipo_vista === 'tabla' ? 'bg-blue-100 text-[#004B97]' : 'bg-slate-100 text-slate-700'"
+                    <td class="py-1.5 px-2 align-top">
+                      <select
+                        v-model="fam.subsistema"
+                        class="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
                       >
-                        {{ fam.tipo_vista === 'tabla' ? 'Tabla' : 'Normal' }}
-                      </span>
+                        <option value="Block">Block</option>
+                        <option value="Culata">Culata</option>
+                        <option value="Cigüeñal">Cigüeñal</option>
+                        <option value="Motor">Motor</option>
+                        <option value="General">General</option>
+                      </select>
                     </td>
-                    <td class="py-1.5 px-2.5 text-slate-600 max-w-[160px] truncate">
-                      {{ fam.tipo_vista === 'tabla' ? (fam.filas.map(r => r.nombre).join(', ') || '1 fila') : '—' }}
+                    <td class="py-1.5 px-2 align-top">
+                      <select
+                        v-model="fam.tipo_vista"
+                        class="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] font-bold text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                      >
+                        <option value="normal">Normal</option>
+                        <option value="tabla">Tabla</option>
+                      </select>
                     </td>
-                    <td class="py-1.5 px-2.5 font-mono text-[10px] text-slate-700">
-                      {{
-                        fam.columnas
-                          .map(c => `${c.columna_padre ? `${c.columna_padre} > ` : ''}${c.etiqueta}${c.unidad ? ` (${c.unidad})` : c.tipo_dato ? ` (${c.tipo_dato})` : ''}`)
-                          .join(' · ')
-                      }}
+                    <td class="py-1.5 px-2 align-top">
+                      <input
+                        v-if="fam.tipo_vista === 'tabla'"
+                        :value="fam.filas.map(r => r.nombre).join(', ')"
+                        @change="onFamilyFilasInput(fam, ($event.target as HTMLInputElement).value)"
+                        type="text"
+                        placeholder="Fila 1, Fila 2..."
+                        class="w-36 px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                      />
+                      <span v-else class="text-slate-400">—</span>
+                    </td>
+                    <td class="py-1.5 px-2 align-top font-mono text-[10px] text-slate-700 space-y-1">
+                      <div
+                        v-for="(col, cIdx) in fam.columnas"
+                        :key="`fam-col-${fIdx}-${cIdx}`"
+                        class="flex items-center gap-1"
+                      >
+                        <input
+                          v-model="col.etiqueta"
+                          type="text"
+                          placeholder="Etiqueta"
+                          class="w-28 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[10px] font-sans focus:outline-none focus:border-[#04C4D9]"
+                        />
+                        <input
+                          v-model="col.unidad"
+                          type="text"
+                          placeholder="u."
+                          class="w-12 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[10px] focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+                    </td>
+                    <td class="py-1.5 px-2 align-top text-right">
+                      <button
+                        type="button"
+                        @click="removePreviewFamily(fIdx)"
+                        class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
+                        title="Quitar familia"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <!-- Tabla Preview Repuestos -->
+            <!-- Tabla Preview Repuestos (Editable antes de importar) -->
             <div
               v-else-if="previewTab === 'repuestos'"
-              class="max-h-64 overflow-auto border border-slate-200 rounded-xl"
+              class="max-h-80 overflow-auto border border-slate-200 rounded-xl"
             >
               <table class="w-full text-left text-[11px] border-collapse">
-                <thead class="sticky top-0 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                <thead class="sticky top-0 z-10 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
                   <tr>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Estado</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Código OEM</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Nombre / Descripción</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Familia</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Marca / Motor</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Alternos</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Medidas</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Estado</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Código OEM</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Nombre / Descripción</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Familia</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Marca / Motor / Año</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Alternos</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Medidas / Datos</th>
+                    <th class="py-2 px-2 border-b border-slate-200 text-right">Quitar</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                  <tr
+                  <template
                     v-for="(row, rIdx) in parseResult.parts.slice(0, 100)"
                     :key="`prev-part-${rIdx}`"
-                    :class="row.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50'"
                   >
-                    <td class="py-1.5 px-2.5 whitespace-nowrap">
-                      <span
-                        v-if="row.status === 'valid'"
-                        class="inline-flex items-center gap-1 text-emerald-700 font-bold"
-                      >
-                        <CheckCircle2 class="w-3.5 h-3.5" /> Listo
-                      </span>
-                      <span
-                        v-else-if="row.status === 'warning'"
-                        class="inline-flex items-center gap-1 text-amber-700 font-bold"
-                        :title="row.messages.join(' | ')"
-                      >
-                        <AlertTriangle class="w-3.5 h-3.5" /> Aviso
-                      </span>
-                      <span
-                        v-else
-                        class="inline-flex items-center gap-1 text-rose-700 font-bold"
-                        :title="row.messages.join(' | ')"
-                      >
-                        <XCircle class="w-3.5 h-3.5" /> Error
-                      </span>
-                      <div v-if="row.messages.length > 0" class="text-[10px] text-slate-500">
-                        {{ row.messages.join(' · ') }}
-                      </div>
-                    </td>
-                    <td class="py-1.5 px-2.5 font-mono font-bold text-slate-900">
-                      {{ row.codigo_oem || '—' }}
-                      <div v-if="row.codigos_oem_adicionales.length > 0" class="text-[9px] text-slate-500">
-                        +{{ row.codigos_oem_adicionales.join(', ') }}
-                      </div>
-                    </td>
-                    <td class="py-1.5 px-2.5 font-medium text-slate-800 max-w-[200px] truncate">
-                      {{ row.nombre || '—' }}
-                    </td>
-                    <td class="py-1.5 px-2.5 text-slate-700">
-                      {{ row.resolvedGrupoNombre || row.categoria }}
-                    </td>
-                    <td class="py-1.5 px-2.5 text-slate-700">
-                      {{ [row.fabricante, row.motorCodigo].filter(Boolean).join(' · ') || '—' }}
-                      <div v-if="row.modelos.length > 0" class="text-[9px] text-slate-500 truncate max-w-[140px]">
-                        {{ row.modelos.join(', ') }}
-                      </div>
-                    </td>
-                    <td class="py-1.5 px-2.5 font-mono text-[10px] text-slate-600">
-                      {{ row.equivalencias.map(e => `${e.marca_alterna}: ${e.codigo_alterno}`).join(', ') || '—' }}
-                    </td>
-                    <td class="py-1.5 px-2.5 font-mono text-[10px] text-slate-600 max-w-[180px] truncate">
-                      {{ formatDimsSummary(row.dimensiones) }}
-                    </td>
-                  </tr>
+                    <tr
+                      :class="row.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50/70'"
+                    >
+                      <td class="py-1.5 px-2 whitespace-nowrap align-top">
+                        <span
+                          v-if="row.status === 'valid'"
+                          class="inline-flex items-center gap-1 text-emerald-700 font-bold"
+                        >
+                          <CheckCircle2 class="w-3.5 h-3.5" /> Listo
+                        </span>
+                        <span
+                          v-else-if="row.status === 'warning'"
+                          class="inline-flex items-center gap-1 text-amber-700 font-bold"
+                          :title="row.messages.join(' | ')"
+                        >
+                          <AlertTriangle class="w-3.5 h-3.5" /> Aviso
+                        </span>
+                        <span
+                          v-else
+                          class="inline-flex items-center gap-1 text-rose-700 font-bold"
+                          :title="row.messages.join(' | ')"
+                        >
+                          <XCircle class="w-3.5 h-3.5" /> Error
+                        </span>
+                        <div v-if="row.messages.length > 0" class="text-[10px] text-slate-500 max-w-[130px]">
+                          {{ row.messages.join(' · ') }}
+                        </div>
+                      </td>
+                      <td class="py-1.5 px-2 align-top space-y-1">
+                        <input
+                          v-model="row.codigo_oem"
+                          @input="revalidatePartRow(row)"
+                          type="text"
+                          placeholder="Código OEM *"
+                          class="w-28 px-2 py-1 rounded border border-slate-200 bg-white font-mono font-bold text-slate-900 text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                        />
+                        <input
+                          :value="row.codigos_oem_adicionales.join(', ')"
+                          @change="onPartOemAdicionalesInput(row, ($event.target as HTMLInputElement).value)"
+                          type="text"
+                          placeholder="+ OEMs (coma)"
+                          class="block w-28 px-2 py-0.5 rounded border border-slate-100 bg-slate-50 font-mono text-[9px] text-slate-600 focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </td>
+                      <td class="py-1.5 px-2 align-top">
+                        <input
+                          v-model="row.nombre"
+                          @input="revalidatePartRow(row)"
+                          type="text"
+                          placeholder="Nombre / Descripción *"
+                          class="w-40 px-2 py-1 rounded border border-slate-200 bg-white font-medium text-slate-800 text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </td>
+                      <td class="py-1.5 px-2 align-top">
+                        <select
+                          :value="row.resolvedGrupoCodigo || row.familiaRaw || row.categoria"
+                          @change="onPartFamilyChange(row, ($event.target as HTMLSelectElement).value)"
+                          class="w-32 px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                        >
+                          <option
+                            v-if="(row.familiaRaw || row.categoria) && !catalogStore.grupos.some(g => g.codigo === (row.resolvedGrupoCodigo || row.familiaRaw) || g.nombre === (row.familiaRaw || row.categoria))"
+                            :value="row.familiaRaw || row.categoria"
+                          >
+                            {{ row.resolvedGrupoNombre || row.familiaRaw || row.categoria }}
+                          </option>
+                          <option
+                            v-for="g in catalogStore.grupos"
+                            :key="g.id"
+                            :value="g.codigo"
+                          >
+                            {{ g.nombre }}
+                          </option>
+                        </select>
+                      </td>
+                      <td class="py-1.5 px-2 align-top space-y-1">
+                        <div class="flex items-center gap-1">
+                          <input
+                            v-model="row.fabricante"
+                            @input="revalidatePartRow(row)"
+                            type="text"
+                            placeholder="Marca"
+                            class="w-20 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[10px] font-bold text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                          />
+                          <input
+                            v-model="row.motorCodigo"
+                            @input="revalidatePartRow(row)"
+                            type="text"
+                            placeholder="Motor"
+                            class="w-20 px-1.5 py-0.5 rounded border border-slate-200 bg-white font-mono text-[10px] font-bold text-[#004B97] focus:outline-none focus:border-[#04C4D9]"
+                          />
+                        </div>
+                        <div class="flex items-center gap-1">
+                          <input
+                            :value="row.modelos.join(', ')"
+                            @change="onPartModelsInput(row, ($event.target as HTMLInputElement).value)"
+                            type="text"
+                            placeholder="Modelos (coma)"
+                            class="w-24 px-1.5 py-0.5 rounded border border-slate-100 bg-slate-50 text-[10px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                          />
+                          <input
+                            :value="row.anio || ''"
+                            @input="onPartYearInput(row, ($event.target as HTMLInputElement).value)"
+                            type="text"
+                            placeholder="Año"
+                            class="w-16 px-1.5 py-0.5 rounded border border-slate-100 bg-slate-50 font-mono text-[10px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                          />
+                        </div>
+                      </td>
+                      <td class="py-1.5 px-2 align-top">
+                        <input
+                          :value="formatEquivalenciasText(row)"
+                          @change="onPartEquivalenciasInput(row, ($event.target as HTMLInputElement).value)"
+                          type="text"
+                          placeholder="RIK: 123; NPR: 456"
+                          class="w-36 px-2 py-1 rounded border border-slate-200 bg-white font-mono text-[10px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </td>
+                      <td class="py-1.5 px-2 align-top">
+                        <button
+                          type="button"
+                          @click="expandedPartIdx = expandedPartIdx === rIdx ? null : rIdx"
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition cursor-pointer"
+                          :class="expandedPartIdx === rIdx
+                            ? 'bg-[#004B97] text-white border-[#004B97]'
+                            : 'bg-slate-50 hover:bg-cyan-50 text-slate-700 border-slate-200 hover:border-[#04C4D9]'"
+                          title="Editar medidas, precio y stock de esta fila"
+                        >
+                          <SlidersHorizontal class="w-3 h-3" />
+                          <span>{{ expandedPartIdx === rIdx ? 'Ocultar' : 'Editar medidas' }}</span>
+                        </button>
+                        <div class="mt-0.5 font-mono text-[9px] text-slate-500 max-w-[160px] truncate">
+                          {{ formatDimsSummary(row.dimensiones) }}
+                        </div>
+                      </td>
+                      <td class="py-1.5 px-2 align-top text-right">
+                        <button
+                          type="button"
+                          @click="removePreviewPart(rIdx)"
+                          class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
+                          title="Quitar fila"
+                        >
+                          <Trash2 class="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                    <!-- Fila desplegable para editar medidas, precio, stock y origen -->
+                    <tr v-if="expandedPartIdx === rIdx" class="bg-cyan-50/40">
+                      <td colspan="8" class="px-3 py-2.5 border-t border-cyan-100">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-[10px]">
+                          <div>
+                            <label class="block font-bold text-slate-600 mb-0.5">Catálogo origen</label>
+                            <input
+                              v-model="row.catalogo_origen"
+                              type="text"
+                              class="w-full px-2 py-1 rounded border border-slate-200 bg-white font-bold text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </div>
+                          <div>
+                            <label class="block font-bold text-slate-600 mb-0.5">Precio</label>
+                            <input
+                              v-model.number="row.precio"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              class="w-full px-2 py-1 rounded border border-slate-200 bg-white font-mono font-bold text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </div>
+                          <div>
+                            <label class="block font-bold text-slate-600 mb-0.5">Stock</label>
+                            <input
+                              v-model.number="row.stock"
+                              type="number"
+                              min="0"
+                              class="w-full px-2 py-1 rounded border border-slate-200 bg-white font-mono font-bold text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </div>
+                          <div
+                            v-for="cField in getVisibleSqlCotaFields(row)"
+                            :key="`sql-${rIdx}-${String(cField.key)}`"
+                          >
+                            <label class="block font-bold text-slate-600 mb-0.5 truncate" :title="cField.label">
+                              {{ cField.label }}
+                            </label>
+                            <input
+                              :value="(row[cField.key] as string | number | null | undefined) ?? ''"
+                              @input="onPartSqlCotaInput(row, cField.key, cField.isText, ($event.target as HTMLInputElement).value)"
+                              :type="cField.isText ? 'text' : 'number'"
+                              step="0.001"
+                              class="w-full px-2 py-1 rounded border border-slate-200 bg-white font-mono font-bold text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </div>
+                          <div
+                            v-for="dimKey in getEditableDimensionKeys(row)"
+                            :key="`dim-${rIdx}-${dimKey}`"
+                          >
+                            <label class="block font-bold text-slate-600 mb-0.5 truncate" :title="dimKey">
+                              {{ dimKey.replace(/_/g, ' ') }}
+                            </label>
+                            <input
+                              :value="row.dimensiones[dimKey] ?? ''"
+                              @input="onPartDimInput(row, dimKey, ($event.target as HTMLInputElement).value)"
+                              type="text"
+                              class="w-full px-2 py-1 rounded border border-slate-200 bg-white font-mono font-bold text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
               <div
@@ -810,39 +1259,105 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               </div>
             </div>
 
-            <!-- Tabla Preview Motores -->
+            <!-- Tabla Preview Motores (Editable antes de importar) -->
             <div
               v-else
-              class="max-h-64 overflow-auto border border-slate-200 rounded-xl"
+              class="max-h-72 overflow-auto border border-slate-200 rounded-xl"
             >
               <table class="w-full text-left text-[11px] border-collapse">
-                <thead class="sticky top-0 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
+                <thead class="sticky top-0 z-10 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
                   <tr>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Estado</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Fabricante</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Código Motor</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Modelos</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Cil / CC</th>
-                    <th class="py-2 px-2.5 border-b border-slate-200">Combustible</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Estado</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Fabricante</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Código Motor</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Modelos</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Años</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Cil / CC</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Combustible</th>
+                    <th class="py-2 px-2 border-b border-slate-200 text-right">Quitar</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                   <tr
                     v-for="(m, mIdx) in parseResult.motors.slice(0, 100)"
                     :key="`prev-mot-${mIdx}`"
-                    :class="m.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50'"
+                    :class="m.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50/70'"
                   >
-                    <td class="py-1.5 px-2.5">
+                    <td class="py-1.5 px-2 whitespace-nowrap">
                       <span v-if="m.status !== 'error'" class="text-emerald-700 font-bold">Listo</span>
                       <span v-else class="text-rose-700 font-bold">{{ m.messages.join(' · ') }}</span>
                     </td>
-                    <td class="py-1.5 px-2.5 font-bold">{{ m.fabricante || '—' }}</td>
-                    <td class="py-1.5 px-2.5 font-mono font-bold text-[#004B97]">{{ m.codigo || '—' }}</td>
-                    <td class="py-1.5 px-2.5">{{ m.modelos.join(', ') || '—' }}</td>
-                    <td class="py-1.5 px-2.5 font-mono">
-                      {{ m.cilindros || '—' }} cil · {{ m.cilindrada_cc ? `${m.cilindrada_cc} cc` : '—' }}
+                    <td class="py-1.5 px-2">
+                      <input
+                        v-model="m.fabricante"
+                        @input="revalidateMotorRow(m)"
+                        type="text"
+                        placeholder="Marca *"
+                        class="w-24 px-2 py-1 rounded border border-slate-200 bg-white font-bold text-slate-800 text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                      />
                     </td>
-                    <td class="py-1.5 px-2.5">{{ m.combustible }}</td>
+                    <td class="py-1.5 px-2">
+                      <input
+                        v-model="m.codigo"
+                        @input="revalidateMotorRow(m)"
+                        type="text"
+                        placeholder="Código *"
+                        class="w-24 px-2 py-1 rounded border border-slate-200 bg-white font-mono font-bold text-[#004B97] text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                      />
+                    </td>
+                    <td class="py-1.5 px-2">
+                      <input
+                        :value="m.modelos.join(', ')"
+                        @change="onMotorModelsInput(m, ($event.target as HTMLInputElement).value)"
+                        type="text"
+                        placeholder="Modelos (coma)"
+                        class="w-32 px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                      />
+                    </td>
+                    <td class="py-1.5 px-2">
+                      <input
+                        v-model="m.anios"
+                        type="text"
+                        placeholder="ej. 1998-2005"
+                        class="w-24 px-2 py-1 rounded border border-slate-200 bg-white font-mono text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                      />
+                    </td>
+                    <td class="py-1.5 px-2">
+                      <div class="flex items-center gap-1 font-mono">
+                        <input
+                          v-model.number="m.cilindros"
+                          type="number"
+                          min="1"
+                          placeholder="Cil"
+                          class="w-12 px-1.5 py-1 rounded border border-slate-200 bg-white text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                        />
+                        <input
+                          v-model.number="m.cilindrada_cc"
+                          type="number"
+                          min="0"
+                          placeholder="CC"
+                          class="w-16 px-1.5 py-1 rounded border border-slate-200 bg-white text-[11px] focus:outline-none focus:border-[#04C4D9]"
+                        />
+                      </div>
+                    </td>
+                    <td class="py-1.5 px-2">
+                      <input
+                        v-model="m.combustible"
+                        type="text"
+                        placeholder="Diésel / Gasolina"
+                        class="w-24 px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
+                      />
+                    </td>
+                    <td class="py-1.5 px-2 text-right">
+                      <button
+                        type="button"
+                        @click="removePreviewMotor(mIdx)"
+                        class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
+                        title="Quitar motor"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 </tbody>
               </table>

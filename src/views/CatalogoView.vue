@@ -83,60 +83,135 @@ const selectedBrand = ref<Fabricante | null>(null)
 const selectedModel = ref<Modelo | null>(null)
 const selectedMotor = ref<Motor | null>(null)
 const selectedComponent = ref<ComponentGroup | null>(null)
-const selectedYear = ref<string>('')
+const selectedYears = ref<string[]>([])
+const selectedYear = computed<string>({
+  get: () => selectedYears.value[0] || '',
+  set: (val: string) => {
+    const clean = val.trim()
+    selectedYears.value = clean ? [clean] : []
+  },
+})
 const yearInput = ref<string>('')
 const isYearOpen = ref<boolean>(false)
 const showAllMotors = ref<boolean>(false)
+
+const CURRENT_CATALOG_YEAR = Math.max(2026, new Date().getFullYear())
+const MAX_CATALOG_YEAR = CURRENT_CATALOG_YEAR + 2
+const MIN_CATALOG_YEAR = 1965
 
 const CUSTOM_YEARS_STORAGE_KEY = 'swgora_custom_years_v1'
 function loadCustomYears(): string[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(CUSTOM_YEARS_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(x => String(x).trim()).filter(Boolean) : []
   } catch {
     return []
   }
 }
 const customYears = ref<string[]>(loadCustomYears())
 
-// Lista de años compatibles (personalizados + 1975 - 2026)
+function saveCustomYearsStorage(list: string[]) {
+  try {
+    localStorage.setItem(CUSTOM_YEARS_STORAGE_KEY, JSON.stringify(list))
+  } catch {
+    // Silencioso
+  }
+}
+
+// Lista de años compatibles (personalizados + modelos/repuestos + dinámico 1965 - año actual+2)
 const availableYears = computed<string[]>(() => {
-  const base = Array.from({ length: 2026 - 1975 + 1 }, (_, i) => String(2026 - i))
-  const combined = [...customYears.value, ...base]
-  return Array.from(new Set(combined))
+  const base = Array.from(
+    { length: MAX_CATALOG_YEAR - MIN_CATALOG_YEAR + 1 },
+    (_, i) => String(MAX_CATALOG_YEAR - i)
+  )
+  const detected: string[] = []
+  for (const mod of catalogStore.modelos) {
+    if (mod.anio_inicio) detected.push(String(mod.anio_inicio))
+    if (mod.anio_fin) detected.push(String(mod.anio_fin))
+  }
+  const combined = [...customYears.value, ...detected, ...base]
+  return Array.from(new Set(combined.map(v => v.trim()).filter(Boolean)))
 })
 
 const filteredYears = computed<string[]>(() => {
-  const q = yearInput.value.trim().toLowerCase()
-  if (!q || q === selectedYear.value.toLowerCase()) {
+  const raw = yearInput.value.trim()
+  const lastSegment = (raw.split(',').pop() || '').trim().toLowerCase()
+  const joinedSelected = selectedYears.value.join(', ').toLowerCase()
+  if (!lastSegment || raw.toLowerCase() === joinedSelected) {
     return availableYears.value
   }
-  return availableYears.value.filter(yr => yr.toLowerCase().startsWith(q))
+  return availableYears.value.filter(yr => yr.toLowerCase().includes(lastSegment))
 })
 
-const effectiveYearFilter = computed<string>(() => {
-  if (selectedYear.value.trim()) return selectedYear.value.trim()
-  const raw = yearInput.value.trim()
-  return /^\d{4}$/.test(raw) ? raw : ''
+const parseYearTokensFromText = (raw: string): string[] => {
+  return raw
+    .split(/[,;\n]+/)
+    .map(t => t.trim())
+    .filter(t => /^\d{4}(?:\s*(?:[-–—/]|al|a|hasta)\s*(?:\d{4}|act(?:ual)?|presente)?)?$/i.test(t) || /^\d{4}\+$/.test(t))
+}
+
+const effectiveYearFilters = computed<string[]>(() => {
+  if (selectedYears.value.length > 0) return selectedYears.value
+  return parseYearTokensFromText(yearInput.value.trim())
 })
+
+const effectiveYearFilter = computed<string>(() => effectiveYearFilters.value.join(', '))
 
 function handleSelectYear(yr: string) {
-  selectedYear.value = yr
+  selectedYears.value = [yr]
   yearInput.value = yr
   isYearOpen.value = false
+}
+
+function toggleYearInFilter(yr: string) {
+  const clean = yr.trim()
+  if (!clean) return
+  if (selectedYears.value.includes(clean)) {
+    selectedYears.value = selectedYears.value.filter(y => y !== clean)
+  } else {
+    selectedYears.value = [...selectedYears.value, clean]
+  }
+  yearInput.value = selectedYears.value.join(', ')
 }
 
 function onInputYear() {
   isYearOpen.value = true
   const raw = yearInput.value.trim()
-  selectedYear.value = /^\d{4}$/.test(raw) ? raw : ''
+  const tokens = parseYearTokensFromText(raw)
+  selectedYears.value = tokens.length > 0 && raw.includes(',') ? tokens : (/^\d{4}$/.test(raw) ? [raw] : [])
 }
 
 function handleClearYear() {
-  selectedYear.value = ''
+  selectedYears.value = []
   yearInput.value = ''
   isYearOpen.value = false
+}
+
+function removeCustomYear(yr: string) {
+  customYears.value = customYears.value.filter(y => y !== yr)
+  selectedYears.value = selectedYears.value.filter(y => y !== yr)
+  yearInput.value = selectedYears.value.join(', ')
+  saveCustomYearsStorage(customYears.value)
+}
+
+function expandCriteriaInterval(criteria: string): { start: number; end: number } | null {
+  const clean = String(criteria || '').trim()
+  if (!clean) return null
+  const rangeMatch = clean.match(/\b(19\d{2}|20\d{2})\s*(?:[-–—/]|al|a|hasta)\s*(19\d{2}|20\d{2}|act(?:ual)?|presente)?\b/i)
+  if (rangeMatch) {
+    const s = Number(rangeMatch[1])
+    const eRaw = (rangeMatch[2] || '').toLowerCase()
+    const e = !eRaw || eRaw.startsWith('act') || eRaw.startsWith('pres') ? MAX_CATALOG_YEAR : Number(eRaw)
+    if (!isNaN(s) && !isNaN(e)) return { start: Math.min(s, e), end: Math.max(s, e) }
+  }
+  const singleMatch = clean.match(/\b(19\d{2}|20\d{2})\b/)
+  if (singleMatch) {
+    const y = Number(singleMatch[1])
+    if (!isNaN(y)) return { start: y, end: clean.endsWith('+') ? MAX_CATALOG_YEAR : y }
+  }
+  return null
 }
 
 function doesYearMatchText(text: string | number | undefined | null, targetYear: number | string): boolean {
@@ -145,8 +220,9 @@ function doesYearMatchText(text: string | number | undefined | null, targetYear:
   if (!raw || raw === '—') return false
   const targetStr = String(targetYear).trim()
   if (raw.includes(targetStr)) return true
-  const parsedYear = Number(targetStr.match(/\b(19\d{2}|20\d{2})\b/)?.[1] || targetStr)
-  if (isNaN(parsedYear)) return false
+
+  const targetInterval = expandCriteriaInterval(targetStr)
+  if (!targetInterval) return false
 
   // Buscar rangos de 4 dígitos como "1995-2006", "1998 - 2005", "1995/2004", "1995 al 2006"
   const rangeRegex = /\b(19\d{2}|20\d{2})\s*(?:[-–—/]|al|a|hasta)\s*(19\d{2}|20\d{2}|act(?:ual)?|presente)?\b/gi
@@ -154,20 +230,44 @@ function doesYearMatchText(text: string | number | undefined | null, targetYear:
   while ((match = rangeRegex.exec(raw)) !== null) {
     const start = Number(match[1])
     const endRaw = (match[2] || '').toLowerCase()
-    const end = (!endRaw || endRaw.startsWith('act') || endRaw.startsWith('pres')) ? 2026 : Number(endRaw)
-    if (!isNaN(start) && !isNaN(end) && parsedYear >= Math.min(start, end) && parsedYear <= Math.max(start, end)) {
-      return true
+    const end = (!endRaw || endRaw.startsWith('act') || endRaw.startsWith('pres')) ? MAX_CATALOG_YEAR : Number(endRaw)
+    if (!isNaN(start) && !isNaN(end)) {
+      const rMin = Math.min(start, end)
+      const rMax = Math.max(start, end)
+      if (targetInterval.end >= rMin && targetInterval.start <= rMax) {
+        return true
+      }
     }
   }
 
-  // Buscar "1998+" o "desde 1998"
+  // Buscar "1998+" o años sueltos en el texto
   const openStartRegex = /\b(19\d{2}|20\d{2})\s*\+/g
   while ((match = openStartRegex.exec(raw)) !== null) {
     const start = Number(match[1])
-    if (!isNaN(start) && parsedYear >= start) return true
+    if (!isNaN(start) && targetInterval.end >= start) return true
+  }
+
+  const singleRegex = /\b(19\d{2}|20\d{2})\b/g
+  while ((match = singleRegex.exec(raw)) !== null) {
+    const y = Number(match[1])
+    if (!isNaN(y) && y >= targetInterval.start && y <= targetInterval.end) return true
   }
 
   return false
+}
+
+function doesYearMatchAnyFilter(text: string | number | undefined | null, filters: string[]): boolean {
+  if (!filters.length) return true
+  return filters.some(f => doesYearMatchText(text, f))
+}
+
+function doesModelRangeMatchAnyFilter(anioInicio: number, anioFin: number | null | undefined, filters: string[]): boolean {
+  const end = anioFin || MAX_CATALOG_YEAR
+  return filters.some(f => {
+    const iv = expandCriteriaInterval(f)
+    if (!iv) return false
+    return iv.end >= anioInicio && iv.start <= end
+  })
 }
 
 // Estado para modales rápidos de creación / edición de Marca, Motor, Modelo y Año desde la barra superior
@@ -581,25 +681,42 @@ const handleSaveQuickModel = async () => {
 }
 
 const openQuickCreateYearModal = (initialYear?: string) => {
-  quickYearValue.value = (initialYear || yearInput.value || '').trim()
+  quickYearValue.value = (initialYear || '').trim()
   isYearOpen.value = false
   isQuickCreateYearOpen.value = true
 }
 
 const handleSaveQuickYear = (directValue?: string) => {
-  const val = (directValue !== undefined ? directValue : quickYearValue.value).trim()
-  if (!val) return
-  if (!customYears.value.includes(val) && !availableYears.value.includes(val)) {
-    customYears.value = [val, ...customYears.value]
-    try {
-      localStorage.setItem(CUSTOM_YEARS_STORAGE_KEY, JSON.stringify(customYears.value))
-    } catch {
-      // Silencioso
+  const raw = (directValue !== undefined ? directValue : quickYearValue.value).trim()
+  if (!raw) return
+  const entries = raw
+    .split(/[,;\n]+/)
+    .map(v => v.trim())
+    .filter(Boolean)
+  if (entries.length === 0) return
+
+  let updatedCustom = [...customYears.value]
+  for (const val of entries) {
+    if (!updatedCustom.includes(val) && !availableYears.value.includes(val)) {
+      updatedCustom = [val, ...updatedCustom]
     }
   }
+  if (updatedCustom.length !== customYears.value.length) {
+    customYears.value = updatedCustom
+    saveCustomYearsStorage(updatedCustom)
+  }
+
+  const nextSelected = Array.from(new Set([...selectedYears.value, ...entries]))
+  selectedYears.value = nextSelected
+  yearInput.value = nextSelected.join(', ')
   isQuickCreateYearOpen.value = false
-  handleSelectYear(val)
-  showToast(`✓ Año "${val}" agregado y seleccionado`)
+  isYearOpen.value = false
+  quickYearValue.value = ''
+  showToast(
+    entries.length === 1
+      ? `✓ Año "${entries[0]}" agregado al buscador`
+      : `✓ ${entries.length} años agregados al buscador`
+  )
 }
 
 // Control de visibilidad de filtros en vista móvil: desplegados por defecto al entrar al catálogo
@@ -610,7 +727,7 @@ const activeFilterCount = computed<number>(() => {
   if (selectedBrand.value || brandInput.value) count++
   if (selectedMotor.value || motorInput.value) count++
   if (selectedModel.value || modelInput.value) count++
-  if (selectedYear.value) count++
+  if (selectedYears.value.length > 0) count++
   if (selectedComponent.value) count++
   return count
 })
@@ -2446,7 +2563,7 @@ const handleResetAll = async () => {
   selectedModel.value = null
   selectedMotor.value = null
   selectedComponent.value = null
-  selectedYear.value = ''
+  selectedYears.value = []
   yearInput.value = ''
   showAllMotors.value = false
   isBrandOpen.value = false
@@ -2521,29 +2638,26 @@ const scopedMotorsByModelAndYear = computed<Motor[]>(() => {
     }
   }
 
-  if (effectiveYearFilter.value) {
-    const yr = Number(effectiveYearFilter.value)
-    if (!isNaN(yr) && yr > 0) {
-      list = list.filter(mot => {
-        if ((mot as any).anios && String((mot as any).anios).trim() !== '') {
-          return doesYearMatchText((mot as any).anios, yr)
+  if (effectiveYearFilters.value.length > 0) {
+    const yearFilters = effectiveYearFilters.value
+    list = list.filter(mot => {
+      if ((mot as any).anios && String((mot as any).anios).trim() !== '') {
+        return doesYearMatchAnyFilter((mot as any).anios, yearFilters)
+      }
+      if (mot.denominacion_venta && /\b(19|20)\d{2}\b/.test(mot.denominacion_venta)) {
+        return doesYearMatchAnyFilter(mot.denominacion_venta, yearFilters)
+      }
+      if (mot.nombre_comercial && /\b(19|20)\d{2}\b/.test(mot.nombre_comercial)) {
+        return doesYearMatchAnyFilter(mot.nombre_comercial, yearFilters)
+      }
+      if (mot.modelo_id) {
+        const mod = catalogStore.modelos.find(m => m.id === mot.modelo_id)
+        if (mod && mod.anio_inicio) {
+          return doesModelRangeMatchAnyFilter(mod.anio_inicio, mod.anio_fin, yearFilters)
         }
-        if (mot.denominacion_venta && /\b(19|20)\d{2}\b/.test(mot.denominacion_venta)) {
-          return doesYearMatchText(mot.denominacion_venta, yr)
-        }
-        if (mot.nombre_comercial && /\b(19|20)\d{2}\b/.test(mot.nombre_comercial)) {
-          return doesYearMatchText(mot.nombre_comercial, yr)
-        }
-        if (mot.modelo_id) {
-          const mod = catalogStore.modelos.find(m => m.id === mot.modelo_id)
-          if (mod && mod.anio_inicio) {
-            const end = mod.anio_fin || 2026
-            return yr >= mod.anio_inicio && yr <= end
-          }
-        }
-        return false
-      })
-    }
+      }
+      return false
+    })
   }
 
   return list
@@ -3492,29 +3606,26 @@ const displayedParts = computed<RepuestoTecnico[]>(() => {
     })
   }
 
-  // 2.c. Filtro por Año de compatibilidad vehicular
-  if (effectiveYearFilter.value) {
-    const yr = Number(effectiveYearFilter.value)
-    if (!isNaN(yr) && yr > 0) {
-      list = list.filter(r => {
-        const spec = (r.especificaciones_tecnicas || {}) as Record<string, any>
-        const dims = (r.dimensiones || {}) as Record<string, any>
-        const linkedMot = r.motor || (r.motor_id ? catalogStore.motores.find(m => m.id === r.motor_id) : undefined)
-        const yearText = spec.ano || spec.anos || dims.anos || dims.ano || (linkedMot as any)?.anios
-        if (yearText && String(yearText).trim() !== '' && String(yearText).trim() !== '—') {
-          return doesYearMatchText(yearText, yr)
+  // 2.c. Filtro por Año de compatibilidad vehicular (soporta múltiples años o rangos)
+  if (effectiveYearFilters.value.length > 0) {
+    const yearFilters = effectiveYearFilters.value
+    list = list.filter(r => {
+      const spec = (r.especificaciones_tecnicas || {}) as Record<string, any>
+      const dims = (r.dimensiones || {}) as Record<string, any>
+      const linkedMot = r.motor || (r.motor_id ? catalogStore.motores.find(m => m.id === r.motor_id) : undefined)
+      const yearText = spec.ano || spec.anos || dims.anos || dims.ano || (linkedMot as any)?.anios
+      if (yearText && String(yearText).trim() !== '' && String(yearText).trim() !== '—') {
+        return doesYearMatchAnyFilter(yearText, yearFilters)
+      }
+      const motModelId = linkedMot?.modelo_id
+      if (motModelId) {
+        const mod = catalogStore.modelos.find(m => m.id === motModelId)
+        if (mod?.anio_inicio) {
+          return doesModelRangeMatchAnyFilter(mod.anio_inicio, mod.anio_fin, yearFilters)
         }
-        const motModelId = linkedMot?.modelo_id
-        if (motModelId) {
-          const mod = catalogStore.modelos.find(m => m.id === motModelId)
-          if (mod?.anio_inicio) {
-            const end = mod.anio_fin || 2026
-            return yr >= mod.anio_inicio && yr <= end
-          }
-        }
-        return true
-      })
-    }
+      }
+      return true
+    })
   }
 
   // 3. Búsqueda por texto local dentro de la tabla (con debounce de 150ms para fluidez total)
@@ -4695,12 +4806,18 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 4. AÑO DE COMPATIBILIDAD -->
+        <!-- 4. AÑO DE COMPATIBILIDAD (Permite agregar múltiples años y rangos) -->
         <div class="relative combobox-year">
           <div class="flex items-center justify-between mb-0.5 min-h-[18px]">
             <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Año
             </label>
+            <span
+              v-if="selectedYears.length > 1"
+              class="text-[9px] font-mono font-bold text-[#038391]"
+            >
+              {{ selectedYears.length }} sel.
+            </span>
           </div>
 
           <div class="h-[32px] flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:bg-white focus-within:border-[#04C4D9] focus-within:ring-1 focus-within:ring-[#04C4D9] transition overflow-hidden">
@@ -4711,7 +4828,7 @@ onUnmounted(() => {
               @input="onInputYear"
               @keydown.enter.prevent="filteredYears[0] ? handleSelectYear(filteredYears[0]) : (yearInput.trim() ? handleSaveQuickYear(yearInput) : null)"
               type="text"
-              placeholder="Todos..."
+              placeholder="Todos (ej. 2015, 2020)..."
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-mono font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
@@ -4719,16 +4836,16 @@ onUnmounted(() => {
                 type="button"
                 @click="openQuickCreateYearModal(yearInput)"
                 class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
-                title="Nuevo año"
+                title="Agregar más años o rangos"
               >
                 <Plus class="w-3 h-3" />
               </button>
               <button
-                v-if="selectedYear || yearInput"
+                v-if="selectedYears.length > 0 || yearInput"
                 type="button"
                 @click="handleClearYear"
                 class="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                title="Limpiar año"
+                title="Limpiar año(s)"
               >
                 <X class="w-3 h-3" />
               </button>
@@ -4742,41 +4859,75 @@ onUnmounted(() => {
           <!-- Dropdown Años -->
           <div
             v-if="isYearOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto divide-y divide-slate-50"
+            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-50"
           >
+            <!-- Chips de años activos en búsqueda múltiple -->
+            <div
+              v-if="selectedYears.length > 0"
+              class="px-2.5 py-2 bg-cyan-50/70 border-b border-cyan-100 flex flex-wrap items-center gap-1"
+            >
+              <span
+                v-for="selYr in selectedYears"
+                :key="`sel-yr-${selYr}`"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#004B97] text-white font-mono text-[10px] font-bold"
+              >
+                <span>{{ selYr }}</span>
+                <button
+                  type="button"
+                  @click.stop="toggleYearInFilter(selYr)"
+                  class="text-cyan-200 hover:text-white cursor-pointer"
+                  title="Quitar año"
+                >
+                  <X class="w-2.5 h-2.5" />
+                </button>
+              </span>
+            </div>
+
             <div
               @click="handleClearYear"
               class="px-3 py-2 cursor-pointer text-xs flex items-center justify-between transition hover:bg-cyan-50/70"
-              :class="!selectedYear ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-600'"
+              :class="selectedYears.length === 0 ? 'bg-cyan-50/60 font-bold text-[#038391]' : 'text-slate-600'"
             >
               <span>Todos los años</span>
-              <Check v-if="!selectedYear" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <Check v-if="selectedYears.length === 0" class="w-3.5 h-3.5 text-[#04C4D9]" />
             </div>
             <div
               v-for="yr in filteredYears"
               :key="yr"
               @click="handleSelectYear(yr)"
-              class="px-3 py-2 cursor-pointer text-xs font-mono font-bold flex items-center justify-between transition"
-              :class="selectedYear === yr ? 'bg-cyan-50/60 text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70'"
+              class="px-3 py-1.5 cursor-pointer text-xs font-mono font-bold flex items-center justify-between gap-2 transition"
+              :class="selectedYears.includes(yr) ? 'bg-cyan-50/60 text-[#038391]' : 'text-slate-800 hover:bg-cyan-50/70'"
             >
-              <div class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full" :class="selectedYear === yr ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
-                <span>{{ yr }}</span>
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="selectedYears.includes(yr) ? 'bg-[#04C4D9]' : 'bg-slate-300'"></span>
+                <span class="truncate">{{ yr }}</span>
               </div>
-              <Check v-if="selectedYear === yr" class="w-3.5 h-3.5 text-[#04C4D9]" />
+              <div class="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  @click.stop="toggleYearInFilter(yr)"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-sans font-bold border transition cursor-pointer"
+                  :class="selectedYears.includes(yr)
+                    ? 'bg-[#004B97] text-white border-[#004B97]'
+                    : 'bg-white text-[#038391] border-cyan-200 hover:bg-cyan-50'"
+                  :title="selectedYears.includes(yr) ? 'Quitar de la selección múltiple' : 'Agregar también este año al filtro'"
+                >
+                  {{ selectedYears.includes(yr) ? '✓' : '+' }}
+                </button>
+              </div>
             </div>
             <button
               type="button"
               @mousedown.prevent="yearInput.trim() && !availableYears.includes(yearInput.trim()) ? handleSaveQuickYear(yearInput) : openQuickCreateYearModal(yearInput)"
-              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#12697A] bg-[#E3F5F8]/80 hover:bg-[#147488] hover:text-white transition flex items-center justify-between border-t border-[#C1E8EF] cursor-pointer"
+              class="w-full px-3 py-2.5 text-left text-xs font-bold text-[#12697A] bg-[#E3F5F8]/80 hover:bg-[#147488] hover:text-white transition flex items-center justify-between border-t border-[#C1E8EF] cursor-pointer sticky bottom-0"
             >
               <span class="flex items-center gap-1.5 truncate">
                 <Plus class="w-3.5 h-3.5 shrink-0" />
                 <span class="truncate">
-                  {{ yearInput.trim() && !availableYears.includes(yearInput.trim()) ? `+ Agregar año "${yearInput.trim()}"` : '+ Agregar nuevo año' }}
+                  {{ yearInput.trim() && !availableYears.includes(yearInput.trim()) ? `+ Agregar año(s) "${yearInput.trim()}"` : '+ Agregar más años o rangos' }}
                 </span>
               </span>
-              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Crear</span>
+              <span class="text-[9px] font-mono uppercase opacity-80 shrink-0 ml-1">Agregar</span>
             </button>
           </div>
         </div>
@@ -8297,15 +8448,41 @@ onUnmounted(() => {
           <form @submit.prevent="handleSaveQuickYear()" class="p-4 space-y-3 text-xs">
             <div>
               <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-                Año o Rango de Compatibilidad *
+                Año, varios años o rango *
               </label>
               <input
                 v-model="quickYearValue"
                 type="text"
                 required
-                placeholder="ej. 1968, 2027, 1998-2005..."
+                placeholder="ej. 2027, 2028 o 1960-1964..."
                 class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
               />
+              <p class="mt-1 text-[10px] text-slate-500">
+                Puedes escribir uno solo o varios separados por coma (ej. <span class="font-mono font-bold">2027, 2028, 1958-1964</span>).
+              </p>
+            </div>
+
+            <div v-if="customYears.length > 0" class="pt-2 border-t border-slate-100 space-y-1.5">
+              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Años personalizados guardados ({{ customYears.length }})
+              </span>
+              <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                <span
+                  v-for="cYr in customYears"
+                  :key="`custom-yr-${cYr}`"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-mono text-[11px] font-bold text-slate-800"
+                >
+                  <span>{{ cYr }}</span>
+                  <button
+                    type="button"
+                    @click="removeCustomYear(cYr)"
+                    class="text-slate-400 hover:text-rose-600 cursor-pointer"
+                    title="Eliminar año personalizado"
+                  >
+                    <X class="w-3 h-3" />
+                  </button>
+                </span>
+              </div>
             </div>
 
             <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -8322,7 +8499,7 @@ onUnmounted(() => {
                 class="studio-cta-primary px-4 py-2 rounded-xl disabled:opacity-50 text-white font-bold flex items-center gap-1.5 cursor-pointer"
               >
                 <Check class="w-3.5 h-3.5" />
-                <span>Guardar y Seleccionar</span>
+                <span>Guardar y Agregar</span>
               </button>
             </div>
           </form>

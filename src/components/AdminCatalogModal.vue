@@ -530,10 +530,25 @@ const availableModalModelos = computed(() => {
 })
 
 const commonYearsList = computed(() => {
-  const currentYear = new Date().getFullYear()
+  const currentYear = Math.max(2026, new Date().getFullYear())
   const years: string[] = []
-  for (let y = currentYear + 1; y >= 1980; y--) {
-    years.push(String(y))
+  try {
+    const rawCustom = typeof window !== 'undefined' ? localStorage.getItem('swgora_custom_years_v1') : null
+    if (rawCustom) {
+      const parsed = JSON.parse(rawCustom)
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const clean = String(item || '').trim()
+          if (clean && !years.includes(clean)) years.push(clean)
+        }
+      }
+    }
+  } catch {
+    // Silencioso
+  }
+  for (let y = currentYear + 2; y >= 1965; y--) {
+    const s = String(y)
+    if (!years.includes(s)) years.push(s)
   }
   return years
 })
