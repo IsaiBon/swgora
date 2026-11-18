@@ -1198,8 +1198,8 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       <div class="lg:col-span-7 xl:col-span-8 space-y-6">
         
         <!-- 1. Card Cabecera / Info de la Orden -->
-        <div class="studio-card p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div class="flex-1">
+        <div class="studio-card p-5 sm:p-6 flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap sm:items-center justify-between gap-4 lg:gap-5">
+          <div class="flex-none sm:min-w-[170px]">
             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N° de Orden</span>
             <div class="flex items-center gap-2 mt-1">
               <span class="text-2xl font-black font-mono tracking-tight text-[#0D1B3E] bg-[#004B97]/8 border border-[#004B97]/20 px-3.5 py-1 rounded-xl select-all shadow-2xs">
@@ -1211,29 +1211,29 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </div>
           </div>
 
-          <div class="hidden sm:block w-px h-12 bg-slate-200/80"></div>
+          <div class="hidden xl:block w-px h-12 bg-slate-200/80 shrink-0"></div>
 
-          <div class="flex-1">
+          <div class="flex-none sm:min-w-[155px]">
             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fecha de Ingreso</span>
             <div class="mt-1">
               <input
                 v-model="orderDate"
                 type="date"
-                class="text-sm font-bold text-[#0D1B3E] bg-slate-50/90 border border-slate-300 rounded-xl px-3 py-1.5 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
+                class="w-full text-sm font-bold text-[#0D1B3E] bg-slate-50/90 border border-slate-300 rounded-xl px-3 py-1.5 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
           </div>
 
-          <div class="hidden sm:block w-px h-12 bg-slate-200/80"></div>
+          <div class="hidden xl:block w-px h-12 bg-slate-200/80 shrink-0"></div>
 
-          <div class="flex-1">
+          <div class="flex-none min-w-[150px]">
             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Estado</span>
             <div class="mt-1">
-              <div class="relative inline-block w-full">
+              <div class="relative inline-block w-full min-w-[145px]">
                 <select
                   v-model="orderStatus"
                   :class="[
-                    'w-full font-bold text-xs rounded-full px-3.5 py-1.5 appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2 transition',
+                    'w-full font-bold text-xs rounded-full pl-4 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 transition text-center shadow-2xs whitespace-nowrap',
                     orderStatus === 'Pendiente'
                       ? 'bg-[#F6F0E4] border border-[#E6DAC2] text-[#6E5835] focus:ring-[#D4C3A3]'
                       : 'bg-[#E3F5F8] border border-[#9AD2DC] text-[#12697A] focus:ring-[#147488]'
@@ -1244,7 +1244,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 </select>
                 <ChevronDown
                   :class="[
-                    'w-3.5 h-3.5 absolute right-3 top-2.5 pointer-events-none transition',
+                    'w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition',
                     orderStatus === 'Pendiente' ? 'text-[#6E5835]' : 'text-[#12697A]'
                   ]"
                 />
@@ -1252,9 +1252,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </div>
           </div>
 
-          <div class="hidden sm:block w-px h-12 bg-slate-200/80"></div>
+          <div class="hidden xl:block w-px h-12 bg-slate-200/80 shrink-0"></div>
 
-          <div class="flex-1 min-w-[180px]">
+          <div class="flex-1 min-w-[180px] sm:min-w-[200px]">
             <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
               <MapPin class="w-3 h-3 text-[#147488]" />
               <span>Ruta / Sucursal</span>
@@ -1276,7 +1276,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <div v-else class="relative inline-block w-full">
                 <select
                   v-model="selectedRutaId"
-                  class="w-full font-bold text-xs rounded-full px-3.5 py-1.5 appearance-none pr-8 cursor-pointer bg-[#004B97]/8 border border-[#004B97]/30 text-[#0D1B3E] focus:outline-none focus:ring-2 focus:ring-[#04C4D9] transition"
+                  class="w-full font-bold text-xs rounded-full px-3.5 py-2 appearance-none pr-8 cursor-pointer bg-[#004B97]/8 border border-[#004B97]/30 text-[#0D1B3E] focus:outline-none focus:ring-2 focus:ring-[#04C4D9] transition"
                 >
                   <option value="">General / Sin ruta específica</option>
                   <option
@@ -1287,7 +1287,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     {{ r.codigo }} · {{ r.nombre }}
                   </option>
                 </select>
-                <ChevronDown class="w-3.5 h-3.5 absolute right-3 top-2.5 pointer-events-none text-[#004B97]" />
+                <ChevronDown class="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#004B97]" />
               </div>
             </div>
           </div>
