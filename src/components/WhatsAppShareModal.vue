@@ -21,7 +21,6 @@ import {
 import {
   AlertTriangle,
   Check,
-  CloudUpload,
   ExternalLink,
   FileText,
   Link2,
@@ -57,7 +56,6 @@ const generatedMessage = ref('')
 // Estado de PDF (generación en memoria, subida para enlace en wa.me y envío directo)
 const cachedPdf = ref<GeneratedOrderPdf | null>(null)
 const uploadedPdfUrl = ref('')
-const isUploadingPdf = ref(false)
 const isNativeSharingPdf = ref(false)
 const isComboSending = ref(false)
 const pdfStatusMessage = ref<string | null>(null)
@@ -69,7 +67,7 @@ const offscreenContainerRef = ref<HTMLElement | null>(null)
 const supportsNativePdfShare = computed(() => canNativeSharePdfFiles())
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 const isPdfBusy = computed(
-  () => isUploadingPdf.value || isNativeSharingPdf.value || isComboSending.value
+  () => isNativeSharingPdf.value || isComboSending.value
 )
 
 const effectiveShowSubtotals = computed(() => {
@@ -213,41 +211,6 @@ const obtainOrderPdfFile = async (): Promise<GeneratedOrderPdf> => {
     return generated
   } finally {
     renderOffscreenPdf.value = false
-  }
-}
-
-/**
- * Genera el PDF, lo sube a Supabase Storage e incluye el enlace público directo en el mensaje wa.me.
- */
-const handleAttachPdfLink = async (): Promise<boolean> => {
-  if (!props.order || isPdfBusy.value) return false
-  isUploadingPdf.value = true
-  pdfError.value = null
-  pdfStatusMessage.value = null
-
-  try {
-    const generated = await obtainOrderPdfFile()
-    const uploadRes = await uploadOrderPdf(generated.file, {
-      id: props.order.id,
-      orderNumber: props.order.orderNumber,
-      type: props.order.type,
-    })
-
-    if (uploadRes.isRemote && uploadRes.url) {
-      uploadedPdfUrl.value = uploadRes.url
-      pdfStatusMessage.value = 'Enlace del PDF agregado al mensaje de WhatsApp.'
-      return true
-    }
-
-    pdfError.value =
-      'El bucket "ordenes-pdf" aún no está habilitado en Supabase Storage. Usa "Enviar con PDF + wa.me" para descargarlo y adjuntarlo.'
-    return false
-  } catch (err) {
-    console.error('[WhatsAppShareModal] Error subiendo PDF para wa.me:', err)
-    pdfError.value = 'No se pudo generar o subir el PDF en este momento.'
-    return false
-  } finally {
-    isUploadingPdf.value = false
   }
 }
 
@@ -435,7 +398,7 @@ const handleCopyAndOpenEmptyChat = async () => {
             </div>
 
             <p class="text-xs text-slate-500 leading-relaxed">
-              Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ' o enviar el archivo PDF directo desde tu dispositivo' : '' }}.
+              Al pulsar <strong>Enviar con PDF + wa.me</strong>, el sistema genera el PDF, lo sube a la nube e incluye su enlace directo dentro del mensaje de WhatsApp{{ supportsNativePdfShare ? '; también puedes enviarlo como archivo adjunto directo desde tu dispositivo' : '' }}.
             </p>
 
             <!-- Estado si ya hay enlace de PDF en el mensaje -->
@@ -466,26 +429,9 @@ const handleCopyAndOpenEmptyChat = async () => {
               </a>
             </div>
 
-            <div
-              v-if="!uploadedPdfUrl || supportsNativePdfShare"
-              class="grid grid-cols-1 gap-2"
-              :class="{ 'sm:grid-cols-2': !uploadedPdfUrl && supportsNativePdfShare }"
-            >
-              <!-- Subir PDF a la nube e insertar link en wa.me -->
-              <button
-                v-if="!uploadedPdfUrl"
-                type="button"
-                @click="handleAttachPdfLink"
-                :disabled="isPdfBusy"
-                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-[#004B97] hover:bg-[#0D1B3E] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
-              >
-                <CloudUpload class="w-3.5 h-3.5" :class="{ 'animate-pulse': isUploadingPdf }" />
-                <span>{{ isUploadingPdf ? 'Subiendo PDF a la nube...' : 'Agregar enlace PDF al mensaje wa.me' }}</span>
-              </button>
-
+            <div v-if="supportsNativePdfShare" class="grid grid-cols-1 gap-2">
               <!-- Envío nativo de archivo PDF (Android / iOS / OS compatible) -->
               <button
-                v-if="supportsNativePdfShare"
                 type="button"
                 @click="handleNativeSharePdf"
                 :disabled="isPdfBusy"
