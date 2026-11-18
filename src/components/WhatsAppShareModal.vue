@@ -51,16 +51,8 @@ const emit = defineEmits<{
 }>()
 
 const tallerStore = useTallerStore()
+const DEFAULT_PRESET: WhatsAppMessagePreset = 'detailed'
 let sessionCounter = 0
-
-// Opciones de mensaje
-const preset = ref<WhatsAppMessagePreset>('detailed')
-const includeItemPrices = ref(true)
-const includeBlockSubtotals = ref(true)
-const includeStatus = ref(true)
-const includeObservations = ref(true)
-const includeTallerContact = ref(true)
-const customNote = ref('')
 
 // Editor de mensaje
 const editableMessage = ref('')
@@ -88,6 +80,12 @@ const isPdfBusy = computed(
   () => isUploadingPdf.value || isDownloadingPdf.value || isNativeSharingPdf.value || isComboSending.value
 )
 
+const effectiveShowSubtotals = computed(() => {
+  if (typeof props.initialShowSubtotals === 'boolean') return props.initialShowSubtotals
+  if (typeof props.order?.showSubtotals === 'boolean') return props.order.showSubtotals
+  return true
+})
+
 const waUrl = computed(() => buildWaMeUrl('', editableMessage.value))
 const isUrlTooLong = computed(() => waUrl.value.length > WA_ME_SAFE_URL_LIMIT)
 const vehicleSummary = computed(() =>
@@ -104,13 +102,12 @@ const regenerateMessage = (force = false) => {
     props.order,
     tallerStore.tallerInfo,
     {
-      preset: preset.value,
-      includeItemPrices: includeItemPrices.value,
-      includeBlockSubtotals: includeBlockSubtotals.value,
-      includeStatus: includeStatus.value,
-      includeObservations: includeObservations.value,
-      includeTallerContact: includeTallerContact.value,
-      customNote: customNote.value,
+      preset: DEFAULT_PRESET,
+      includeItemPrices: true,
+      includeBlockSubtotals: effectiveShowSubtotals.value,
+      includeStatus: props.order.type !== 'cotizacion',
+      includeObservations: Boolean(props.order.observations?.trim()),
+      includeTallerContact: true,
       pdfUrl: uploadedPdfUrl.value || undefined,
     }
   )
@@ -147,18 +144,6 @@ watch(
     pdfStatusMessage.value = null
     pdfError.value = null
     popupBlockedUrl.value = null
-    customNote.value = ''
-    preset.value = 'detailed'
-    includeItemPrices.value = true
-    includeBlockSubtotals.value =
-      typeof props.initialShowSubtotals === 'boolean'
-        ? props.initialShowSubtotals
-        : typeof props.order.showSubtotals === 'boolean'
-          ? props.order.showSubtotals
-          : true
-    includeStatus.value = props.order.type !== 'cotizacion'
-    includeObservations.value = Boolean(props.order.observations?.trim())
-    includeTallerContact.value = true
 
     await tallerStore.loadTallerInfo()
     if (currentSession !== sessionCounter) return
@@ -167,26 +152,11 @@ watch(
   { immediate: true }
 )
 
-watch(
-  [
-    preset,
-    includeItemPrices,
-    includeBlockSubtotals,
-    includeStatus,
-    includeObservations,
-    includeTallerContact,
-    customNote,
-    uploadedPdfUrl,
-  ],
-  () => {
-    if (!props.isOpen || !props.order) return
-    if (!props.onGeneratePdf) {
-      cachedPdf.value = null
-    }
-    isManuallyEdited.value = false
-    regenerateMessage(true)
-  }
-)
+watch(uploadedPdfUrl, () => {
+  if (!props.isOpen || !props.order) return
+  isManuallyEdited.value = false
+  regenerateMessage(true)
+})
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
@@ -194,10 +164,6 @@ onUnmounted(() => {
   }
   if (copyTimeout) clearTimeout(copyTimeout)
 })
-
-const selectPreset = (nextPreset: WhatsAppMessagePreset) => {
-  preset.value = nextPreset
-}
 
 const handleManualTextInput = () => {
   isManuallyEdited.value = true
@@ -344,7 +310,7 @@ const handleNativeSharePdf = async () => {
     pdfStatusMessage.value = 'Archivo PDF compartido mediante el menú del dispositivo.'
     emit('shared', {
       order: props.order,
-      preset: preset.value,
+      preset: DEFAULT_PRESET,
     })
   } catch (err: any) {
     if (err?.name !== 'AbortError') {
@@ -418,7 +384,7 @@ const handleSendWithPdfAndWaMe = async () => {
 
     emit('shared', {
       order: props.order,
-      preset: preset.value,
+      preset: DEFAULT_PRESET,
     })
   } catch (err) {
     console.error('[WhatsAppShareModal] Error en flujo PDF + wa.me:', err)
@@ -436,7 +402,7 @@ const handleOpenWhatsApp = () => {
   window.open(waUrl.value, '_blank', 'noopener,noreferrer')
   emit('shared', {
     order: props.order,
-    preset: preset.value,
+    preset: DEFAULT_PRESET,
   })
 }
 
@@ -448,7 +414,7 @@ const handleCopyAndOpenEmptyChat = async () => {
   window.open(emptyChatUrl, '_blank', 'noopener,noreferrer')
   emit('shared', {
     order: props.order,
-    preset: preset.value,
+    preset: DEFAULT_PRESET,
   })
 }
 </script>
@@ -464,7 +430,7 @@ const handleCopyAndOpenEmptyChat = async () => {
       @click.self="emit('close')"
     >
       <div
-        class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 popover-pop-in my-auto"
+        class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 popover-pop-in my-auto"
       >
         <!-- Header -->
         <div
@@ -504,350 +470,194 @@ const handleCopyAndOpenEmptyChat = async () => {
         </div>
 
         <!-- Body -->
-        <div class="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50/70">
-          <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-            <!-- Columna Izquierda: Envío PDF y Plantilla -->
-            <div class="md:col-span-5 space-y-3.5">
-              <!-- Envío con PDF -->
-              <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
-                    <FileText class="w-3.5 h-3.5 text-[#038391]" />
-                    <span>Enviar Documento PDF</span>
-                  </span>
-                  <span
-                    v-if="uploadedPdfUrl"
-                    class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"
-                  >
-                    <Check class="w-3 h-3" />
-                    Enlace listo
-                  </span>
-                </div>
-
-                <p class="text-[10.5px] text-slate-500 leading-snug">
-                  Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ', enviar el archivo PDF directo desde tu dispositivo' : '' }} o descargarlo al instante.
-                </p>
-
-                <!-- Estado si ya hay enlace de PDF en el mensaje -->
-                <div
-                  v-if="uploadedPdfUrl"
-                  class="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 space-y-1.5"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-bold flex items-center gap-1">
-                      <Link2 class="w-3.5 h-3.5 text-[#25D366]" />
-                      Enlace PDF incluido en el mensaje
-                    </span>
-                    <button
-                      type="button"
-                      @click="handleRemovePdfLink"
-                      class="text-[10.5px] font-semibold text-rose-600 hover:underline cursor-pointer"
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                  <a
-                    :href="uploadedPdfUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="block font-mono text-[10px] text-[#004B97] truncate hover:underline"
-                  >
-                    {{ uploadedPdfUrl }}
-                  </a>
-                </div>
-
-                <div class="grid grid-cols-1 gap-1.5">
-                  <!-- Subir PDF a la nube e insertar link en wa.me -->
-                  <button
-                    v-if="!uploadedPdfUrl"
-                    type="button"
-                    @click="handleAttachPdfLink"
-                    :disabled="isPdfBusy"
-                    class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#004B97] hover:bg-[#0D1B3E] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
-                  >
-                    <CloudUpload class="w-3.5 h-3.5" :class="{ 'animate-pulse': isUploadingPdf }" />
-                    <span>{{ isUploadingPdf ? 'Subiendo PDF a la nube...' : 'Agregar enlace PDF al mensaje wa.me' }}</span>
-                  </button>
-
-                  <!-- Envío nativo de archivo PDF (Android / iOS / OS compatible) -->
-                  <button
-                    v-if="supportsNativePdfShare"
-                    type="button"
-                    @click="handleNativeSharePdf"
-                    :disabled="isPdfBusy"
-                    class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
-                  >
-                    <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
-                    <span>{{ isNativeSharingPdf ? 'Preparando archivo...' : 'Enviar archivo PDF directo (App)' }}</span>
-                  </button>
-
-                  <!-- Descarga rápida local -->
-                  <button
-                    type="button"
-                    @click="handleDownloadOnlyPdf"
-                    :disabled="isPdfBusy"
-                    class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer disabled:opacity-50"
-                    :class="
-                      pdfDownloaded
-                        ? 'bg-cyan-50 text-[#038391] border-cyan-300'
-                        : 'bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-[#004B97] border-slate-200 hover:border-blue-300'
-                    "
-                  >
-                    <Check v-if="pdfDownloaded && !isDownloadingPdf" class="w-3.5 h-3.5" />
-                    <Download v-else class="w-3.5 h-3.5" :class="{ 'animate-bounce': isDownloadingPdf }" />
-                    <span>
-                      {{
-                        isDownloadingPdf
-                          ? 'Generando PDF...'
-                          : pdfDownloaded
-                            ? 'PDF descargado ✓'
-                            : `Solo descargar ${isCotizacion ? 'Cotización' : 'Orden'} PDF`
-                      }}
-                    </span>
-                  </button>
-                </div>
-
-                <p v-if="pdfStatusMessage" class="text-[10.5px] font-semibold text-[#038391] leading-snug">
-                  {{ pdfStatusMessage }}
-                </p>
-                <p v-if="pdfError" class="text-[10.5px] font-semibold text-rose-600 leading-snug">
-                  {{ pdfError }}
-                </p>
-              </div>
-
-              <!-- Plantilla de Mensaje -->
-              <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E]">
-                  Formato del Mensaje
-                </div>
-
-                <div class="grid grid-cols-1 gap-1.5">
-                  <button
-                    type="button"
-                    @click="selectPreset('detailed')"
-                    class="px-3 py-2 rounded-xl border text-left transition cursor-pointer"
-                    :class="
-                      preset === 'detailed'
-                        ? 'bg-emerald-50/80 border-[#25D366] text-[#0D1B3E] shadow-sm'
-                        : 'bg-slate-50/70 border-slate-200 text-slate-600 hover:bg-white'
-                    "
-                  >
-                    <div class="text-xs font-bold flex items-center justify-between">
-                      <span>Detalle Completo</span>
-                      <span
-                        v-if="preset === 'detailed'"
-                        class="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded"
-                      >
-                        Activo
-                      </span>
-                    </div>
-                    <p class="text-[10.5px] text-slate-500 mt-0.5">
-                      Bloques mecánicos, operaciones, medidas y total.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    @click="selectPreset('executive')"
-                    class="px-3 py-2 rounded-xl border text-left transition cursor-pointer"
-                    :class="
-                      preset === 'executive'
-                        ? 'bg-emerald-50/80 border-[#25D366] text-[#0D1B3E] shadow-sm'
-                        : 'bg-slate-50/70 border-slate-200 text-slate-600 hover:bg-white'
-                    "
-                  >
-                    <div class="text-xs font-bold flex items-center justify-between">
-                      <span>Resumen Ejecutivo</span>
-                      <span
-                        v-if="preset === 'executive'"
-                        class="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded"
-                      >
-                        Activo
-                      </span>
-                    </div>
-                    <p class="text-[10.5px] text-slate-500 mt-0.5">
-                      Datos del motor, áreas trabajadas y total neto.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    @click="selectPreset('pdf_companion')"
-                    class="px-3 py-2 rounded-xl border text-left transition cursor-pointer"
-                    :class="
-                      preset === 'pdf_companion'
-                        ? 'bg-emerald-50/80 border-[#25D366] text-[#0D1B3E] shadow-sm'
-                        : 'bg-slate-50/70 border-slate-200 text-slate-600 hover:bg-white'
-                    "
-                  >
-                    <div class="text-xs font-bold flex items-center justify-between">
-                      <span>Saludo con PDF</span>
-                      <span
-                        v-if="preset === 'pdf_companion'"
-                        class="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded"
-                      >
-                        Activo
-                      </span>
-                    </div>
-                    <p class="text-[10.5px] text-slate-500 mt-0.5">
-                      Mensaje breve ideal para acompañar o enlazar el PDF.
-                    </p>
-                  </button>
-                </div>
-
-                <!-- Opciones granulares -->
-                <div class="pt-2 border-t border-slate-100 space-y-1.5 text-xs text-slate-700">
-                  <label
-                    v-if="preset === 'detailed'"
-                    class="flex items-center gap-2 cursor-pointer select-none"
-                  >
-                    <input
-                      v-model="includeItemPrices"
-                      type="checkbox"
-                      class="w-3.5 h-3.5 accent-[#004B97] rounded cursor-pointer"
-                    />
-                    <span>Incluir precios por ítem</span>
-                  </label>
-
-                  <label
-                    v-if="preset === 'detailed' && includeItemPrices"
-                    class="flex items-center gap-2 cursor-pointer select-none"
-                  >
-                    <input
-                      v-model="includeBlockSubtotals"
-                      type="checkbox"
-                      class="w-3.5 h-3.5 accent-[#004B97] rounded cursor-pointer"
-                    />
-                    <span>Incluir subtotales por bloque</span>
-                  </label>
-
-                  <label class="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      v-model="includeStatus"
-                      type="checkbox"
-                      class="w-3.5 h-3.5 accent-[#004B97] rounded cursor-pointer"
-                    />
-                    <span>Incluir estado ({{ order.status }})</span>
-                  </label>
-
-                  <label
-                    v-if="order.observations?.trim()"
-                    class="flex items-center gap-2 cursor-pointer select-none"
-                  >
-                    <input
-                      v-model="includeObservations"
-                      type="checkbox"
-                      class="w-3.5 h-3.5 accent-[#004B97] rounded cursor-pointer"
-                    />
-                    <span>Incluir observaciones</span>
-                  </label>
-
-                  <label class="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      v-model="includeTallerContact"
-                      type="checkbox"
-                      class="w-3.5 h-3.5 accent-[#004B97] rounded cursor-pointer"
-                    />
-                    <span>Incluir teléfonos del taller</span>
-                  </label>
-
-                  <div class="pt-1.5">
-                    <label class="block text-[10.5px] font-semibold text-slate-500 mb-1">
-                      Nota adicional rápida (opcional):
-                    </label>
-                    <input
-                      v-model="customNote"
-                      type="text"
-                      placeholder="Ej. Listo para entregar antes de las 5:00 p.m."
-                      class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-[#0D1B3E] placeholder-slate-400 focus:outline-none focus:bg-white focus:border-[#04C4D9]"
-                    />
-                  </div>
-                </div>
-              </div>
+        <div class="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50/70 space-y-3.5">
+          <!-- Envío con PDF -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
+                <FileText class="w-3.5 h-3.5 text-[#038391]" />
+                <span>Enviar Documento PDF</span>
+              </span>
+              <span
+                v-if="uploadedPdfUrl"
+                class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"
+              >
+                <Check class="w-3 h-3" />
+                Enlace listo
+              </span>
             </div>
 
-            <!-- Columna Derecha: Vista Previa Editable y Envío -->
-            <div class="md:col-span-7 flex flex-col gap-3">
-              <div class="bg-white rounded-2xl border border-slate-200 p-3.5 flex-1 flex flex-col gap-2 shadow-sm">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E]">
-                      Vista Previa del Mensaje (Editable)
-                    </span>
-                    <span
-                      v-if="isManuallyEdited"
-                      class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
-                    >
-                      Editado
-                    </span>
-                  </div>
+            <p class="text-[10.5px] text-slate-500 leading-snug">
+              Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ', enviar el archivo PDF directo desde tu dispositivo' : '' }} o descargarlo al instante.
+            </p>
 
-                  <div class="flex items-center gap-2">
-                    <button
-                      v-if="isManuallyEdited"
-                      type="button"
-                      @click="handleResetMessage"
-                      class="inline-flex items-center gap-1 text-[11px] font-bold text-[#004B97] hover:underline cursor-pointer"
-                      title="Volver a generar el texto automático"
-                    >
-                      <RotateCcw class="w-3 h-3" />
-                      <span>Restablecer</span>
-                    </button>
-                    <span class="font-mono text-[10px] text-slate-400">
-                      {{ editableMessage.length }} car.
-                    </span>
-                  </div>
-                </div>
-
-                <textarea
-                  v-model="editableMessage"
-                  @input="handleManualTextInput"
-                  rows="20"
-                  aria-label="Mensaje a enviar por WhatsApp"
-                  class="w-full flex-1 min-h-[400px] p-3 text-xs leading-relaxed text-slate-800 bg-[#F4FBF6]/60 border border-emerald-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 resize-y font-sans"
-                ></textarea>
-              </div>
-
-              <!-- Respaldo si el navegador bloqueó ventana emergente tras generar PDF -->
-              <div
-                v-if="popupBlockedUrl"
-                class="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <span class="text-[11px] font-semibold leading-snug">
-                  El PDF ya está listo, pero el navegador bloqueó la pestaña automática. Haz clic para abrir WhatsApp:
+            <!-- Estado si ya hay enlace de PDF en el mensaje -->
+            <div
+              v-if="uploadedPdfUrl"
+              class="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 space-y-1.5"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-bold flex items-center gap-1">
+                  <Link2 class="w-3.5 h-3.5 text-[#25D366]" />
+                  Enlace PDF incluido en el mensaje
                 </span>
-                <a
-                  :href="popupBlockedUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  @click="popupBlockedUrl = null"
-                  class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-[11px] font-bold transition"
-                >
-                  <WhatsAppIcon class="w-3.5 h-3.5" />
-                  <span>Abrir WhatsApp ahora</span>
-                </a>
-              </div>
-
-              <!-- Aviso si la URL excede el límite recomendado para wa.me -->
-              <div
-                v-if="isUrlTooLong"
-                class="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div class="flex items-start gap-2">
-                  <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p class="text-[11px] leading-snug">
-                    El detalle es extenso para la URL de <span class="font-mono font-bold">wa.me</span> y podría recortarse en algunos navegadores. Usa <strong>Saludo con PDF</strong> o copia el texto y pégalo en el chat.
-                  </p>
-                </div>
                 <button
                   type="button"
-                  @click="handleCopyAndOpenEmptyChat"
-                  class="shrink-0 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition cursor-pointer"
+                  @click="handleRemovePdfLink"
+                  class="text-[10.5px] font-semibold text-rose-600 hover:underline cursor-pointer"
                 >
-                  Copiar y abrir chat
+                  Quitar
                 </button>
               </div>
+              <a
+                :href="uploadedPdfUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block font-mono text-[10px] text-[#004B97] truncate hover:underline"
+              >
+                {{ uploadedPdfUrl }}
+              </a>
             </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <!-- Subir PDF a la nube e insertar link en wa.me -->
+              <button
+                v-if="!uploadedPdfUrl"
+                type="button"
+                @click="handleAttachPdfLink"
+                :disabled="isPdfBusy"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#004B97] hover:bg-[#0D1B3E] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+              >
+                <CloudUpload class="w-3.5 h-3.5" :class="{ 'animate-pulse': isUploadingPdf }" />
+                <span>{{ isUploadingPdf ? 'Subiendo PDF a la nube...' : 'Agregar enlace PDF al mensaje wa.me' }}</span>
+              </button>
+
+              <!-- Envío nativo de archivo PDF (Android / iOS / OS compatible) -->
+              <button
+                v-if="supportsNativePdfShare"
+                type="button"
+                @click="handleNativeSharePdf"
+                :disabled="isPdfBusy"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+              >
+                <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
+                <span>{{ isNativeSharingPdf ? 'Preparando archivo...' : 'Enviar archivo PDF directo (App)' }}</span>
+              </button>
+
+              <!-- Descarga rápida local -->
+              <button
+                type="button"
+                @click="handleDownloadOnlyPdf"
+                :disabled="isPdfBusy"
+                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer disabled:opacity-50"
+                :class="[
+                  pdfDownloaded
+                    ? 'bg-cyan-50 text-[#038391] border-cyan-300'
+                    : 'bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-[#004B97] border-slate-200 hover:border-blue-300',
+                  uploadedPdfUrl && !supportsNativePdfShare ? 'sm:col-span-2' : ''
+                ]"
+              >
+                <Check v-if="pdfDownloaded && !isDownloadingPdf" class="w-3.5 h-3.5" />
+                <Download v-else class="w-3.5 h-3.5" :class="{ 'animate-bounce': isDownloadingPdf }" />
+                <span>
+                  {{
+                    isDownloadingPdf
+                      ? 'Generando PDF...'
+                      : pdfDownloaded
+                        ? 'PDF descargado ✓'
+                        : `Solo descargar ${isCotizacion ? 'Cotización' : 'Orden'} PDF`
+                  }}
+                </span>
+              </button>
+            </div>
+
+            <p v-if="pdfStatusMessage" class="text-[10.5px] font-semibold text-[#038391] leading-snug">
+              {{ pdfStatusMessage }}
+            </p>
+            <p v-if="pdfError" class="text-[10.5px] font-semibold text-rose-600 leading-snug">
+              {{ pdfError }}
+            </p>
+          </div>
+
+          <!-- Vista Previa Editable -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2 shadow-sm">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E]">
+                  Vista Previa del Mensaje (Editable)
+                </span>
+                <span
+                  v-if="isManuallyEdited"
+                  class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
+                >
+                  Editado
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="isManuallyEdited"
+                  type="button"
+                  @click="handleResetMessage"
+                  class="inline-flex items-center gap-1 text-[11px] font-bold text-[#004B97] hover:underline cursor-pointer"
+                  title="Volver a generar el texto automático"
+                >
+                  <RotateCcw class="w-3 h-3" />
+                  <span>Restablecer</span>
+                </button>
+                <span class="font-mono text-[10px] text-slate-400">
+                  {{ editableMessage.length }} car.
+                </span>
+              </div>
+            </div>
+
+            <textarea
+              v-model="editableMessage"
+              @input="handleManualTextInput"
+              rows="13"
+              aria-label="Mensaje a enviar por WhatsApp"
+              class="w-full min-h-[260px] p-3 text-xs leading-relaxed text-slate-800 bg-[#F4FBF6]/60 border border-emerald-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 resize-y font-sans"
+            ></textarea>
+          </div>
+
+          <!-- Respaldo si el navegador bloqueó ventana emergente tras generar PDF -->
+          <div
+            v-if="popupBlockedUrl"
+            class="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+          >
+            <span class="text-[11px] font-semibold leading-snug">
+              El PDF ya está listo, pero el navegador bloqueó la pestaña automática. Haz clic para abrir WhatsApp:
+            </span>
+            <a
+              :href="popupBlockedUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click="popupBlockedUrl = null"
+              class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-[11px] font-bold transition"
+            >
+              <WhatsAppIcon class="w-3.5 h-3.5" />
+              <span>Abrir WhatsApp ahora</span>
+            </a>
+          </div>
+
+          <!-- Aviso si la URL excede el límite recomendado para wa.me -->
+          <div
+            v-if="isUrlTooLong"
+            class="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+          >
+            <div class="flex items-start gap-2">
+              <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p class="text-[11px] leading-snug">
+                El detalle es extenso para la URL de <span class="font-mono font-bold">wa.me</span> y podría recortarse en algunos navegadores. Puedes acortar el texto arriba o copiarlo y pegarlo en el chat.
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="handleCopyAndOpenEmptyChat"
+              class="shrink-0 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition cursor-pointer"
+            >
+              Copiar y abrir chat
+            </button>
           </div>
         </div>
 
@@ -914,7 +724,7 @@ const handleCopyAndOpenEmptyChat = async () => {
         <div ref="offscreenContainerRef" class="bg-white">
           <WorkOrderDocument
             :order="order"
-            :showSubtotals="includeBlockSubtotals"
+            :showSubtotals="effectiveShowSubtotals"
             variant="pdf"
           />
         </div>
