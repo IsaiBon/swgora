@@ -2,8 +2,13 @@
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { Order } from '@/services/ordersService'
 import { clientesService } from '@/services/clientesService'
+import { uploadOrderPdf } from '@/services/storageService'
 import { useTallerStore } from '@/stores/taller'
-import { exportOrderToPdf } from '@/utils/pdfExport'
+import {
+  downloadPdfBlob,
+  generateOrderPdfFile,
+  type GeneratedOrderPdf,
+} from '@/utils/pdfExport'
 import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
 import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import {
@@ -11,6 +16,7 @@ import {
   WA_ME_SAFE_URL_LIMIT,
   buildOrderWhatsAppMessage,
   buildWaMeUrl,
+  canNativeSharePdfFiles,
   formatWaPhonePreview,
   formatVehicleEngineLabel,
   isValidWaPhoneDigits,
@@ -21,12 +27,15 @@ import {
 import {
   AlertTriangle,
   Check,
+  CloudUpload,
   Copy,
   Download,
   ExternalLink,
   FileText,
+  Link2,
   Phone,
   RotateCcw,
+  Share2,
   UserCheck,
   X,
 } from 'lucide-vue-next'
@@ -37,12 +46,12 @@ const props = withDefaults(
     order: Order | null
     fallbackPhone?: string | null
     initialShowSubtotals?: boolean
-    onDownloadPdf?: (() => Promise<void>) | null
+    onGeneratePdf?: (() => Promise<GeneratedOrderPdf | null>) | null
   }>(),
   {
     fallbackPhone: null,
     initialShowSubtotals: undefined,
-    onDownloadPdf: null,
+    onGeneratePdf: null,
   }
 )
 
@@ -76,14 +85,25 @@ const isManuallyEdited = ref(false)
 const copied = ref(false)
 let copyTimeout: ReturnType<typeof setTimeout> | null = null
 
-// Descarga de PDF opcional para adjuntar
+// Estado de PDF (generación en memoria, subida para enlace en wa.me y envío directo)
+const cachedPdf = ref<GeneratedOrderPdf | null>(null)
+const uploadedPdfUrl = ref('')
+const isUploadingPdf = ref(false)
 const isDownloadingPdf = ref(false)
+const isNativeSharingPdf = ref(false)
+const isComboSending = ref(false)
 const pdfDownloaded = ref(false)
+const pdfStatusMessage = ref<string | null>(null)
 const pdfError = ref<string | null>(null)
+const popupBlockedUrl = ref<string | null>(null)
 const renderOffscreenPdf = ref(false)
 const offscreenContainerRef = ref<HTMLElement | null>(null)
 
+const supportsNativePdfShare = computed(() => canNativeSharePdfFiles())
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
+const isPdfBusy = computed(
+  () => isUploadingPdf.value || isDownloadingPdf.value || isNativeSharingPdf.value || isComboSending.value
+)
 
 const resolvedPhoneDigits = computed(() =>
   resolveWaPhoneDigits(countryCode.value, localPhoneInput.value)
@@ -130,6 +150,7 @@ const regenerateMessage = (force = false) => {
       includeObservations: includeObservations.value,
       includeTallerContact: includeTallerContact.value,
       customNote: customNote.value,
+      pdfUrl: uploadedPdfUrl.value || undefined,
     }
   )
 }
@@ -168,8 +189,12 @@ watch(
     const currentSession = ++sessionCounter
     isManuallyEdited.value = false
     copied.value = false
+    cachedPdf.value = null
+    uploadedPdfUrl.value = ''
     pdfDownloaded.value = false
+    pdfStatusMessage.value = null
     pdfError.value = null
+    popupBlockedUrl.value = null
     phoneError.value = null
     customNote.value = ''
     preset.value = 'detailed'
@@ -225,9 +250,16 @@ watch(
     includeObservations,
     includeTallerContact,
     customNote,
+    uploadedPdfUrl,
   ],
   () => {
     if (!props.isOpen || !props.order) return
+    if (includeBlockSubtotals.value !== undefined) {
+      // Si cambió el desglose de subtotales y no hay callback externo, invalidar caché del PDF
+      if (!props.onGeneratePdf) {
+        cachedPdf.value = null
+      }
+    }
     isManuallyEdited.value = false
     regenerateMessage(true)
   }
@@ -316,11 +348,200 @@ const validateRecipientPhone = (): boolean => {
   return true
 }
 
+/**
+ * Obtiene o genera el archivo PDF de la orden/cotización en memoria.
+ */
+const obtainOrderPdfFile = async (): Promise<GeneratedOrderPdf> => {
+  if (cachedPdf.value) {
+    return cachedPdf.value
+  }
+  if (!props.order) {
+    throw new Error('No hay documento seleccionado.')
+  }
+
+  if (props.onGeneratePdf) {
+    const generated = await props.onGeneratePdf()
+    if (generated) {
+      cachedPdf.value = generated
+      return generated
+    }
+  }
+
+  await tallerStore.loadTallerInfo()
+  renderOffscreenPdf.value = true
+  try {
+    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 90))
+
+    const container = offscreenContainerRef.value
+    const docEl =
+      (container?.querySelector('#printable-work-order') as HTMLElement | null) ||
+      container
+    if (!docEl) {
+      throw new Error('No se pudo preparar el documento PDF.')
+    }
+    const generated = await generateOrderPdfFile(docEl, props.order)
+    cachedPdf.value = generated
+    return generated
+  } finally {
+    renderOffscreenPdf.value = false
+  }
+}
+
+/**
+ * Genera el PDF, lo sube a Supabase Storage e incluye el enlace público directo en el mensaje wa.me.
+ */
+const handleAttachPdfLink = async (): Promise<boolean> => {
+  if (!props.order || isPdfBusy.value) return false
+  isUploadingPdf.value = true
+  pdfError.value = null
+  pdfStatusMessage.value = null
+
+  try {
+    const generated = await obtainOrderPdfFile()
+    const uploadRes = await uploadOrderPdf(generated.file, {
+      id: props.order.id,
+      orderNumber: props.order.orderNumber,
+      type: props.order.type,
+    })
+
+    if (uploadRes.isRemote && uploadRes.url) {
+      uploadedPdfUrl.value = uploadRes.url
+      pdfStatusMessage.value = 'Enlace del PDF agregado al mensaje de WhatsApp.'
+      return true
+    }
+
+    pdfError.value =
+      'El bucket "ordenes-pdf" aún no está habilitado en Supabase Storage. Usa "PDF + wa.me" para descargarlo y adjuntarlo, o aplica la migración SQL de Storage.'
+    return false
+  } catch (err) {
+    console.error('[WhatsAppShareModal] Error subiendo PDF para wa.me:', err)
+    pdfError.value = 'No se pudo generar o subir el PDF en este momento.'
+    return false
+  } finally {
+    isUploadingPdf.value = false
+  }
+}
+
+const handleRemovePdfLink = () => {
+  uploadedPdfUrl.value = ''
+  pdfStatusMessage.value = null
+}
+
+/**
+ * Envía el archivo PDF real mediante la hoja nativa del dispositivo (Android/iOS/OS compatible).
+ */
+const handleNativeSharePdf = async () => {
+  if (!props.order || isPdfBusy.value || !supportsNativePdfShare.value) return
+  isNativeSharingPdf.value = true
+  pdfError.value = null
+  pdfStatusMessage.value = null
+
+  try {
+    const generated = await obtainOrderPdfFile()
+    const docTitle = isCotizacion.value ? 'Cotización' : 'Orden de Trabajo'
+    await navigator.share({
+      title: `${docTitle} ${props.order.orderNumber}`,
+      text: editableMessage.value,
+      files: [generated.file],
+    })
+    pdfStatusMessage.value = 'Archivo PDF compartido mediante el menú del dispositivo.'
+    emit('shared', {
+      order: props.order,
+      phoneDigits: resolvedPhoneDigits.value,
+      preset: preset.value,
+    })
+  } catch (err: any) {
+    if (err?.name !== 'AbortError') {
+      console.error('[WhatsAppShareModal] Error al compartir archivo PDF nativo:', err)
+      pdfError.value = 'Tu navegador no completó el envío directo del archivo. Usa "Descargar PDF + wa.me".'
+    }
+  } finally {
+    isNativeSharingPdf.value = false
+  }
+}
+
+const handleDownloadOnlyPdf = async () => {
+  if (!props.order || isPdfBusy.value) return
+  isDownloadingPdf.value = true
+  pdfError.value = null
+
+  try {
+    const generated = await obtainOrderPdfFile()
+    downloadPdfBlob(generated.blob, generated.filename)
+    pdfDownloaded.value = true
+    pdfStatusMessage.value = 'PDF descargado. Arrástralo o adjúntalo dentro del chat de WhatsApp.'
+  } catch (err) {
+    console.error('[WhatsAppShareModal] Error descargando PDF:', err)
+    pdfError.value = 'No se pudo generar el PDF. Inténtalo desde la vista previa.'
+  } finally {
+    isDownloadingPdf.value = false
+  }
+}
+
+/**
+ * Flujo de 1 clic para enviar con PDF:
+ * intenta subir el PDF para incluir su enlace en wa.me; si el bucket no está disponible,
+ * descarga el PDF localmente y abre wa.me igualmente.
+ */
+const handleSendWithPdfAndWaMe = async () => {
+  if (!props.order || isPdfBusy.value) return
+  if (!validateRecipientPhone()) return
+  if (!editableMessage.value.trim()) return
+
+  isComboSending.value = true
+  pdfError.value = null
+  pdfStatusMessage.value = null
+  popupBlockedUrl.value = null
+
+  try {
+    const generated = await obtainOrderPdfFile()
+
+    if (!uploadedPdfUrl.value) {
+      const uploadRes = await uploadOrderPdf(generated.file, {
+        id: props.order.id,
+        orderNumber: props.order.orderNumber,
+        type: props.order.type,
+      })
+
+      if (uploadRes.isRemote && uploadRes.url) {
+        uploadedPdfUrl.value = uploadRes.url
+        await nextTick()
+        pdfStatusMessage.value = 'PDF subido a la nube e incluido como enlace directo en wa.me.'
+      } else {
+        // Fallback: descargar el PDF en el equipo para que pueda adjuntarlo directo en el chat abierto
+        downloadPdfBlob(generated.blob, generated.filename)
+        pdfDownloaded.value = true
+        pdfStatusMessage.value =
+          'PDF descargado en tu equipo. Arrástralo al chat de WhatsApp que se abrió.'
+      }
+    }
+
+    const targetUrl = waUrl.value
+    const opened = window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    if (!opened) {
+      popupBlockedUrl.value = targetUrl
+    }
+
+    emit('shared', {
+      order: props.order,
+      phoneDigits: resolvedPhoneDigits.value,
+      preset: preset.value,
+    })
+  } catch (err) {
+    console.error('[WhatsAppShareModal] Error en flujo PDF + wa.me:', err)
+    pdfError.value = 'No se pudo preparar el PDF para WhatsApp.'
+  } finally {
+    isComboSending.value = false
+  }
+}
+
 const handleOpenWhatsApp = () => {
   if (!props.order) return
   if (!validateRecipientPhone()) return
   if (!editableMessage.value.trim()) return
 
+  popupBlockedUrl.value = null
   window.open(waUrl.value, '_blank', 'noopener,noreferrer')
   emit('shared', {
     order: props.order,
@@ -342,39 +563,6 @@ const handleCopyAndOpenEmptyChat = async () => {
     preset: preset.value,
   })
 }
-
-const handleDownloadAttachmentPdf = async () => {
-  if (!props.order || isDownloadingPdf.value) return
-  isDownloadingPdf.value = true
-  pdfError.value = null
-
-  try {
-    if (props.onDownloadPdf) {
-      await props.onDownloadPdf()
-    } else {
-      await tallerStore.loadTallerInfo()
-      renderOffscreenPdf.value = true
-      await nextTick()
-      await new Promise((resolve) => setTimeout(resolve, 80))
-
-      const container = offscreenContainerRef.value
-      const docEl =
-        (container?.querySelector('#printable-work-order') as HTMLElement | null) ||
-        container
-      if (!docEl) {
-        throw new Error('No se pudo preparar el documento PDF.')
-      }
-      await exportOrderToPdf(docEl, props.order)
-    }
-    pdfDownloaded.value = true
-  } catch (err) {
-    console.error('[WhatsAppShareModal] Error generando PDF:', err)
-    pdfError.value = 'No se pudo generar el PDF. Inténtalo desde la vista previa.'
-  } finally {
-    renderOffscreenPdf.value = false
-    isDownloadingPdf.value = false
-  }
-}
 </script>
 
 <template>
@@ -388,7 +576,7 @@ const handleDownloadAttachmentPdf = async () => {
       @click.self="emit('close')"
     >
       <div
-        class="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 popover-pop-in my-auto"
+        class="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 popover-pop-in my-auto"
       >
         <!-- Header -->
         <div
@@ -405,7 +593,7 @@ const handleDownloadAttachmentPdf = async () => {
                 id="wa-share-modal-title"
                 class="font-display font-extrabold text-sm sm:text-base text-white tracking-tight truncate"
               >
-                Compartir por WhatsApp Business
+                Compartir por WhatsApp
               </h3>
               <p class="text-[11px] sm:text-xs text-[#BFEBF2]/90 truncate">
                 {{ isCotizacion ? 'Cotización' : 'Orden de Trabajo' }}
@@ -513,7 +701,114 @@ const handleDownloadAttachmentPdf = async () => {
                 </div>
 
                 <p class="text-[10.5px] text-slate-500 leading-snug">
-                  {{ phonePreviewLabel }}. Al abrir <span class="font-mono font-semibold">wa.me</span> podrás usar WhatsApp Business o tu app instalada.
+                  {{ phonePreviewLabel }}. Al abrir <span class="font-mono font-semibold">wa.me</span> podrás elegir WhatsApp Business o tu app instalada.
+                </p>
+              </div>
+
+              <!-- Envío con PDF -->
+              <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
+                    <FileText class="w-3.5 h-3.5 text-[#038391]" />
+                    <span>Enviar Documento PDF</span>
+                  </span>
+                  <span
+                    v-if="uploadedPdfUrl"
+                    class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"
+                  >
+                    <Check class="w-3 h-3" />
+                    Enlace listo
+                  </span>
+                </div>
+
+                <p class="text-[10.5px] text-slate-500 leading-snug">
+                  Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ', enviar el archivo PDF directo desde tu dispositivo' : '' }} o descargarlo al instante.
+                </p>
+
+                <!-- Estado si ya hay enlace de PDF en el mensaje -->
+                <div
+                  v-if="uploadedPdfUrl"
+                  class="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 space-y-1.5"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-bold flex items-center gap-1">
+                      <Link2 class="w-3.5 h-3.5 text-[#25D366]" />
+                      Enlace PDF incluido en el mensaje
+                    </span>
+                    <button
+                      type="button"
+                      @click="handleRemovePdfLink"
+                      class="text-[10.5px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                  <a
+                    :href="uploadedPdfUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="block font-mono text-[10px] text-[#004B97] truncate hover:underline"
+                  >
+                    {{ uploadedPdfUrl }}
+                  </a>
+                </div>
+
+                <div class="grid grid-cols-1 gap-1.5">
+                  <!-- Subir PDF a la nube e insertar link en wa.me -->
+                  <button
+                    v-if="!uploadedPdfUrl"
+                    type="button"
+                    @click="handleAttachPdfLink"
+                    :disabled="isPdfBusy"
+                    class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#004B97] hover:bg-[#0D1B3E] text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                  >
+                    <CloudUpload class="w-3.5 h-3.5" :class="{ 'animate-pulse': isUploadingPdf }" />
+                    <span>{{ isUploadingPdf ? 'Subiendo PDF a la nube...' : 'Agregar enlace PDF al mensaje wa.me' }}</span>
+                  </button>
+
+                  <!-- Envío nativo de archivo PDF (Android / iOS / OS compatible) -->
+                  <button
+                    v-if="supportsNativePdfShare"
+                    type="button"
+                    @click="handleNativeSharePdf"
+                    :disabled="isPdfBusy"
+                    class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
+                    <span>{{ isNativeSharingPdf ? 'Preparando archivo...' : 'Enviar archivo PDF directo (App)' }}</span>
+                  </button>
+
+                  <!-- Descarga rápida local -->
+                  <button
+                    type="button"
+                    @click="handleDownloadOnlyPdf"
+                    :disabled="isPdfBusy"
+                    class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer disabled:opacity-50"
+                    :class="
+                      pdfDownloaded
+                        ? 'bg-cyan-50 text-[#038391] border-cyan-300'
+                        : 'bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-[#004B97] border-slate-200 hover:border-blue-300'
+                    "
+                  >
+                    <Check v-if="pdfDownloaded && !isDownloadingPdf" class="w-3.5 h-3.5" />
+                    <Download v-else class="w-3.5 h-3.5" :class="{ 'animate-bounce': isDownloadingPdf }" />
+                    <span>
+                      {{
+                        isDownloadingPdf
+                          ? 'Generando PDF...'
+                          : pdfDownloaded
+                            ? 'PDF descargado ✓'
+                            : `Solo descargar ${isCotizacion ? 'Cotización' : 'Orden'} PDF`
+                      }}
+                    </span>
+                  </button>
+                </div>
+
+                <p v-if="pdfStatusMessage" class="text-[10.5px] font-semibold text-[#038391] leading-snug">
+                  {{ pdfStatusMessage }}
+                </p>
+                <p v-if="pdfError" class="text-[10.5px] font-semibold text-rose-600 leading-snug">
+                  {{ pdfError }}
                 </p>
               </div>
 
@@ -583,7 +878,7 @@ const handleDownloadAttachmentPdf = async () => {
                     "
                   >
                     <div class="text-xs font-bold flex items-center justify-between">
-                      <span>Saludo para Adjuntar PDF</span>
+                      <span>Saludo con PDF</span>
                       <span
                         v-if="preset === 'pdf_companion'"
                         class="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded"
@@ -592,7 +887,7 @@ const handleDownloadAttachmentPdf = async () => {
                       </span>
                     </div>
                     <p class="text-[10.5px] text-slate-500 mt-0.5">
-                      Mensaje corto ideal al adjuntar el documento PDF.
+                      Mensaje breve ideal para acompañar o enlazar el PDF.
                     </p>
                   </button>
                 </div>
@@ -666,45 +961,6 @@ const handleDownloadAttachmentPdf = async () => {
                   </div>
                 </div>
               </div>
-
-              <!-- Opción de PDF para adjuntar en WhatsApp Business -->
-              <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2 shadow-sm">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
-                    <FileText class="w-3.5 h-3.5 text-[#038391]" />
-                    <span>Adjuntar PDF (Opcional)</span>
-                  </span>
-                </div>
-                <p class="text-[10.5px] text-slate-500 leading-snug">
-                  Los enlaces <span class="font-mono">wa.me</span> envían texto directo. Si deseas enviar también la hoja formal, descarga el PDF y arrástralo al chat.
-                </p>
-                <button
-                  type="button"
-                  @click="handleDownloadAttachmentPdf"
-                  :disabled="isDownloadingPdf"
-                  class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition cursor-pointer disabled:opacity-50"
-                  :class="
-                    pdfDownloaded
-                      ? 'bg-cyan-50 text-[#038391] border-cyan-300'
-                      : 'bg-slate-50 hover:bg-blue-50 text-[#004B97] border-slate-200 hover:border-blue-300'
-                  "
-                >
-                  <Check v-if="pdfDownloaded && !isDownloadingPdf" class="w-3.5 h-3.5" />
-                  <Download v-else class="w-3.5 h-3.5" :class="{ 'animate-bounce': isDownloadingPdf }" />
-                  <span>
-                    {{
-                      isDownloadingPdf
-                        ? 'Generando PDF...'
-                        : pdfDownloaded
-                          ? 'PDF descargado — listo para adjuntar'
-                          : `Descargar ${isCotizacion ? 'Cotización' : 'Orden'} PDF`
-                    }}
-                  </span>
-                </button>
-                <p v-if="pdfError" class="text-[10.5px] font-semibold text-rose-600">
-                  {{ pdfError }}
-                </p>
-              </div>
             </div>
 
             <!-- Columna Derecha: Vista Previa Editable y Envío -->
@@ -743,10 +999,30 @@ const handleDownloadAttachmentPdf = async () => {
                 <textarea
                   v-model="editableMessage"
                   @input="handleManualTextInput"
-                  rows="16"
+                  rows="20"
                   aria-label="Mensaje a enviar por WhatsApp"
-                  class="w-full flex-1 min-h-[340px] p-3 text-xs leading-relaxed text-slate-800 bg-[#F4FBF6]/60 border border-emerald-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 resize-y font-sans"
+                  class="w-full flex-1 min-h-[400px] p-3 text-xs leading-relaxed text-slate-800 bg-[#F4FBF6]/60 border border-emerald-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 resize-y font-sans"
                 ></textarea>
+              </div>
+
+              <!-- Respaldo si el navegador bloqueó ventana emergente tras generar PDF -->
+              <div
+                v-if="popupBlockedUrl"
+                class="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+              >
+                <span class="text-[11px] font-semibold leading-snug">
+                  El PDF ya está listo, pero el navegador bloqueó la pestaña automática. Haz clic para abrir WhatsApp:
+                </span>
+                <a
+                  :href="popupBlockedUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  @click="popupBlockedUrl = null"
+                  class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-[11px] font-bold transition"
+                >
+                  <WhatsAppIcon class="w-3.5 h-3.5" />
+                  <span>Abrir WhatsApp ahora</span>
+                </a>
               </div>
 
               <!-- Aviso si la URL excede el límite recomendado para wa.me -->
@@ -757,7 +1033,7 @@ const handleDownloadAttachmentPdf = async () => {
                 <div class="flex items-start gap-2">
                   <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <p class="text-[11px] leading-snug">
-                    El detalle es extenso para la URL de <span class="font-mono font-bold">wa.me</span> y podría recortarse en algunos navegadores. Usa <strong>Resumen Ejecutivo</strong> o copia el texto y pégalo en el chat.
+                    El detalle es extenso para la URL de <span class="font-mono font-bold">wa.me</span> y podría recortarse en algunos navegadores. Usa <strong>Saludo con PDF</strong> o copia el texto y pégalo en el chat.
                   </p>
                 </div>
                 <button
@@ -774,7 +1050,7 @@ const handleDownloadAttachmentPdf = async () => {
 
         <!-- Footer -->
         <div
-          class="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0"
+          class="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0"
         >
           <button
             type="button"
@@ -791,13 +1067,24 @@ const handleDownloadAttachmentPdf = async () => {
             <span>{{ copied ? '¡Mensaje copiado!' : 'Copiar mensaje' }}</span>
           </button>
 
-          <div class="flex items-center gap-2 ml-auto">
+          <div class="flex flex-wrap items-center gap-2 ml-auto">
             <button
               type="button"
               @click="emit('close')"
-              class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
+              class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
             >
               Cancelar
+            </button>
+
+            <button
+              type="button"
+              @click="handleSendWithPdfAndWaMe"
+              :disabled="isPdfBusy || !editableMessage.trim()"
+              class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
+              title="Genera el PDF (lo enlaza en la nube o lo descarga) y abre wa.me en un clic"
+            >
+              <FileText class="w-3.5 h-3.5 text-[#BFEBF2]" :class="{ 'animate-pulse': isComboSending }" />
+              <span>{{ isComboSending ? 'Preparando PDF...' : 'Enviar con PDF + wa.me' }}</span>
             </button>
 
             <button

@@ -2,11 +2,31 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import type { Order } from '@/services/ordersService'
 
+export interface GeneratedOrderPdf {
+  blob: Blob
+  file: File
+  filename: string
+}
+
 /**
- * Exporta el documento de la orden o cotización a PDF tamaño Carta (Letter),
- * garantizando cero sobremontaje de texto, líneas limpias y fidelidad tipográfica.
+ * Construye el nombre de archivo estandarizado para el PDF de la orden o cotización.
  */
-export async function exportOrderToPdf(element: HTMLElement, order: Order): Promise<void> {
+export function buildOrderPdfFilename(order: Order): string {
+  const prefix = order.type === 'cotizacion' ? 'COTIZACION' : 'ORDEN'
+  const sanitizedNum = (order.orderNumber || '0000').replace(/[^a-zA-Z0-9_-]/g, '_')
+  const clientPart = order.customer
+    ? `_${order.customer.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 24)}`
+    : ''
+  return `${prefix}_${sanitizedNum}${clientPart}_JR_Blanco.pdf`
+}
+
+/**
+ * Renderiza el elemento HTML del documento en una instancia jsPDF tamaño Carta (Letter).
+ */
+async function createOrderPdfDocument(
+  element: HTMLElement,
+  order: Order
+): Promise<{ pdf: jsPDF; filename: string }> {
   // 1. Esperar a que las fuentes web del navegador estén listas
   if (typeof document !== 'undefined' && document.fonts) {
     try {
@@ -69,9 +89,8 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
   const imgHeight = canvas.height
   const printHeight = (imgHeight * printWidth) / imgWidth
 
-  // 4. Renderizado en el PDF:
   // - Si cabe en 1 hoja (con tolerancia del 5% para ajuste suave), se coloca en 1 sola página.
-  // - Si la orden es más extensa (incluso con doble sección no cabe), pasa a otra página automáticamente.
+  // - Si la orden es más extensa, pasa a otra página automáticamente.
   if (printHeight <= maxPageHeight * 1.05) {
     const scaleFactor = printHeight > maxPageHeight ? maxPageHeight / printHeight : 1
     const fittedWidth = printWidth * scaleFactor
@@ -79,7 +98,6 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
     const xOffset = marginX + (printWidth - fittedWidth) / 2
     pdf.addImage(imgData, 'PNG', xOffset, marginY, fittedWidth, fittedHeight)
   } else {
-    // No cabe en una sola hoja -> Pasa a otra página de forma natural
     let heightLeft = printHeight
     let pageCount = 0
 
@@ -94,13 +112,44 @@ export async function exportOrderToPdf(element: HTMLElement, order: Order): Prom
     }
   }
 
-  // 5. Nombre descriptivo de archivo
-  const prefix = order.type === 'cotizacion' ? 'COTIZACION' : 'ORDEN'
-  const sanitizedNum = (order.orderNumber || '0000').replace(/[^a-zA-Z0-9_-]/g, '_')
-  const clientPart = order.customer
-    ? `_${order.customer.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 24)}`
-    : ''
-  const filename = `${prefix}_${sanitizedNum}${clientPart}_JR_Blanco.pdf`
+  return {
+    pdf,
+    filename: buildOrderPdfFilename(order)
+  }
+}
 
+/**
+ * Genera el documento PDF en memoria (Blob y File) para compartir o subir a la nube.
+ */
+export async function generateOrderPdfFile(
+  element: HTMLElement,
+  order: Order
+): Promise<GeneratedOrderPdf> {
+  const { pdf, filename } = await createOrderPdfDocument(element, order)
+  const blob = pdf.output('blob')
+  const file = new File([blob], filename, { type: 'application/pdf' })
+  return { blob, file, filename }
+}
+
+/**
+ * Descarga un Blob PDF ya generado en el navegador sin volver a renderizar el documento.
+ */
+export function downloadPdfBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/**
+ * Exporta el documento de la orden o cotización a PDF tamaño Carta (Letter),
+ * garantizando cero sobremontaje de texto, líneas limpias y fidelidad tipográfica.
+ */
+export async function exportOrderToPdf(element: HTMLElement, order: Order): Promise<void> {
+  const { pdf, filename } = await createOrderPdfDocument(element, order)
   pdf.save(filename)
 }

@@ -2497,7 +2497,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                     type="button"
                     @click="openWhatsAppShare(order)"
                     class="inline-flex items-center justify-center p-2 text-slate-500 hover:text-[#25D366] hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded-xl transition-all cursor-pointer"
-                    :title="`Compartir ${order.type === 'cotizacion' ? 'cotización' : 'orden'} por WhatsApp Business (wa.me)`"
+                    title="Compartir por WhatsApp"
                   >
                     <WhatsAppIcon class="w-4 h-4" />
                   </button>

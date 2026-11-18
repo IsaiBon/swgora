@@ -11,6 +11,23 @@ export interface WhatsAppMessageOptions {
   includeObservations: boolean
   includeTallerContact: boolean
   customNote?: string
+  pdfUrl?: string
+}
+
+/**
+ * Verifica si el navegador/dispositivo actual soporta envío nativo de archivos PDF (Web Share API Level 2).
+ */
+export function canNativeSharePdfFiles(): boolean {
+  if (typeof navigator === 'undefined') return false
+  if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') {
+    return false
+  }
+  try {
+    const dummy = new File(['%PDF-1.4'], 'documento.pdf', { type: 'application/pdf' })
+    return navigator.canShare({ files: [dummy] })
+  } catch {
+    return false
+  }
 }
 
 export interface CountryDialOption {
@@ -440,7 +457,12 @@ export function buildOrderWhatsAppMessage(
     }
     lines.push(`• *Total:* *$${breakdown.grandTotal.toFixed(2)}*`)
     lines.push('')
-    lines.push('_(Adjuntamos el documento PDF con el desglose completo.)_')
+    if (options.pdfUrl?.trim()) {
+      lines.push('📄 *Ver / Descargar documento PDF:*')
+      lines.push(options.pdfUrl.trim())
+    } else {
+      lines.push('_(Adjuntamos el documento PDF con el desglose completo.)_')
+    }
   } else if (options.preset === 'executive') {
     lines.push(`*${workshopName}*`)
     lines.push(`*${docTitle} N° ${order.orderNumber}*`)
@@ -538,6 +560,12 @@ export function buildOrderWhatsAppMessage(
       lines.push(`IVA (${breakdown.ivaPct}%): $${breakdown.iva.toFixed(2)}`)
     }
     lines.push(`*TOTAL: $${breakdown.grandTotal.toFixed(2)}*`)
+  }
+
+  if (options.preset !== 'pdf_companion' && options.pdfUrl?.trim()) {
+    lines.push('')
+    lines.push('📄 *Ver / Descargar documento PDF:*')
+    lines.push(options.pdfUrl.trim())
   }
 
   if (options.customNote?.trim()) {

@@ -860,7 +860,7 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                       type="button"
                       @click="openWhatsAppOrder(order)"
                       class="p-1.5 text-slate-400 hover:text-[#25D366] hover:bg-emerald-50 rounded-xl transition active:scale-95"
-                      :title="`Compartir ${order.type === 'cotizacion' ? 'cotización' : 'orden'} por WhatsApp Business (wa.me)`"
+                      title="Compartir por WhatsApp"
                     >
                       <WhatsAppIcon class="w-4 h-4" />
                     </button>

@@ -26,6 +26,7 @@ export interface UploadResult {
 }
 
 export const STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || 'repuestos'
+export const ORDERS_PDF_BUCKET = import.meta.env.VITE_SUPABASE_ORDERS_PDF_BUCKET || 'ordenes-pdf'
 
 /**
  * Optimiza y comprime una imagen en el navegador del cliente mediante Canvas API.
@@ -289,6 +290,67 @@ export async function uploadRepuestoDocument(
       isRemote: false,
       warning: `Error de conexión con Supabase Storage: ${errorMsg}`
     }
+  }
+}
+
+/**
+ * Sube el PDF generado de una orden o cotización a Supabase Storage para compartirlo por enlace en wa.me.
+ */
+export async function uploadOrderPdf(
+  file: File,
+  orderMeta: { id: string; orderNumber: string; type?: string }
+): Promise<UploadResult> {
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('El PDF generado supera el límite de 10 MB.')
+  }
+
+  const folder = orderMeta.type === 'cotizacion' ? 'cotizaciones' : 'ordenes'
+  const cleanNum = (orderMeta.orderNumber || 'sin-numero')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/^_+|_+$/g, '') || 'doc'
+  const cleanId = (orderMeta.id || 'tmp').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 12)
+  const filePath = `${folder}/${cleanNum}_${cleanId}_${Date.now()}.pdf`
+
+  const candidateBuckets = Array.from(new Set([ORDERS_PDF_BUCKET, STORAGE_BUCKET]))
+  let lastError = 'No se pudo subir el PDF.'
+
+  for (const bucket of candidateBuckets) {
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, {
+          contentType: 'application/pdf',
+          cacheControl: '86400',
+          upsert: true
+        })
+
+      if (!error && data) {
+        const { data: urlData } = supabase.storage
+          .from(bucket)
+          .getPublicUrl(data.path)
+
+        return {
+          url: urlData.publicUrl,
+          path: data.path,
+          size: file.size,
+          isRemote: true
+        }
+      }
+
+      if (error?.message) {
+        lastError = error.message
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  return {
+    url: '',
+    path: filePath,
+    size: file.size,
+    isRemote: false,
+    warning: lastError
   }
 }
 

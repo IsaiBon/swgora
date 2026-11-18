@@ -5,7 +5,7 @@ import { Printer, Download, X, FileText } from 'lucide-vue-next'
 import WorkOrderDocument from './WorkOrderDocument.vue'
 import WhatsAppShareModal from './WhatsAppShareModal.vue'
 import WhatsAppIcon from './WhatsAppIcon.vue'
-import { exportOrderToPdf } from '@/utils/pdfExport'
+import { exportOrderToPdf, generateOrderPdfFile, type GeneratedOrderPdf } from '@/utils/pdfExport'
 
 const props = defineProps<{
   order: Order | null
@@ -95,6 +95,17 @@ const handleDownload = async () => {
   } finally {
     isDownloading.value = false
   }
+}
+
+const generatePdfFile = async (): Promise<GeneratedOrderPdf | null> => {
+  if (!props.order) return null
+  const el = document.getElementById('printable-work-order')
+  if (!el) return null
+  const orderToExport = {
+    ...props.order,
+    showSubtotals: showSubtotalsOverride.value
+  }
+  return await generateOrderPdfFile(el, orderToExport)
 }
 </script>
 
@@ -198,7 +209,7 @@ const handleDownload = async () => {
               type="button"
               @click="whatsappModalOpen = true"
               class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-95 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
-              title="Compartir por WhatsApp Business (wa.me)"
+              title="Compartir por WhatsApp"
             >
               <WhatsAppIcon class="w-3.5 h-3.5" />
               <span>WhatsApp</span>
@@ -248,7 +259,7 @@ const handleDownload = async () => {
     :is-open="whatsappModalOpen"
     :order="order"
     :initial-show-subtotals="showSubtotalsOverride"
-    :on-download-pdf="handleDownload"
+    :on-generate-pdf="generatePdfFile"
     @close="whatsappModalOpen = false"
   />
 </template>

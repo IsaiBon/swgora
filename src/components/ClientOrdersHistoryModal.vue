@@ -277,7 +277,7 @@ const formatCurrency = (val: number) => {
                 type="button"
                 @click="openWhatsAppOrder(order)"
                 class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 hover:bg-[#25D366] text-emerald-700 hover:text-white border border-emerald-200 hover:border-[#25D366] text-[11px] font-bold transition active:scale-95 cursor-pointer"
-                :title="`Compartir ${order.type === 'cotizacion' ? 'cotización' : 'orden'} por WhatsApp Business (wa.me)`"
+                title="Compartir por WhatsApp"
               >
                 <WhatsAppIcon class="w-3.5 h-3.5" />
                 <span>WhatsApp</span>
