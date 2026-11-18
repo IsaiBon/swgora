@@ -1168,17 +1168,6 @@ const openWhatsAppShare = (order: Order) => {
   whatsappModalOpen.value = true
 }
 
-const resolveOrderFallbackPhone = (order: Order | null): string | null => {
-  if (!order) return null
-  if (order.customerPhone) return order.customerPhone
-  const match = clients.value.find(
-    (c) =>
-      (order.customerId && c.id === order.customerId) ||
-      (order.customerCode && c.codigo === order.customerCode)
-  )
-  return match?.telefono || null
-}
-
 const handleWhatsAppShared = (payload: { order: Order }) => {
   const label = payload.order.type === 'cotizacion' ? 'Cotización' : 'Orden'
   showToast(`Enlace wa.me abierto para compartir ${label} ${payload.order.orderNumber}.`, 'success')
@@ -2578,7 +2567,6 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
     <WhatsAppShareModal
       :is-open="whatsappModalOpen"
       :order="orderToShareWhatsApp"
-      :fallback-phone="resolveOrderFallbackPhone(orderToShareWhatsApp)"
       @close="whatsappModalOpen = false"
       @shared="handleWhatsAppShared"
     />

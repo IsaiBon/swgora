@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { Order } from '@/services/ordersService'
-import { clientesService } from '@/services/clientesService'
 import { uploadOrderPdf } from '@/services/storageService'
 import { useTallerStore } from '@/stores/taller'
 import {
@@ -12,16 +11,11 @@ import {
 import WorkOrderDocument from '@/components/WorkOrderDocument.vue'
 import WhatsAppIcon from '@/components/WhatsAppIcon.vue'
 import {
-  COUNTRY_DIAL_OPTIONS,
   WA_ME_SAFE_URL_LIMIT,
   buildOrderWhatsAppMessage,
   buildWaMeUrl,
   canNativeSharePdfFiles,
-  formatWaPhonePreview,
   formatVehicleEngineLabel,
-  isValidWaPhoneDigits,
-  parsePhoneForWhatsApp,
-  resolveWaPhoneDigits,
   type WhatsAppMessagePreset,
 } from '@/utils/whatsappShare'
 import {
@@ -33,10 +27,8 @@ import {
   ExternalLink,
   FileText,
   Link2,
-  Phone,
   RotateCcw,
   Share2,
-  UserCheck,
   X,
 } from 'lucide-vue-next'
 
@@ -44,12 +36,10 @@ const props = withDefaults(
   defineProps<{
     isOpen: boolean
     order: Order | null
-    fallbackPhone?: string | null
     initialShowSubtotals?: boolean
     onGeneratePdf?: (() => Promise<GeneratedOrderPdf | null>) | null
   }>(),
   {
-    fallbackPhone: null,
     initialShowSubtotals: undefined,
     onGeneratePdf: null,
   }
@@ -57,17 +47,10 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'shared', payload: { order: Order; phoneDigits: string; preset: WhatsAppMessagePreset }): void
+  (e: 'shared', payload: { order: Order; preset: WhatsAppMessagePreset }): void
 }>()
 
 const tallerStore = useTallerStore()
-
-// Estado del destinatario
-const countryCode = ref('503')
-const localPhoneInput = ref('')
-const savedSourcePhone = ref('')
-const phoneError = ref<string | null>(null)
-const isResolvingClientPhone = ref(false)
 let sessionCounter = 0
 
 // Opciones de mensaje
@@ -105,30 +88,8 @@ const isPdfBusy = computed(
   () => isUploadingPdf.value || isDownloadingPdf.value || isNativeSharingPdf.value || isComboSending.value
 )
 
-const resolvedPhoneDigits = computed(() =>
-  resolveWaPhoneDigits(countryCode.value, localPhoneInput.value)
-)
-
-const hasPhoneInput = computed(() => localPhoneInput.value.trim().length > 0)
-
-const isPhoneValid = computed(() => {
-  if (!hasPhoneInput.value) return true
-  return isValidWaPhoneDigits(resolvedPhoneDigits.value)
-})
-
-const phonePreviewLabel = computed(() => {
-  if (!resolvedPhoneDigits.value) {
-    return 'Elegir contacto directamente en WhatsApp'
-  }
-  return formatWaPhonePreview(resolvedPhoneDigits.value)
-})
-
-const waUrl = computed(() =>
-  buildWaMeUrl(resolvedPhoneDigits.value, editableMessage.value)
-)
-
+const waUrl = computed(() => buildWaMeUrl('', editableMessage.value))
 const isUrlTooLong = computed(() => waUrl.value.length > WA_ME_SAFE_URL_LIMIT)
-
 const vehicleSummary = computed(() =>
   props.order ? formatVehicleEngineLabel(props.order) : ''
 )
@@ -153,15 +114,6 @@ const regenerateMessage = (force = false) => {
       pdfUrl: uploadedPdfUrl.value || undefined,
     }
   )
-}
-
-const applyRawPhone = (rawPhone?: string | null) => {
-  const clean = (rawPhone || '').trim()
-  savedSourcePhone.value = clean
-  const parsed = parsePhoneForWhatsApp(clean, '503')
-  countryCode.value = parsed.countryCode
-  localPhoneInput.value = parsed.localNumber
-  phoneError.value = null
 }
 
 const handleKeydown = (e: KeyboardEvent) => {
@@ -195,7 +147,6 @@ watch(
     pdfStatusMessage.value = null
     pdfError.value = null
     popupBlockedUrl.value = null
-    phoneError.value = null
     customNote.value = ''
     preset.value = 'detailed'
     includeItemPrices.value = true
@@ -209,34 +160,9 @@ watch(
     includeObservations.value = Boolean(props.order.observations?.trim())
     includeTallerContact.value = true
 
-    const initialPhone = props.order.customerPhone || props.fallbackPhone || ''
-    applyRawPhone(initialPhone)
-
     await tallerStore.loadTallerInfo()
     if (currentSession !== sessionCounter) return
     regenerateMessage(true)
-
-    // Si la orden no trae teléfono, buscarlo en el registro del cliente si existe vínculo
-    const lookupKey = props.order.customerId || props.order.customerCode
-    if (!initialPhone.trim() && lookupKey) {
-      isResolvingClientPhone.value = true
-      try {
-        const client = await clientesService.getClienteById(lookupKey)
-        if (
-          currentSession === sessionCounter &&
-          client?.telefono &&
-          !localPhoneInput.value.trim()
-        ) {
-          applyRawPhone(client.telefono)
-        }
-      } catch {
-        // Ignorar fallo de búsqueda silenciosa
-      } finally {
-        if (currentSession === sessionCounter) {
-          isResolvingClientPhone.value = false
-        }
-      }
-    }
   },
   { immediate: true }
 )
@@ -254,22 +180,13 @@ watch(
   ],
   () => {
     if (!props.isOpen || !props.order) return
-    if (includeBlockSubtotals.value !== undefined) {
-      // Si cambió el desglose de subtotales y no hay callback externo, invalidar caché del PDF
-      if (!props.onGeneratePdf) {
-        cachedPdf.value = null
-      }
+    if (!props.onGeneratePdf) {
+      cachedPdf.value = null
     }
     isManuallyEdited.value = false
     regenerateMessage(true)
   }
 )
-
-watch(localPhoneInput, () => {
-  if (phoneError.value && isPhoneValid.value) {
-    phoneError.value = null
-  }
-})
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
@@ -289,17 +206,6 @@ const handleManualTextInput = () => {
 const handleResetMessage = () => {
   isManuallyEdited.value = false
   regenerateMessage(true)
-}
-
-const clearPhoneForContactPicker = () => {
-  localPhoneInput.value = ''
-  phoneError.value = null
-}
-
-const restoreSavedPhone = () => {
-  if (savedSourcePhone.value) {
-    applyRawPhone(savedSourcePhone.value)
-  }
 }
 
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
@@ -336,16 +242,6 @@ const handleCopyMessage = async () => {
       copied.value = false
     }, 2500)
   }
-}
-
-const validateRecipientPhone = (): boolean => {
-  if (hasPhoneInput.value && !isPhoneValid.value) {
-    phoneError.value =
-      'Ingresa un número válido (mínimo 8 dígitos) o límpialo para elegir el contacto en WhatsApp.'
-    return false
-  }
-  phoneError.value = null
-  return true
 }
 
 /**
@@ -412,7 +308,7 @@ const handleAttachPdfLink = async (): Promise<boolean> => {
     }
 
     pdfError.value =
-      'El bucket "ordenes-pdf" aún no está habilitado en Supabase Storage. Usa "PDF + wa.me" para descargarlo y adjuntarlo, o aplica la migración SQL de Storage.'
+      'El bucket "ordenes-pdf" aún no está habilitado en Supabase Storage. Usa "Enviar con PDF + wa.me" para descargarlo y adjuntarlo.'
     return false
   } catch (err) {
     console.error('[WhatsAppShareModal] Error subiendo PDF para wa.me:', err)
@@ -448,13 +344,12 @@ const handleNativeSharePdf = async () => {
     pdfStatusMessage.value = 'Archivo PDF compartido mediante el menú del dispositivo.'
     emit('shared', {
       order: props.order,
-      phoneDigits: resolvedPhoneDigits.value,
       preset: preset.value,
     })
   } catch (err: any) {
     if (err?.name !== 'AbortError') {
       console.error('[WhatsAppShareModal] Error al compartir archivo PDF nativo:', err)
-      pdfError.value = 'Tu navegador no completó el envío directo del archivo. Usa "Descargar PDF + wa.me".'
+      pdfError.value = 'Tu navegador no completó el envío directo del archivo. Usa "Enviar con PDF + wa.me".'
     }
   } finally {
     isNativeSharingPdf.value = false
@@ -482,11 +377,10 @@ const handleDownloadOnlyPdf = async () => {
 /**
  * Flujo de 1 clic para enviar con PDF:
  * intenta subir el PDF para incluir su enlace en wa.me; si el bucket no está disponible,
- * descarga el PDF localmente y abre wa.me igualmente.
+ * descarga el PDF localmente y abre wa.me para elegir el chat.
  */
 const handleSendWithPdfAndWaMe = async () => {
   if (!props.order || isPdfBusy.value) return
-  if (!validateRecipientPhone()) return
   if (!editableMessage.value.trim()) return
 
   isComboSending.value = true
@@ -509,7 +403,6 @@ const handleSendWithPdfAndWaMe = async () => {
         await nextTick()
         pdfStatusMessage.value = 'PDF subido a la nube e incluido como enlace directo en wa.me.'
       } else {
-        // Fallback: descargar el PDF en el equipo para que pueda adjuntarlo directo en el chat abierto
         downloadPdfBlob(generated.blob, generated.filename)
         pdfDownloaded.value = true
         pdfStatusMessage.value =
@@ -525,7 +418,6 @@ const handleSendWithPdfAndWaMe = async () => {
 
     emit('shared', {
       order: props.order,
-      phoneDigits: resolvedPhoneDigits.value,
       preset: preset.value,
     })
   } catch (err) {
@@ -538,28 +430,24 @@ const handleSendWithPdfAndWaMe = async () => {
 
 const handleOpenWhatsApp = () => {
   if (!props.order) return
-  if (!validateRecipientPhone()) return
   if (!editableMessage.value.trim()) return
 
   popupBlockedUrl.value = null
   window.open(waUrl.value, '_blank', 'noopener,noreferrer')
   emit('shared', {
     order: props.order,
-    phoneDigits: resolvedPhoneDigits.value,
     preset: preset.value,
   })
 }
 
 const handleCopyAndOpenEmptyChat = async () => {
   if (!props.order) return
-  if (!validateRecipientPhone()) return
 
   await handleCopyMessage()
-  const emptyChatUrl = buildWaMeUrl(resolvedPhoneDigits.value, '')
+  const emptyChatUrl = buildWaMeUrl('', '')
   window.open(emptyChatUrl, '_blank', 'noopener,noreferrer')
   emit('shared', {
     order: props.order,
-    phoneDigits: resolvedPhoneDigits.value,
     preset: preset.value,
   })
 }
@@ -618,93 +506,8 @@ const handleCopyAndOpenEmptyChat = async () => {
         <!-- Body -->
         <div class="p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50/70">
           <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-            <!-- Columna Izquierda: Destinatario, Plantilla y PDF -->
+            <!-- Columna Izquierda: Envío PDF y Plantilla -->
             <div class="md:col-span-5 space-y-3.5">
-              <!-- Destinatario -->
-              <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
-                <div class="flex items-center justify-between gap-2">
-                  <label class="text-[11px] font-bold uppercase tracking-wider text-[#0D1B3E] flex items-center gap-1.5">
-                    <Phone class="w-3.5 h-3.5 text-[#25D366]" />
-                    <span>Destinatario (wa.me)</span>
-                  </label>
-                  <span
-                    v-if="isResolvingClientPhone"
-                    class="text-[10px] font-medium text-slate-400"
-                  >
-                    Buscando tel...
-                  </span>
-                </div>
-
-                <div class="flex gap-1.5">
-                  <select
-                    v-model="countryCode"
-                    aria-label="Código de país"
-                    class="w-32 shrink-0 px-2 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-[#0D1B3E] focus:outline-none focus:bg-white focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 cursor-pointer"
-                  >
-                    <option
-                      v-for="opt in COUNTRY_DIAL_OPTIONS"
-                      :key="opt.code || 'custom'"
-                      :value="opt.code"
-                    >
-                      {{ opt.label }}
-                    </option>
-                  </select>
-
-                  <input
-                    v-model="localPhoneInput"
-                    type="tel"
-                    inputmode="tel"
-                    placeholder="Ej. 7831-2641"
-                    class="flex-1 min-w-0 px-3 py-2 text-xs font-mono font-semibold bg-slate-50 border rounded-xl text-[#0D1B3E] placeholder-slate-400 focus:outline-none focus:bg-white transition"
-                    :class="
-                      phoneError
-                        ? 'border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-200'
-                        : 'border-slate-200 focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20'
-                    "
-                  />
-                </div>
-
-                <p v-if="phoneError" class="text-[11px] font-semibold text-rose-600">
-                  {{ phoneError }}
-                </p>
-
-                <!-- Preview de enlace wa.me y acciones rápidas de teléfono -->
-                <div class="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
-                  <span
-                    class="inline-flex items-center gap-1 text-[10.5px] font-mono px-2 py-0.5 rounded-lg border"
-                    :class="
-                      resolvedPhoneDigits
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold'
-                        : 'bg-sky-50 text-[#004B97] border-sky-200 font-semibold'
-                    "
-                  >
-                    <UserCheck v-if="resolvedPhoneDigits" class="w-3 h-3 text-[#25D366]" />
-                    <span>{{ resolvedPhoneDigits ? `wa.me/${resolvedPhoneDigits}` : 'wa.me/ (Elegir chat)' }}</span>
-                  </span>
-
-                  <button
-                    v-if="hasPhoneInput"
-                    type="button"
-                    @click="clearPhoneForContactPicker"
-                    class="text-[10.5px] font-semibold text-slate-500 hover:text-[#004B97] underline cursor-pointer"
-                  >
-                    Elegir contacto en app
-                  </button>
-                  <button
-                    v-else-if="savedSourcePhone"
-                    type="button"
-                    @click="restoreSavedPhone"
-                    class="text-[10.5px] font-semibold text-[#004B97] hover:underline cursor-pointer"
-                  >
-                    Usar tel. cliente ({{ savedSourcePhone }})
-                  </button>
-                </div>
-
-                <p class="text-[10.5px] text-slate-500 leading-snug">
-                  {{ phonePreviewLabel }}. Al abrir <span class="font-mono font-semibold">wa.me</span> podrás elegir WhatsApp Business o tu app instalada.
-                </p>
-              </div>
-
               <!-- Envío con PDF -->
               <div class="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2.5 shadow-sm">
                 <div class="flex items-center justify-between gap-2">

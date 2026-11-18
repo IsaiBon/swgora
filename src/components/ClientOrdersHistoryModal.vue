@@ -340,7 +340,6 @@ const formatCurrency = (val: number) => {
     <WhatsAppShareModal
       :is-open="whatsappModalOpen"
       :order="orderToShareWhatsApp"
-      :fallback-phone="client?.telefono"
       @close="whatsappModalOpen = false"
     />
   </div>
