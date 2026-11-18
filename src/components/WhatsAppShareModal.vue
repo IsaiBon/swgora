@@ -289,19 +289,6 @@ const handleNativeSharePdf = async () => {
             </p>
           </div>
         </div>
-
-        <!-- Footer -->
-        <div
-          class="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-end gap-2 shrink-0"
-        >
-          <button
-            type="button"
-            @click="emit('close')"
-            class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
-          >
-            Cancelar
-          </button>
-        </div>
       </div>
 
       <!-- Contenedor temporal oculto cuando se solicita PDF desde fuera de la vista previa -->
