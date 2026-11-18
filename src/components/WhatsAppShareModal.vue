@@ -22,7 +22,6 @@ import {
   AlertTriangle,
   Check,
   CloudUpload,
-  Download,
   ExternalLink,
   FileText,
   Link2,
@@ -59,10 +58,8 @@ const generatedMessage = ref('')
 const cachedPdf = ref<GeneratedOrderPdf | null>(null)
 const uploadedPdfUrl = ref('')
 const isUploadingPdf = ref(false)
-const isDownloadingPdf = ref(false)
 const isNativeSharingPdf = ref(false)
 const isComboSending = ref(false)
-const pdfDownloaded = ref(false)
 const pdfStatusMessage = ref<string | null>(null)
 const pdfError = ref<string | null>(null)
 const popupBlockedUrl = ref<string | null>(null)
@@ -72,7 +69,7 @@ const offscreenContainerRef = ref<HTMLElement | null>(null)
 const supportsNativePdfShare = computed(() => canNativeSharePdfFiles())
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 const isPdfBusy = computed(
-  () => isUploadingPdf.value || isDownloadingPdf.value || isNativeSharingPdf.value || isComboSending.value
+  () => isUploadingPdf.value || isNativeSharingPdf.value || isComboSending.value
 )
 
 const effectiveShowSubtotals = computed(() => {
@@ -132,7 +129,6 @@ watch(
     const currentSession = ++sessionCounter
     cachedPdf.value = null
     uploadedPdfUrl.value = ''
-    pdfDownloaded.value = false
     pdfStatusMessage.value = null
     pdfError.value = null
     popupBlockedUrl.value = null
@@ -292,24 +288,6 @@ const handleNativeSharePdf = async () => {
   }
 }
 
-const handleDownloadOnlyPdf = async () => {
-  if (!props.order || isPdfBusy.value) return
-  isDownloadingPdf.value = true
-  pdfError.value = null
-
-  try {
-    const generated = await obtainOrderPdfFile()
-    downloadPdfBlob(generated.blob, generated.filename)
-    pdfDownloaded.value = true
-    pdfStatusMessage.value = 'PDF descargado. Arrástralo o adjúntalo dentro del chat de WhatsApp.'
-  } catch (err) {
-    console.error('[WhatsAppShareModal] Error descargando PDF:', err)
-    pdfError.value = 'No se pudo generar el PDF. Inténtalo desde la vista previa.'
-  } finally {
-    isDownloadingPdf.value = false
-  }
-}
-
 /**
  * Flujo de 1 clic para enviar con PDF:
  * intenta subir el PDF para incluir su enlace en wa.me; si el bucket no está disponible,
@@ -340,7 +318,6 @@ const handleSendWithPdfAndWaMe = async () => {
         pdfStatusMessage.value = 'PDF subido a la nube e incluido como enlace directo en wa.me.'
       } else {
         downloadPdfBlob(generated.blob, generated.filename)
-        pdfDownloaded.value = true
         pdfStatusMessage.value =
           'PDF descargado en tu equipo. Arrástralo al chat de WhatsApp que se abrió.'
       }
@@ -458,7 +435,7 @@ const handleCopyAndOpenEmptyChat = async () => {
             </div>
 
             <p class="text-xs text-slate-500 leading-relaxed">
-              Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ', enviar el archivo PDF directo desde tu dispositivo' : '' }} o descargarlo al instante.
+              Por seguridad, <span class="font-mono font-semibold">wa.me</span> solo envía texto. Puedes <strong>subir el PDF para incluir su enlace directo en wa.me</strong>{{ supportsNativePdfShare ? ' o enviar el archivo PDF directo desde tu dispositivo' : '' }}.
             </p>
 
             <!-- Estado si ya hay enlace de PDF en el mensaje -->
@@ -489,7 +466,11 @@ const handleCopyAndOpenEmptyChat = async () => {
               </a>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div
+              v-if="!uploadedPdfUrl || supportsNativePdfShare"
+              class="grid grid-cols-1 gap-2"
+              :class="{ 'sm:grid-cols-2': !uploadedPdfUrl && supportsNativePdfShare }"
+            >
               <!-- Subir PDF a la nube e insertar link en wa.me -->
               <button
                 v-if="!uploadedPdfUrl"
@@ -512,32 +493,6 @@ const handleCopyAndOpenEmptyChat = async () => {
               >
                 <Share2 class="w-3.5 h-3.5" :class="{ 'animate-pulse': isNativeSharingPdf }" />
                 <span>{{ isNativeSharingPdf ? 'Preparando archivo...' : 'Enviar archivo PDF directo (App)' }}</span>
-              </button>
-
-              <!-- Descarga rápida local -->
-              <button
-                type="button"
-                @click="handleDownloadOnlyPdf"
-                :disabled="isPdfBusy"
-                class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer disabled:opacity-50"
-                :class="[
-                  pdfDownloaded
-                    ? 'bg-cyan-50 text-[#038391] border-cyan-300'
-                    : 'bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-[#004B97] border-slate-200 hover:border-blue-300',
-                  uploadedPdfUrl && !supportsNativePdfShare ? 'sm:col-span-2' : ''
-                ]"
-              >
-                <Check v-if="pdfDownloaded && !isDownloadingPdf" class="w-3.5 h-3.5" />
-                <Download v-else class="w-3.5 h-3.5" :class="{ 'animate-bounce': isDownloadingPdf }" />
-                <span>
-                  {{
-                    isDownloadingPdf
-                      ? 'Generando PDF...'
-                      : pdfDownloaded
-                        ? 'PDF descargado ✓'
-                        : `Solo descargar ${isCotizacion ? 'Cotización' : 'Orden'} PDF`
-                  }}
-                </span>
               </button>
             </div>
 
