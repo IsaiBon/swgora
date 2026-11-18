@@ -22,7 +22,6 @@ import {
   AlertTriangle,
   Check,
   CloudUpload,
-  Copy,
   Download,
   ExternalLink,
   FileText,
@@ -55,8 +54,6 @@ let sessionCounter = 0
 
 // Mensaje automático para WhatsApp
 const generatedMessage = ref('')
-const copied = ref(false)
-let copyTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Estado de PDF (generación en memoria, subida para enlace en wa.me y envío directo)
 const cachedPdf = ref<GeneratedOrderPdf | null>(null)
@@ -133,7 +130,6 @@ watch(
     if (!open || !props.order) return
 
     const currentSession = ++sessionCounter
-    copied.value = false
     cachedPdf.value = null
     uploadedPdfUrl.value = ''
     pdfDownloaded.value = false
@@ -157,7 +153,6 @@ onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleKeydown, true)
   }
-  if (copyTimeout) clearTimeout(copyTimeout)
 })
 
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
@@ -182,17 +177,6 @@ const copyTextToClipboard = async (text: string): Promise<boolean> => {
     return ok
   } catch {
     return false
-  }
-}
-
-const handleCopyMessage = async () => {
-  const ok = await copyTextToClipboard(generatedMessage.value)
-  if (ok) {
-    copied.value = true
-    if (copyTimeout) clearTimeout(copyTimeout)
-    copyTimeout = setTimeout(() => {
-      copied.value = false
-    }, 2500)
   }
 }
 
@@ -395,7 +379,7 @@ const handleOpenWhatsApp = () => {
 const handleCopyAndOpenEmptyChat = async () => {
   if (!props.order) return
 
-  await handleCopyMessage()
+  await copyTextToClipboard(generatedMessage.value)
   const emptyChatUrl = buildWaMeUrl('', '')
   window.open(emptyChatUrl, '_blank', 'noopener,noreferrer')
   emit('shared', {
@@ -608,54 +592,37 @@ const handleCopyAndOpenEmptyChat = async () => {
 
         <!-- Footer -->
         <div
-          class="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0"
+          class="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-end gap-2 shrink-0"
         >
           <button
             type="button"
-            @click="handleCopyMessage"
-            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition cursor-pointer active:scale-[0.98]"
-            :class="
-              copied
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-            "
+            @click="emit('close')"
+            class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
           >
-            <Check v-if="copied" class="w-3.5 h-3.5" />
-            <Copy v-else class="w-3.5 h-3.5" />
-            <span>{{ copied ? '¡Mensaje copiado!' : 'Copiar mensaje' }}</span>
+            Cancelar
           </button>
 
-          <div class="flex flex-wrap items-center gap-2 ml-auto">
-            <button
-              type="button"
-              @click="emit('close')"
-              class="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold transition cursor-pointer"
-            >
-              Cancelar
-            </button>
+          <button
+            type="button"
+            @click="handleSendWithPdfAndWaMe"
+            :disabled="isPdfBusy || !generatedMessage.trim()"
+            class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
+            title="Genera el PDF (lo enlaza en la nube o lo descarga) y abre wa.me en un clic"
+          >
+            <FileText class="w-3.5 h-3.5 text-[#BFEBF2]" :class="{ 'animate-pulse': isComboSending }" />
+            <span>{{ isComboSending ? 'Preparando PDF...' : 'Enviar con PDF + wa.me' }}</span>
+          </button>
 
-            <button
-              type="button"
-              @click="handleSendWithPdfAndWaMe"
-              :disabled="isPdfBusy || !generatedMessage.trim()"
-              class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#004B97] hover:bg-[#0D1B3E] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50 cursor-pointer"
-              title="Genera el PDF (lo enlaza en la nube o lo descarga) y abre wa.me en un clic"
-            >
-              <FileText class="w-3.5 h-3.5 text-[#BFEBF2]" :class="{ 'animate-pulse': isComboSending }" />
-              <span>{{ isComboSending ? 'Preparando PDF...' : 'Enviar con PDF + wa.me' }}</span>
-            </button>
-
-            <button
-              type="button"
-              @click="handleOpenWhatsApp"
-              :disabled="!generatedMessage.trim()"
-              class="inline-flex items-center gap-2 px-4 py-2 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
-            >
-              <WhatsAppIcon class="w-4 h-4" />
-              <span>Abrir en WhatsApp (wa.me)</span>
-              <ExternalLink class="w-3.5 h-3.5 opacity-85" />
-            </button>
-          </div>
+          <button
+            type="button"
+            @click="handleOpenWhatsApp"
+            :disabled="!generatedMessage.trim()"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-[#25D366] hover:bg-[#1EBE5D] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
+          >
+            <WhatsAppIcon class="w-4 h-4" />
+            <span>Abrir en WhatsApp (wa.me)</span>
+            <ExternalLink class="w-3.5 h-3.5 opacity-85" />
+          </button>
         </div>
       </div>
 
