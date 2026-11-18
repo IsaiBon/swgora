@@ -704,9 +704,11 @@ const getDefaultRowPosition = (idx: number, totalRows: number, cfg?: TablaConfig
   if (isLast && conf.etiqueta_ultima_fila && conf.etiqueta_ultima_fila.trim()) {
     return conf.etiqueta_ultima_fila.trim()
   }
-  const tplLabel = Array.isArray(conf.subfilas) ? conf.subfilas[idx]?.trim() : ''
-  const isOilTemplateLabel = tplLabel.toLowerCase().includes('aceite') ||
-    (conf.etiqueta_ultima_fila ? tplLabel.toLowerCase() === conf.etiqueta_ultima_fila.trim().toLowerCase() : false)
+  const tplLabel = (Array.isArray(conf.subfilas) ? conf.subfilas[idx]?.trim() : '') || ''
+  const isOilTemplateLabel = tplLabel
+    ? (tplLabel.toLowerCase().includes('aceite') ||
+      (conf.etiqueta_ultima_fila ? tplLabel.toLowerCase() === conf.etiqueta_ultima_fila.trim().toLowerCase() : false))
+    : false
   if (tplLabel && (isLast || !isOilTemplateLabel)) {
     return tplLabel
   }
@@ -1077,7 +1079,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   partNombre.value = part.nombre || ''
   const spec = (part.especificaciones_tecnicas as any) || {}
   const dims = (part.dimensiones as any) || {}
-  partMarca.value = spec.marca || spec.fabricantes?.[0] || dims.marca || (part.motor?.fabricante?.nombre) || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : '') || ''
+  partMarca.value = spec.marca || spec.fabricantes?.[0] || spec.marcas_vehiculo?.[0] || dims.marca || dims.marcas_compatibles?.[0] || (part.motor?.fabricante?.nombre) || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : '') || ''
   const rawModelsList: string[] = []
   const pushModelTokens = (val: unknown) => {
     if (Array.isArray(val)) {
@@ -1114,7 +1116,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     const cleanVeh = brandUp && rawVeh.startsWith(`${brandUp} `)
       ? rawVeh.slice(brandUp.length).trim()
       : rawVeh
-    pushModelTokens(cleanVeh || part.motor?.modelo?.nombre || '')
+    pushModelTokens(cleanVeh || spec.vehiculos || dims.vehiculos || part.motor?.modelo?.nombre || '')
   }
   const uniquePartModels = Array.from(new Set(rawModelsList))
   partModelo.value = uniquePartModels[0] || ''
@@ -1164,15 +1166,21 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   const catClean = (part.categoria || '').toLowerCase().trim()
   const nameClean = (part.nombre || '').toLowerCase().trim()
   const oemClean = (part.codigo_oem || '').toLowerCase().trim()
+  const specGroupCode = String(spec.grupo_codigo || dims.grupo_codigo || '').toLowerCase().trim()
 
-  // 1. Coincidencia exacta por código o categoría del grupo
-  let matchedGroup = catalogStore.grupos.find(g => 
-    g.codigo.toLowerCase() === catClean ||
-    g.categoria.toLowerCase() === catClean
-  )
+  // 1. Coincidencia exacta por grupo_codigo explícito o por código/categoría/nombre del grupo
+  let matchedGroup =
+    (specGroupCode ? catalogStore.grupos.find(g => g.codigo.toLowerCase() === specGroupCode || g.id.toLowerCase() === specGroupCode) : undefined) ||
+    (catClean
+      ? catalogStore.grupos.find(g =>
+          g.codigo.toLowerCase() === catClean ||
+          g.categoria.toLowerCase() === catClean ||
+          g.nombre.toLowerCase() === catClean
+        )
+      : undefined)
 
   // 2. Coincidencia por subcadena de categoría o código
-  if (!matchedGroup) {
+  if (!matchedGroup && catClean) {
     matchedGroup = catalogStore.grupos.find(g => {
       const gCode = g.codigo.toLowerCase()
       const gCat = g.categoria.toLowerCase()
@@ -1356,6 +1364,10 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   const partSubfilas = (part.dimensiones as any)?.subfilas
   const padres = matchedGroup?.tabla_config?.subfila_padres || []
   const tipos = matchedGroup?.tabla_config?.subfila_tipos || []
+  const effectiveGroupParams = matchedGroup?.parametros
+    ? sanitizeGroupParams(matchedGroup.parametros)
+    : (activeGroup.value?.parametros || [])
+
   const hydrateSubfilaMedidas = (rawMedidas: Record<string, any>): Record<string, any> => {
     const out: Record<string, any> = { ...rawMedidas }
     if (out.tipo_diseno !== undefined) {
@@ -1363,7 +1375,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
         ? out.tipo_diseno.map((x: unknown) => normalizeLegacyRingDesign([x]))
         : normalizeLegacyRingDesign([out.tipo_diseno])
     }
-    for (const p of (matchedGroup?.parametros || [])) {
+    for (const p of effectiveGroupParams) {
       if (out[p.clave] === undefined || out[p.clave] === null || out[p.clave] === '') {
         const resolved = resolveSubfilaColumnValue(out, p)
         if (resolved !== undefined) {
@@ -1373,6 +1385,11 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     }
     return out
   }
+
+  const isRingsMatchedGroup = Boolean(
+    matchedGroup &&
+    (matchedGroup.codigo === 'anillos_motor' || (matchedGroup.categoria || '').toLowerCase().includes('anillo'))
+  )
 
   if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
     subfilasRows.value = partSubfilas.map((sf: any, idx: number) => {
@@ -1389,7 +1406,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     })
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
-  } else if (matchedGroup?.tipo_vista === 'tabla' && ringRows.value.length > 0) {
+  } else if (matchedGroup?.tipo_vista === 'tabla' && (ringItems.length > 0 || isRingsMatchedGroup) && ringRows.value.length > 0) {
     const dFallback = loadedParams.diametro_cilindro_mm ?? part.diametro_cilindro_mm ?? null
     subfilasRows.value = ringRows.value.map((r, idx) => {
       const perfilClean = normalizeLegacyRingDesign(
@@ -1414,12 +1431,20 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     })
     subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
     subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
+  } else if (matchedGroup?.tipo_vista === 'tabla') {
+    initSubfilasForGroup(matchedGroup)
+    const firstNormal = subfilasRows.value.find(r => !r.es_fila_central)
+    if (firstNormal) {
+      firstNormal.medidas = hydrateSubfilaMedidas(loadedParams)
+    }
+    subfilasMarcaBanner.value = (part.dimensiones as any)?.marca_banner || ''
+    subfilasAplicacionBanner.value = (part.dimensiones as any)?.aplicacion_banner || ''
   }
 
   // Asegurar que columnas marcadas como "compartido_filas" muestren el primer valor válido en todas las filas normales
-  if (matchedGroup?.parametros && subfilasRows.value.length > 0) {
+  if (effectiveGroupParams.length > 0 && subfilasRows.value.length > 0) {
     const normalRows = subfilasRows.value.filter(r => !r.es_fila_central)
-    for (const p of matchedGroup.parametros) {
+    for (const p of effectiveGroupParams) {
       if (!p.compartido_filas) continue
       const firstValidRow = normalRows.find(
         row => row.medidas[p.clave] !== undefined && row.medidas[p.clave] !== null && row.medidas[p.clave] !== ''
@@ -1433,14 +1458,19 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     }
   }
 
-  // Si algún parámetro del grupo activo tiene clave con prefijo pero existía un valor bajo clave simple previa:
-  if (activeGroup.value?.parametros) {
-    for (const p of activeGroup.value.parametros) {
+  // Si algún parámetro del grupo activo tiene clave con prefijo o alias previo, resolverlo desde loadedParams:
+  if (effectiveGroupParams.length > 0) {
+    for (const p of effectiveGroupParams) {
       if (loadedParams[p.clave] === undefined) {
-        const rawSlug = p.etiqueta.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-        const rawWithUnit = p.unidad === 'mm' ? (rawSlug.endsWith('_mm') ? rawSlug : `${rawSlug}_mm`) : rawSlug
-        if (loadedParams[rawWithUnit] !== undefined) {
-          loadedParams[p.clave] = loadedParams[rawWithUnit]
+        const resolved = resolveSubfilaColumnValue(loadedParams, p)
+        if (resolved !== undefined) {
+          loadedParams[p.clave] = resolved
+        } else {
+          const rawSlug = p.etiqueta.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+          const rawWithUnit = p.unidad === 'mm' ? (rawSlug.endsWith('_mm') ? rawSlug : `${rawSlug}_mm`) : rawSlug
+          if (loadedParams[rawWithUnit] !== undefined) {
+            loadedParams[p.clave] = loadedParams[rawWithUnit]
+          }
         }
       }
     }
