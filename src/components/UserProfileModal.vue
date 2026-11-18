@@ -236,12 +236,12 @@ const handleSavePassword = async () => {
         <!-- Cabecera corporativa -->
         <div class="bg-gradient-to-r from-[#0D1B3E] via-[#004B97] to-[#0284C7] px-6 py-5 text-white flex items-start justify-between gap-3">
           <div class="flex items-center gap-3.5 min-w-0">
-            <div class="w-12 h-12 rounded-2xl bg-white/15 border border-white/25 overflow-hidden flex items-center justify-center shrink-0">
+            <div class="w-12 h-12 min-w-[48px] min-h-[48px] max-w-[48px] max-h-[48px] aspect-square rounded-2xl bg-white/15 border border-white/25 overflow-hidden flex items-center justify-center shrink-0">
               <img
                 v-if="authStore.user.avatar"
                 :src="authStore.user.avatar"
                 :alt="authStore.user.name"
-                class="w-full h-full object-cover"
+                class="w-full h-full max-w-full max-h-full object-cover object-center block"
               />
               <span v-else class="text-sm font-black text-[#BFEBF2]">{{ userInitials }}</span>
             </div>
@@ -275,19 +275,20 @@ const handleSavePassword = async () => {
               class="hidden"
               @change="handleAvatarFileSelected"
             />
-            <div class="flex items-center gap-3.5">
+            <div class="flex items-center gap-3.5 min-w-0 flex-1">
               <div class="relative shrink-0">
-                <div class="w-18 h-18 rounded-2xl overflow-hidden border-2 border-[#04C4D9]/60 bg-gradient-to-br from-[#0D1B3E] to-[#004B97] flex items-center justify-center text-white font-black shadow-sm">
+                <div class="w-16 h-16 sm:w-[72px] sm:h-[72px] min-w-[64px] min-h-[64px] max-w-[72px] max-h-[72px] aspect-square rounded-2xl overflow-hidden border-2 border-[#04C4D9]/60 bg-gradient-to-br from-[#0D1B3E] to-[#004B97] flex items-center justify-center text-white font-black shadow-sm shrink-0">
                   <img
                     v-if="authStore.user.avatar"
                     :src="authStore.user.avatar"
                     :alt="authStore.user.name"
-                    class="w-full h-full object-cover"
+                    class="w-full h-full max-w-full max-h-full object-cover object-center block"
+                    style="width: 100%; height: 100%; object-fit: cover; object-position: center;"
                   />
                   <span v-else>{{ userInitials }}</span>
                 </div>
               </div>
-              <div>
+              <div class="min-w-0">
                 <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700">
                   Foto de perfil
                 </h3>

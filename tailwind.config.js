@@ -6,6 +6,9 @@ export default {
   ],
   theme: {
     extend: {
+      spacing: {
+        18: '4.5rem',
+      },
       colors: {
         brand: {
           cyan: '#05C7F2',

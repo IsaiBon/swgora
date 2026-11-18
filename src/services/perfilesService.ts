@@ -522,6 +522,85 @@ function isMissingTelefonoColumnError(err: unknown): boolean {
   ) || msg.includes("column 'telefono'") || msg.includes('column "telefono"') || msg.includes('perfiles.telefono')
 }
 
+/**
+ * Normaliza un archivo de imagen a un recorte cuadrado centrado 1:1 (máx. targetMaxSize px) en WebP.
+ */
+async function normalizeAvatarSquareImage(
+  file: File,
+  targetMaxSize = 512,
+  quality = 0.86
+): Promise<File> {
+  if (
+    typeof document === 'undefined' ||
+    typeof Image === 'undefined' ||
+    file.type === 'image/svg+xml' ||
+    file.type === 'image/gif'
+  ) {
+    return file
+  }
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const img = new Image()
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('No se pudo decodificar la imagen del avatar'))
+    }
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const srcWidth = img.naturalWidth || img.width
+      const srcHeight = img.naturalHeight || img.height
+      if (!srcWidth || !srcHeight) {
+        resolve(file)
+        return
+      }
+
+      const side = Math.min(srcWidth, srcHeight)
+      const sx = Math.floor((srcWidth - side) / 2)
+      const sy = Math.floor((srcHeight - side) / 2)
+      const outSide = Math.max(1, Math.min(side, targetMaxSize))
+
+      const canvas = document.createElement('canvas')
+      canvas.width = outSide
+      canvas.height = outSide
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(file)
+        return
+      }
+
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, outSide, outSide)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file)
+            return
+          }
+          const mime = blob.type || 'image/webp'
+          const ext = mime === 'image/webp' ? 'webp' : mime === 'image/jpeg' ? 'jpg' : 'png'
+          const baseName = file.name.replace(/\.[^.]+$/, '') || 'avatar'
+          resolve(
+            new File([blob], `${baseName}.${ext}`, {
+              type: mime,
+              lastModified: Date.now(),
+            })
+          )
+        },
+        'image/webp',
+        quality
+      )
+    }
+
+    img.src = objectUrl
+  })
+}
+
 export const perfilesService = {
   getCachedPerfiles(): Perfil[] {
     return readPerfilesCache()
@@ -858,14 +937,18 @@ export const perfilesService = {
   async uploadAvatar(file: File, userId: string): Promise<string> {
     let fileToUpload: File = file
     try {
-      const compressed = await compressImage(file, {
-        maxWidth: 512,
-        maxHeight: 512,
-        quality: 0.84,
-      })
-      fileToUpload = compressed.file
+      fileToUpload = await normalizeAvatarSquareImage(file, 512, 0.86)
     } catch {
-      fileToUpload = file
+      try {
+        const compressed = await compressImage(file, {
+          maxWidth: 512,
+          maxHeight: 512,
+          quality: 0.86,
+        })
+        fileToUpload = compressed.file
+      } catch {
+        fileToUpload = file
+      }
     }
 
     const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48)

@@ -118,8 +118,8 @@ export async function compressImage(
               })
             }
 
-            // Si la compresión resultó más pesada que el original, usar el original
-            if (blob.size >= originalSize && file.type.startsWith('image/')) {
+            // Si la compresión resultó más pesada que el original y no hubo cambio de dimensiones, usar el original
+            if (blob.size >= originalSize && file.type.startsWith('image/') && width === img.width && height === img.height) {
               const previewUrl = URL.createObjectURL(file)
               return resolve({
                 file,
