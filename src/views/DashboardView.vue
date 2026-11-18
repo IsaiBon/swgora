@@ -183,11 +183,11 @@ onMounted(async () => {
     }
   }, 60000)
 
-  // Inicializar fechas para filtro personalizado (últimos 30 días)
+  // Inicializar fechas para filtro personalizado (últimos 30 días en hora local)
   const today = new Date()
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000)
-  customEndDate.value = today.toISOString().split('T')[0]
-  customStartDate.value = thirtyDaysAgo.toISOString().split('T')[0]
+  const thirtyDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30)
+  customEndDate.value = toLocalYmd(today)
+  customStartDate.value = toLocalYmd(thirtyDaysAgo)
 
   await loadDashboardData()
 })
@@ -202,6 +202,49 @@ onUnmounted(() => {
 })
 
 // === FILTRADO TEMPORAL Y DE CUENTA REACTIVO ===
+const toLocalYmd = (d: Date): string => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const matchesAccountAndRuta = (order: Order): boolean => {
+  if (selectedClient.value) {
+    const c = selectedClient.value
+    const targetId = (c.id || '').toLowerCase()
+    const targetCode = (c.codigo || '').toLowerCase()
+    const targetName = (c.nombre || '').toLowerCase()
+    const targetTaller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+
+    const matchesClient =
+      (order.customerId && order.customerId.toLowerCase() === targetId) ||
+      (order.customerCode && order.customerCode.toLowerCase() === targetCode) ||
+      (order.workshopCode && order.workshopCode.toLowerCase() === targetCode) ||
+      (targetName && order.customer && order.customer.toLowerCase().includes(targetName)) ||
+      (targetTaller && order.customer && order.customer.toLowerCase().includes(targetTaller)) ||
+      (targetTaller && order.workshop && order.workshop.toLowerCase().includes(targetTaller)) ||
+      (targetName && order.workshop && order.workshop.toLowerCase().includes(targetName))
+
+    if (!matchesClient) return false
+  }
+
+  if (selectedRutaFilter.value !== 'ALL') {
+    if (selectedRutaFilter.value === 'UNASSIGNED') {
+      if (order.rutaId || order.rutaNombre) return false
+    } else {
+      const targetRuta = rutas.value.find(r => r.id === selectedRutaFilter.value)
+      const matchesRuta =
+        order.rutaId === selectedRutaFilter.value ||
+        (targetRuta && order.rutaCodigo?.toLowerCase() === targetRuta.codigo.toLowerCase()) ||
+        (targetRuta && order.rutaNombre?.toLowerCase() === targetRuta.nombre.toLowerCase())
+      if (!matchesRuta) return false
+    }
+  }
+
+  return true
+}
+
 const parseOrderDate = (order: Order): Date => {
   if (order.date) {
     const cleanDate = order.date.includes('T') ? order.date : `${order.date}T12:00:00`
@@ -241,6 +284,7 @@ const availableYears = computed<number[]>(() => {
 const orderCountByYear = computed<Record<number, number>>(() => {
   const counts: Record<number, number> = {}
   orders.value.forEach(order => {
+    if (!matchesAccountAndRuta(order)) return
     const y = parseOrderDate(order).getFullYear()
     counts[y] = (counts[y] || 0) + 1
   })
@@ -250,6 +294,7 @@ const orderCountByYear = computed<Record<number, number>>(() => {
 const orderCountByMonthInSelectedYear = computed<Record<number, number>>(() => {
   const counts: Record<number, number> = {}
   orders.value.forEach(order => {
+    if (!matchesAccountAndRuta(order)) return
     const d = parseOrderDate(order)
     if (d.getFullYear() === selectedYear.value) {
       const m = d.getMonth()
@@ -347,8 +392,8 @@ const filteredOrders = computed(() => {
     if (selectedPeriod.value === 'hoy') {
       matchesPeriod = orderDate >= todayStart && orderDate <= todayEnd
     } else if (selectedPeriod.value === 'semana') {
-      const oneWeekAgo = new Date(now.getTime() - 7 * 86400000)
-      matchesPeriod = orderDate >= oneWeekAgo && orderDate <= now
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0)
+      matchesPeriod = orderDate >= weekStart && orderDate <= todayEnd
     } else if (selectedPeriod.value === 'mes') {
       matchesPeriod =
         orderDate.getFullYear() === selectedYear.value &&
@@ -369,42 +414,7 @@ const filteredOrders = computed(() => {
     }
 
     if (!matchesPeriod) return false
-
-    // 2. Filtro de Cliente / Taller consultado en Supabase
-    if (selectedClient.value) {
-      const c = selectedClient.value
-      const targetId = (c.id || '').toLowerCase()
-      const targetCode = (c.codigo || '').toLowerCase()
-      const targetName = (c.nombre || '').toLowerCase()
-      const targetTaller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
-
-      const matchesClient = 
-        (order.customerId && order.customerId.toLowerCase() === targetId) ||
-        (order.customerCode && order.customerCode.toLowerCase() === targetCode) ||
-        (order.workshopCode && order.workshopCode.toLowerCase() === targetCode) ||
-        (targetName && order.customer && order.customer.toLowerCase().includes(targetName)) ||
-        (targetTaller && order.customer && order.customer.toLowerCase().includes(targetTaller)) ||
-        (targetTaller && order.workshop && order.workshop.toLowerCase().includes(targetTaller)) ||
-        (targetName && order.workshop && order.workshop.toLowerCase().includes(targetName))
-
-      if (!matchesClient) return false
-    }
-
-    // 3. Filtro por Ruta / Sucursal
-    if (selectedRutaFilter.value !== 'ALL') {
-      if (selectedRutaFilter.value === 'UNASSIGNED') {
-        if (order.rutaId || order.rutaNombre) return false
-      } else {
-        const targetRuta = rutas.value.find(r => r.id === selectedRutaFilter.value)
-        const matchesRuta =
-          order.rutaId === selectedRutaFilter.value ||
-          (targetRuta && order.rutaCodigo?.toLowerCase() === targetRuta.codigo.toLowerCase()) ||
-          (targetRuta && order.rutaNombre?.toLowerCase() === targetRuta.nombre.toLowerCase())
-        if (!matchesRuta) return false
-      }
-    }
-
-    return true
+    return matchesAccountAndRuta(order)
   })
 })
 
@@ -612,85 +622,453 @@ const componentStats = computed<ComponentStat[]>(() => {
   })
 })
 
-// === TENDENCIAS MENSUALES (CARGA DE TRABAJO ANUAL DINÁMICA) ===
-interface MonthTrend {
-  monthIndex: number
-  monthShort: string
-  monthFull: string
+// === ANALÍTICA DINÁMICA DE CARGA DE TRABAJO (SE ADAPTA A LOS FILTROS SUPERIORES) ===
+interface ChartBucket {
+  key: string
+  shortLabel: string
+  subLabel?: string
+  fullLabel: string
   orderCount: number
   revenue: number
   isCurrent: boolean
+  onClick?: () => void
 }
 
-const chartYear = computed(() =>
-  selectedPeriod.value === 'ano' || selectedPeriod.value === 'mes'
-    ? selectedYear.value
-    : currentYear.value
-)
+const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'] as const
 
-const monthlyTrends = computed<MonthTrend[]>(() => {
-  const curMonth = currentMonth.value
-  const curYear = currentYear.value
-  const targetYear = chartYear.value
+const chartAnalytics = computed(() => {
+  const now = nowTick.value
+  const period = selectedPeriod.value
+  const curY = currentYear.value
+  const curM = currentMonth.value
+  const activeOrders = filteredOrders.value.filter(o => o.status !== 'Cancelada')
 
-  // Base de 12 meses
-  const trends: MonthTrend[] = MONTH_SHORT_NAMES.map((m, idx) => ({
-    monthIndex: idx,
-    monthShort: m,
-    monthFull: MONTH_NAMES[idx] || m,
-    orderCount: 0,
-    revenue: 0,
-    isCurrent: idx === curMonth && targetYear === curYear
-  }))
+  const filterToDateRange = (start: Date, end: Date) => {
+    customStartDate.value = toLocalYmd(start)
+    customEndDate.value = toLocalYmd(end)
+    selectedPeriod.value = 'personalizado'
+  }
 
-  // Considerar todas las órdenes del año seleccionado (o actual) respetando cliente si hay filtro
-  orders.value.forEach(order => {
-    if (selectedClient.value) {
-      const c = selectedClient.value
-      const targetId = (c.id || '').toLowerCase()
-      const targetCode = (c.codigo || '').toLowerCase()
-      const targetName = (c.nombre || '').toLowerCase()
-      const targetTaller = (c.especificaciones_tecnicas?.taller || '').toLowerCase()
+  let title = ''
+  let subtitle = ''
+  let currentLegend = 'Actual'
+  let closedLegend = 'Otros períodos'
+  let summaryRevenueLabel = 'Facturación del período'
+  let avgLabel = 'Promedio por bloque activo'
+  let activeCountLabel = 'Bloques con actividad'
+  let topListTitle = 'Períodos de mayor facturación'
+  let emptyMessage = 'Sin órdenes activas en este período.'
+  let unitTotalLabel = 'Total período'
+  let backToYear: number | null = null
+  let backToMonth: { year: number; month: number; label: string } | null = null
+  const buckets: ChartBucket[] = []
 
-      const matchesClient = 
-        (order.customerId && order.customerId.toLowerCase() === targetId) ||
-        (order.customerCode && order.customerCode.toLowerCase() === targetCode) ||
-        (order.workshopCode && order.workshopCode.toLowerCase() === targetCode) ||
-        (targetName && order.customer && order.customer.toLowerCase().includes(targetName)) ||
-        (targetTaller && order.customer && order.customer.toLowerCase().includes(targetTaller)) ||
-        (targetTaller && order.workshop && order.workshop.toLowerCase().includes(targetTaller)) ||
-        (targetName && order.workshop && order.workshop.toLowerCase().includes(targetName))
+  if (period === 'mes') {
+    const targetYear = selectedYear.value
+    const targetMonth = selectedMonth.value
+    const monthName = MONTH_NAMES[targetMonth] || 'Mes'
+    const monthShort = MONTH_SHORT_NAMES[targetMonth] || 'Mes'
+    const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate()
+    const isThisMonth = targetYear === curY && targetMonth === curM
 
-      if (!matchesClient) return
+    const weekRanges: Array<{ start: number; end: number }> = [
+      { start: 1, end: 7 },
+      { start: 8, end: 14 },
+      { start: 15, end: 21 },
+      { start: 22, end: Math.min(28, daysInMonth) },
+    ]
+    if (daysInMonth > 28) {
+      weekRanges.push({ start: 29, end: daysInMonth })
     }
 
-    const orderDate = parseOrderDate(order)
-    if (orderDate.getFullYear() === targetYear && order.status !== 'Cancelada') {
-      const mIdx = orderDate.getMonth()
-      if (mIdx >= 0 && mIdx < 12) {
-        const entry = trends[mIdx]
-        if (entry) {
-          entry.orderCount++
-          entry.revenue += order.total || 0
+    weekRanges.forEach((wr, idx) => {
+      const startDt = new Date(targetYear, targetMonth, wr.start)
+      const endDt = new Date(targetYear, targetMonth, wr.end)
+      buckets.push({
+        key: `wk-${targetYear}-${targetMonth}-${idx + 1}`,
+        shortLabel: `Sem ${idx + 1}`,
+        subLabel: `${wr.start}–${wr.end}`,
+        fullLabel: `Semana ${idx + 1} (${wr.start}–${wr.end} ${monthShort})`,
+        orderCount: 0,
+        revenue: 0,
+        isCurrent: isThisMonth && now.getDate() >= wr.start && now.getDate() <= wr.end,
+        onClick: () => filterToDateRange(startDt, endDt),
+      })
+    })
+
+    activeOrders.forEach(order => {
+      const d = parseOrderDate(order)
+      if (d.getFullYear() === targetYear && d.getMonth() === targetMonth) {
+        const day = d.getDate()
+        const wkIdx = Math.min(Math.floor((day - 1) / 7), buckets.length - 1)
+        const target = buckets[wkIdx]
+        if (target) {
+          target.orderCount++
+          target.revenue += order.total || 0
         }
       }
+    })
+
+    title = `Rendimiento Semanal · ${monthName} ${targetYear}`
+    subtitle = 'Desglose por semanas del mes · Haz clic en una semana para ver sus días'
+    currentLegend = 'Semana en curso'
+    closedLegend = 'Otras semanas'
+    summaryRevenueLabel = `Facturación ${monthName}`
+    avgLabel = 'Promedio por semana activa'
+    activeCountLabel = 'Semanas con actividad'
+    topListTitle = `Semanas de mayor facturación (${monthName})`
+    emptyMessage = `Sin órdenes registradas en ${monthName} ${targetYear}.`
+    unitTotalLabel = `Total ${monthShort}`
+    backToYear = targetYear
+  } else if (period === 'semana') {
+    for (let offset = 6; offset >= 0; offset--) {
+      const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset)
+      const dayStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+      const isToday = offset === 0
+      buckets.push({
+        key: `day-${toLocalYmd(dt)}`,
+        shortLabel: WEEKDAY_SHORT[dt.getDay()] || 'Día',
+        subLabel: String(dt.getDate()),
+        fullLabel: `${WEEKDAY_SHORT[dt.getDay()]} ${dt.getDate()} ${MONTH_SHORT_NAMES[dt.getMonth()]}`,
+        orderCount: 0,
+        revenue: 0,
+        isCurrent: isToday,
+        onClick: () => filterToDateRange(dayStart, dayStart),
+      })
     }
-  })
 
-  return trends
-})
+    const indexByYmd = new Map(buckets.map((b, idx) => [b.key.replace('day-', ''), idx]))
+    activeOrders.forEach(order => {
+      const d = parseOrderDate(order)
+      const idx = indexByYmd.get(toLocalYmd(d))
+      if (idx !== undefined && buckets[idx]) {
+        buckets[idx].orderCount++
+        buckets[idx].revenue += order.total || 0
+      }
+    })
 
-const maxMonthlyOrders = computed(() => {
-  const max = Math.max(...monthlyTrends.value.map(m => m.orderCount))
-  return max > 0 ? max : 1
-})
+    title = 'Carga Diaria · Últimos 7 Días'
+    subtitle = 'Evolución diaria de la semana activa · Haz clic en un día para filtrarlo'
+    currentLegend = 'Hoy'
+    closedLegend = 'Días previos'
+    summaryRevenueLabel = 'Facturación últimos 7 días'
+    avgLabel = 'Promedio por día activo'
+    activeCountLabel = 'Días con actividad'
+    topListTitle = 'Días de mayor facturación'
+    emptyMessage = 'Sin órdenes registradas en los últimos 7 días.'
+    unitTotalLabel = 'Total 7 días'
+    backToMonth = { year: curY, month: curM, label: MONTH_NAMES[curM] || 'Mes actual' }
+  } else if (period === 'hoy') {
+    const shifts = [
+      { key: 'shift-0', shortLabel: 'Mañana', subLabel: '00–12h', fullLabel: 'Mañana (antes de 12:00)', match: (h: number) => h < 12 },
+      { key: 'shift-1', shortLabel: 'Mediodía', subLabel: '12–14h', fullLabel: 'Mediodía (12:00–14:00)', match: (h: number) => h >= 12 && h < 14 },
+      { key: 'shift-2', shortLabel: 'Tarde', subLabel: '14–18h', fullLabel: 'Tarde (14:00–18:00)', match: (h: number) => h >= 14 && h < 18 },
+      { key: 'shift-3', shortLabel: 'Noche', subLabel: '18–24h', fullLabel: 'Noche (18:00 en adelante)', match: (h: number) => h >= 18 },
+    ]
+    const curHour = now.getHours()
+    shifts.forEach(s => {
+      buckets.push({
+        key: s.key,
+        shortLabel: s.shortLabel,
+        subLabel: s.subLabel,
+        fullLabel: s.fullLabel,
+        orderCount: 0,
+        revenue: 0,
+        isCurrent: s.match(curHour),
+      })
+    })
 
-const peakWorkloadMonth = computed(() => {
-  let peak = monthlyTrends.value[0]
-  monthlyTrends.value.forEach(m => {
-    if (m.orderCount > peak.orderCount) peak = m
-  })
-  return peak.orderCount > 0 ? peak : null
+    const todayYmd = toLocalYmd(now)
+    activeOrders.forEach(order => {
+      let hour = parseOrderDate(order).getHours()
+      if (order.createdAt) {
+        const created = new Date(order.createdAt)
+        if (!isNaN(created.getTime()) && toLocalYmd(created) === todayYmd) {
+          hour = created.getHours()
+        }
+      }
+      const sIdx = shifts.findIndex(s => s.match(hour))
+      if (sIdx >= 0 && buckets[sIdx]) {
+        buckets[sIdx].orderCount++
+        buckets[sIdx].revenue += order.total || 0
+      }
+    })
+
+    const todayText = now.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+    title = `Actividad de Hoy · ${todayText}`
+    subtitle = 'Órdenes del día filtradas por horario de recepción'
+    currentLegend = 'Franja actual'
+    closedLegend = 'Otras franjas'
+    summaryRevenueLabel = 'Facturación de hoy'
+    avgLabel = 'Promedio por franja activa'
+    activeCountLabel = 'Franjas con actividad'
+    topListTitle = 'Franjas de mayor facturación hoy'
+    emptyMessage = 'Sin órdenes registradas hoy con los filtros actuales.'
+    unitTotalLabel = 'Total hoy'
+    backToMonth = { year: curY, month: curM, label: MONTH_NAMES[curM] || 'Mes actual' }
+  } else if (period === 'personalizado') {
+    const startDt = customStartDate.value
+      ? new Date(`${customStartDate.value}T00:00:00`)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30)
+    const endDt = customEndDate.value
+      ? new Date(`${customEndDate.value}T00:00:00`)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const minDt = startDt <= endDt ? startDt : endDt
+    const maxDt = startDt <= endDt ? endDt : startDt
+    const diffDays = Math.max(1, Math.round((maxDt.getTime() - minDt.getTime()) / 86400000) + 1)
+
+    if (diffDays <= 14) {
+      const todayYmd = toLocalYmd(now)
+      const cursor = new Date(minDt.getTime())
+      while (cursor <= maxDt) {
+        const ymd = toLocalYmd(cursor)
+        const dCopy = new Date(cursor.getTime())
+        buckets.push({
+          key: `rng-d-${ymd}`,
+          shortLabel: diffDays <= 7 ? (WEEKDAY_SHORT[cursor.getDay()] || String(cursor.getDate())) : String(cursor.getDate()),
+          subLabel: `${cursor.getDate()}/${cursor.getMonth() + 1}`,
+          fullLabel: `${WEEKDAY_SHORT[cursor.getDay()]} ${cursor.getDate()} ${MONTH_SHORT_NAMES[cursor.getMonth()]}`,
+          orderCount: 0,
+          revenue: 0,
+          isCurrent: ymd === todayYmd,
+          onClick: diffDays > 1 ? () => filterToDateRange(dCopy, dCopy) : undefined,
+        })
+        cursor.setDate(cursor.getDate() + 1)
+      }
+      const idxMap = new Map(buckets.map((b, i) => [b.key.replace('rng-d-', ''), i]))
+      activeOrders.forEach(order => {
+        const idx = idxMap.get(toLocalYmd(parseOrderDate(order)))
+        if (idx !== undefined && buckets[idx]) {
+          buckets[idx].orderCount++
+          buckets[idx].revenue += order.total || 0
+        }
+      })
+    } else if (diffDays <= 65) {
+      const cursor = new Date(minDt.getTime())
+      const ranges: Array<{ start: Date; end: Date; idx: number }> = []
+      let wIdx = 0
+      while (cursor <= maxDt) {
+        const wStart = new Date(cursor.getTime())
+        const wEnd = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 6)
+        const clampedEnd = wEnd <= maxDt ? wEnd : new Date(maxDt.getTime())
+        ranges.push({ start: wStart, end: clampedEnd, idx: wIdx })
+        const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        buckets.push({
+          key: `rng-w-${wIdx}`,
+          shortLabel: `Sem ${wIdx + 1}`,
+          subLabel: `${wStart.getDate()}/${wStart.getMonth() + 1}`,
+          fullLabel: `${wStart.getDate()} ${MONTH_SHORT_NAMES[wStart.getMonth()]} – ${clampedEnd.getDate()} ${MONTH_SHORT_NAMES[clampedEnd.getMonth()]}`,
+          orderCount: 0,
+          revenue: 0,
+          isCurrent: nowDay >= wStart && nowDay <= clampedEnd,
+          onClick: () => filterToDateRange(wStart, clampedEnd),
+        })
+        wIdx++
+        cursor.setDate(cursor.getDate() + 7)
+      }
+      activeOrders.forEach(order => {
+        const od = parseOrderDate(order)
+        const odDay = new Date(od.getFullYear(), od.getMonth(), od.getDate())
+        const found = ranges.find(r => odDay >= r.start && odDay <= r.end)
+        if (found && buckets[found.idx]) {
+          buckets[found.idx]!.orderCount++
+          buckets[found.idx]!.revenue += order.total || 0
+        }
+      })
+    } else {
+      const mCursor = new Date(minDt.getFullYear(), minDt.getMonth(), 1)
+      const mEnd = new Date(maxDt.getFullYear(), maxDt.getMonth(), 1)
+      while (mCursor <= mEnd) {
+        const yr = mCursor.getFullYear()
+        const mo = mCursor.getMonth()
+        buckets.push({
+          key: `rng-m-${yr}-${mo}`,
+          shortLabel: `${MONTH_SHORT_NAMES[mo]}`,
+          subLabel: String(yr).slice(-2),
+          fullLabel: `${MONTH_NAMES[mo]} ${yr}`,
+          orderCount: 0,
+          revenue: 0,
+          isCurrent: yr === curY && mo === curM,
+          onClick: () => {
+            selectedYear.value = yr
+            pickMonth(mo)
+          },
+        })
+        mCursor.setMonth(mCursor.getMonth() + 1)
+      }
+      const idxMap = new Map(buckets.map((b, i) => [b.key.replace('rng-m-', ''), i]))
+      activeOrders.forEach(order => {
+        const od = parseOrderDate(order)
+        const idx = idxMap.get(`${od.getFullYear()}-${od.getMonth()}`)
+        if (idx !== undefined && buckets[idx]) {
+          buckets[idx].orderCount++
+          buckets[idx].revenue += order.total || 0
+        }
+      })
+    }
+
+    title = `Rendimiento en Rango (${toLocalYmd(minDt)} a ${toLocalYmd(maxDt)})`
+    subtitle = `${diffDays} días filtrados · Haz clic en un bloque para acercar ese período`
+    currentLegend = 'Período actual'
+    closedLegend = 'Otros bloques'
+    summaryRevenueLabel = 'Facturación del rango'
+    avgLabel = 'Promedio por bloque activo'
+    activeCountLabel = 'Bloques con actividad'
+    topListTitle = 'Bloques de mayor facturación en el rango'
+    emptyMessage = 'Sin órdenes activas en el rango seleccionado.'
+    unitTotalLabel = 'Total rango'
+    if (minDt.getFullYear() === maxDt.getFullYear() && minDt.getMonth() === maxDt.getMonth()) {
+      const mo = minDt.getMonth()
+      backToMonth = { year: minDt.getFullYear(), month: mo, label: MONTH_NAMES[mo] || 'Mes' }
+    } else if (minDt.getFullYear() === maxDt.getFullYear()) {
+      backToYear = minDt.getFullYear()
+    }
+  } else if (period === 'todo') {
+    const yearsFound = Array.from(
+      new Set(activeOrders.map(o => parseOrderDate(o).getFullYear()))
+    ).sort((a, b) => a - b)
+
+    if (yearsFound.length > 1) {
+      yearsFound.forEach(yr => {
+        buckets.push({
+          key: `all-y-${yr}`,
+          shortLabel: String(yr),
+          fullLabel: `Año ${yr}`,
+          orderCount: 0,
+          revenue: 0,
+          isCurrent: yr === curY,
+          onClick: () => pickYear(yr),
+        })
+      })
+      const idxByY = new Map(yearsFound.map((y, i) => [y, i]))
+      activeOrders.forEach(order => {
+        const idx = idxByY.get(parseOrderDate(order).getFullYear())
+        if (idx !== undefined && buckets[idx]) {
+          buckets[idx].orderCount++
+          buckets[idx].revenue += order.total || 0
+        }
+      })
+
+      title = 'Historial Completo por Año'
+      subtitle = 'Comparativa anual acumulada · Haz clic en un año para ver sus 12 meses'
+      currentLegend = 'Año en curso'
+      closedLegend = 'Años previos'
+      summaryRevenueLabel = 'Facturación histórica'
+      avgLabel = 'Promedio por año activo'
+      activeCountLabel = 'Años con actividad'
+      topListTitle = 'Años de mayor facturación'
+      emptyMessage = 'Sin órdenes registradas.'
+      unitTotalLabel = 'Total histórico'
+    } else {
+      const singleYear = yearsFound[0] ?? selectedYear.value
+      MONTH_SHORT_NAMES.forEach((m, idx) => {
+        buckets.push({
+          key: `all-m-${singleYear}-${idx}`,
+          shortLabel: m,
+          fullLabel: `${MONTH_NAMES[idx] || m} ${singleYear}`,
+          orderCount: 0,
+          revenue: 0,
+          isCurrent: idx === curM && singleYear === curY,
+          onClick: () => {
+            selectedYear.value = singleYear
+            pickMonth(idx)
+          },
+        })
+      })
+      activeOrders.forEach(order => {
+        const od = parseOrderDate(order)
+        if (od.getFullYear() === singleYear && buckets[od.getMonth()]) {
+          buckets[od.getMonth()]!.orderCount++
+          buckets[od.getMonth()]!.revenue += order.total || 0
+        }
+      })
+
+      title = `Historial Completo · Meses (${singleYear})`
+      subtitle = 'Haz clic en cualquier mes para ver su desglose semanal'
+      currentLegend = 'Mes en curso'
+      closedLegend = 'Meses cerrados'
+      summaryRevenueLabel = 'Facturación histórica'
+      avgLabel = 'Promedio por mes activo'
+      activeCountLabel = 'Meses con actividad'
+      topListTitle = 'Meses de mayor facturación'
+      emptyMessage = 'Sin órdenes registradas.'
+      unitTotalLabel = 'Total histórico'
+    }
+  } else {
+    // period === 'ano'
+    const targetYear = selectedYear.value
+    MONTH_SHORT_NAMES.forEach((m, idx) => {
+      buckets.push({
+        key: `yr-m-${targetYear}-${idx}`,
+        shortLabel: m,
+        fullLabel: MONTH_NAMES[idx] || m,
+        orderCount: 0,
+        revenue: 0,
+        isCurrent: idx === curM && targetYear === curY,
+        onClick: () => {
+          selectedYear.value = targetYear
+          pickMonth(idx)
+        },
+      })
+    })
+    activeOrders.forEach(order => {
+      const od = parseOrderDate(order)
+      if (od.getFullYear() === targetYear && buckets[od.getMonth()]) {
+        buckets[od.getMonth()]!.orderCount++
+        buckets[od.getMonth()]!.revenue += order.total || 0
+      }
+    })
+
+    title = `Tendencias de Carga Mensual (${targetYear})`
+    subtitle = 'Haz clic en cualquier mes para ver su rendimiento por semana'
+    currentLegend = 'Mes en curso'
+    closedLegend = 'Meses cerrados'
+    summaryRevenueLabel = `Facturación ${targetYear}`
+    avgLabel = 'Promedio por mes activo'
+    activeCountLabel = 'Meses con actividad'
+    topListTitle = `Meses de mayor facturación en ${targetYear}`
+    emptyMessage = `Sin órdenes registradas en ${targetYear}.`
+    unitTotalLabel = `Total ${targetYear}`
+  }
+
+  const maxOrders = Math.max(1, ...buckets.map(b => b.orderCount))
+  const activeBuckets = buckets.filter(b => b.orderCount > 0)
+  const peakBucket: ChartBucket | null =
+    activeBuckets.length > 0
+      ? activeBuckets.reduce(
+          (best, cur) => (cur.orderCount > best.orderCount ? cur : best),
+          activeBuckets[0]!
+        )
+      : null
+  const totalOrders = buckets.reduce((s, b) => s + b.orderCount, 0)
+  const totalRevenue = buckets.reduce((s, b) => s + b.revenue, 0)
+  const topBuckets = [...activeBuckets]
+    .sort((a, b) => b.revenue - a.revenue || b.orderCount - a.orderCount)
+    .slice(0, 3)
+
+  return {
+    title,
+    subtitle,
+    currentLegend,
+    closedLegend,
+    summaryRevenueLabel,
+    avgLabel,
+    activeCountLabel,
+    topListTitle,
+    emptyMessage,
+    unitTotalLabel,
+    backToYear,
+    backToMonth,
+    buckets,
+    maxOrders,
+    peakBucket,
+    activeBucketsCount: activeBuckets.length,
+    totalBucketsCount: buckets.length,
+    totalOrders,
+    totalRevenue,
+    avgPerActiveBucket: activeBuckets.length > 0 ? totalOrders / activeBuckets.length : 0,
+    topBuckets,
+  }
 })
 
 // === TABLA DE ÓRDENES RECIENTES CON CAMBIO RÁPIDO DE ESTADO ===
@@ -1669,159 +2047,184 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
         </div>
       </div>
 
-      <!-- 2. TENDENCIAS DE CARGA DE TRABAJO MENSUAL (7 Columnas) -->
+      <!-- 2. ANALÍTICA DINÁMICA DE CARGA (SEMANAL / DIARIA / MENSUAL SEGÚN FILTROS) (7 Columnas) -->
       <div class="lg:col-span-7 h-full studio-card overflow-hidden flex flex-col justify-between">
-          <div>
-            <div class="px-5 py-4 border-b border-slate-100 bg-[#F4F8FC] flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="w-9 h-9 rounded-xl bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center shrink-0">
-                  <BarChart3 class="w-4 h-4" />
-                </span>
-                <div class="min-w-0">
-                  <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0F1E2E] tracking-tight">
-                    Tendencias de Carga Mensual ({{ chartYear }})
-                  </h2>
-                  <p class="text-[11px] text-slate-500 truncate">
-                    Haz clic en cualquier mes para filtrar el tablero y revisar su rendimiento
-                  </p>
-                </div>
+        <div>
+          <div class="px-5 py-4 border-b border-slate-100 bg-[#F4F8FC] flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="w-9 h-9 rounded-xl bg-[#E3F5F8] text-[#12697A] border border-[#C1E8EF] flex items-center justify-center shrink-0">
+                <BarChart3 class="w-4 h-4" />
+              </span>
+              <div class="min-w-0">
+                <h2 class="font-display text-sm sm:text-base font-extrabold text-[#0F1E2E] tracking-tight truncate">
+                  {{ chartAnalytics.title }}
+                </h2>
+                <p class="text-[11px] text-slate-500 truncate">
+                  {{ chartAnalytics.subtitle }}
+                </p>
               </div>
+            </div>
 
-              <div v-if="peakWorkloadMonth" class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2] font-mono text-[11px] font-bold shrink-0">
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                v-if="chartAnalytics.backToMonth"
+                type="button"
+                @click="selectedYear = chartAnalytics.backToMonth!.year; pickMonth(chartAnalytics.backToMonth!.month)"
+                class="px-2.5 py-1 rounded-full bg-white text-[#004B97] border border-[#CFE1F4] hover:bg-blue-50 font-mono text-[10px] font-bold transition cursor-pointer"
+              >
+                &larr; Ver semanas ({{ chartAnalytics.backToMonth.label }})
+              </button>
+              <button
+                v-else-if="chartAnalytics.backToYear !== null"
+                type="button"
+                @click="pickYear(chartAnalytics.backToYear!)"
+                class="px-2.5 py-1 rounded-full bg-white text-[#004B97] border border-[#CFE1F4] hover:bg-blue-50 font-mono text-[10px] font-bold transition cursor-pointer"
+              >
+                &larr; Ver meses ({{ chartAnalytics.backToYear }})
+              </button>
+              <div v-if="chartAnalytics.peakBucket" class="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2] font-mono text-[11px] font-bold">
                 <TrendingUp class="w-3.5 h-3.5" />
-                Pico: {{ peakWorkloadMonth.monthFull }} ({{ peakWorkloadMonth.orderCount }} ord.)
-              </div>
-            </div>
-
-            <!-- Gráfico de barras -->
-            <div class="px-4 sm:px-5 pt-4 pb-3">
-              <div class="h-[200px] grid grid-cols-12 gap-1.5 sm:gap-2.5 items-end pt-10 pb-2 px-1 border-b border-slate-200/80">
-                <button
-                  v-for="month in monthlyTrends"
-                  :key="`v1-m-${month.monthIndex}`"
-                  type="button"
-                  @click="selectedYear = chartYear; pickMonth(month.monthIndex)"
-                  class="flex flex-col items-center h-full justify-end group relative cursor-pointer focus:outline-none"
-                  :title="`Filtrar ${month.monthFull} ${chartYear}: ${month.orderCount} órdenes ($${month.revenue.toFixed(0)})`"
-                >
-                  <div class="absolute -top-11 z-20 hidden group-hover:flex flex-col items-center bg-[#19314D] text-white text-[10px] font-mono font-bold py-1.5 px-2.5 rounded-xl shadow-lg border border-white/15 pointer-events-none whitespace-nowrap">
-                    <span>{{ month.monthFull }}: {{ month.orderCount }} órd.</span>
-                    <span class="text-[#BFEBF2]">${{ month.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 }) }}</span>
-                    <div class="w-2 h-2 bg-[#19314D] rotate-45 -mb-1"></div>
-                  </div>
-
-                  <div
-                    class="studio-bar-rise w-full rounded-t-lg transition-[height,background-color] duration-300 relative flex items-center justify-center group-hover:opacity-90"
-                    :class="[
-                      selectedPeriod === 'mes' && selectedMonth === month.monthIndex && selectedYear === chartYear
-                        ? 'bg-[#04C4D9] ring-2 ring-[#004B97]/40'
-                        : month.isCurrent
-                          ? 'bg-[#3D9DB0] shadow-xs'
-                          : month.orderCount > 0
-                            ? 'bg-[#2B5C8F]'
-                            : 'bg-slate-200/70'
-                    ]"
-                    :style="{
-                      height: `${month.orderCount > 0 ? Math.max((month.orderCount / maxMonthlyOrders) * 100, 15) : 8}%`,
-                      animationDelay: `${month.monthIndex * 28}ms`
-                    }"
-                  >
-                    <span
-                      v-if="month.orderCount > 0"
-                      class="font-mono tabular-nums text-[10px] font-extrabold text-white"
-                    >
-                      {{ month.orderCount }}
-                    </span>
-                  </div>
-
-                  <span
-                    class="font-mono text-[10px] sm:text-xs font-bold mt-1.5 transition-colors"
-                    :class="[month.isCurrent ? 'text-[#004B97] underline font-black' : 'text-slate-500 group-hover:text-[#0D1B3E]']"
-                  >
-                    {{ month.monthShort }}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Bloque inferior que aprovecha el espacio vertical: Resumen financiero anual + Top meses -->
-            <div class="px-4 sm:px-5 pb-4 space-y-3">
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <div class="rounded-xl border border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
-                  <div class="text-[11px] font-semibold text-slate-500">Facturación {{ chartYear }}</div>
-                  <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
-                    ${{ monthlyTrends.reduce((s, m) => s + m.revenue, 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
-                  </div>
-                </div>
-                <div class="rounded-xl border border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
-                  <div class="text-[11px] font-semibold text-slate-500">Promedio por mes activo</div>
-                  <div class="font-mono tabular-nums text-base font-extrabold text-[#004B97] mt-0.5">
-                    {{
-                      monthlyTrends.filter(m => m.orderCount > 0).length > 0
-                        ? (monthlyTrends.reduce((s, m) => s + m.orderCount, 0) / monthlyTrends.filter(m => m.orderCount > 0).length).toFixed(1)
-                        : '0.0'
-                    }} órd.
-                  </div>
-                </div>
-                <div class="rounded-xl border border-[#C1E8EF] bg-[#E3F5F8]/60 px-3.5 py-2.5">
-                  <div class="text-[11px] font-semibold text-[#12697A]">Meses con actividad</div>
-                  <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
-                    {{ monthlyTrends.filter(m => m.orderCount > 0).length }} / 12
-                  </div>
-                </div>
-              </div>
-
-              <div class="rounded-xl border border-slate-200/90 bg-white divide-y divide-slate-100">
-                <div class="px-3.5 py-2 bg-[#F4F8FC] flex items-center justify-between text-[11px] font-bold text-[#0F1E2E]">
-                  <span>Meses de mayor facturación en {{ chartYear }}</span>
-                  <span class="font-mono text-[10px] text-slate-500">Clic para ver órdenes</span>
-                </div>
-                <div
-                  v-if="monthlyTrends.filter(m => m.orderCount > 0).length === 0"
-                  class="px-3.5 py-3 text-xs text-slate-500"
-                >
-                  Sin órdenes registradas en {{ chartYear }}.
-                </div>
-                <button
-                  v-for="(topM, idx) in [...monthlyTrends].filter(m => m.orderCount > 0).sort((a, b) => b.revenue - a.revenue || b.orderCount - a.orderCount).slice(0, 3)"
-                  :key="`v1-top-${topM.monthIndex}`"
-                  type="button"
-                  @click="selectedYear = chartYear; pickMonth(topM.monthIndex)"
-                  class="w-full px-3.5 py-2 flex items-center justify-between gap-3 text-xs hover:bg-blue-50/40 transition-colors cursor-pointer text-left"
-                >
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <span
-                      class="w-5 h-5 rounded-md font-mono text-[10px] font-bold flex items-center justify-center shrink-0"
-                      :class="idx === 0 ? 'bg-[#004B97] text-white' : 'bg-slate-100 text-slate-700'"
-                    >
-                      {{ idx + 1 }}
-                    </span>
-                    <span class="font-bold text-[#0D1B3E] truncate">{{ topM.monthFull }}</span>
-                    <span class="font-mono text-[11px] text-slate-500">{{ topM.orderCount }} órd.</span>
-                  </div>
-                  <span class="font-mono tabular-nums font-bold text-[#004B97] shrink-0">
-                    ${{ topM.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
-                  </span>
-                </button>
+                Pico: {{ chartAnalytics.peakBucket.shortLabel }} ({{ chartAnalytics.peakBucket.orderCount }} ord.)
               </div>
             </div>
           </div>
 
-          <div class="border-t border-slate-100 bg-slate-50/70 px-5 py-3 flex items-center justify-between text-xs text-slate-600">
-            <div class="flex items-center gap-4">
-              <span class="flex items-center gap-1.5 font-medium">
-                <span class="w-2.5 h-2.5 rounded-full bg-[#3D9DB0]"></span>
-                Mes en curso
-              </span>
-              <span class="flex items-center gap-1.5 font-medium">
-                <span class="w-2.5 h-2.5 rounded-full bg-[#2B5C8F]"></span>
-                Meses cerrados
-              </span>
+          <!-- Gráfico de barras dinámico -->
+          <div class="px-4 sm:px-5 pt-4 pb-3">
+            <div
+              class="h-[200px] grid gap-1.5 sm:gap-2.5 items-end pt-10 pb-2 px-1 border-b border-slate-200/80"
+              :style="{ gridTemplateColumns: `repeat(${Math.max(1, chartAnalytics.buckets.length)}, minmax(0, 1fr))` }"
+            >
+              <button
+                v-for="(bucket, bIdx) in chartAnalytics.buckets"
+                :key="bucket.key"
+                type="button"
+                :disabled="!bucket.onClick"
+                @click="bucket.onClick?.()"
+                class="flex flex-col items-center h-full justify-end group relative focus:outline-none"
+                :class="bucket.onClick ? 'cursor-pointer' : 'cursor-default'"
+                :title="`${bucket.fullLabel}: ${bucket.orderCount} órdenes ($${bucket.revenue.toFixed(0)})`"
+              >
+                <div class="absolute -top-11 z-20 hidden group-hover:flex flex-col items-center bg-[#19314D] text-white text-[10px] font-mono font-bold py-1.5 px-2.5 rounded-xl shadow-lg border border-white/15 pointer-events-none whitespace-nowrap">
+                  <span>{{ bucket.fullLabel }}: {{ bucket.orderCount }} órd.</span>
+                  <span class="text-[#BFEBF2]">${{ bucket.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 }) }}</span>
+                  <div class="w-2 h-2 bg-[#19314D] rotate-45 -mb-1"></div>
+                </div>
+
+                <div
+                  class="studio-bar-rise w-full max-w-[68px] rounded-t-lg transition-[height,background-color] duration-300 relative flex items-center justify-center group-hover:opacity-90"
+                  :class="[
+                    bucket.isCurrent
+                      ? 'bg-[#3D9DB0] shadow-xs'
+                      : bucket.orderCount > 0
+                        ? 'bg-[#2B5C8F]'
+                        : 'bg-slate-200/70'
+                  ]"
+                  :style="{
+                    height: `${bucket.orderCount > 0 ? Math.max((bucket.orderCount / chartAnalytics.maxOrders) * 100, 15) : 8}%`,
+                    animationDelay: `${bIdx * 28}ms`
+                  }"
+                >
+                  <span
+                    v-if="bucket.orderCount > 0"
+                    class="font-mono tabular-nums text-[10px] font-extrabold text-white"
+                  >
+                    {{ bucket.orderCount }}
+                  </span>
+                </div>
+
+                <span
+                  class="font-mono text-[10px] sm:text-xs font-bold mt-1.5 transition-colors leading-tight text-center"
+                  :class="[bucket.isCurrent ? 'text-[#004B97] underline font-black' : 'text-slate-600 group-hover:text-[#0D1B3E]']"
+                >
+                  {{ bucket.shortLabel }}
+                </span>
+                <span
+                  v-if="bucket.subLabel"
+                  class="font-mono text-[9px] text-slate-400 leading-none mt-0.5"
+                >
+                  {{ bucket.subLabel }}
+                </span>
+              </button>
             </div>
-            <span class="font-mono tabular-nums font-bold text-[#0D1B3E]">
-              Total anual: {{ monthlyTrends.reduce((sum, m) => sum + m.orderCount, 0) }} órdenes
+          </div>
+
+          <!-- Resumen financiero del período + Top bloques -->
+          <div class="px-4 sm:px-5 pb-4 space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="rounded-xl border border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
+                <div class="text-[11px] font-semibold text-slate-500">{{ chartAnalytics.summaryRevenueLabel }}</div>
+                <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
+                  ${{ chartAnalytics.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
+                </div>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-[#F8FAFC] px-3.5 py-2.5">
+                <div class="text-[11px] font-semibold text-slate-500">{{ chartAnalytics.avgLabel }}</div>
+                <div class="font-mono tabular-nums text-base font-extrabold text-[#004B97] mt-0.5">
+                  {{ chartAnalytics.avgPerActiveBucket.toFixed(1) }} órd.
+                </div>
+              </div>
+              <div class="rounded-xl border border-[#C1E8EF] bg-[#E3F5F8]/60 px-3.5 py-2.5">
+                <div class="text-[11px] font-semibold text-[#12697A]">{{ chartAnalytics.activeCountLabel }}</div>
+                <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
+                  {{ chartAnalytics.activeBucketsCount }} / {{ chartAnalytics.totalBucketsCount }}
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200/90 bg-white divide-y divide-slate-100">
+              <div class="px-3.5 py-2 bg-[#F4F8FC] flex items-center justify-between text-[11px] font-bold text-[#0F1E2E]">
+                <span>{{ chartAnalytics.topListTitle }}</span>
+                <span class="font-mono text-[10px] text-slate-500">Filtros activos</span>
+              </div>
+              <div
+                v-if="chartAnalytics.topBuckets.length === 0"
+                class="px-3.5 py-3 text-xs text-slate-500"
+              >
+                {{ chartAnalytics.emptyMessage }}
+              </div>
+              <button
+                v-for="(topB, idx) in chartAnalytics.topBuckets"
+                :key="`top-${topB.key}`"
+                type="button"
+                :disabled="!topB.onClick"
+                @click="topB.onClick?.()"
+                class="w-full px-3.5 py-2 flex items-center justify-between gap-3 text-xs hover:bg-blue-50/40 transition-colors text-left"
+                :class="topB.onClick ? 'cursor-pointer' : 'cursor-default'"
+              >
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span
+                    class="w-5 h-5 rounded-md font-mono text-[10px] font-bold flex items-center justify-center shrink-0"
+                    :class="idx === 0 ? 'bg-[#004B97] text-white' : 'bg-slate-100 text-slate-700'"
+                  >
+                    {{ idx + 1 }}
+                  </span>
+                  <span class="font-bold text-[#0D1B3E] truncate">{{ topB.fullLabel }}</span>
+                  <span class="font-mono text-[11px] text-slate-500">{{ topB.orderCount }} órd.</span>
+                </div>
+                <span class="font-mono tabular-nums font-bold text-[#004B97] shrink-0">
+                  ${{ topB.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 bg-slate-50/70 px-5 py-3 flex items-center justify-between text-xs text-slate-600">
+          <div class="flex items-center gap-4">
+            <span class="flex items-center gap-1.5 font-medium">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#3D9DB0]"></span>
+              {{ chartAnalytics.currentLegend }}
+            </span>
+            <span class="flex items-center gap-1.5 font-medium">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#2B5C8F]"></span>
+              {{ chartAnalytics.closedLegend }}
             </span>
           </div>
+          <span class="font-mono tabular-nums font-bold text-[#0D1B3E]">
+            {{ chartAnalytics.unitTotalLabel }}: {{ chartAnalytics.totalOrders }} órdenes
+          </span>
+        </div>
       </div>
     </div>
 
