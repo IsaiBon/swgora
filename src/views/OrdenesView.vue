@@ -334,7 +334,7 @@ const handleOrderSaved = async () => {
   await loadOrders()
   currentView.value = 'list'
   selectedOrderId.value = null
-  if (route.query.nueva || route.query.clienteId || route.query.cliente) {
+  if (route.query.nueva || route.query.clienteId || route.query.cliente || route.query.fromCart || route.query.tipo) {
     router.replace({ path: '/ordenes' })
   }
 }
@@ -342,7 +342,7 @@ const handleOrderSaved = async () => {
 const handleCloseForm = () => {
   currentView.value = 'list'
   selectedOrderId.value = null
-  if (route.query.nueva || route.query.clienteId || route.query.cliente) {
+  if (route.query.nueva || route.query.clienteId || route.query.cliente || route.query.fromCart || route.query.tipo) {
     router.replace({ path: '/ordenes' })
   }
 }

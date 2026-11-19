@@ -17,6 +17,7 @@ import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useCatalogStore } from '@/stores/catalog'
 import { useAuthStore } from '@/stores/auth'
 import { useTallerStore } from '@/stores/taller'
+import { useOrderCartStore } from '@/stores/orderCart'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
 import { 
   Search, 
@@ -36,7 +37,8 @@ import {
   Filter,
   RotateCcw,
   MapPin,
-  X
+  X,
+  ShoppingCart
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -52,6 +54,7 @@ const emit = defineEmits<{
 const route = useRoute()
 const authStore = useAuthStore()
 const tallerStore = useTallerStore()
+const orderCartStore = useOrderCartStore()
 
 // Estado de Ruta / Sucursal de la orden
 const availableRutas = ref<RutaSucursal[]>([])
@@ -297,6 +300,103 @@ const insertOperationInCategory = (item: FormOperationItem) => {
   } else {
     allOperations.value.push(item)
   }
+}
+
+const insertOperationsAtCategoryStart = (items: FormOperationItem[], category: RectificationBlock) => {
+  if (items.length === 0) return
+  const firstCategoryIndex = allOperations.value.findIndex(op => op.category === category)
+  if (firstCategoryIndex !== -1) {
+    allOperations.value.splice(firstCategoryIndex, 0, ...items)
+    return
+  }
+
+  const targetOrder = CATEGORY_ORDER[category] ?? 99
+  const nextCategoryIndex = allOperations.value.findIndex(
+    op => (CATEGORY_ORDER[op.category] ?? 99) > targetOrder
+  )
+  if (nextCategoryIndex !== -1) {
+    allOperations.value.splice(nextCategoryIndex, 0, ...items)
+  } else {
+    allOperations.value.push(...items)
+  }
+}
+
+const importedFromCart = ref(false)
+const importedCartCount = ref(0)
+const importedMissingPriceCount = computed(() =>
+  allOperations.value.filter(
+    op => op.id.startsWith('cart-part-') && op.selected && (!op.unitPrice || Number(op.unitPrice) <= 0)
+  ).length
+)
+
+const importItemsFromOrderCart = (): boolean => {
+  if (!orderCartStore.hasItems) return false
+
+  const newRows: FormOperationItem[] = []
+  let processedCount = 0
+
+  for (const item of orderCartStore.items) {
+    const qty = Math.max(1, Math.floor(Number(item.quantity) || 1))
+    const unitPrice = item.price > 0 ? Number(item.price.toFixed(2)) : null
+    const subtotal = unitPrice !== null ? Number((qty * unitPrice).toFixed(2)) : null
+    const hasCodeInName =
+      Boolean(item.code) && item.name.toLowerCase().includes(item.code.toLowerCase())
+    const operationLabel = hasCodeInName
+      ? item.name
+      : item.code
+        ? `${item.name} (${item.code})`
+        : item.name
+    const rowId = `cart-part-${item.id}`
+
+    const existing = allOperations.value.find(op => op.id === rowId)
+    if (existing) {
+      existing.operation = operationLabel
+      existing.selected = true
+      existing.quantity = qty
+      if (unitPrice !== null && (!existing.unitPrice || Number(existing.unitPrice) <= 0)) {
+        existing.unitPrice = unitPrice
+        existing.subtotal = subtotal
+      } else if (existing.unitPrice && Number(existing.unitPrice) > 0) {
+        existing.subtotal = Number((qty * Number(existing.unitPrice)).toFixed(2))
+      }
+      existing.lastEdited = 'price'
+    } else {
+      newRows.push({
+        id: rowId,
+        category: 'Repuestos',
+        operation: operationLabel,
+        selected: true,
+        quantity: qty,
+        unitPrice,
+        subtotal,
+        lastEdited: 'price',
+        isCustom: true,
+      })
+    }
+    processedCount++
+  }
+
+  if (newRows.length > 0) {
+    insertOperationsAtCategoryStart(newRows, 'Repuestos')
+  }
+
+  const suggested = orderCartStore.getSuggestedVehicle()
+  if (!vehicleBrand.value.trim() && suggested.brand) {
+    vehicleBrand.value = suggested.brand
+    formErrors.value.vehicleBrand = false
+  }
+  if (!vehicleEngine.value.trim() && suggested.motor) {
+    vehicleEngine.value = suggested.motor
+    vehicleModel.value = suggested.motor
+    engineType.value = suggested.motor
+    formErrors.value.vehicleEngine = false
+  }
+
+  operationFilterCategory.value = 'Repuestos'
+  formErrors.value.noItems = false
+  importedFromCart.value = true
+  importedCartCount.value = processedCount
+  return true
 }
 
 // Operaciones filtradas para la visualización en la tabla
@@ -665,6 +765,9 @@ onMounted(async () => {
     }
   } else {
     allOperations.value = JSON.parse(JSON.stringify(freshCatalog))
+    if (route.query.fromCart === '1' && orderCartStore.hasItems) {
+      importItemsFromOrderCart()
+    }
   }
 
   // Pre-seleccionar cliente si viene en la query (desde historial o clientes)
@@ -1073,6 +1176,11 @@ const handleSaveOrder = async () => {
       saved = updated!
     } else {
       saved = await ordersService.createOrder(orderPayload)
+    }
+
+    if (!props.initialOrderId && importedFromCart.value) {
+      orderCartStore.clearCart()
+      importedFromCart.value = false
     }
 
     const finalSavedOrder: Order = {
@@ -1615,6 +1723,58 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <span class="text-xs text-slate-500">Subtotal Mano de Obra:</span>
               <span class="font-display text-xl font-extrabold text-[#004B97] ml-2">${{ laborTotal.toFixed(2) }}</span>
             </div>
+          </div>
+
+          <!-- Banner de repuestos cargados desde el carrito del catálogo -->
+          <div
+            v-if="importedFromCart"
+            class="mx-4 mt-4 p-3.5 bg-gradient-to-r from-sky-50 via-cyan-50 to-emerald-50 border border-[#04C4D9]/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          >
+            <div class="flex items-start gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-[#004B97] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                <ShoppingCart class="w-4 h-4" />
+              </div>
+              <div class="text-xs">
+                <div class="font-extrabold text-[#0D1B3E]">
+                  {{ importedCartCount }} repuesto(s) cargados desde el carrito en la sección Repuestos
+                </div>
+                <p v-if="importedMissingPriceCount > 0" class="text-[11px] text-amber-800 font-semibold mt-0.5">
+                  Ingresa el precio unitario en los campos resaltados en amarillo para incluirlos en la orden.
+                </p>
+                <p v-else class="text-[11px] text-[#12697A] font-medium mt-0.5">
+                  Puedes ajustar cantidades, precios o agregar operaciones adicionales de rectificación.
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                @click="operationFilterCategory = operationFilterCategory === 'Repuestos' ? 'Todos' : 'Repuestos'"
+                class="px-3 py-1.5 rounded-lg bg-white hover:bg-blue-50 border border-slate-200 text-[#004B97] text-xs font-bold transition cursor-pointer"
+              >
+                {{ operationFilterCategory === 'Repuestos' ? 'Ver todas las operaciones' : 'Ver Repuestos' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner opcional si hay repuestos en el carrito y se abrió una orden en blanco -->
+          <div
+            v-else-if="!isEditing && orderCartStore.hasItems"
+            class="mx-4 mt-4 p-3 bg-sky-50/80 border border-sky-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+          >
+            <div class="flex items-center gap-2.5 text-xs text-[#0D1B3E]">
+              <ShoppingCart class="w-4 h-4 text-[#004B97] shrink-0" />
+              <span>
+                Tienes <strong>{{ orderCartStore.uniqueCount }} repuesto(s)</strong> ({{ orderCartStore.totalUnits }} u.) guardados en el carrito del catálogo.
+              </span>
+            </div>
+            <button
+              type="button"
+              @click="importItemsFromOrderCart"
+              class="px-3 py-1.5 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold transition shadow-sm cursor-pointer shrink-0"
+            >
+              Cargar repuestos del carrito
+            </button>
           </div>
 
           <!-- Alerta si falta registrar operaciones facturadas -->

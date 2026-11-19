@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCatalogStore } from '@/stores/catalog'
+import { useAuthStore } from '@/stores/auth'
+import { useOrderCartStore } from '@/stores/orderCart'
 import { 
   type Motor, 
   type Modelo,
@@ -25,6 +28,7 @@ import AdminCatalogModal from '@/components/AdminCatalogModal.vue'
 import CatalogImportModal from '@/components/CatalogImportModal.vue'
 import { type CatalogImportReport } from '@/services/catalogImportService'
 import PartImageLightbox from '@/components/catalog/PartImageLightbox.vue'
+import OrderCartDrawer from '@/components/catalog/OrderCartDrawer.vue'
 import ToleranceBadge from '@/components/ToleranceBadge.vue'
 import { 
   Search, 
@@ -59,12 +63,18 @@ import {
   Maximize2,
   Hash,
   ArrowUpDown,
+  ArrowRight,
   Download,
   ExternalLink,
   Upload,
+  ShoppingCart,
 } from 'lucide-vue-next'
 
+const router = useRouter()
 const catalogStore = useCatalogStore()
+const authStore = useAuthStore()
+const orderCartStore = useOrderCartStore()
+const isCartDrawerOpen = ref(false)
 
 // =============================================================================
 // ESTADO DE SELECCIÓN EN CASCADA (FABRICANTE -> MOTOR -> MODELO -> COMPONENTE)
@@ -2007,30 +2017,66 @@ const copyFullCross = async (part: RepuestoTecnico) => {
   await copyToClipboard(lines.join(' | '), 'Ficha técnica')
 }
 
-// Carrito / Agregar repuesto a Orden de Trabajo
+// Carrito / Añadir repuesto a la Orden de Trabajo
 const addedPartId = ref<string | null>(null)
+let addedPartTimer: ReturnType<typeof setTimeout> | null = null
+
 const addToWorkOrder = (part: RepuestoTecnico) => {
+  const partMotor =
+    part.motor ||
+    (part.motor_id ? catalogStore.motores.find(m => m.id === part.motor_id) : null) ||
+    selectedMotor.value ||
+    null
+
+  const brandName =
+    partMotor?.fabricante?.nombre ||
+    (partMotor?.fabricante_id
+      ? catalogStore.fabricantes.find(f => f.id === partMotor.fabricante_id)?.nombre
+      : undefined) ||
+    selectedBrand.value?.nombre ||
+    ''
+
+  const motorCode = partMotor?.codigo || ''
+  const imageUrl = getPartImagesList(part)[0] || part.imagen_url || undefined
+
+  const addedItem = orderCartStore.addPart({
+    id: part.id,
+    code: part.codigo_oem,
+    name: part.nombre,
+    price: Number(part.precio) || 0,
+    category: part.categoria || 'Repuestos',
+    brand: brandName,
+    motor: motorCode,
+    catalogOrigin: part.catalogo_origen || undefined,
+    imageUrl,
+  })
+
   addedPartId.value = part.id
-  try {
-    const raw = localStorage.getItem('swgora_cart_parts') || '[]'
-    const cart = JSON.parse(raw)
-    cart.push({
-      id: part.id,
-      code: part.codigo_oem,
-      name: part.nombre,
-      price: part.precio,
-      category: part.categoria,
-      motor: part.motor?.codigo || selectedMotor.value?.codigo || 'Universal',
-      timestamp: Date.now()
-    })
-    localStorage.setItem('swgora_cart_parts', JSON.stringify(cart))
-  } catch {
-    // Silencioso
-  }
-  showToast(`✓ ${part.codigo_oem} agregado a la Orden de Trabajo`)
-  setTimeout(() => {
+  if (addedPartTimer) clearTimeout(addedPartTimer)
+  addedPartTimer = setTimeout(() => {
     if (addedPartId.value === part.id) addedPartId.value = null
-  }, 1800)
+  }, 1400)
+
+  showToast(
+    `✓ ${part.codigo_oem} añadido al carrito (${addedItem.quantity} u. · ${orderCartStore.totalUnits} en total)`
+  )
+}
+
+const handleCreateOrderFromCart = (docType: 'orden' | 'cotizacion' = 'orden') => {
+  if (!orderCartStore.hasItems) return
+  if (!authStore.canAccess('/ordenes')) {
+    showToast('Tu rol actual no tiene permisos para crear órdenes de trabajo')
+    return
+  }
+  isCartDrawerOpen.value = false
+  router.push({
+    path: '/ordenes',
+    query: {
+      nueva: 'true',
+      tipo: docType,
+      fromCart: '1',
+    },
+  })
 }
 
 // =============================================================================
@@ -4239,6 +4285,7 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick)
   if (toastTimer) clearTimeout(toastTimer)
+  if (addedPartTimer) clearTimeout(addedPartTimer)
   if (importBannerTimer) clearTimeout(importBannerTimer)
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
@@ -4258,7 +4305,8 @@ onUnmounted(() => {
     >
       <div 
         v-if="toastMessage" 
-        class="fixed bottom-6 right-6 z-50 bg-emerald-700 text-white px-5 py-3.5 rounded-2xl shadow-2xl border-2 border-emerald-300/70 flex items-center gap-3 popover-pop-in"
+        class="fixed right-6 z-50 bg-emerald-700 text-white px-5 py-3.5 rounded-2xl shadow-2xl border-2 border-emerald-300/70 flex items-center gap-3 popover-pop-in"
+        :class="orderCartStore.hasItems ? 'bottom-24' : 'bottom-6'"
       >
         <CheckCircle2 class="w-5 h-5 text-emerald-100 shrink-0" />
         <span class="text-sm font-extrabold tracking-tight">{{ toastMessage }}</span>
@@ -4288,6 +4336,22 @@ onUnmounted(() => {
 
         <!-- Action Buttons -->
         <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+          <button
+            type="button"
+            @click="isCartDrawerOpen = true"
+            class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
+            title="Ver repuestos añadidos al carrito para crear orden"
+          >
+            <ShoppingCart class="w-4 h-4 text-[#BFEBF2]" />
+            <span>Carrito</span>
+            <span
+              v-if="orderCartStore.totalUnits > 0"
+              class="ml-0.5 px-1.5 py-0.5 rounded-full bg-[#04C4D9] text-[#0D1B3E] font-mono text-[10px] font-black leading-none"
+            >
+              {{ orderCartStore.totalUnits }}
+            </span>
+          </button>
+
           <button
             type="button"
             @click="openAdminCatalogModal('repuesto')"
@@ -6186,7 +6250,7 @@ onUnmounted(() => {
                   </th>
                 </template>
 
-                <th rowspan="2" class="py-1.5 px-3 w-24 text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
+                <th rowspan="2" class="py-1.5 px-3 min-w-[240px] text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
               </tr>
               <!-- Fila 2 de Cabecera: Sub-columnas -->
               <tr class="bg-slate-50 text-[9px] text-slate-600 font-bold uppercase tracking-tight">
@@ -6221,7 +6285,7 @@ onUnmounted(() => {
                   Especificaciones Técnicas (mm)
                 </th>
 
-                <th class="py-1.5 px-3 w-24 text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
+                <th class="py-1.5 px-3 min-w-[240px] text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
               </tr>
             </thead>
 
@@ -6891,15 +6955,23 @@ onUnmounted(() => {
                       type="button"
                       @click="addToWorkOrder(part)"
                       :class="[
-                        'px-2 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1',
-                        addedPartId === part.id
-                          ? 'bg-[#004B97] text-white'
-                          : 'bg-[#147488] hover:bg-[#105E6E] text-white shadow-2xs'
+                        'px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-sm',
+                        addedPartId === part.id || orderCartStore.isInCart(part.id)
+                          ? 'bg-[#004B97] hover:bg-[#0D1B3E] text-white'
+                          : 'bg-[#147488] hover:bg-[#105E6E] text-white'
                       ]"
+                      title="Añadir este repuesto al carrito de orden"
                     >
-                      <Check v-if="addedPartId === part.id" class="w-3 h-3" />
-                      <Plus v-else class="w-3 h-3" />
-                      <span>{{ addedPartId === part.id ? 'Listo' : 'A Orden' }}</span>
+                      <Check v-if="addedPartId === part.id" class="w-3 h-3 shrink-0" />
+                      <ShoppingCart v-else-if="orderCartStore.isInCart(part.id)" class="w-3 h-3 shrink-0" />
+                      <Plus v-else class="w-3 h-3 shrink-0" />
+                      <span>Añadir a la orden</span>
+                      <span
+                        v-if="orderCartStore.getItemQuantity(part.id) > 0"
+                        class="px-1.5 py-0.5 rounded-full bg-[#04C4D9] text-[#0D1B3E] text-[10px] font-black font-mono leading-none"
+                      >
+                        {{ orderCartStore.getItemQuantity(part.id) }}
+                      </span>
                     </button>
                   </div>
                 </td>
@@ -7860,8 +7932,11 @@ onUnmounted(() => {
                 @click="addToWorkOrder(modalPart); closeTechnicalSheet()"
                 class="studio-cta-primary px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
               >
-                <Plus class="w-4 h-4" />
-                <span>Agregar a Orden</span>
+                <ShoppingCart v-if="orderCartStore.isInCart(modalPart.id)" class="w-4 h-4" />
+                <Plus v-else class="w-4 h-4" />
+                <span>
+                  Añadir a la orden{{ orderCartStore.getItemQuantity(modalPart.id) > 0 ? ` (${orderCartStore.getItemQuantity(modalPart.id)})` : '' }}
+                </span>
               </button>
             </div>
           </div>
@@ -8558,6 +8633,68 @@ onUnmounted(() => {
       :preselected-group-id="selectedComponent?.id || null"
       @close="isImportModalOpen = false"
       @imported="onCatalogImported"
+    />
+
+    <!-- Barra flotante del Carrito de Orden -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="transform translate-y-4 opacity-0"
+      enter-to-class="transform translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="transform translate-y-0 opacity-100"
+      leave-to-class="transform translate-y-4 opacity-0"
+    >
+      <div
+        v-if="orderCartStore.hasItems"
+        class="fixed bottom-5 right-5 z-40 max-w-[calc(100vw-2.5rem)] bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-3.5 py-2.5 rounded-2xl shadow-2xl border border-[#04C4D9]/45 flex flex-wrap items-center gap-2.5 sm:gap-3"
+      >
+        <button
+          type="button"
+          @click="isCartDrawerOpen = true"
+          class="flex items-center gap-2.5 text-left cursor-pointer group"
+          title="Abrir carrito de repuestos"
+        >
+          <div class="relative w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0 group-hover:bg-white/25 transition">
+            <ShoppingCart class="w-4 h-4 text-[#BFEBF2]" />
+            <span class="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#04C4D9] text-[#0D1B3E] font-mono text-[10px] font-black flex items-center justify-center shadow-sm">
+              {{ orderCartStore.totalUnits }}
+            </span>
+          </div>
+          <div class="pr-1">
+            <div class="text-xs font-extrabold text-white leading-tight">
+              {{ orderCartStore.uniqueCount }} repuesto(s) · {{ orderCartStore.totalUnits }} u.
+            </div>
+            <div class="text-[10.5px] text-[#BFEBF2] font-medium">
+              {{ orderCartStore.estimatedTotal > 0 ? `Est. $${orderCartStore.estimatedTotal.toFixed(2)}` : 'Listos para tu orden' }}
+            </div>
+          </div>
+        </button>
+
+        <div class="flex items-center gap-1.5 ml-auto">
+          <button
+            type="button"
+            @click="isCartDrawerOpen = true"
+            class="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold transition cursor-pointer"
+          >
+            Ver carrito
+          </button>
+          <button
+            v-if="authStore.canAccess('/ordenes')"
+            type="button"
+            @click="handleCreateOrderFromCart('orden')"
+            class="px-3.5 py-1.5 rounded-xl bg-[#04C4D9] hover:bg-[#3ad4e6] text-[#0D1B3E] text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+          >
+            <span>Crear orden</span>
+            <ArrowRight class="w-3.5 h-3.5 stroke-[2.5]" />
+          </button>
+        </div>
+      </div>
+    </Transition>
+
+    <OrderCartDrawer
+      :is-open="isCartDrawerOpen"
+      @close="isCartDrawerOpen = false"
+      @create-order="handleCreateOrderFromCart"
     />
 
   </div>

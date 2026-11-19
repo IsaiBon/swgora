@@ -2112,7 +2112,7 @@ const handleSave = () => {
                         Editar
                       </span>
                       <span class="px-2 py-1 rounded-md bg-[#147488] text-white text-[10px] font-bold">
-                        + A Orden
+                        + Añadir a la orden
                       </span>
                     </div>
                   </td>
