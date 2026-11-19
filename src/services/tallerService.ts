@@ -59,8 +59,16 @@ export const DEFAULT_TALLER_INFO: TallerInfo = {
   login_email_placeholder: 'nombre@jrblanco.com',
   login_password_label: 'Contraseña',
   login_password_placeholder: 'Ingresa tu contraseña',
-  login_forgot_text: '¿Olvidaste tu contraseña?',
-  login_button_text: 'Iniciar Sesión'
+  login_forgot_text: '',
+  login_button_text: 'INICIAR SESIÓN'
+}
+
+function normalizeLoginButtonText(val: string | undefined): string {
+  const clean = (val ?? '').trim()
+  if (!clean || clean.toLowerCase() === 'iniciar sesión' || clean.toLowerCase() === 'iniciar sesion') {
+    return 'INICIAR SESIÓN'
+  }
+  return clean
 }
 
 const LOCAL_STORAGE_KEY = 'swgora_taller_config'
@@ -313,12 +321,12 @@ export const tallerService = {
           login_password_placeholder: isIndependentContext
             ? defaults.login_password_placeholder
             : (activeLogin.login_password_placeholder !== undefined ? activeLogin.login_password_placeholder : defaults.login_password_placeholder),
-          login_forgot_text: isIndependentContext
-            ? defaults.login_forgot_text
-            : (activeLogin.login_forgot_text !== undefined ? activeLogin.login_forgot_text : defaults.login_forgot_text),
-          login_button_text: isIndependentContext
-            ? defaults.login_button_text
-            : (activeLogin.login_button_text !== undefined ? activeLogin.login_button_text : defaults.login_button_text),
+          login_forgot_text: '',
+          login_button_text: normalizeLoginButtonText(
+            isIndependentContext
+              ? defaults.login_button_text
+              : (activeLogin.login_button_text !== undefined ? activeLogin.login_button_text : defaults.login_button_text)
+          ),
           created_at: data.created_at,
           updated_at: data.updated_at
         }
@@ -347,10 +355,15 @@ export const tallerService = {
               ...stripLoginFields(parsed)
             }
           }
-          return {
+          const fallbackInfo = {
             ...defaults,
             ...parsed,
             ...localLoginConfig
+          }
+          return {
+            ...fallbackInfo,
+            login_forgot_text: '',
+            login_button_text: normalizeLoginButtonText(fallbackInfo.login_button_text)
           }
         }
       } catch {
@@ -362,7 +375,9 @@ export const tallerService = {
       ? { ...defaults }
       : {
           ...defaults,
-          ...localLoginConfig
+          ...localLoginConfig,
+          login_forgot_text: '',
+          login_button_text: normalizeLoginButtonText(localLoginConfig.login_button_text ?? defaults.login_button_text)
         }
   },
 
@@ -459,8 +474,8 @@ export const tallerService = {
           login_email_placeholder: pickLoginStr(safeInfo.login_email_placeholder, defaults.login_email_placeholder || 'nombre@jrblanco.com'),
           login_password_label: pickLoginStr(safeInfo.login_password_label, defaults.login_password_label || 'Contraseña') || 'Contraseña',
           login_password_placeholder: pickLoginStr(safeInfo.login_password_placeholder, defaults.login_password_placeholder || 'Ingresa tu contraseña'),
-          login_forgot_text: pickLoginStr(safeInfo.login_forgot_text, defaults.login_forgot_text || '¿Olvidaste tu contraseña?'),
-          login_button_text: pickLoginStr(safeInfo.login_button_text, defaults.login_button_text || 'Iniciar Sesión') || 'Iniciar Sesión',
+          login_forgot_text: '',
+          login_button_text: normalizeLoginButtonText(pickLoginStr(safeInfo.login_button_text, defaults.login_button_text || 'INICIAR SESIÓN')),
           logo_url: basePayload.logo_url
         }
       : null

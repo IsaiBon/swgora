@@ -91,8 +91,8 @@ const form = reactive({
   login_email_placeholder: 'nombre@jrblanco.com',
   login_password_label: 'Contraseña',
   login_password_placeholder: 'Ingresa tu contraseña',
-  login_forgot_text: '¿Olvidaste tu contraseña?',
-  login_button_text: 'Iniciar Sesión'
+  login_forgot_text: '',
+  login_button_text: 'INICIAR SESIÓN'
 })
 
 const isSaving = ref(false)
@@ -138,8 +138,11 @@ const resetForm = () => {
   form.login_email_placeholder = current.login_email_placeholder !== undefined ? current.login_email_placeholder : (DEFAULT_TALLER_INFO.login_email_placeholder || 'nombre@jrblanco.com')
   form.login_password_label = current.login_password_label !== undefined ? current.login_password_label : (DEFAULT_TALLER_INFO.login_password_label || 'Contraseña')
   form.login_password_placeholder = current.login_password_placeholder !== undefined ? current.login_password_placeholder : (DEFAULT_TALLER_INFO.login_password_placeholder || 'Ingresa tu contraseña')
-  form.login_forgot_text = current.login_forgot_text !== undefined ? current.login_forgot_text : (DEFAULT_TALLER_INFO.login_forgot_text || '¿Olvidaste tu contraseña?')
-  form.login_button_text = current.login_button_text !== undefined ? current.login_button_text : (DEFAULT_TALLER_INFO.login_button_text || 'Iniciar Sesión')
+  form.login_forgot_text = ''
+  const rawBtn = (current.login_button_text ?? '').trim()
+  form.login_button_text = (!rawBtn || rawBtn.toLowerCase() === 'iniciar sesión' || rawBtn.toLowerCase() === 'iniciar sesion')
+    ? 'INICIAR SESIÓN'
+    : rawBtn
 
   pendingLogoFile.value = null
   pendingLoginLogoFile.value = null
@@ -265,8 +268,8 @@ const resetLoginDefaults = () => {
   form.login_email_placeholder = DEFAULT_TALLER_INFO.login_email_placeholder || 'nombre@jrblanco.com'
   form.login_password_label = DEFAULT_TALLER_INFO.login_password_label || 'Contraseña'
   form.login_password_placeholder = DEFAULT_TALLER_INFO.login_password_placeholder || 'Ingresa tu contraseña'
-  form.login_forgot_text = DEFAULT_TALLER_INFO.login_forgot_text || '¿Olvidaste tu contraseña?'
-  form.login_button_text = DEFAULT_TALLER_INFO.login_button_text || 'Iniciar Sesión'
+  form.login_forgot_text = ''
+  form.login_button_text = DEFAULT_TALLER_INFO.login_button_text || 'INICIAR SESIÓN'
   pendingLoginLogoFile.value = null
   pendingLoginBgFile.value = null
   if (loginLogoInputRef.value) loginLogoInputRef.value.value = ''
@@ -355,8 +358,8 @@ const handleSubmit = async () => {
       payload.login_email_placeholder = form.login_email_placeholder.trim()
       payload.login_password_label = form.login_password_label.trim() || 'Contraseña'
       payload.login_password_placeholder = form.login_password_placeholder.trim()
-      payload.login_forgot_text = form.login_forgot_text.trim()
-      payload.login_button_text = form.login_button_text.trim() || 'Iniciar Sesión'
+      payload.login_forgot_text = ''
+      payload.login_button_text = form.login_button_text.trim() || 'INICIAR SESIÓN'
     }
 
     await tallerStore.updateTaller(payload)
@@ -986,29 +989,16 @@ const handleSubmit = async () => {
               </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                  Enlace "¿Olvidaste tu contraseña?"
-                </label>
-                <input
-                  v-model="form.login_forgot_text"
-                  type="text"
-                  placeholder="¿Olvidaste tu contraseña?"
-                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
-                />
-              </div>
-              <div>
-                <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                  Texto del Botón Principal
-                </label>
-                <input
-                  v-model="form.login_button_text"
-                  type="text"
-                  placeholder="Iniciar Sesión"
-                  class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
-                />
-              </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                Texto del Botón Principal
+              </label>
+              <input
+                v-model="form.login_button_text"
+                type="text"
+                placeholder="INICIAR SESIÓN"
+                class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
+              />
             </div>
           </div>
 
@@ -1222,13 +1212,8 @@ const handleSubmit = async () => {
                     </div>
 
                     <div>
-                      <div class="flex items-center justify-between gap-2 mb-1">
-                        <span class="text-[9px] font-semibold text-[#0F172A]">
-                          {{ form.login_password_label || 'Contraseña' }}
-                        </span>
-                        <span v-if="form.login_forgot_text" class="text-[8.5px] font-semibold text-[#004B97]">
-                          {{ form.login_forgot_text }}
-                        </span>
+                      <div class="text-[9px] font-semibold text-[#0F172A] mb-1">
+                        {{ form.login_password_label || 'Contraseña' }}
                       </div>
                       <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
@@ -1245,8 +1230,8 @@ const handleSubmit = async () => {
 
                     <!-- Botón Simulado -->
                     <div class="pt-1">
-                      <div class="w-full bg-[#004B97] text-white font-bold py-1.5 px-3 rounded-lg text-[10px] flex items-center justify-center gap-1.5 shadow-xs select-none">
-                        <span>{{ form.login_button_text || 'Iniciar Sesión' }}</span>
+                      <div class="w-full bg-[#004B97] text-white font-bold tracking-wide py-1.5 px-3 rounded-lg text-[10px] flex items-center justify-center gap-1.5 shadow-xs select-none">
+                        <span>{{ form.login_button_text || 'INICIAR SESIÓN' }}</span>
                         <ArrowRight class="w-3 h-3 text-[#04C4D9]" />
                       </div>
                     </div>

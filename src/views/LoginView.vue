@@ -67,14 +67,13 @@ const loginPasswordPlaceholder = computed(() =>
     ? tallerStore.tallerInfo.login_password_placeholder
     : 'Ingresa tu contraseña'
 )
-const loginForgotText = computed(() =>
-  tallerStore.tallerInfo.login_forgot_text !== undefined
-    ? tallerStore.tallerInfo.login_forgot_text
-    : '¿Olvidaste tu contraseña?'
-)
-const loginButtonText = computed(
-  () => tallerStore.tallerInfo.login_button_text?.trim() || 'Iniciar Sesión'
-)
+const loginButtonText = computed(() => {
+  const raw = tallerStore.tallerInfo.login_button_text?.trim()
+  if (!raw || raw.toLowerCase() === 'iniciar sesión' || raw.toLowerCase() === 'iniciar sesion') {
+    return 'INICIAR SESIÓN'
+  }
+  return raw
+})
 const companyNameForRecovery = computed(() => {
   return tallerStore.tallerInfo.login_titulo || tallerStore.tallerInfo.nombre || 'JR Blanco'
 })
@@ -547,22 +546,12 @@ const handleLogoError = (e: Event) => {
 
               <!-- Campo: Contraseña -->
               <div>
-                <div class="flex items-center justify-between mb-1.5">
-                  <label
-                    for="login-password"
-                    class="block text-xs font-semibold text-[#0F172A]"
-                  >
-                    {{ loginPasswordLabel }}
-                  </label>
-                  <button
-                    v-if="loginForgotText"
-                    type="button"
-                    @click="openRecoveryModal"
-                    class="text-xs font-semibold text-[#004B97] hover:text-[#04C4D9] focus-visible:outline-none focus-visible:underline underline-offset-4 cursor-pointer link-micro"
-                  >
-                    {{ loginForgotText }}
-                  </button>
-                </div>
+                <label
+                  for="login-password"
+                  class="block text-xs font-semibold text-[#0F172A] mb-1.5"
+                >
+                  {{ loginPasswordLabel }}
+                </label>
 
                 <div class="relative group">
                   <div
@@ -598,7 +587,7 @@ const handleLogoError = (e: Event) => {
                 <button
                   type="submit"
                   :disabled="isSubmitting"
-                  class="btn-primary group w-full bg-[#004B97] hover:bg-[#003A75] text-white font-semibold py-2.5 px-5 rounded-xl text-sm shadow-md shadow-[#004B97]/20 disabled:opacity-65 flex items-center justify-center gap-2 cursor-pointer"
+                  class="btn-primary group w-full bg-[#004B97] hover:bg-[#003A75] text-white font-bold tracking-wide py-2.5 px-5 rounded-xl text-sm shadow-md shadow-[#004B97]/20 disabled:opacity-65 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Loader2 v-if="isSubmitting" class="w-4 h-4 animate-spin text-[#04C4D9]" />
                   <span>{{ isSubmitting ? 'Verificando credenciales...' : loginButtonText }}</span>
