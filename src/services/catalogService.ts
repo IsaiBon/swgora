@@ -1081,14 +1081,18 @@ function saveLocalCustomRepuesto(part: RepuestoTecnico): void {
   }
 }
 
-function removeLocalCustomRepuesto(partId: string): void {
-  if (typeof window === 'undefined') return
+function removeLocalCustomRepuestosBulk(partIds: Set<string>): void {
+  if (typeof window === 'undefined' || partIds.size === 0) return
   try {
-    const list = getLocalCustomRepuestos().filter(p => p.id !== partId && p.codigo_oem !== partId)
+    const list = getLocalCustomRepuestos().filter(p => !partIds.has(p.id) && !partIds.has(p.codigo_oem))
     localStorage.setItem(LOCAL_PARTS_STORAGE_KEY, JSON.stringify(list))
   } catch (e) {
-    console.error('Error eliminando repuesto de localStorage:', e)
+    console.error('Error eliminando repuestos de localStorage:', e)
   }
+}
+
+function removeLocalCustomRepuesto(partId: string): void {
+  removeLocalCustomRepuestosBulk(new Set([partId]))
 }
 
 function getLocalCustomFabricantes(): Fabricante[] {
@@ -4371,6 +4375,87 @@ export const catalogService = {
     }
 
     return true
+  },
+
+  /**
+   * Elimina múltiples repuestos técnicos en lotes de 50 en Supabase, caché y respaldo local
+   */
+  async deleteRepuestosBulk(partIds: string[]): Promise<{
+    deletedIds: string[]
+    failedIds: string[]
+    errorMessage?: string
+  }> {
+    const uniqueIds = Array.from(
+      new Set(partIds.map(id => (id || '').trim()).filter(Boolean))
+    )
+    if (uniqueIds.length === 0) {
+      return { deletedIds: [], failedIds: [] }
+    }
+
+    clearCatalogPartsCache()
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const uuidIds: string[] = []
+    const nonUuidIds: string[] = []
+    for (const id of uniqueIds) {
+      if (UUID_REGEX.test(id)) {
+        uuidIds.push(id)
+      } else {
+        nonUuidIds.push(id)
+      }
+    }
+
+    const deletedIds: string[] = []
+    const failedIds: string[] = []
+    let firstError: string | undefined
+    const CHUNK_SIZE = 50
+
+    for (let i = 0; i < uuidIds.length; i += CHUNK_SIZE) {
+      const chunk = uuidIds.slice(i, i + CHUNK_SIZE)
+      try {
+        await supabase
+          .from('equivalencias_repuestos')
+          .delete()
+          .in('repuesto_id', chunk)
+
+        const { error } = await supabase
+          .from('repuestos_tecnicos')
+          .delete()
+          .in('id', chunk)
+
+        if (error) {
+          failedIds.push(...chunk)
+          if (!firstError) firstError = error.message
+        } else {
+          deletedIds.push(...chunk)
+        }
+      } catch (err) {
+        failedIds.push(...chunk)
+        if (!firstError) {
+          firstError = err instanceof Error ? err.message : 'Error eliminando lote en Supabase'
+        }
+      }
+    }
+
+    deletedIds.push(...nonUuidIds)
+
+    if (deletedIds.length > 0) {
+      const deletedSet = new Set(deletedIds)
+      removeLocalCustomRepuestosBulk(deletedSet)
+      for (let i = mockRepuestos.length - 1; i >= 0; i--) {
+        const m = mockRepuestos[i]
+        if (m && (deletedSet.has(m.id) || deletedSet.has(m.codigo_oem))) {
+          mockRepuestos.splice(i, 1)
+        }
+      }
+      clearCatalogPartsCache()
+    }
+
+    return {
+      deletedIds,
+      failedIds,
+      ...(firstError ? { errorMessage: firstError } : {}),
+    }
   },
 
   /**

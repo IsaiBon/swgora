@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useCatalogStore } from '@/stores/catalog'
 import { useAuthStore } from '@/stores/auth'
 import { useOrderCartStore } from '@/stores/orderCart'
+import { useCatalogSelectionStore } from '@/stores/catalogSelection'
 import { 
   type Motor, 
   type Modelo,
@@ -74,7 +75,11 @@ const router = useRouter()
 const catalogStore = useCatalogStore()
 const authStore = useAuthStore()
 const orderCartStore = useOrderCartStore()
+const catalogSelectionStore = useCatalogSelectionStore()
 const isCartDrawerOpen = ref(false)
+const isBulkDeleteConfirmOpen = ref(false)
+const isBulkDeleting = ref(false)
+const bulkDeleteError = ref('')
 
 watch(
   () => [
@@ -85,6 +90,10 @@ watch(
   ],
   () => {
     isCartDrawerOpen.value = false
+    isBulkDeleteConfirmOpen.value = false
+    isBulkDeleting.value = false
+    bulkDeleteError.value = ''
+    catalogSelectionStore.clear()
   }
 )
 
@@ -2669,6 +2678,9 @@ const handleResetAll = async () => {
   tableSearchFilter.value = ''
   tableBrandFilter.value = 'Todas las marcas'
   motorCurrentPage.value = 1
+  catalogSelectionStore.clear()
+  isBulkDeleteConfirmOpen.value = false
+  bulkDeleteError.value = ''
   resetMeasurementsFilters()
   await catalogStore.resetFilters()
   showToast('Filtros y búsqueda restablecidos')
@@ -4288,10 +4300,129 @@ const onGroupDeleted = async (deletedGroupId?: string) => {
   showToast('✓ Familia eliminada del catálogo')
 }
 
-const onPartDeleted = (_deletedPartId?: string) => {
+const onPartDeleted = (deletedPartId?: string) => {
+  if (deletedPartId) {
+    catalogSelectionStore.deselect(deletedPartId)
+    orderCartStore.removePart(deletedPartId)
+  }
   showToast('✓ Repuesto eliminado exitosamente del catálogo')
   adminModalEditPart.value = null
   isAdminModalOpen.value = false
+}
+
+// =============================================================================
+// SELECCIÓN MÚLTIPLE Y ELIMINACIÓN MASIVA (SOLO ADMINISTRADORES)
+// =============================================================================
+const toSelectionItem = (part: RepuestoTecnico) => ({
+  id: part.id,
+  codigo_oem: part.codigo_oem || '—',
+  nombre: part.nombre || 'Repuesto',
+  categoria: part.categoria || 'General',
+})
+
+const allPagePartsSelected = computed<boolean>(() => {
+  if (!authStore.isAdmin || paginatedParts.value.length === 0) return false
+  return paginatedParts.value.every((p) => catalogSelectionStore.isSelected(p.id))
+})
+
+const somePagePartsSelected = computed<boolean>(() => {
+  if (!authStore.isAdmin) return false
+  return paginatedParts.value.some((p) => catalogSelectionStore.isSelected(p.id))
+})
+
+const allDisplayedPartsSelected = computed<boolean>(() => {
+  if (!authStore.isAdmin || displayedParts.value.length === 0) return false
+  return displayedParts.value.every((p) => catalogSelectionStore.isSelected(p.id))
+})
+
+const toggleSelectPart = (part: RepuestoTecnico) => {
+  if (!authStore.isAdmin) return
+  catalogSelectionStore.toggle(toSelectionItem(part))
+}
+
+const toggleSelectCurrentPage = () => {
+  if (!authStore.isAdmin || paginatedParts.value.length === 0) return
+  if (allPagePartsSelected.value) {
+    catalogSelectionStore.deselectMany(paginatedParts.value.map((p) => p.id))
+  } else {
+    catalogSelectionStore.selectMany(paginatedParts.value.map(toSelectionItem))
+  }
+}
+
+const selectAllDisplayedParts = () => {
+  if (!authStore.isAdmin || displayedParts.value.length === 0) return
+  catalogSelectionStore.selectMany(displayedParts.value.map(toSelectionItem))
+}
+
+const openBulkDeleteConfirm = () => {
+  if (!authStore.isAdmin || !catalogSelectionStore.hasSelection) return
+  bulkDeleteError.value = ''
+  isBulkDeleteConfirmOpen.value = true
+}
+
+const removeFromBulkSelection = (partId: string) => {
+  if (isBulkDeleting.value) return
+  catalogSelectionStore.deselect(partId)
+  if (!catalogSelectionStore.hasSelection) {
+    isBulkDeleteConfirmOpen.value = false
+    bulkDeleteError.value = ''
+  }
+}
+
+const handleConfirmBulkDelete = async () => {
+  if (isBulkDeleting.value) return
+  if (!authStore.isAdmin) {
+    catalogSelectionStore.clear()
+    isBulkDeleteConfirmOpen.value = false
+    bulkDeleteError.value = ''
+    return
+  }
+
+  const ids = catalogSelectionStore.items.map((item) => item.id)
+  if (ids.length === 0) {
+    isBulkDeleteConfirmOpen.value = false
+    return
+  }
+
+  isBulkDeleting.value = true
+  bulkDeleteError.value = ''
+  try {
+    const result = await catalogStore.deleteRepuestosBulk(ids)
+    for (const id of result.deletedIds) {
+      catalogSelectionStore.deselect(id)
+      orderCartStore.removePart(id)
+      if (modalPart.value?.id === id) {
+        closeTechnicalSheet()
+      }
+      if (adminModalEditPart.value?.id === id) {
+        adminModalEditPart.value = null
+        isAdminModalOpen.value = false
+      }
+    }
+
+    if (currentPartsPage.value > partsTotalPages.value) {
+      currentPartsPage.value = partsTotalPages.value
+    }
+
+    if (result.failedIds.length > 0) {
+      bulkDeleteError.value = `Se eliminaron ${result.deletedIds.length} repuesto(s), pero ${result.failedIds.length} no pudieron eliminarse${result.errorMessage ? `: ${result.errorMessage}` : '.'}`
+      return
+    }
+
+    isBulkDeleteConfirmOpen.value = false
+    showToast(
+      result.deletedIds.length === 1
+        ? '✓ 1 repuesto eliminado del catálogo'
+        : `✓ ${result.deletedIds.length} repuestos eliminados del catálogo`
+    )
+  } catch (err: unknown) {
+    bulkDeleteError.value =
+      err instanceof Error
+        ? err.message
+        : 'No se pudieron eliminar los repuestos seleccionados.'
+  } finally {
+    isBulkDeleting.value = false
+  }
 }
 
 // Cerrar dropdowns al hacer clic fuera
@@ -6248,11 +6379,68 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Barra contextual de eliminación masiva (Solo Administradores) -->
+        <div
+          v-if="authStore.isAdmin && catalogSelectionStore.hasSelection"
+          class="bg-rose-50 border-b border-rose-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 text-white font-bold shadow-2xs">
+              <Check class="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>
+                {{ catalogSelectionStore.count }}
+                {{ catalogSelectionStore.count === 1 ? 'repuesto seleccionado' : 'repuestos seleccionados' }}
+              </span>
+            </span>
+
+            <button
+              v-if="displayedParts.length > paginatedParts.length && !allDisplayedPartsSelected"
+              type="button"
+              @click="selectAllDisplayedParts"
+              class="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-100/70 border border-rose-200 text-rose-800 font-semibold transition cursor-pointer"
+            >
+              Seleccionar todos los filtrados ({{ displayedParts.length }})
+            </button>
+
+            <button
+              type="button"
+              @click="catalogSelectionStore.clear()"
+              class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold transition cursor-pointer"
+            >
+              Limpiar selección
+            </button>
+          </div>
+
+          <button
+            type="button"
+            @click="openBulkDeleteConfirm"
+            class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold inline-flex items-center gap-1.5 shadow-sm transition active:scale-[0.98] cursor-pointer"
+          >
+            <Trash2 class="w-3.5 h-3.5" />
+            <span>Eliminar seleccionados ({{ catalogSelectionStore.count }})</span>
+          </button>
+        </div>
+
         <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-separate border-spacing-0">
             <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles (Solo Vista Normal Horizontal con sub-columnas) -->
             <thead v-if="hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal'" class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
+                <th
+                  v-if="authStore.isAdmin"
+                  rowspan="2"
+                  class="py-1.5 px-2.5 w-10 text-center align-middle border-b border-r border-slate-200 bg-slate-100/95"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="allPagePartsSelected"
+                    :indeterminate="somePagePartsSelected && !allPagePartsSelected"
+                    :disabled="paginatedParts.length === 0"
+                    @change="toggleSelectCurrentPage"
+                    class="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-600 disabled:opacity-40"
+                    aria-label="Seleccionar todos los repuestos de esta página"
+                  />
+                </th>
                 <th rowspan="2" class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Componente
                 </th>
@@ -6296,6 +6484,20 @@ onUnmounted(() => {
             <!-- Caso B: Cabecera Estándar de 4 Columnas (Vista Normal plana o Vista en Tabla con sub-tabla incrustada) -->
             <thead v-else class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
+                <th
+                  v-if="authStore.isAdmin"
+                  class="py-1.5 px-2.5 w-10 text-center align-middle border-b border-r border-slate-200 bg-slate-100/95"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="allPagePartsSelected"
+                    :indeterminate="somePagePartsSelected && !allPagePartsSelected"
+                    :disabled="paginatedParts.length === 0"
+                    @change="toggleSelectCurrentPage"
+                    class="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-600 disabled:opacity-40"
+                    aria-label="Seleccionar todos los repuestos de esta página"
+                  />
+                </th>
                 <th class="py-1.5 px-3 w-44 min-w-[150px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Componente
                 </th>
@@ -6320,6 +6522,7 @@ onUnmounted(() => {
             <!-- Skeleton loading de repuestos -->
             <tbody v-if="catalogStore.loadingRepuestos || catalogStore.isSearching" class="divide-y divide-slate-100">
               <tr v-for="n in 5" :key="`skel-rep-${n}`" class="animate-pulse bg-slate-50/50">
+                <td v-if="authStore.isAdmin" class="py-2 px-2.5 text-center border-b border-slate-100"><div class="h-4 w-4 mx-auto bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-28 bg-slate-200 rounded"></div></td>
                 <td class="py-2 px-2.5 border-b border-slate-100"><div class="h-3.5 w-24 bg-slate-200 rounded"></div></td>
                 <template v-if="hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal'">
@@ -6332,7 +6535,20 @@ onUnmounted(() => {
 
             <tbody v-else class="divide-y divide-slate-100">
               <template v-for="part in paginatedParts" :key="part.id">
-                <tr class="hover:bg-slate-50 transition group">
+                <tr :class="authStore.isAdmin && catalogSelectionStore.isSelected(part.id) ? 'bg-rose-50/70 hover:bg-rose-50 transition group' : 'hover:bg-slate-50 transition group'">
+                <!-- 0. Checkbox selección masiva (Solo Administradores) -->
+                <td
+                  v-if="authStore.isAdmin"
+                  class="py-2 px-2.5 align-middle text-center border-b border-r border-slate-100"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="catalogSelectionStore.isSelected(part.id)"
+                    @change="toggleSelectPart(part)"
+                    class="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-600"
+                    :aria-label="`Seleccionar repuesto ${part.codigo_oem}`"
+                  />
+                </td>
                 <!-- 1. Componente con Miniatura Técnica y Lightbox -->
                 <td class="py-2 px-3 align-middle border-b border-slate-100">
                   <div class="flex items-center gap-2.5">
@@ -7008,7 +7224,7 @@ onUnmounted(() => {
               <!-- Empty State -->
               <tr v-if="displayedParts.length === 0">
                 <td
-                  :colspan="hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal' ? 3 + Math.max(1, activeTableGroupColumns.length) : 4"
+                  :colspan="(hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal' ? 3 + Math.max(1, activeTableGroupColumns.length) : 4) + (authStore.isAdmin ? 1 : 0)"
                   class="py-10 text-center text-slate-400 bg-white"
                 >
                   <div class="max-w-sm mx-auto space-y-2">
@@ -8723,6 +8939,118 @@ onUnmounted(() => {
         </div>
       </div>
     </Transition>
+
+    <!-- Modal de confirmación para eliminación masiva de repuestos (Solo Administradores) -->
+    <div
+      v-if="authStore.isAdmin && isBulkDeleteConfirmOpen"
+      class="fixed inset-0 z-50 bg-[#09132B]/70 backdrop-blur-sm flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-delete-title"
+      @click.self="!isBulkDeleting && (isBulkDeleteConfirmOpen = false)"
+    >
+      <div class="studio-card bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden popover-pop-in">
+        <!-- Cabecera de advertencia -->
+        <div class="bg-gradient-to-r from-[#0D1B3E] to-rose-700 px-5 py-4 text-white flex items-start justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+              <AlertTriangle class="w-5 h-5 text-rose-200" />
+            </div>
+            <div>
+              <h3 id="bulk-delete-title" class="text-base font-extrabold font-display text-white">
+                Eliminar {{ catalogSelectionStore.count }} {{ catalogSelectionStore.count === 1 ? 'repuesto' : 'repuestos' }}
+              </h3>
+              <p class="text-xs text-rose-100/90 mt-0.5">
+                Esta acción es permanente y eliminará los repuestos y sus equivalencias del catálogo.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            :disabled="isBulkDeleting"
+            @click="isBulkDeleteConfirmOpen = false"
+            class="p-1.5 rounded-xl text-white/80 hover:text-white hover:bg-white/15 transition cursor-pointer disabled:opacity-40"
+            aria-label="Cerrar"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Lista de repuestos seleccionados -->
+        <div class="p-5 space-y-4">
+          <div
+            v-if="bulkDeleteError"
+            role="alert"
+            class="rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-xs font-semibold text-rose-800 flex items-start gap-2"
+          >
+            <AlertCircle class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <span>{{ bulkDeleteError }}</span>
+          </div>
+
+          <div class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+            <div class="max-h-52 overflow-y-auto divide-y divide-slate-100">
+              <div
+                v-for="item in catalogSelectionStore.items"
+                :key="`bulk-del-${item.id}`"
+                class="px-3.5 py-2 bg-white flex items-center justify-between gap-3 text-xs hover:bg-slate-50 transition"
+              >
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono font-bold text-[#004B97] shrink-0">
+                      {{ item.codigo_oem }}
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">
+                      {{ item.categoria }}
+                    </span>
+                  </div>
+                  <div class="text-slate-700 font-medium truncate mt-0.5">
+                    {{ item.nombre }}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  :disabled="isBulkDeleting"
+                  @click="removeFromBulkSelection(item.id)"
+                  class="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer disabled:opacity-40 shrink-0"
+                  title="Quitar de la selección"
+                  :aria-label="`Quitar ${item.codigo_oem} de la selección`"
+                >
+                  <X class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pie con botones -->
+        <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            :disabled="isBulkDeleting"
+            @click="isBulkDeleteConfirmOpen = false"
+            class="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            :disabled="isBulkDeleting || !catalogSelectionStore.hasSelection"
+            @click="handleConfirmBulkDelete"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition active:scale-[0.98] cursor-pointer disabled:opacity-60"
+          >
+            <Loader2 v-if="isBulkDeleting" class="w-4 h-4 animate-spin" />
+            <Trash2 v-else class="w-4 h-4" />
+            <span>
+              {{
+                isBulkDeleting
+                  ? 'Eliminando...'
+                  : `Sí, eliminar ${catalogSelectionStore.count} ${catalogSelectionStore.count === 1 ? 'repuesto' : 'repuestos'}`
+              }}
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <OrderCartDrawer
       :is-open="isCartDrawerOpen"

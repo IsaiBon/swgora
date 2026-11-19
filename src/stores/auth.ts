@@ -225,20 +225,7 @@ export const useAuthStore = defineStore('auth', () => {
     () => Boolean(user.value?.isVaultSession) && !session.value
   )
 
-  const isGlobalAdmin = computed(() => {
-    const norm = normalizeRole(user.value?.role)
-    return norm === 'Administrador' || norm === 'Taller Independiente'
-  })
-
-  const isIndependentAdmin = computed(
-    () => normalizeRole(user.value?.role) === 'Taller Independiente'
-  )
-
-  const isSubAdmin = computed(
-    () => normalizeRole(user.value?.role) === 'Sub-Administrador'
-  )
-
-  const canCustomizeLogin = computed(() => {
+  const isAdmin = computed(() => {
     const current = user.value
     if (!current) return false
     if (current.isIndependent || current.tenantId) return false
@@ -252,6 +239,21 @@ export const useAuthStore = defineStore('auth', () => {
     if (parsedSubAdmin.isSubAdmin) return false
     return normalizeRole(current.role) === 'Administrador'
   })
+
+  const isGlobalAdmin = computed(() => {
+    const norm = normalizeRole(user.value?.role)
+    return norm === 'Administrador' || norm === 'Taller Independiente'
+  })
+
+  const isIndependentAdmin = computed(
+    () => normalizeRole(user.value?.role) === 'Taller Independiente'
+  )
+
+  const isSubAdmin = computed(
+    () => normalizeRole(user.value?.role) === 'Sub-Administrador'
+  )
+
+  const canCustomizeLogin = computed(() => isAdmin.value)
 
   const activeTenantId = computed(() => user.value?.tenantId || null)
   const activeTenantWorkshopName = computed(
@@ -1069,6 +1071,7 @@ export const useAuthStore = defineStore('auth', () => {
     session,
     isAuthenticated,
     isVaultSession,
+    isAdmin,
     isGlobalAdmin,
     isIndependentAdmin,
     isSubAdmin,

@@ -602,6 +602,38 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Elimina múltiples repuestos técnicos en lote de Supabase y actualiza el estado reactivo
+   */
+  async function deleteRepuestosBulk(partIds: string[]) {
+    isSaving.value = true
+    error.value = null
+    try {
+      const result = await catalogService.deleteRepuestosBulk(partIds)
+      if (result.deletedIds.length > 0) {
+        const deletedSet = new Set(result.deletedIds)
+        const beforeLen = repuestos.value.length
+        repuestos.value = repuestos.value.filter(
+          r => !deletedSet.has(r.id) && !deletedSet.has(r.codigo_oem)
+        )
+        const removedCount = beforeLen - repuestos.value.length
+        totalRepuestosCount.value = Math.max(0, totalRepuestosCount.value - removedCount)
+      }
+      if (result.failedIds.length > 0 && result.deletedIds.length === 0) {
+        const msg = result.errorMessage || 'No se pudieron eliminar los repuestos seleccionados'
+        error.value = msg
+        throw new Error(msg)
+      }
+      return result
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar los repuestos seleccionados'
+      error.value = msg
+      throw err
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  /**
    * Carga los grupos o familias de piezas y sus esquemas paramétricos desde Supabase/local
    */
   async function fetchGrupos() {
@@ -923,6 +955,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     createRepuesto,
     updateRepuesto,
     deleteRepuesto,
+    deleteRepuestosBulk,
     toggleOnlyMotorsWithParts,
     setOnlyMotorsWithParts,
     initCatalog
