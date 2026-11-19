@@ -21,6 +21,7 @@ import {
   Building2,
   CheckCircle2,
   AlertCircle,
+  Lock,
 } from 'lucide-vue-next'
 import {
   normalizarNombreRuta,
@@ -341,6 +342,11 @@ async function guardarRuta() {
     errorFormulario.value = `Ya existe una ruta registrada con ese nombre: "${rutaNombreDuplicado.value.nombre}" (${rutaNombreDuplicado.value.codigo}). Usa otro nombre.`
     inputNombreRuta.value?.focus()
     return
+  }
+
+  if (!modoEdicion.value) {
+    // Al crear una nueva ruta, el código es estrictamente correlativo automático no modificable
+    form.codigo = rutasService.getNextRutaCode()
   }
 
   if (!form.codigo.trim()) {
@@ -1170,24 +1176,50 @@ function formatMoney(amount: number): string {
                   </div>
 
                   <div class="sm:col-span-4">
-                    <label class="block text-xs font-bold text-[#0D1B3E] mb-1.5">
-                      Código
+                    <label class="block text-xs font-bold text-[#0D1B3E] mb-1.5 flex items-center justify-between">
+                      <span>Código</span>
+                      <span
+                        v-if="!modoEdicion"
+                        class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200"
+                      >
+                        <Lock class="w-3 h-3 text-slate-400" />
+                        Automático
+                      </span>
                     </label>
-                    <input
-                      v-model="form.codigo"
-                      type="text"
-                      required
-                      placeholder="RUT-01"
-                      :aria-invalid="Boolean(rutaCodigoDuplicado)"
-                      :class="[
-                        'w-full rounded-xl border px-3 py-2.5 text-sm font-mono font-bold uppercase text-[#0D1B3E] focus:outline-none focus:ring-2 transition',
-                        rutaCodigoDuplicado
-                          ? 'border-rose-400 bg-rose-50/40 focus:border-rose-500 focus:ring-rose-200'
-                          : 'border-slate-300 bg-slate-50 focus:bg-white focus:border-[#04C4D9] focus:ring-[#04C4D9]/25',
-                      ]"
-                    />
+                    <div class="relative">
+                      <input
+                        v-model="form.codigo"
+                        type="text"
+                        required
+                        placeholder="RUT-01"
+                        :readonly="!modoEdicion"
+                        :tabindex="!modoEdicion ? -1 : undefined"
+                        :aria-invalid="Boolean(rutaCodigoDuplicado)"
+                        :class="[
+                          'w-full rounded-xl border px-3 py-2.5 text-sm font-mono font-bold uppercase transition',
+                          !modoEdicion
+                            ? 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed select-none pr-9 focus:outline-none focus:ring-0'
+                            : rutaCodigoDuplicado
+                              ? 'border-rose-400 bg-rose-50/40 text-[#0D1B3E] focus:border-rose-500 focus:ring-rose-200 focus:outline-none focus:ring-2'
+                              : 'border-slate-300 bg-slate-50 text-[#0D1B3E] focus:bg-white focus:border-[#04C4D9] focus:ring-[#04C4D9]/25 focus:outline-none focus:ring-2',
+                        ]"
+                      />
+                      <span
+                        v-if="!modoEdicion"
+                        class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400"
+                        title="Código asignado automáticamente"
+                      >
+                        <Lock class="w-4 h-4" />
+                      </span>
+                    </div>
                     <p
-                      v-if="rutaCodigoDuplicado"
+                      v-if="!modoEdicion"
+                      class="mt-1 text-[11px] text-slate-400"
+                    >
+                      Asignado automáticamente por correlativo del sistema.
+                    </p>
+                    <p
+                      v-else-if="rutaCodigoDuplicado"
                       class="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 px-2.5 py-1 text-[11px] font-semibold text-rose-700"
                     >
                       Código en uso por "{{ rutaCodigoDuplicado.nombre }}".
