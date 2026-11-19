@@ -6972,17 +6972,17 @@ onUnmounted(() => {
                       :class="[
                         'px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-sm',
                         orderCartStore.isInCart(part.id)
-                          ? 'bg-[#004B97] hover:bg-[#0D1B3E] text-white'
+                          ? 'bg-rose-600 hover:bg-rose-700 text-white'
                           : 'bg-[#147488] hover:bg-[#105E6E] text-white'
                       ]"
                       :title="orderCartStore.isInCart(part.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al carrito de orden'"
                     >
-                      <Check v-if="orderCartStore.isInCart(part.id)" class="w-3 h-3 shrink-0" />
+                      <Trash2 v-if="orderCartStore.isInCart(part.id)" class="w-3 h-3 shrink-0" />
                       <Plus v-else class="w-3 h-3 shrink-0" />
-                      <span>Añadir a la orden</span>
+                      <span>{{ orderCartStore.isInCart(part.id) ? 'Quitar de la orden' : 'Añadir a la orden' }}</span>
                       <span
                         v-if="orderCartStore.getItemQuantity(part.id) > 1"
-                        class="px-1.5 py-0.5 rounded-full bg-[#04C4D9] text-[#0D1B3E] text-[10px] font-black font-mono leading-none"
+                        class="px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-black font-mono leading-none"
                       >
                         {{ orderCartStore.getItemQuantity(part.id) }}
                       </span>
@@ -7947,15 +7947,15 @@ onUnmounted(() => {
                 :class="[
                   'px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm',
                   orderCartStore.isInCart(modalPart.id)
-                    ? 'bg-[#004B97] hover:bg-[#0D1B3E]'
+                    ? 'bg-rose-600 hover:bg-rose-700'
                     : 'studio-cta-primary'
                 ]"
                 :title="orderCartStore.isInCart(modalPart.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al carrito de orden'"
               >
-                <Check v-if="orderCartStore.isInCart(modalPart.id)" class="w-4 h-4" />
+                <Trash2 v-if="orderCartStore.isInCart(modalPart.id)" class="w-4 h-4" />
                 <Plus v-else class="w-4 h-4" />
                 <span>
-                  Añadir a la orden{{ orderCartStore.getItemQuantity(modalPart.id) > 1 ? ` (${orderCartStore.getItemQuantity(modalPart.id)})` : '' }}
+                  {{ orderCartStore.isInCart(modalPart.id) ? 'Quitar de la orden' : 'Añadir a la orden' }}{{ orderCartStore.getItemQuantity(modalPart.id) > 1 ? ` (${orderCartStore.getItemQuantity(modalPart.id)})` : '' }}
                 </span>
               </button>
             </div>
