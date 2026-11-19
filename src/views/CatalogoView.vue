@@ -2022,6 +2022,21 @@ const addedPartId = ref<string | null>(null)
 let addedPartTimer: ReturnType<typeof setTimeout> | null = null
 
 const addToWorkOrder = (part: RepuestoTecnico) => {
+  if (orderCartStore.isInCart(part.id)) {
+    orderCartStore.removePart(part.id)
+    if (addedPartId.value === part.id) addedPartId.value = null
+    if (addedPartTimer) {
+      clearTimeout(addedPartTimer)
+      addedPartTimer = null
+    }
+    showToast(
+      orderCartStore.hasItems
+        ? `${part.codigo_oem} quitado del carrito (${orderCartStore.uniqueCount} en carrito)`
+        : `${part.codigo_oem} quitado del carrito`
+    )
+    return
+  }
+
   const partMotor =
     part.motor ||
     (part.motor_id ? catalogStore.motores.find(m => m.id === part.motor_id) : null) ||
@@ -2039,7 +2054,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   const motorCode = partMotor?.codigo || ''
   const imageUrl = getPartImagesList(part)[0] || part.imagen_url || undefined
 
-  const addedItem = orderCartStore.addPart({
+  orderCartStore.addPart({
     id: part.id,
     code: part.codigo_oem,
     name: part.nombre,
@@ -2058,7 +2073,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   }, 1400)
 
   showToast(
-    `✓ ${part.codigo_oem} añadido al carrito (${addedItem.quantity} u. · ${orderCartStore.totalUnits} en total)`
+    `✓ ${part.codigo_oem} añadido al carrito (${orderCartStore.uniqueCount} en carrito)`
   )
 }
 
@@ -6956,18 +6971,17 @@ onUnmounted(() => {
                       @click="addToWorkOrder(part)"
                       :class="[
                         'px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-sm',
-                        addedPartId === part.id || orderCartStore.isInCart(part.id)
+                        orderCartStore.isInCart(part.id)
                           ? 'bg-[#004B97] hover:bg-[#0D1B3E] text-white'
                           : 'bg-[#147488] hover:bg-[#105E6E] text-white'
                       ]"
-                      title="Añadir este repuesto al carrito de orden"
+                      :title="orderCartStore.isInCart(part.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al carrito de orden'"
                     >
-                      <Check v-if="addedPartId === part.id" class="w-3 h-3 shrink-0" />
-                      <ShoppingCart v-else-if="orderCartStore.isInCart(part.id)" class="w-3 h-3 shrink-0" />
+                      <Check v-if="orderCartStore.isInCart(part.id)" class="w-3 h-3 shrink-0" />
                       <Plus v-else class="w-3 h-3 shrink-0" />
                       <span>Añadir a la orden</span>
                       <span
-                        v-if="orderCartStore.getItemQuantity(part.id) > 0"
+                        v-if="orderCartStore.getItemQuantity(part.id) > 1"
                         class="px-1.5 py-0.5 rounded-full bg-[#04C4D9] text-[#0D1B3E] text-[10px] font-black font-mono leading-none"
                       >
                         {{ orderCartStore.getItemQuantity(part.id) }}
@@ -7930,12 +7944,18 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="addToWorkOrder(modalPart); closeTechnicalSheet()"
-                class="studio-cta-primary px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                :class="[
+                  'px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm',
+                  orderCartStore.isInCart(modalPart.id)
+                    ? 'bg-[#004B97] hover:bg-[#0D1B3E]'
+                    : 'studio-cta-primary'
+                ]"
+                :title="orderCartStore.isInCart(modalPart.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al carrito de orden'"
               >
-                <ShoppingCart v-if="orderCartStore.isInCart(modalPart.id)" class="w-4 h-4" />
+                <Check v-if="orderCartStore.isInCart(modalPart.id)" class="w-4 h-4" />
                 <Plus v-else class="w-4 h-4" />
                 <span>
-                  Añadir a la orden{{ orderCartStore.getItemQuantity(modalPart.id) > 0 ? ` (${orderCartStore.getItemQuantity(modalPart.id)})` : '' }}
+                  Añadir a la orden{{ orderCartStore.getItemQuantity(modalPart.id) > 1 ? ` (${orderCartStore.getItemQuantity(modalPart.id)})` : '' }}
                 </span>
               </button>
             </div>
