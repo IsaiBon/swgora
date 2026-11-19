@@ -1097,22 +1097,15 @@ function formatMoney(amount: number): string {
         <div class="studio-card w-full max-w-[540px] rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden my-6 popover-pop-in">
           <form @submit.prevent="guardarRuta">
             <!-- Cabecera limpia y directa -->
-            <div class="px-6 py-5 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-start justify-between gap-4">
-              <div class="flex items-start gap-3">
-                <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0 mt-0.5">
+            <div class="px-6 py-5 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
                   <MapPin class="w-5 h-5 text-[#BFEBF2]" />
                 </div>
                 <div>
                   <h2 class="text-lg font-extrabold font-display tracking-tight text-white">
                     {{ modoEdicion ? 'Editar ruta' : 'Nueva ruta' }}
                   </h2>
-                  <p class="text-xs text-sky-100/80 mt-0.5">
-                    {{
-                      modoEdicion
-                        ? 'Actualiza los datos de la sucursal y su encargado.'
-                        : 'Se crea activa de inmediato y lista para asignar órdenes.'
-                    }}
-                  </p>
                 </div>
               </div>
               <button
@@ -1142,12 +1135,9 @@ function formatMoney(amount: number): string {
                   <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     1. Datos de la ruta
                   </span>
-                  <span class="text-[11px] font-semibold text-[#004B97]">
-                    Activa por defecto
-                  </span>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
                   <div class="sm:col-span-8">
                     <label class="block text-xs font-bold text-[#0D1B3E] mb-1.5">
                       Nombre de la ruta o sucursal *
@@ -1176,15 +1166,8 @@ function formatMoney(amount: number): string {
                   </div>
 
                   <div class="sm:col-span-4">
-                    <label class="block text-xs font-bold text-[#0D1B3E] mb-1.5 flex items-center justify-between">
-                      <span>Código</span>
-                      <span
-                        v-if="!modoEdicion"
-                        class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200"
-                      >
-                        <Lock class="w-3 h-3 text-slate-400" />
-                        Automático
-                      </span>
+                    <label class="block text-xs font-bold text-[#0D1B3E] mb-1.5">
+                      Código
                     </label>
                     <div class="relative">
                       <input
@@ -1207,19 +1190,12 @@ function formatMoney(amount: number): string {
                       <span
                         v-if="!modoEdicion"
                         class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400"
-                        title="Código asignado automáticamente"
                       >
                         <Lock class="w-4 h-4" />
                       </span>
                     </div>
                     <p
-                      v-if="!modoEdicion"
-                      class="mt-1 text-[11px] text-slate-400"
-                    >
-                      Asignado automáticamente por correlativo del sistema.
-                    </p>
-                    <p
-                      v-else-if="rutaCodigoDuplicado"
+                      v-if="modoEdicion && rutaCodigoDuplicado"
                       class="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 px-2.5 py-1 text-[11px] font-semibold text-rose-700"
                     >
                       Código en uso por "{{ rutaCodigoDuplicado.nombre }}".
@@ -1366,11 +1342,6 @@ function formatMoney(amount: number): string {
                       </div>
                     </div>
                   </div>
-
-                  <p class="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-                    <ShieldCheck class="w-3.5 h-3.5 text-[#004B97] shrink-0" />
-                    <span>Este usuario solo verá y gestionará las órdenes de <strong>{{ form.nombre || 'esta ruta' }}</strong>.</span>
-                  </p>
                 </div>
 
                 <!-- Opción B: Asignar usuario existente -->
@@ -1394,10 +1365,6 @@ function formatMoney(amount: number): string {
                   <p v-if="usuariosDisponiblesParaRuta.length === 0" class="text-[11px] font-medium text-slate-500">
                     No hay usuarios disponibles para asignar. Usa la pestaña <strong>Crear usuario</strong>.
                   </p>
-                  <p v-else class="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-                    <ShieldCheck class="w-3.5 h-3.5 text-[#004B97] shrink-0" />
-                    <span>Su perfil pasará a ser Sub-Administrador exclusivo de esta ruta.</span>
-                  </p>
                 </div>
 
                 <!-- Opción C: Asignar más tarde -->
@@ -1405,7 +1372,7 @@ function formatMoney(amount: number): string {
                   v-else
                   class="rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 text-xs text-slate-600"
                 >
-                  La ruta se creará activa desde ya. Podrás crearle o asignarle un encargado cuando quieras editando esta tarjeta.
+                  Podrás asignar un encargado luego editando la ruta.
                 </div>
               </div>
             </div>
