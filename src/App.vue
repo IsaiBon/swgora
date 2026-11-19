@@ -3,8 +3,10 @@ import { onMounted } from 'vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import { useTallerStore } from '@/stores/taller'
+import { useOrderCartStore } from '@/stores/orderCart'
 
 const tallerStore = useTallerStore()
+useOrderCartStore()
 
 onMounted(() => {
   void tallerStore.loadTallerInfo()

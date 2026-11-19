@@ -205,6 +205,7 @@ function persistUser(u: User | null) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(u))
     } else {
       localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem('swgora_cart_parts')
       setActiveTenantContext(null)
     }
   } catch (e) {

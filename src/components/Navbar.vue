@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore, normalizeRole } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useTallerStore } from '@/stores/taller'
+import { useOrderCartStore } from '@/stores/orderCart'
 import { perfilesService } from '@/services/perfilesService'
 import UserProfileModal from '@/components/UserProfileModal.vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -27,6 +28,7 @@ import {
 const authStore = useAuthStore()
 const uiStore = useUiStore()
 const tallerStore = useTallerStore()
+const orderCartStore = useOrderCartStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -148,6 +150,7 @@ const handleLogout = async () => {
   userMenuOpen.value = false
   uiStore.closeMobileSidebar()
   await authStore.logout()
+  orderCartStore.resetSession()
   tallerStore.resetTallerInfo()
   await router.replace('/login')
 }

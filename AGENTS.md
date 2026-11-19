@@ -58,7 +58,7 @@ El sistema reemplaza la consulta manual en múltiples catálogos en PDF y resuel
   - Barra de búsqueda y panel de cotas dimensionales acoplados arriba de la tabla con botón "*Limpiar filtros de medida*".
   - Contenedores de tabla con scroll vertical interno (`max-h-[540px] overflow-y-auto`) y encabezados fijos (`thead sticky top-0`), eliminando el scroll vertical excesivo de la página completa.
   - Cruce de marcas alternas en tiempo real: códigos homologados para **Dokuro, Rik, NPR, NDC, Ajusa, Pioneer**.
-  - Botón de acción directa **+ A Orden** que almacena el repuesto seleccionado en `swgora_cart_parts` de `localStorage` con notificación toast para asociarlo a las órdenes de rectificación.
+  - Botón de acción directa **Añadir a la orden / Quitar de la orden** que agrega o deselecciona repuestos en el **Listado de orden** en memoria, estrictamente aislado por sesión autenticada (sin caché compartido en `localStorage` y con limpieza automática al cerrar sesión o cambiar de cuenta), para crear órdenes o cotizaciones con los ítems acumulados.
 
 ### 2.2. Módulo de Órdenes de Trabajo y Cotizaciones de Rectificación
 Diseñado para agilizar el registro en el mostrador del taller y la emisión formal de documentos:
@@ -243,4 +243,20 @@ El sistema SWGORA implementa control de acceso basado en roles tanto en el enrut
 5. **Criterios de Impresión y UI**:
    - Cumplir la regla de **impresión limpia**: al imprimir órdenes o cotizaciones, omitir componentes o líneas sin valores facturados.
    - Respetar los estilos corporativos para órdenes (azul/institucional) y cotizaciones (blanco y negro con marca de agua).
+6. **Mentalidad de Producción, Aislamiento Multi-Cuenta y Cero Caché Estático Global**:
+   - **Diseñar siempre para producción real**: Todo desarrollo debe asumir uso simultáneo en producción por múltiples cuentas, roles, rutas y talleres independientes (`tenantId`), sin mezclar estados ni datos entre sesiones.
+   - **Prohibido usar caché estático o `localStorage` global compartido para datos de trabajo**: Nunca persistir borradores, listados de selección, filtros sensibles ni información operativa de una cuenta en claves globales sin aislamiento ni dejar datos residuales tras cerrar sesión (`logout`).
+   - **Estado temporal estrictamente ligado a la sesión activa**: Todo estado temporal de interfaz (como el *Listado de orden* del catálogo) debe mantenerse en memoria vinculado al alcance único de la cuenta activa (`tenantId + rutaId + userId + rol`), limpiarse síncronamente al cerrar sesión o cambiar de cuenta/rol/taller, y jamás mostrarse sin sesión autenticada.
+   - **Fuente de verdad en la nube**: Cualquier dato que requiera persistencia entre sesiones o dispositivos debe almacenarse en **Supabase (PostgreSQL)** con RLS y aislamiento por usuario/taller/ruta, nunca en cachés locales estáticos ni datos quemados.
+
+---
+
+## 8. Herramientas, Servidores MCP y Skills Desactivadas
+1. **Desactivación de Blender**:
+   - **Regla Mandatoria**: El servidor MCP `blender` y todas las skills asociadas a Blender, modelado 3D, animación, rigging, shaders, volumetría y dirección de arte CGI están **estrictamente desactivados** para este proyecto.
+   - Ningún agente debe invocar herramientas de Blender (`execute_blender_code`, `get_scene_info`, etc.) ni cargar skills de Blender para las tareas de SWGORA.
+2. **Desactivación del Plugin de Ciencias y Bioinformática (`science`)**:
+   - **Regla Mandatoria**: El plugin `science` y todos sus servidores MCP asociados (`science_biomolecular_structure_viewer_mcp`, etc.) y sus 48 skills (AlphaFold, ChEMBL, PubChem, PDB, UniProt, BLAST, cheminformatics, genómica, literatura científica, etc.) quedan **estrictamente desactivados** para este proyecto.
+   - No invocar ninguna herramienta científica ni cargar skills biológicas/químicas para tareas de SWGORA.
+
 

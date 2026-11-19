@@ -76,6 +76,18 @@ const authStore = useAuthStore()
 const orderCartStore = useOrderCartStore()
 const isCartDrawerOpen = ref(false)
 
+watch(
+  () => [
+    authStore.user?.id,
+    authStore.user?.tenantId,
+    authStore.user?.rutaId,
+    authStore.user?.role,
+  ],
+  () => {
+    isCartDrawerOpen.value = false
+  }
+)
+
 // =============================================================================
 // ESTADO DE SELECCIÓN EN CASCADA (FABRICANTE -> MOTOR -> MODELO -> COMPONENTE)
 // =============================================================================
@@ -2054,7 +2066,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   const motorCode = partMotor?.codigo || ''
   const imageUrl = getPartImagesList(part)[0] || part.imagen_url || undefined
 
-  orderCartStore.addPart({
+  const addedItem = orderCartStore.addPart({
     id: part.id,
     code: part.codigo_oem,
     name: part.nombre,
@@ -2065,6 +2077,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
     catalogOrigin: part.catalogo_origen || undefined,
     imageUrl,
   })
+  if (!addedItem) return
 
   addedPartId.value = part.id
   if (addedPartTimer) clearTimeout(addedPartTimer)
@@ -8665,7 +8678,7 @@ onUnmounted(() => {
       leave-to-class="transform translate-y-4 opacity-0"
     >
       <div
-        v-if="orderCartStore.hasItems"
+        v-if="authStore.isAuthenticated && orderCartStore.hasItems"
         class="fixed bottom-5 right-5 z-40 max-w-[calc(100vw-2.5rem)] bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-3.5 py-2.5 rounded-2xl shadow-2xl border border-[#04C4D9]/45 flex flex-wrap items-center gap-2.5 sm:gap-3"
       >
         <button

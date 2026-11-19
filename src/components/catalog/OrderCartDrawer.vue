@@ -75,7 +75,7 @@ const formatMoney = (val: number) => {
       leave-to-class="opacity-0"
     >
       <div
-        v-if="isOpen"
+        v-if="isOpen && authStore.isAuthenticated"
         class="fixed inset-0 z-50 flex justify-end bg-[#09132B]/60 backdrop-blur-sm"
         @click.self="emit('close')"
         role="dialog"

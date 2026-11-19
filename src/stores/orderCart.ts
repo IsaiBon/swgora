@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useAuthStore } from './auth'
 
 export interface OrderCartItem {
   id: string
@@ -17,7 +18,7 @@ export interface OrderCartItem {
 
 export type OrderCartPartPayload = Omit<OrderCartItem, 'quantity' | 'addedAt'>
 
-const STORAGE_KEY = 'swgora_cart_parts'
+const LEGACY_STORAGE_KEY = 'swgora_cart_parts'
 
 function normalizeMotorValue(motor?: unknown): string {
   if (typeof motor !== 'string') return ''
@@ -31,105 +32,59 @@ function sanitizeNumber(val: unknown, fallback = 0): number {
   return Number.isFinite(num) ? num : fallback
 }
 
-function sanitizeCartItems(rawList: unknown): OrderCartItem[] {
-  if (!Array.isArray(rawList)) return []
-
-  const deduped = new Map<string, OrderCartItem>()
-
-  for (const entry of rawList) {
-    if (!entry || typeof entry !== 'object') continue
-    const raw = entry as Record<string, unknown>
-
-    const id = typeof raw.id === 'string' ? raw.id.trim() : String(raw.id ?? '').trim()
-    if (!id) continue
-
-    const code = typeof raw.code === 'string' ? raw.code.trim() : ''
-    const name = typeof raw.name === 'string' && raw.name.trim()
-      ? raw.name.trim()
-      : (code || 'Repuesto')
-    if (!code && !name) continue
-
-    const rawPrice = sanitizeNumber(raw.price, 0)
-    const price = rawPrice > 0 ? Number(rawPrice.toFixed(2)) : 0
-    const rawQty = Math.floor(sanitizeNumber(raw.quantity, 1))
-    const quantity = Math.max(1, rawQty)
-    const category = typeof raw.category === 'string' && raw.category.trim()
-      ? raw.category.trim()
-      : 'Repuestos'
-    const brand = typeof raw.brand === 'string' ? raw.brand.trim() : ''
-    const motor = normalizeMotorValue(raw.motor)
-    const catalogOrigin = typeof raw.catalogOrigin === 'string' && raw.catalogOrigin.trim()
-      ? raw.catalogOrigin.trim()
-      : undefined
-    const imageUrl = typeof raw.imageUrl === 'string' && raw.imageUrl.trim()
-      ? raw.imageUrl.trim()
-      : undefined
-    const addedAt = Number.isFinite(Number(raw.addedAt))
-      ? Number(raw.addedAt)
-      : (Number.isFinite(Number(raw.timestamp)) ? Number(raw.timestamp) : Date.now())
-
-    const existing = deduped.get(id)
-    if (existing) {
-      existing.quantity += quantity
-      if (!existing.code && code) existing.code = code
-      if (!existing.name && name) existing.name = name
-      if (!(existing.price > 0) && price > 0) existing.price = price
-      if (!existing.brand && brand) existing.brand = brand
-      if (!existing.motor && motor) existing.motor = motor
-      if (!existing.catalogOrigin && catalogOrigin) existing.catalogOrigin = catalogOrigin
-      if (!existing.imageUrl && imageUrl) existing.imageUrl = imageUrl
-    } else {
-      deduped.set(id, {
-        id,
-        code,
-        name,
-        price,
-        category,
-        brand,
-        motor,
-        ...(catalogOrigin ? { catalogOrigin } : {}),
-        ...(imageUrl ? { imageUrl } : {}),
-        quantity,
-        addedAt,
-      })
-    }
-  }
-
-  return Array.from(deduped.values())
-}
-
-function loadFromStorage(): OrderCartItem[] {
+function purgeLegacyOrderCartStorage(): void {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return []
+    return
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    return sanitizeCartItems(parsed)
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
   } catch {
-    return []
+    // Silencioso en entornos con almacenamiento restringido
   }
 }
 
 export const useOrderCartStore = defineStore('orderCart', () => {
-  const items = ref<OrderCartItem[]>(loadFromStorage())
+  purgeLegacyOrderCartStorage()
 
-  const persistToStorage = () => {
-    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-      return
+  const authStore = useAuthStore()
+
+  // Alcance único por sesión autenticada: aísla el listado por empresa, ruta, usuario y rol.
+  const activeAccountScope = computed<string | null>(() => {
+    const u = authStore.user
+    if (!u || !u.id) return null
+    const tenantPart = (u.tenantId || 'global').trim()
+    const rutaPart = (u.rutaId || 'all').trim()
+    const rolePart = (u.role || '').trim()
+    return `${tenantPart}::${rutaPart}::${u.id.trim()}::${rolePart}`
+  })
+
+  // Estado temporal estrictamente en memoria (sin caché global en localStorage).
+  const rawItems = ref<OrderCartItem[]>([])
+  const ownerScope = ref<string | null>(activeAccountScope.value)
+
+  const items = computed<OrderCartItem[]>(() => {
+    if (!activeAccountScope.value || ownerScope.value !== activeAccountScope.value) {
+      return []
     }
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items.value))
-    } catch {
-      // Silencioso en caso de cuota llena o navegación privada estricta
-    }
+    return rawItems.value
+  })
+
+  const resetSession = (): void => {
+    rawItems.value = []
+    ownerScope.value = activeAccountScope.value
+    purgeLegacyOrderCartStorage()
   }
 
-  // Asegurar que cualquier migración de formato antiguo quede guardada limpiamente
-  if (items.value.length > 0) {
-    persistToStorage()
-  }
+  // Limpieza síncrona inmediata al cerrar sesión o cambiar de cuenta/taller/ruta/rol.
+  watch(
+    activeAccountScope,
+    (nextScope) => {
+      rawItems.value = []
+      ownerScope.value = nextScope
+      purgeLegacyOrderCartStorage()
+    },
+    { flush: 'sync' }
+  )
 
   const uniqueCount = computed(() => items.value.length)
 
@@ -160,7 +115,17 @@ export const useOrderCartStore = defineStore('orderCart', () => {
     return items.value.some(item => item.id === partId)
   }
 
-  const addPart = (payload: OrderCartPartPayload, qty = 1): OrderCartItem => {
+  const addPart = (payload: OrderCartPartPayload, qty = 1): OrderCartItem | null => {
+    const currentScope = activeAccountScope.value
+    if (!currentScope) {
+      resetSession()
+      return null
+    }
+    if (ownerScope.value !== currentScope) {
+      rawItems.value = []
+      ownerScope.value = currentScope
+    }
+
     const cleanQty = Math.max(1, Math.floor(sanitizeNumber(qty, 1)))
     const cleanPrice = sanitizeNumber(payload.price, 0)
     const normalizedPrice = cleanPrice > 0 ? Number(cleanPrice.toFixed(2)) : 0
@@ -172,7 +137,7 @@ export const useOrderCartStore = defineStore('orderCart', () => {
     const normalizedOrigin = payload.catalogOrigin?.trim() || undefined
     const normalizedImage = payload.imageUrl?.trim() || undefined
 
-    const existing = items.value.find(item => item.id === payload.id)
+    const existing = rawItems.value.find(item => item.id === payload.id)
     if (existing) {
       existing.quantity += cleanQty
       if (!existing.code && normalizedCode) existing.code = normalizedCode
@@ -182,7 +147,6 @@ export const useOrderCartStore = defineStore('orderCart', () => {
       if (!existing.motor && normalizedMotor) existing.motor = normalizedMotor
       if (!existing.catalogOrigin && normalizedOrigin) existing.catalogOrigin = normalizedOrigin
       if (!existing.imageUrl && normalizedImage) existing.imageUrl = normalizedImage
-      persistToStorage()
       return existing
     }
 
@@ -200,53 +164,48 @@ export const useOrderCartStore = defineStore('orderCart', () => {
       addedAt: Date.now(),
     }
 
-    items.value.push(newItem)
-    persistToStorage()
+    rawItems.value.push(newItem)
     return newItem
   }
 
   const setQuantity = (partId: string, quantity: number): void => {
+    if (!activeAccountScope.value || ownerScope.value !== activeAccountScope.value) return
     const cleanQty = Math.floor(sanitizeNumber(quantity, 0))
     if (cleanQty <= 0) {
       removePart(partId)
       return
     }
-    const found = items.value.find(item => item.id === partId)
+    const found = rawItems.value.find(item => item.id === partId)
     if (!found) return
     found.quantity = cleanQty
-    persistToStorage()
   }
 
   const increment = (partId: string): void => {
-    const found = items.value.find(item => item.id === partId)
+    if (!activeAccountScope.value || ownerScope.value !== activeAccountScope.value) return
+    const found = rawItems.value.find(item => item.id === partId)
     if (!found) return
     found.quantity += 1
-    persistToStorage()
   }
 
   const decrement = (partId: string): void => {
-    const found = items.value.find(item => item.id === partId)
+    if (!activeAccountScope.value || ownerScope.value !== activeAccountScope.value) return
+    const found = rawItems.value.find(item => item.id === partId)
     if (!found) return
     if (found.quantity <= 1) {
       removePart(partId)
       return
     }
     found.quantity -= 1
-    persistToStorage()
   }
 
   const removePart = (partId: string): void => {
-    const prevLength = items.value.length
-    items.value = items.value.filter(item => item.id !== partId)
-    if (items.value.length !== prevLength) {
-      persistToStorage()
-    }
+    if (!activeAccountScope.value || ownerScope.value !== activeAccountScope.value) return
+    rawItems.value = rawItems.value.filter(item => item.id !== partId)
   }
 
   const clearCart = (): void => {
-    if (items.value.length === 0) return
-    items.value = []
-    persistToStorage()
+    rawItems.value = []
+    purgeLegacyOrderCartStorage()
   }
 
   const getSuggestedVehicle = (): { brand: string; motor: string } => {
@@ -285,6 +244,7 @@ export const useOrderCartStore = defineStore('orderCart', () => {
     decrement,
     removePart,
     clearCart,
+    resetSession,
     getSuggestedVehicle,
   }
 })
