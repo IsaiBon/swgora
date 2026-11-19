@@ -3,7 +3,7 @@ import { onUnmounted, ref, watch } from 'vue'
 import { useOrderCartStore } from '@/stores/orderCart'
 import { useAuthStore } from '@/stores/auth'
 import {
-  ShoppingCart,
+  ClipboardList,
   X,
   Package,
   Plus,
@@ -80,18 +80,18 @@ const formatMoney = (val: number) => {
         @click.self="emit('close')"
         role="dialog"
         aria-modal="true"
-        aria-label="Carrito de Orden"
+        aria-label="Listado de orden"
       >
         <div class="w-full max-w-md h-full bg-white shadow-2xl border-l border-slate-200 flex flex-col overflow-hidden">
           <!-- Encabezado -->
           <div class="px-5 py-4 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-center justify-between gap-3 shrink-0 shadow-sm">
             <div class="flex items-center gap-3 min-w-0">
               <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 text-[#BFEBF2] flex items-center justify-center shrink-0">
-                <ShoppingCart class="w-5 h-5" />
+                <ClipboardList class="w-5 h-5" />
               </div>
               <div class="min-w-0">
                 <h3 class="font-display text-base font-extrabold text-white tracking-tight truncate">
-                  Carrito de Orden
+                  Listado de orden
                 </h3>
                 <p class="text-[11px] text-sky-100/90 font-medium">
                   {{ orderCartStore.uniqueCount }} repuesto(s) · {{ orderCartStore.totalUnits }} unidad(es)
@@ -103,7 +103,7 @@ const formatMoney = (val: number) => {
               type="button"
               @click="emit('close')"
               class="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/85 hover:text-white transition cursor-pointer shrink-0"
-              aria-label="Cerrar carrito"
+              aria-label="Cerrar listado de orden"
               title="Cerrar (Esc)"
             >
               <X class="w-4 h-4" />
@@ -118,10 +118,10 @@ const formatMoney = (val: number) => {
               class="h-full min-h-[260px] flex flex-col items-center justify-center text-center px-6 py-10 bg-white rounded-2xl border border-dashed border-slate-200"
             >
               <div class="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-100 text-[#004B97] flex items-center justify-center mb-3">
-                <ShoppingCart class="w-7 h-7" />
+                <ClipboardList class="w-7 h-7" />
               </div>
               <h4 class="text-sm font-extrabold text-[#0D1B3E]">
-                Tu carrito está vacío
+                Tu listado de orden está vacío
               </h4>
               <p class="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-xs">
                 Presiona el botón <strong class="text-[#147488]">Añadir a la orden</strong> en cualquier repuesto del catálogo para acumular varios y crear tu orden juntos.
@@ -165,8 +165,8 @@ const formatMoney = (val: number) => {
                       type="button"
                       @click="orderCartStore.removePart(item.id)"
                       class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer shrink-0"
-                      title="Quitar del carrito"
-                      aria-label="Quitar del carrito"
+                      title="Quitar del listado"
+                      aria-label="Quitar del listado"
                     >
                       <Trash2 class="w-3.5 h-3.5" />
                     </button>
@@ -347,7 +347,7 @@ const formatMoney = (val: number) => {
                 class="py-2 px-3 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Trash2 class="w-3.5 h-3.5" />
-                <span>Vaciar carrito</span>
+                <span>Vaciar listado</span>
               </button>
             </div>
           </div>

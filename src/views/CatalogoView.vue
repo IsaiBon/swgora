@@ -67,7 +67,7 @@ import {
   Download,
   ExternalLink,
   Upload,
-  ShoppingCart,
+  ClipboardList,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -2017,7 +2017,7 @@ const copyFullCross = async (part: RepuestoTecnico) => {
   await copyToClipboard(lines.join(' | '), 'Ficha técnica')
 }
 
-// Carrito / Añadir repuesto a la Orden de Trabajo
+// Listado de orden / Añadir o quitar repuestos para la Orden de Trabajo
 const addedPartId = ref<string | null>(null)
 let addedPartTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -2031,8 +2031,8 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
     }
     showToast(
       orderCartStore.hasItems
-        ? `${part.codigo_oem} quitado del carrito (${orderCartStore.uniqueCount} en carrito)`
-        : `${part.codigo_oem} quitado del carrito`
+        ? `${part.codigo_oem} quitado del listado de orden (${orderCartStore.uniqueCount} en listado)`
+        : `${part.codigo_oem} quitado del listado de orden`
     )
     return
   }
@@ -2073,7 +2073,7 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
   }, 1400)
 
   showToast(
-    `✓ ${part.codigo_oem} añadido al carrito (${orderCartStore.uniqueCount} en carrito)`
+    `✓ ${part.codigo_oem} añadido al listado de orden (${orderCartStore.uniqueCount} en listado)`
   )
 }
 
@@ -4355,10 +4355,10 @@ onUnmounted(() => {
             type="button"
             @click="isCartDrawerOpen = true"
             class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
-            title="Ver repuestos añadidos al carrito para crear orden"
+            title="Ver repuestos añadidos al listado de orden"
           >
-            <ShoppingCart class="w-4 h-4 text-[#BFEBF2]" />
-            <span>Carrito</span>
+            <ClipboardList class="w-4 h-4 text-[#BFEBF2]" />
+            <span>Listado de orden</span>
             <span
               v-if="orderCartStore.totalUnits > 0"
               class="ml-0.5 px-1.5 py-0.5 rounded-full bg-[#04C4D9] text-[#0D1B3E] font-mono text-[10px] font-black leading-none"
@@ -6975,7 +6975,7 @@ onUnmounted(() => {
                           ? 'bg-rose-600 hover:bg-rose-700 text-white'
                           : 'bg-[#147488] hover:bg-[#105E6E] text-white'
                       ]"
-                      :title="orderCartStore.isInCart(part.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al carrito de orden'"
+                      :title="orderCartStore.isInCart(part.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al listado de orden'"
                     >
                       <Trash2 v-if="orderCartStore.isInCart(part.id)" class="w-3 h-3 shrink-0" />
                       <Plus v-else class="w-3 h-3 shrink-0" />
@@ -7950,7 +7950,7 @@ onUnmounted(() => {
                     ? 'bg-rose-600 hover:bg-rose-700'
                     : 'studio-cta-primary'
                 ]"
-                :title="orderCartStore.isInCart(modalPart.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al carrito de orden'"
+                :title="orderCartStore.isInCart(modalPart.id) ? 'Clic para quitar de la orden' : 'Añadir este repuesto al listado de orden'"
               >
                 <Trash2 v-if="orderCartStore.isInCart(modalPart.id)" class="w-4 h-4" />
                 <Plus v-else class="w-4 h-4" />
@@ -8655,7 +8655,7 @@ onUnmounted(() => {
       @imported="onCatalogImported"
     />
 
-    <!-- Barra flotante del Carrito de Orden -->
+    <!-- Barra flotante del Listado de orden -->
     <Transition
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="transform translate-y-4 opacity-0"
@@ -8672,10 +8672,10 @@ onUnmounted(() => {
           type="button"
           @click="isCartDrawerOpen = true"
           class="flex items-center gap-2.5 text-left cursor-pointer group"
-          title="Abrir carrito de repuestos"
+          title="Abrir listado de orden"
         >
           <div class="relative w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0 group-hover:bg-white/25 transition">
-            <ShoppingCart class="w-4 h-4 text-[#BFEBF2]" />
+            <ClipboardList class="w-4 h-4 text-[#BFEBF2]" />
             <span class="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#04C4D9] text-[#0D1B3E] font-mono text-[10px] font-black flex items-center justify-center shadow-sm">
               {{ orderCartStore.totalUnits }}
             </span>
@@ -8696,7 +8696,7 @@ onUnmounted(() => {
             @click="isCartDrawerOpen = true"
             class="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold transition cursor-pointer"
           >
-            Ver carrito
+            Ver listado
           </button>
           <button
             v-if="authStore.canAccess('/ordenes')"

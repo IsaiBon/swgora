@@ -38,7 +38,7 @@ import {
   RotateCcw,
   MapPin,
   X,
-  ShoppingCart
+  ClipboardList
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -1725,18 +1725,18 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </div>
           </div>
 
-          <!-- Banner de repuestos cargados desde el carrito del catálogo -->
+          <!-- Banner de repuestos cargados desde el listado de orden del catálogo -->
           <div
             v-if="importedFromCart"
             class="mx-4 mt-4 p-3.5 bg-gradient-to-r from-sky-50 via-cyan-50 to-emerald-50 border border-[#04C4D9]/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
           >
             <div class="flex items-start gap-2.5">
               <div class="w-8 h-8 rounded-lg bg-[#004B97] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                <ShoppingCart class="w-4 h-4" />
+                <ClipboardList class="w-4 h-4" />
               </div>
               <div class="text-xs">
                 <div class="font-extrabold text-[#0D1B3E]">
-                  {{ importedCartCount }} repuesto(s) cargados desde el carrito en la sección Repuestos
+                  {{ importedCartCount }} repuesto(s) cargados desde el listado de orden en la sección Repuestos
                 </div>
                 <p v-if="importedMissingPriceCount > 0" class="text-[11px] text-amber-800 font-semibold mt-0.5">
                   Ingresa el precio unitario en los campos resaltados en amarillo para incluirlos en la orden.
@@ -1757,15 +1757,15 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </div>
           </div>
 
-          <!-- Banner opcional si hay repuestos en el carrito y se abrió una orden en blanco -->
+          <!-- Banner opcional si hay repuestos en el listado de orden y se abrió una orden en blanco -->
           <div
             v-else-if="!isEditing && orderCartStore.hasItems"
             class="mx-4 mt-4 p-3 bg-sky-50/80 border border-sky-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
           >
             <div class="flex items-center gap-2.5 text-xs text-[#0D1B3E]">
-              <ShoppingCart class="w-4 h-4 text-[#004B97] shrink-0" />
+              <ClipboardList class="w-4 h-4 text-[#004B97] shrink-0" />
               <span>
-                Tienes <strong>{{ orderCartStore.uniqueCount }} repuesto(s)</strong> ({{ orderCartStore.totalUnits }} u.) guardados en el carrito del catálogo.
+                Tienes <strong>{{ orderCartStore.uniqueCount }} repuesto(s)</strong> ({{ orderCartStore.totalUnits }} u.) guardados en el listado de orden del catálogo.
               </span>
             </div>
             <button
@@ -1773,7 +1773,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               @click="importItemsFromOrderCart"
               class="px-3 py-1.5 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold transition shadow-sm cursor-pointer shrink-0"
             >
-              Cargar repuestos del carrito
+              Cargar listado de orden
             </button>
           </div>
 
