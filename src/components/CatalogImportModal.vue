@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useCatalogStore } from '@/stores/catalog'
+import { useAuthStore } from '@/stores/auth'
+import {
+  buildCatalogActorFromUser,
+  canActorModifyRepuesto,
+  type CatalogActor
+} from '@/utils/catalogPermissions'
 import {
   catalogService,
   normalizeText,
@@ -55,6 +61,10 @@ const emit = defineEmits<{
 }>()
 
 const catalogStore = useCatalogStore()
+const authStore = useAuthStore()
+const currentCatalogActor = computed<CatalogActor | null>(() =>
+  buildCatalogActorFromUser(authStore.user, authStore.isAdmin)
+)
 
 // Plantilla específica, exportación de familia y carga
 const specificTarget = ref<string>('motors_only')
@@ -358,6 +368,7 @@ const revalidateFamilyRow = (fam: ParsedFamilyRow) => {
 }
 
 const toggleFamilyRowAction = (fam: ParsedFamilyRow) => {
+  if (!authStore.isAdmin && fam.action !== 'delete') return
   fam.action = fam.action === 'delete' ? 'upsert' : 'delete'
   pendingDestructiveConfirm.value = false
   revalidateFamilyRow(fam)
@@ -644,7 +655,7 @@ watch(
   }
 )
 
-const syncMissingParts = computed<RepuestoTecnico[]>(() => {
+const rawSyncMissingParts = computed<RepuestoTecnico[]>(() => {
   const res = parseResult.value
   if (!res || !detectedSyncGrupo.value) return []
 
@@ -663,6 +674,15 @@ const syncMissingParts = computed<RepuestoTecnico[]>(() => {
   })
 })
 
+const syncMissingParts = computed<RepuestoTecnico[]>(() => {
+  const actor = currentCatalogActor.value
+  return rawSyncMissingParts.value.filter(ep => canActorModifyRepuesto(ep, actor))
+})
+
+const syncProtectedMissingCount = computed(
+  () => Math.max(0, rawSyncMissingParts.value.length - syncMissingParts.value.length)
+)
+
 const validFamiliesCount = computed(
   () => parseResult.value?.families.filter(f => f.status !== 'error').length || 0
 )
@@ -672,8 +692,10 @@ const validMotorsCount = computed(
 const validPartsCount = computed(
   () => parseResult.value?.parts.filter(p => p.status !== 'error').length || 0
 )
-const deleteFamiliesCount = computed(
-  () => parseResult.value?.families.filter(f => f.status !== 'error' && f.action === 'delete').length || 0
+const deleteFamiliesCount = computed(() =>
+  authStore.isAdmin
+    ? parseResult.value?.families.filter(f => f.status !== 'error' && f.action === 'delete').length || 0
+    : 0
 )
 const explicitDeletePartsCount = computed(
   () => parseResult.value?.parts.filter(p => p.status !== 'error' && p.action === 'delete').length || 0
@@ -746,6 +768,7 @@ const handleRunImport = async () => {
         syncFamilyDeleteMissing: syncFamilyDeleteMissing.value,
         syncTargetGrupo: detectedSyncGrupo.value,
         deletePartsWithDeletedFamily: true,
+        actor: currentCatalogActor.value,
         onProgress: (cur, tot, lbl) => {
           progressCurrent.value = cur
           progressTotal.value = tot
@@ -762,7 +785,22 @@ const handleRunImport = async () => {
     )
 
     importReport.value = report
-    await catalogStore.initCatalog()
+    const refreshTasks: Array<Promise<unknown>> = []
+    if (report.createdFamilies + report.updatedFamilies + report.deletedFamilies > 0) {
+      refreshTasks.push(catalogStore.fetchGrupos())
+    }
+    if (report.createdBrands > 0) {
+      refreshTasks.push(catalogStore.fetchFabricantes())
+    }
+    if (report.createdModels > 0) {
+      refreshTasks.push(catalogStore.fetchModelos())
+    }
+    if (report.createdMotors > 0 || report.createdModels > 0) {
+      refreshTasks.push(catalogStore.fetchMotores())
+    }
+    if (refreshTasks.length > 0) {
+      await Promise.all(refreshTasks)
+    }
     emit('imported', report)
   } catch (err) {
     parseError.value =
@@ -1141,12 +1179,15 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                     </template>
                     <template v-else-if="syncMissingParts.length > 0">
                       <span class="text-rose-700">
-                        eliminar del catálogo los {{ syncMissingParts.length }} repuesto(s) que quitaste del archivo
+                        eliminar del catálogo los {{ syncMissingParts.length }} repuesto(s) propios que quitaste del archivo
+                      </span>
+                      <span v-if="syncProtectedMissingCount > 0" class="text-slate-500 font-medium">
+                        ({{ syncProtectedMissingCount }} de otros usuarios/admin se conservarán intactos)
                       </span>
                     </template>
                     <template v-else>
                       <span class="text-emerald-700 font-semibold">
-                        sin repuestos faltantes ({{ syncExistingParts.length }} cubiertos)
+                        sin repuestos propios faltantes ({{ syncExistingParts.length }} evaluados<template v-if="syncProtectedMissingCount > 0"> · {{ syncProtectedMissingCount }} protegidos de otros usuarios</template>)
                       </span>
                     </template>
                   </span>
@@ -1300,6 +1341,16 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             </div>
 
             <div
+              v-if="!authStore.isAdmin"
+              class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-start gap-2"
+            >
+              <ShieldAlert class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Permisos de carga:</strong> puedes crear familias nuevas, subir nuevos repuestos y modificar o eliminar únicamente los repuestos que hayas subido con tu usuario. Las familias ya existentes y repuestos de otros usuarios o del administrador permanecerán protegidos.
+              </span>
+            </div>
+
+            <div
               v-if="deleteFamiliesCount > 0"
               class="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold flex items-center gap-2"
             >
@@ -1372,6 +1423,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                     </td>
                     <td class="py-1.5 px-2 align-top whitespace-nowrap">
                       <button
+                        v-if="authStore.isAdmin"
                         type="button"
                         @click="toggleFamilyRowAction(fam)"
                         :class="[
@@ -1385,6 +1437,13 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                         <Trash2 v-if="fam.action === 'delete'" class="w-3 h-3" />
                         <span>{{ fam.action === 'delete' ? 'Eliminar familia' : 'Guardar / Act.' }}</span>
                       </button>
+                      <span
+                        v-else
+                        class="inline-flex items-center px-2 py-1 rounded-md border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600"
+                        title="Solo el administrador puede eliminar o sobrescribir familias existentes"
+                      >
+                        {{ fam.action === 'delete' ? 'Elim. bloqueada' : 'Nueva familia' }}
+                      </span>
                     </td>
                     <td class="py-1.5 px-2 align-top space-y-1" :class="{ 'opacity-60': fam.action === 'delete' }">
                       <input
@@ -1954,12 +2013,18 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             </div>
 
             <div
-              v-if="importReport.skippedFamilies > 0 || importReport.skippedParts > 0 || importReport.skippedMotors > 0"
+              v-if="importReport.skippedFamilies > 0 || importReport.skippedParts > 0 || importReport.skippedMotors > 0 || importReport.skippedUnauthorizedParts > 0"
               class="text-xs font-bold text-emerald-50 bg-black/15 rounded-xl px-3.5 py-2 inline-flex flex-wrap items-center gap-3"
             >
               <span v-if="importReport.skippedFamilies > 0">Familias omitidas: {{ importReport.skippedFamilies }}</span>
               <span v-if="importReport.skippedMotors > 0">Motores omitidos: {{ importReport.skippedMotors }}</span>
               <span v-if="importReport.skippedParts > 0">Repuestos omitidos: {{ importReport.skippedParts }}</span>
+              <span
+                v-if="importReport.skippedUnauthorizedParts > 0"
+                class="px-2 py-0.5 rounded-md bg-amber-300 text-slate-900"
+              >
+                Protegidos sin permiso: {{ importReport.skippedUnauthorizedParts }}
+              </span>
             </div>
 
             <div

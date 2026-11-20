@@ -1,4 +1,8 @@
 import { supabase } from './supabase'
+import {
+  extractRepuestoOwner,
+  type RepuestoOwnerMeta
+} from '@/utils/catalogPermissions'
 
 export type FabricanteTipo = 'OEM' | 'Aftermarket' | 'Alterno'
 export type RepuestoCategoria = 'Válvulas' | 'Anillos' | 'Casquetería' | 'Sellos' | 'Empaques' | 'Pernos' | string
@@ -719,6 +723,11 @@ export interface RepuestoTecnico {
 
   dimensiones?: Record<string, unknown>
   especificaciones_tecnicas?: Record<string, unknown>
+
+  created_by_user_id?: string
+  created_by_email?: string
+  created_by_name?: string
+  created_by_role?: string
 
   equivalencias?: Equivalencia[]
   motor?: Motor
@@ -1717,6 +1726,8 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
     (dims.descripcion_tecnica ? String(dims.descripcion_tecnica) : '') ||
     undefined
 
+  const ownerMeta = extractRepuestoOwner({ especificaciones_tecnicas: spec })
+
   return {
     id: String(item.id),
     motor_id: item.motor_id ? String(item.motor_id) : undefined,
@@ -1777,6 +1788,10 @@ export function mapDbRepuestoToFrontend(item: Record<string, unknown>): Repuesto
 
     dimensiones: dims,
     especificaciones_tecnicas: (item.especificaciones_tecnicas as Record<string, unknown>) || {},
+    created_by_user_id: ownerMeta.userId,
+    created_by_email: ownerMeta.email,
+    created_by_name: ownerMeta.name,
+    created_by_role: ownerMeta.role,
     equivalencias: (item.equivalencias as Equivalencia[]) || [],
     motor: motorData
   }
@@ -1829,6 +1844,201 @@ const extractPartModelTokens = (part: Partial<RepuestoTecnico>): string[] => {
     (part.especificaciones_tecnicas as Record<string, unknown>) || {},
     (part.dimensiones as Record<string, unknown>) || {}
   )
+}
+
+export async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return
+  const safeLimit = Math.max(1, Math.min(concurrency, items.length))
+  let nextIdx = 0
+  const workers = Array.from({ length: safeLimit }, async () => {
+    while (nextIdx < items.length) {
+      const cur = nextIdx++
+      await worker(items[cur]!, cur)
+    }
+  })
+  await Promise.all(workers)
+}
+
+export function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+function normalizeOemAndExtras(
+  rawPrimary: string | undefined,
+  rawAdditionalInput: string[] | undefined
+): { primaryOem: string; finalAdditional: string[] } {
+  const rawOemParts = rawPrimary !== undefined
+    ? String(rawPrimary || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean)
+    : []
+  const primaryOem = rawOemParts[0] || (rawPrimary !== undefined ? (rawPrimary || '').trim().toUpperCase() : '')
+  const oemFromMain = rawOemParts.slice(1)
+  const rawAdditional = Array.isArray(rawAdditionalInput) ? rawAdditionalInput : []
+  const extraFlat: string[] = []
+  for (const a of rawAdditional) {
+    extraFlat.push(...String(a || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
+  }
+  const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
+  return { primaryOem, finalAdditional }
+}
+
+function buildRepuestoInsertRow(part: Partial<RepuestoTecnico>) {
+  const { primaryOem, finalAdditional } = normalizeOemAndExtras(part.codigo_oem, part.codigos_oem_adicionales)
+  const finalImagenes = Array.from(
+    new Set([
+      ...(Array.isArray(part.imagenes) ? part.imagenes.map(u => String(u || '').trim()) : []),
+      part.imagen_url ? String(part.imagen_url).trim() : ''
+    ].filter(Boolean))
+  )
+  const primaryImagenUrl = finalImagenes[0] || part.imagen_url || null
+  const finalDocsPdf = Array.isArray(part.documentos_pdf) ? part.documentos_pdf : []
+  const finalDisenos = Array.isArray(part.disenos_anillo)
+    ? Array.from(new Set(part.disenos_anillo.map(d => String(d || '').trim()).filter(Boolean)))
+    : []
+  const finalDescripcion = part.descripcion_tecnica ? String(part.descripcion_tecnica).trim() : undefined
+
+  const insertPayload = {
+    motor_id: part.motor_id || null,
+    codigo_oem: primaryOem,
+    nombre: (part.nombre || '').trim(),
+    subsistema: part.subsistema || 'Culata',
+    categoria: part.categoria || 'Válvulas',
+    precio: Number(part.precio || 0),
+    stock: Number(part.stock || 0),
+    estado: part.estado || 'Disponible',
+    imagen_url: primaryImagenUrl,
+    diametro_cabeza_mm: part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null,
+    diametro_vastago_mm: part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null,
+    longitud_total_mm: part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null,
+    angulo_asiento_grados: part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null,
+    diametro_cilindro_mm: part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null,
+    espesor_anillo1_mm: part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null,
+    espesor_anillo2_mm: part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null,
+    espesor_aceite_mm: part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null,
+    tipo_cojinete: part.tipo_cojinete || null,
+    diametro_munon_mm: part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null,
+    diametro_alojamiento_mm: part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null,
+    ancho_casquete_mm: part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null,
+    dimensiones: {
+      diametro_interior_mm: part.diametro_interior_mm,
+      diametro_exterior_mm: part.diametro_exterior_mm,
+      altura_mm: part.altura_mm,
+      medida_rosca: part.medida_rosca,
+      paso_rosca_mm: part.paso_rosca_mm,
+      longitud_perno_mm: part.longitud_perno_mm,
+      cantidad_piezas: part.cantidad_piezas,
+      paso_rosca1_mm: part.paso_rosca1_mm,
+      longitud1_mm: part.longitud1_mm,
+      longitud2_mm: part.longitud2_mm,
+      espesor_anillo3_mm: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : null,
+      codigos_oem_adicionales: finalAdditional,
+      ...(finalDisenos.length > 0 ? { disenos_anillo: finalDisenos } : {}),
+      ...(finalDescripcion ? { descripcion_tecnica: finalDescripcion } : {}),
+      ...(part.dimensiones || {})
+    },
+    especificaciones_tecnicas: {
+      codigos_oem_adicionales: finalAdditional,
+      imagenes: finalImagenes,
+      documentos_pdf: finalDocsPdf,
+      ...(finalDisenos.length > 0 ? { disenos_anillo: finalDisenos } : {}),
+      ...(finalDescripcion ? { descripcion_tecnica: finalDescripcion } : {}),
+      ...(part.especificaciones_tecnicas || {})
+    }
+  }
+
+  return {
+    insertPayload,
+    finalImagenes,
+    finalDocsPdf,
+    finalDisenos,
+    finalDescripcion
+  }
+}
+
+function buildRepuestoUpdateRow(part: Partial<RepuestoTecnico>): Record<string, unknown> {
+  const { primaryOem, finalAdditional } = normalizeOemAndExtras(part.codigo_oem, part.codigos_oem_adicionales)
+  const resolvedPrimaryOem = part.codigo_oem !== undefined ? primaryOem : undefined
+
+  const hasImagenes = part.imagenes !== undefined
+  const resolvedImagenes = hasImagenes
+    ? Array.from(new Set((part.imagenes || []).map(u => String(u || '').trim()).filter(Boolean)))
+    : (part.imagen_url ? [String(part.imagen_url).trim()] : undefined)
+  const resolvedPrimaryImage = resolvedImagenes !== undefined
+    ? (resolvedImagenes[0] || null)
+    : (part.imagen_url !== undefined ? (part.imagen_url || null) : undefined)
+
+  const updatePayload: Record<string, unknown> = {
+    motor_id: part.motor_id !== undefined ? (part.motor_id || null) : undefined,
+    codigo_oem: resolvedPrimaryOem,
+    nombre: part.nombre !== undefined ? (part.nombre || '').trim() : undefined,
+    subsistema: part.subsistema !== undefined ? part.subsistema : undefined,
+    categoria: part.categoria !== undefined ? part.categoria : undefined,
+    precio: part.precio !== undefined ? Number(part.precio || 0) : undefined,
+    stock: part.stock !== undefined ? Number(part.stock || 0) : undefined,
+    estado: part.estado !== undefined ? part.estado : undefined,
+    imagen_url: resolvedPrimaryImage,
+    diametro_cabeza_mm: part.diametro_cabeza_mm !== undefined ? (part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null) : undefined,
+    diametro_vastago_mm: part.diametro_vastago_mm !== undefined ? (part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null) : undefined,
+    longitud_total_mm: part.longitud_total_mm !== undefined ? (part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null) : undefined,
+    angulo_asiento_grados: part.angulo_asiento_grados !== undefined ? (part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null) : undefined,
+    diametro_cilindro_mm: part.diametro_cilindro_mm !== undefined ? (part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null) : undefined,
+    espesor_anillo1_mm: part.espesor_anillo1_mm !== undefined ? (part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null) : undefined,
+    espesor_anillo2_mm: part.espesor_anillo2_mm !== undefined ? (part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null) : undefined,
+    espesor_aceite_mm: part.espesor_aceite_mm !== undefined ? (part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null) : undefined,
+    tipo_cojinete: part.tipo_cojinete !== undefined ? (part.tipo_cojinete || null) : undefined,
+    diametro_munon_mm: part.diametro_munon_mm !== undefined ? (part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null) : undefined,
+    diametro_alojamiento_mm: part.diametro_alojamiento_mm !== undefined ? (part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null) : undefined,
+    ancho_casquete_mm: part.ancho_casquete_mm !== undefined ? (part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null) : undefined,
+    dimensiones: part.dimensiones !== undefined ? {
+      ...(part.dimensiones || {}),
+      codigos_oem_adicionales: finalAdditional,
+      ...(part.disenos_anillo !== undefined ? { disenos_anillo: part.disenos_anillo } : {}),
+      ...(part.descripcion_tecnica !== undefined ? { descripcion_tecnica: part.descripcion_tecnica } : {})
+    } : undefined,
+    especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? {
+      ...(part.especificaciones_tecnicas || {}),
+      codigos_oem_adicionales: finalAdditional,
+      ...(resolvedImagenes !== undefined ? { imagenes: resolvedImagenes } : {}),
+      ...(part.documentos_pdf !== undefined ? { documentos_pdf: part.documentos_pdf } : {}),
+      ...(part.disenos_anillo !== undefined ? { disenos_anillo: part.disenos_anillo } : {}),
+      ...(part.descripcion_tecnica !== undefined ? { descripcion_tecnica: part.descripcion_tecnica } : {})
+    } : undefined,
+    updated_at: new Date().toISOString()
+  }
+
+  Object.keys(updatePayload).forEach(k => {
+    if (updatePayload[k] === undefined) delete updatePayload[k]
+  })
+  return updatePayload
+}
+
+function dedupeEquivRowsForDb(
+  rows: Array<{ repuesto_id: string; marca_alterna: string; codigo_alterno: string; notas?: string | null }>
+) {
+  const seen = new Set<string>()
+  const out: Array<{ repuesto_id: string; marca_alterna: string; codigo_alterno: string; notas: string | null }> = []
+  for (const r of rows) {
+    const cleanBrand = String(r.marca_alterna || '').trim()
+    const cleanCode = String(r.codigo_alterno || '').trim().toUpperCase()
+    if (!r.repuesto_id || !cleanBrand || !cleanCode) continue
+    const sig = `${r.repuesto_id}::${cleanBrand.toLowerCase()}::${cleanCode}`
+    if (seen.has(sig)) continue
+    seen.add(sig)
+    out.push({
+      repuesto_id: r.repuesto_id,
+      marca_alterna: cleanBrand,
+      codigo_alterno: cleanCode,
+      notas: r.notas || null
+    })
+  }
+  return out
 }
 
 export const catalogService = {
@@ -2350,50 +2560,74 @@ export const catalogService = {
           .eq('motor_id', motorId)
 
         if (repRows && repRows.length > 0) {
-          await Promise.all(
-            (repRows as Array<Record<string, unknown>>).map(async row => {
-              const prevSpec = (row.especificaciones_tecnicas as Record<string, unknown>) || {}
-              const prevDims = (row.dimensiones as Record<string, unknown>) || {}
-              const resolvedBrand =
-                brandClean ||
-                (prevSpec.marca ? String(prevSpec.marca).trim().toUpperCase() : '') ||
-                (prevDims.marca ? String(prevDims.marca).trim().toUpperCase() : '')
-              const vehiculoLabel =
-                cleanModels.length > 0
-                  ? (resolvedBrand ? `${resolvedBrand} ${combinedModeloLabel}` : combinedModeloLabel)
-                  : undefined
+          const rowsToUpdate: Array<{ id: string; nextSpec: Record<string, unknown>; nextDims: Record<string, unknown> }> = []
+          for (const row of repRows as Array<Record<string, unknown>>) {
+            const prevSpec = (row.especificaciones_tecnicas as Record<string, unknown>) || {}
+            const prevDims = (row.dimensiones as Record<string, unknown>) || {}
+            const resolvedBrand =
+              brandClean ||
+              (prevSpec.marca ? String(prevSpec.marca).trim().toUpperCase() : '') ||
+              (prevDims.marca ? String(prevDims.marca).trim().toUpperCase() : '')
+            const vehiculoLabel =
+              cleanModels.length > 0
+                ? (resolvedBrand ? `${resolvedBrand} ${combinedModeloLabel}` : combinedModeloLabel)
+                : undefined
 
-              const nextSpec: Record<string, unknown> = {
-                ...prevSpec,
-                modelo: combinedModeloLabel,
-                modelos: cleanModels,
-                modelos_adicionales: modelosAdicionalesClean,
-                ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
-              }
-              if (cleanModels.length === 0) {
-                delete nextSpec.vehiculo
-              }
+            const specModelsMatch =
+              Array.isArray(prevSpec.modelos) &&
+              prevSpec.modelos.length === cleanModels.length &&
+              prevSpec.modelos.every((v, idx) => v === cleanModels[idx])
+            const dimsModelsMatch =
+              Array.isArray(prevDims.modelos) &&
+              prevDims.modelos.length === cleanModels.length &&
+              prevDims.modelos.every((v, idx) => v === cleanModels[idx])
 
-              const nextDims: Record<string, unknown> = {
-                ...prevDims,
-                modelo: combinedModeloLabel,
-                modelos: cleanModels,
-                modelos_adicionales: modelosAdicionalesClean,
-                ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
-              }
-              if (cleanModels.length === 0) {
-                delete nextDims.vehiculo
-              }
+            if (
+              specModelsMatch &&
+              dimsModelsMatch &&
+              prevSpec.modelo === combinedModeloLabel &&
+              prevDims.modelo === combinedModeloLabel &&
+              (prevSpec.vehiculo || undefined) === vehiculoLabel
+            ) {
+              continue
+            }
 
+            const nextSpec: Record<string, unknown> = {
+              ...prevSpec,
+              modelo: combinedModeloLabel,
+              modelos: cleanModels,
+              modelos_adicionales: modelosAdicionalesClean,
+              ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
+            }
+            if (cleanModels.length === 0) {
+              delete nextSpec.vehiculo
+            }
+
+            const nextDims: Record<string, unknown> = {
+              ...prevDims,
+              modelo: combinedModeloLabel,
+              modelos: cleanModels,
+              modelos_adicionales: modelosAdicionalesClean,
+              ...(vehiculoLabel ? { vehiculo: vehiculoLabel } : {})
+            }
+            if (cleanModels.length === 0) {
+              delete nextDims.vehiculo
+            }
+
+            rowsToUpdate.push({ id: String(row.id), nextSpec, nextDims })
+          }
+
+          if (rowsToUpdate.length > 0) {
+            await runWithConcurrency(rowsToUpdate, 10, async u => {
               await supabase
                 .from('repuestos_tecnicos')
                 .update({
-                  especificaciones_tecnicas: nextSpec,
-                  dimensiones: nextDims
+                  especificaciones_tecnicas: u.nextSpec,
+                  dimensiones: u.nextDims
                 })
-                .eq('id', String(row.id))
+                .eq('id', u.id)
             })
-          )
+          }
         }
       }
     } catch (err) {
@@ -2578,6 +2812,27 @@ export const catalogService = {
     } catch (err) {
       console.warn('[CatalogService] Error sincronizando modelos del repuesto con su motor:', err)
     }
+  },
+
+  /**
+   * Sincroniza modelos hacia múltiples motores de forma concurrente y deduplicada (1 llamada por motor)
+   */
+  async syncPartModelsWithMotorBulk(
+    motorModelsMap: Map<string, Set<string>>,
+    overwrite: boolean = false
+  ): Promise<void> {
+    if (!motorModelsMap || motorModelsMap.size === 0) return
+    const entries = Array.from(motorModelsMap.entries())
+      .map(([motorId, set]) => ({
+        motorId,
+        tokens: Array.from(set).map(t => t.trim()).filter(Boolean)
+      }))
+      .filter(e => e.motorId && e.tokens.length > 0)
+    if (entries.length === 0) return
+
+    await runWithConcurrency(entries, 6, async entry => {
+      await this.syncPartModelsWithMotor(entry.motorId, entry.tokens, overwrite)
+    })
   },
 
   /**
@@ -4088,84 +4343,89 @@ export const catalogService = {
   },
 
   /**
+   * Consulta en la fuente de verdad el propietario registrado de un repuesto técnico
+   */
+  async getRepuestoOwnerById(partId: string): Promise<RepuestoOwnerMeta | null> {
+    if (!partId) return null
+    const localMatch =
+      getLocalCustomRepuestos().find(r => r.id === partId) ||
+      mockRepuestos.find(r => r.id === partId)
+
+    if (!isCatalogUuid(partId)) {
+      return localMatch ? extractRepuestoOwner(localMatch) : null
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('repuestos_tecnicos')
+        .select('id, especificaciones_tecnicas')
+        .eq('id', partId)
+        .maybeSingle()
+
+      if (!error && data) {
+        return extractRepuestoOwner(data as Record<string, unknown>)
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error consultando propietario de repuesto:', err)
+    }
+
+    return localMatch ? extractRepuestoOwner(localMatch) : null
+  },
+
+  /**
+   * Consulta por lotes los propietarios registrados de múltiples repuestos técnicos
+   */
+  async getRepuestosOwnersByIds(partIds: string[]): Promise<Map<string, RepuestoOwnerMeta>> {
+    const ownerMap = new Map<string, RepuestoOwnerMeta>()
+    const uniqueIds = Array.from(new Set(partIds.map(id => String(id || '').trim()).filter(Boolean)))
+    if (uniqueIds.length === 0) return ownerMap
+
+    for (const part of [...getLocalCustomRepuestos(), ...mockRepuestos]) {
+      if (uniqueIds.includes(part.id)) {
+        ownerMap.set(part.id, extractRepuestoOwner(part))
+      }
+    }
+
+    const uuidIds = uniqueIds.filter(isCatalogUuid)
+    if (uuidIds.length > 0) {
+      const chunks = chunkArray(uuidIds, 200)
+      await runWithConcurrency(chunks, 6, async chunk => {
+        try {
+          const { data, error } = await supabase
+            .from('repuestos_tecnicos')
+            .select('id, especificaciones_tecnicas')
+            .in('id', chunk)
+          if (!error && data) {
+            for (const row of data as Array<Record<string, unknown>>) {
+              const id = String(row.id || '')
+              if (id) {
+                ownerMap.set(id, extractRepuestoOwner(row))
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[CatalogService] Error consultando lote de propietarios:', err)
+        }
+      })
+    }
+
+    return ownerMap
+  },
+
+  /**
    * Registra un nuevo repuesto técnico con sus equivalencias directamente en Supabase
    */
   async createRepuesto(
     part: Partial<RepuestoTecnico>,
     equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
   ): Promise<RepuestoTecnico> {
-    const rawOemParts = String(part.codigo_oem || '')
-      .split(/[,\/;|\n]+/)
-      .map(c => c.trim().toUpperCase())
-      .filter(Boolean)
-    const primaryOem = rawOemParts[0] || (part.codigo_oem || '').trim().toUpperCase()
-    const oemFromMain = rawOemParts.slice(1)
-    const rawAdditional = Array.isArray(part.codigos_oem_adicionales) ? part.codigos_oem_adicionales : []
-    const extraFlat: string[] = []
-    for (const a of rawAdditional) {
-      extraFlat.push(...String(a || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
-    }
-    const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
-
-    const finalImagenes = Array.from(
-      new Set([
-        ...(Array.isArray(part.imagenes) ? part.imagenes.map(u => String(u || '').trim()) : []),
-        part.imagen_url ? String(part.imagen_url).trim() : ''
-      ].filter(Boolean))
-    )
-    const primaryImagenUrl = finalImagenes[0] || part.imagen_url || null
-    const finalDocsPdf = Array.isArray(part.documentos_pdf) ? part.documentos_pdf : []
-    const finalDisenos = Array.isArray(part.disenos_anillo) ? Array.from(new Set(part.disenos_anillo.map(d => String(d || '').trim()).filter(Boolean))) : []
-    const finalDescripcion = part.descripcion_tecnica ? String(part.descripcion_tecnica).trim() : undefined
-
-    const insertPayload = {
-      motor_id: part.motor_id || null,
-      codigo_oem: primaryOem,
-      nombre: (part.nombre || '').trim(),
-      subsistema: part.subsistema || 'Culata',
-      categoria: part.categoria || 'Válvulas',
-      precio: Number(part.precio || 0),
-      stock: Number(part.stock || 0),
-      estado: part.estado || 'Disponible',
-      imagen_url: primaryImagenUrl,
-      diametro_cabeza_mm: part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null,
-      diametro_vastago_mm: part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null,
-      longitud_total_mm: part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null,
-      angulo_asiento_grados: part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null,
-      diametro_cilindro_mm: part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null,
-      espesor_anillo1_mm: part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null,
-      espesor_anillo2_mm: part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null,
-      espesor_aceite_mm: part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null,
-      tipo_cojinete: part.tipo_cojinete || null,
-      diametro_munon_mm: part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null,
-      diametro_alojamiento_mm: part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null,
-      ancho_casquete_mm: part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null,
-      dimensiones: {
-        diametro_interior_mm: part.diametro_interior_mm,
-        diametro_exterior_mm: part.diametro_exterior_mm,
-        altura_mm: part.altura_mm,
-        medida_rosca: part.medida_rosca,
-        paso_rosca_mm: part.paso_rosca_mm,
-        longitud_perno_mm: part.longitud_perno_mm,
-        cantidad_piezas: part.cantidad_piezas,
-        paso_rosca1_mm: part.paso_rosca1_mm,
-        longitud1_mm: part.longitud1_mm,
-        longitud2_mm: part.longitud2_mm,
-        espesor_anillo3_mm: part.espesor_anillo3_mm != null ? Number(part.espesor_anillo3_mm) : null,
-        codigos_oem_adicionales: finalAdditional,
-        ...(finalDisenos.length > 0 ? { disenos_anillo: finalDisenos } : {}),
-        ...(finalDescripcion ? { descripcion_tecnica: finalDescripcion } : {}),
-        ...(part.dimensiones || {})
-      },
-      especificaciones_tecnicas: {
-        codigos_oem_adicionales: finalAdditional,
-        imagenes: finalImagenes,
-        documentos_pdf: finalDocsPdf,
-        ...(finalDisenos.length > 0 ? { disenos_anillo: finalDisenos } : {}),
-        ...(finalDescripcion ? { descripcion_tecnica: finalDescripcion } : {}),
-        ...(part.especificaciones_tecnicas || {})
-      }
-    }
+    const {
+      insertPayload,
+      finalImagenes,
+      finalDocsPdf,
+      finalDisenos,
+      finalDescripcion
+    } = buildRepuestoInsertRow(part)
 
     try {
       const { data: insertedPart, error: partError } = await supabase
@@ -4177,19 +4437,19 @@ export const catalogService = {
       if (!partError && insertedPart) {
         let createdEquivs: Equivalencia[] = []
         if (equivalencias && equivalencias.length > 0) {
-          const equivRows = equivalencias
-            .filter(eq => eq.marca_alterna && eq.codigo_alterno)
-            .map(eq => ({
+          const equivRows = dedupeEquivRowsForDb(
+            equivalencias.map(eq => ({
               repuesto_id: insertedPart.id,
-              marca_alterna: eq.marca_alterna.trim(),
-              codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
-              notas: eq.notas || null
+              marca_alterna: eq.marca_alterna,
+              codigo_alterno: eq.codigo_alterno,
+              notas: eq.notas ?? null
             }))
+          )
 
           if (equivRows.length > 0) {
             const { data: savedEquivs } = await supabase
               .from('equivalencias_repuestos')
-              .insert(equivRows)
+              .upsert(equivRows, { onConflict: 'repuesto_id,marca_alterna,codigo_alterno', ignoreDuplicates: true })
               .select('*')
             if (savedEquivs) {
               createdEquivs = savedEquivs as Equivalencia[]
@@ -4227,6 +4487,7 @@ export const catalogService = {
     }))
 
     const fallbackMotor = part.motor_id ? mockMotores.find(m => m.id === part.motor_id) : undefined
+    const ownerMeta = extractRepuestoOwner(part)
 
     const fallbackPart: RepuestoTecnico = {
       id: fallbackId,
@@ -4264,13 +4525,158 @@ export const catalogService = {
       dimensiones: insertPayload.dimensiones,
       especificaciones_tecnicas: insertPayload.especificaciones_tecnicas,
       equivalencias: mappedEquivs,
-      motor: fallbackMotor
+      motor: fallbackMotor,
+      created_by_user_id: ownerMeta.userId,
+      created_by_email: ownerMeta.email,
+      created_by_name: ownerMeta.name,
+      created_by_role: ownerMeta.role
     }
 
     clearCatalogPartsCache()
     saveLocalCustomRepuesto(fallbackPart)
     mockRepuestos.unshift(fallbackPart)
     return fallbackPart
+  },
+
+  /**
+   * Crea múltiples repuestos técnicos en lotes paralelos junto con sus equivalencias
+   */
+  async createRepuestosBulk(
+    entries: Array<{
+      part: Partial<RepuestoTecnico>
+      equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
+    }>,
+    options?: { skipMotorModelSync?: boolean; chunkSize?: number }
+  ): Promise<{ created: RepuestoTecnico[]; failed: Array<{ index: number; error: string }> }> {
+    if (entries.length === 0) return { created: [], failed: [] }
+
+    const prepared = entries.map((entry, index) => ({
+      index,
+      entry,
+      built: buildRepuestoInsertRow(entry.part)
+    }))
+
+    const safeChunkSize = Math.max(1, Math.min(options?.chunkSize ?? 80, 200))
+    const chunks = chunkArray(prepared, safeChunkSize)
+    const createdPairs: Array<{ item: (typeof prepared)[number]; dbRow: Record<string, unknown> }> = []
+    const failed: Array<{ index: number; error: string }> = []
+
+    await runWithConcurrency(chunks, 4, async chunk => {
+      try {
+        const { data: insertedRows, error: chunkError } = await supabase
+          .from('repuestos_tecnicos')
+          .insert(chunk.map(item => item.built.insertPayload))
+          .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+
+        if (!chunkError && insertedRows && insertedRows.length === chunk.length) {
+          for (let i = 0; i < chunk.length; i++) {
+            createdPairs.push({
+              item: chunk[i]!,
+              dbRow: insertedRows[i] as Record<string, unknown>
+            })
+          }
+          return
+        }
+
+        console.warn(
+          '[CatalogService] Lote bulk insert falló o quedó incompleto, reintentando por fila:',
+          chunkError?.message
+        )
+      } catch (err) {
+        console.warn('[CatalogService] Excepción en lote bulk insert, reintentando por fila:', err)
+      }
+
+      await runWithConcurrency(chunk, 4, async item => {
+        try {
+          const { data: singleRow, error: singleErr } = await supabase
+            .from('repuestos_tecnicos')
+            .insert(item.built.insertPayload)
+            .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+            .single()
+
+          if (!singleErr && singleRow) {
+            createdPairs.push({ item, dbRow: singleRow as Record<string, unknown> })
+          } else {
+            failed.push({
+              index: item.index,
+              error: singleErr?.message || 'Error al insertar repuesto en Supabase'
+            })
+          }
+        } catch (singleEx) {
+          failed.push({
+            index: item.index,
+            error: singleEx instanceof Error ? singleEx.message : String(singleEx)
+          })
+        }
+      })
+    })
+
+    const rawEquivs: Array<{ repuesto_id: string; marca_alterna: string; codigo_alterno: string; notas?: string | null }> = []
+    for (const pair of createdPairs) {
+      const repId = String(pair.dbRow.id || '')
+      if (!repId) continue
+      for (const eq of pair.item.entry.equivalencias || []) {
+        rawEquivs.push({
+          repuesto_id: repId,
+          marca_alterna: eq.marca_alterna,
+          codigo_alterno: eq.codigo_alterno,
+          notas: eq.notas ?? null
+        })
+      }
+    }
+
+    const dedupedEquivs = dedupeEquivRowsForDb(rawEquivs)
+    const equivsByRepId = new Map<string, Equivalencia[]>()
+    if (dedupedEquivs.length > 0) {
+      const eqChunks = chunkArray(dedupedEquivs, 300)
+      await runWithConcurrency(eqChunks, 4, async eqChunk => {
+        try {
+          const { data: savedEquivs, error: eqErr } = await supabase
+            .from('equivalencias_repuestos')
+            .upsert(eqChunk, { onConflict: 'repuesto_id,marca_alterna,codigo_alterno', ignoreDuplicates: true })
+            .select('*')
+          if (!eqErr && savedEquivs) {
+            for (const eq of savedEquivs as Equivalencia[]) {
+              const list = equivsByRepId.get(eq.repuesto_id) || []
+              list.push(eq)
+              equivsByRepId.set(eq.repuesto_id, list)
+            }
+          }
+        } catch (err) {
+          console.warn('[CatalogService] Error guardando lote de equivalencias (createBulk):', err)
+        }
+      })
+    }
+
+    createdPairs.sort((a, b) => a.item.index - b.item.index)
+    const created = createdPairs.map(pair => {
+      const repId = String(pair.dbRow.id)
+      return mapDbRepuestoToFrontend({
+        ...pair.dbRow,
+        equivalencias: equivsByRepId.get(repId) || []
+      })
+    })
+
+    if (created.length > 0) {
+      clearCatalogPartsCache()
+      mockRepuestos.unshift(...created)
+      if (!options?.skipMotorModelSync) {
+        const motorModelsMap = new Map<string, Set<string>>()
+        for (const pair of createdPairs) {
+          const motorId = String(pair.dbRow.motor_id || '')
+          if (!motorId) continue
+          const tokens = extractPartModelTokens(pair.item.entry.part)
+          if (tokens.length > 0) {
+            if (!motorModelsMap.has(motorId)) motorModelsMap.set(motorId, new Set())
+            const set = motorModelsMap.get(motorId)!
+            tokens.forEach(t => set.add(t))
+          }
+        }
+        await this.syncPartModelsWithMotorBulk(motorModelsMap, false)
+      }
+    }
+
+    return { created, failed }
   },
 
   /**
@@ -4281,71 +4687,7 @@ export const catalogService = {
     part: Partial<RepuestoTecnico>,
     equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
   ): Promise<RepuestoTecnico> {
-    const rawOemParts = part.codigo_oem !== undefined
-      ? String(part.codigo_oem || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean)
-      : []
-    const primaryOem = rawOemParts.length > 0
-      ? rawOemParts[0]
-      : (part.codigo_oem !== undefined ? (part.codigo_oem || '').trim().toUpperCase() : undefined)
-    const oemFromMain = rawOemParts.slice(1)
-    const rawAdditional = Array.isArray(part.codigos_oem_adicionales) ? part.codigos_oem_adicionales : []
-    const extraFlat: string[] = []
-    for (const a of rawAdditional) {
-      extraFlat.push(...String(a || '').split(/[,\/;|\n]+/).map(c => c.trim().toUpperCase()).filter(Boolean))
-    }
-    const finalAdditional = Array.from(new Set([...oemFromMain, ...extraFlat].filter(c => c && c !== primaryOem)))
-
-    const hasImagenes = part.imagenes !== undefined
-    const resolvedImagenes = hasImagenes
-      ? Array.from(new Set((part.imagenes || []).map(u => String(u || '').trim()).filter(Boolean)))
-      : (part.imagen_url ? [String(part.imagen_url).trim()] : undefined)
-    const resolvedPrimaryImage = resolvedImagenes !== undefined
-      ? (resolvedImagenes[0] || null)
-      : (part.imagen_url !== undefined ? (part.imagen_url || null) : undefined)
-
-    const updatePayload: Record<string, unknown> = {
-      motor_id: part.motor_id !== undefined ? (part.motor_id || null) : undefined,
-      codigo_oem: primaryOem,
-      nombre: part.nombre !== undefined ? (part.nombre || '').trim() : undefined,
-      subsistema: part.subsistema !== undefined ? part.subsistema : undefined,
-      categoria: part.categoria !== undefined ? part.categoria : undefined,
-      precio: part.precio !== undefined ? Number(part.precio || 0) : undefined,
-      stock: part.stock !== undefined ? Number(part.stock || 0) : undefined,
-      estado: part.estado !== undefined ? part.estado : undefined,
-      imagen_url: resolvedPrimaryImage,
-      diametro_cabeza_mm: part.diametro_cabeza_mm !== undefined ? (part.diametro_cabeza_mm != null ? Number(part.diametro_cabeza_mm) : null) : undefined,
-      diametro_vastago_mm: part.diametro_vastago_mm !== undefined ? (part.diametro_vastago_mm != null ? Number(part.diametro_vastago_mm) : null) : undefined,
-      longitud_total_mm: part.longitud_total_mm !== undefined ? (part.longitud_total_mm != null ? Number(part.longitud_total_mm) : null) : undefined,
-      angulo_asiento_grados: part.angulo_asiento_grados !== undefined ? (part.angulo_asiento_grados != null ? Number(part.angulo_asiento_grados) : null) : undefined,
-      diametro_cilindro_mm: part.diametro_cilindro_mm !== undefined ? (part.diametro_cilindro_mm != null ? Number(part.diametro_cilindro_mm) : null) : undefined,
-      espesor_anillo1_mm: part.espesor_anillo1_mm !== undefined ? (part.espesor_anillo1_mm != null ? Number(part.espesor_anillo1_mm) : null) : undefined,
-      espesor_anillo2_mm: part.espesor_anillo2_mm !== undefined ? (part.espesor_anillo2_mm != null ? Number(part.espesor_anillo2_mm) : null) : undefined,
-      espesor_aceite_mm: part.espesor_aceite_mm !== undefined ? (part.espesor_aceite_mm != null ? Number(part.espesor_aceite_mm) : null) : undefined,
-      tipo_cojinete: part.tipo_cojinete !== undefined ? (part.tipo_cojinete || null) : undefined,
-      diametro_munon_mm: part.diametro_munon_mm !== undefined ? (part.diametro_munon_mm != null ? Number(part.diametro_munon_mm) : null) : undefined,
-      diametro_alojamiento_mm: part.diametro_alojamiento_mm !== undefined ? (part.diametro_alojamiento_mm != null ? Number(part.diametro_alojamiento_mm) : null) : undefined,
-      ancho_casquete_mm: part.ancho_casquete_mm !== undefined ? (part.ancho_casquete_mm != null ? Number(part.ancho_casquete_mm) : null) : undefined,
-      dimensiones: part.dimensiones !== undefined ? {
-        ...(part.dimensiones || {}),
-        codigos_oem_adicionales: finalAdditional,
-        ...(part.disenos_anillo !== undefined ? { disenos_anillo: part.disenos_anillo } : {}),
-        ...(part.descripcion_tecnica !== undefined ? { descripcion_tecnica: part.descripcion_tecnica } : {})
-      } : undefined,
-      especificaciones_tecnicas: part.especificaciones_tecnicas !== undefined ? {
-        ...(part.especificaciones_tecnicas || {}),
-        codigos_oem_adicionales: finalAdditional,
-        ...(resolvedImagenes !== undefined ? { imagenes: resolvedImagenes } : {}),
-        ...(part.documentos_pdf !== undefined ? { documentos_pdf: part.documentos_pdf } : {}),
-        ...(part.disenos_anillo !== undefined ? { disenos_anillo: part.disenos_anillo } : {}),
-        ...(part.descripcion_tecnica !== undefined ? { descripcion_tecnica: part.descripcion_tecnica } : {})
-      } : undefined,
-      updated_at: new Date().toISOString()
-    }
-
-    // Limpiar claves undefined
-    Object.keys(updatePayload).forEach(k => {
-      if (updatePayload[k] === undefined) delete updatePayload[k]
-    })
+    const updatePayload = buildRepuestoUpdateRow(part)
 
     try {
       const { data: updatedPart, error: partError } = await supabase
@@ -4361,19 +4703,19 @@ export const catalogService = {
         if (equivalencias !== undefined) {
           await supabase.from('equivalencias_repuestos').delete().eq('repuesto_id', partId)
 
-          const validRows = equivalencias
-            .filter(eq => eq.marca_alterna && eq.codigo_alterno && eq.codigo_alterno.trim().length > 0)
-            .map(eq => ({
+          const validRows = dedupeEquivRowsForDb(
+            equivalencias.map(eq => ({
               repuesto_id: partId,
-              marca_alterna: eq.marca_alterna.trim(),
-              codigo_alterno: eq.codigo_alterno.trim().toUpperCase(),
-              notas: eq.notas || null
+              marca_alterna: eq.marca_alterna,
+              codigo_alterno: eq.codigo_alterno,
+              notas: eq.notas ?? null
             }))
+          )
 
           if (validRows.length > 0) {
             const { data: savedEquivs } = await supabase
               .from('equivalencias_repuestos')
-              .insert(validRows)
+              .upsert(validRows, { onConflict: 'repuesto_id,marca_alterna,codigo_alterno', ignoreDuplicates: true })
               .select('*')
             if (savedEquivs) {
               finalEquivs = savedEquivs as Equivalencia[]
@@ -4438,6 +4780,195 @@ export const catalogService = {
       mockRepuestos[mIdx] = updatedLocalPart
     }
     return updatedLocalPart
+  },
+
+  /**
+   * Actualiza múltiples repuestos técnicos en paralelo y consolida equivalencias por lotes
+   */
+  async updateRepuestosBulk(
+    entries: Array<{
+      id: string
+      part: Partial<RepuestoTecnico>
+      equivalencias?: Array<{ marca_alterna: string; codigo_alterno: string; notas?: string }>
+    }>,
+    options?: { skipMotorModelSync?: boolean; concurrency?: number }
+  ): Promise<{ updated: RepuestoTecnico[]; failed: Array<{ id: string; error: string }> }> {
+    if (entries.length === 0) return { updated: [], failed: [] }
+
+    const updatedPairs: Array<{
+      index: number
+      entry: (typeof entries)[number]
+      dbRow: Record<string, unknown>
+    }> = []
+    const localUpdated: Array<{ index: number; part: RepuestoTecnico }> = []
+    const failed: Array<{ id: string; error: string }> = []
+
+    const uuidEntries: Array<{ index: number; entry: (typeof entries)[number] }> = []
+    const localEntries: Array<{ index: number; entry: (typeof entries)[number] }> = []
+    entries.forEach((entry, index) => {
+      if (isCatalogUuid(entry.id)) {
+        uuidEntries.push({ index, entry })
+      } else {
+        localEntries.push({ index, entry })
+      }
+    })
+
+    for (const { index, entry } of localEntries) {
+      const localParts = getLocalCustomRepuestos()
+      const foundIdx = localParts.findIndex(p => p.id === entry.id)
+      const existing = foundIdx >= 0 ? localParts[foundIdx] : mockRepuestos.find(r => r.id === entry.id)
+      const updatedLocal: RepuestoTecnico = {
+        ...(existing || ({} as RepuestoTecnico)),
+        ...entry.part,
+        id: entry.id,
+        equivalencias: entry.equivalencias
+          ? entry.equivalencias.map((eq, i) => ({
+              id: `eq-${Date.now()}-${i}`,
+              repuesto_id: entry.id,
+              marca_alterna: eq.marca_alterna,
+              codigo_alterno: eq.codigo_alterno,
+              notas: eq.notas
+            }))
+          : existing?.equivalencias || []
+      }
+      saveLocalCustomRepuesto(updatedLocal)
+      const mIdx = mockRepuestos.findIndex(r => r.id === entry.id)
+      if (mIdx >= 0) mockRepuestos[mIdx] = updatedLocal
+      localUpdated.push({ index, part: updatedLocal })
+    }
+
+    if (uuidEntries.length > 0) {
+      await runWithConcurrency(uuidEntries, options?.concurrency ?? 10, async item => {
+        const updatePayload = buildRepuestoUpdateRow(item.entry.part)
+        try {
+          const { data: updatedRow, error: partError } = await supabase
+            .from('repuestos_tecnicos')
+            .update(updatePayload)
+            .eq('id', item.entry.id)
+            .select('*, motor:motores(*, fabricante:fabricantes(*), modelo:modelos(*))')
+            .single()
+
+          if (!partError && updatedRow) {
+            updatedPairs.push({
+              index: item.index,
+              entry: item.entry,
+              dbRow: updatedRow as Record<string, unknown>
+            })
+          } else {
+            failed.push({
+              id: item.entry.id,
+              error: partError?.message || 'Error al actualizar repuesto en Supabase'
+            })
+          }
+        } catch (err) {
+          failed.push({
+            id: item.entry.id,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        }
+      })
+    }
+
+    const equivsByRepId = new Map<string, Equivalencia[]>()
+    const overridePairs = updatedPairs.filter(p => p.entry.equivalencias !== undefined)
+    const keepEquivPairs = updatedPairs.filter(p => p.entry.equivalencias === undefined)
+
+    if (overridePairs.length > 0) {
+      const overrideIds = overridePairs.map(p => String(p.entry.id))
+      await runWithConcurrency(chunkArray(overrideIds, 100), 4, async idChunk => {
+        try {
+          await supabase.from('equivalencias_repuestos').delete().in('repuesto_id', idChunk)
+        } catch (err) {
+          console.warn('[CatalogService] Error limpiando lote de equivalencias (updateBulk):', err)
+        }
+      })
+
+      const rawEquivs: Array<{ repuesto_id: string; marca_alterna: string; codigo_alterno: string; notas?: string | null }> = []
+      for (const pair of overridePairs) {
+        for (const eq of pair.entry.equivalencias || []) {
+          rawEquivs.push({
+            repuesto_id: pair.entry.id,
+            marca_alterna: eq.marca_alterna,
+            codigo_alterno: eq.codigo_alterno,
+            notas: eq.notas ?? null
+          })
+        }
+      }
+      const dedupedEquivs = dedupeEquivRowsForDb(rawEquivs)
+      if (dedupedEquivs.length > 0) {
+        await runWithConcurrency(chunkArray(dedupedEquivs, 300), 4, async eqChunk => {
+          try {
+            const { data: savedEquivs, error: eqErr } = await supabase
+              .from('equivalencias_repuestos')
+              .upsert(eqChunk, { onConflict: 'repuesto_id,marca_alterna,codigo_alterno', ignoreDuplicates: true })
+              .select('*')
+            if (!eqErr && savedEquivs) {
+              for (const eq of savedEquivs as Equivalencia[]) {
+                const list = equivsByRepId.get(eq.repuesto_id) || []
+                list.push(eq)
+                equivsByRepId.set(eq.repuesto_id, list)
+              }
+            }
+          } catch (err) {
+            console.warn('[CatalogService] Error insertando lote de equivalencias (updateBulk):', err)
+          }
+        })
+      }
+    }
+
+    if (keepEquivPairs.length > 0) {
+      const keepIds = keepEquivPairs.map(p => String(p.entry.id))
+      await runWithConcurrency(chunkArray(keepIds, 150), 4, async idChunk => {
+        try {
+          const { data: existingEquivs } = await supabase
+            .from('equivalencias_repuestos')
+            .select('*')
+            .in('repuesto_id', idChunk)
+          if (existingEquivs) {
+            for (const eq of existingEquivs as Equivalencia[]) {
+              const list = equivsByRepId.get(eq.repuesto_id) || []
+              list.push(eq)
+              equivsByRepId.set(eq.repuesto_id, list)
+            }
+          }
+        } catch (err) {
+          console.warn('[CatalogService] Error consultando equivalencias existentes (updateBulk):', err)
+        }
+      })
+    }
+
+    const dbUpdatedWithIdx = updatedPairs.map(pair => {
+      const repId = String(pair.dbRow.id)
+      const mapped = mapDbRepuestoToFrontend({
+        ...pair.dbRow,
+        equivalencias: equivsByRepId.get(repId) || []
+      })
+      const mockIdx = mockRepuestos.findIndex(r => r.id === repId)
+      if (mockIdx >= 0) mockRepuestos[mockIdx] = mapped
+      return { index: pair.index, part: mapped, rawInput: pair.entry.part, motorId: mapped.motor_id }
+    })
+
+    const allCombined = [...localUpdated, ...dbUpdatedWithIdx].sort((a, b) => a.index - b.index)
+    const updated = allCombined.map(item => item.part)
+
+    if (updated.length > 0) {
+      clearCatalogPartsCache()
+      if (!options?.skipMotorModelSync) {
+        const motorModelsMap = new Map<string, Set<string>>()
+        for (const item of dbUpdatedWithIdx) {
+          if (!item.motorId) continue
+          const tokens = extractPartModelTokens(item.rawInput)
+          if (tokens.length > 0) {
+            if (!motorModelsMap.has(item.motorId)) motorModelsMap.set(item.motorId, new Set())
+            const set = motorModelsMap.get(item.motorId)!
+            tokens.forEach(t => set.add(t))
+          }
+        }
+        await this.syncPartModelsWithMotorBulk(motorModelsMap, true)
+      }
+    }
+
+    return { updated, failed }
   },
 
   /**

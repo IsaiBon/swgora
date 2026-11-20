@@ -5,6 +5,11 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useAuthStore } from '@/stores/auth'
 import { useOrderCartStore } from '@/stores/orderCart'
 import { useCatalogSelectionStore } from '@/stores/catalogSelection'
+import {
+  buildCatalogActorFromUser,
+  canActorModifyRepuesto,
+  extractRepuestoOwner
+} from '@/utils/catalogPermissions'
 import { 
   type Motor, 
   type Modelo,
@@ -4078,7 +4083,11 @@ const EXCLUDED_MODAL_DIM_KEYS = new Set([
   'diam_ext',
   'exterior_mm',
   'diametro_exterior',
-  'diametro_exterior_1_mm'
+  'diametro_exterior_1_mm',
+  'created_by_user_id',
+  'created_by_email',
+  'created_by_name',
+  'created_by_role'
 ])
 
 const getModalExtraDimensions = (part: RepuestoTecnico | null | undefined): Array<{ key: string; label: string; value: string }> => {
@@ -4232,6 +4241,7 @@ const onCatalogImported = async (report: CatalogImportReport) => {
   if (report.createdParts > 0) summaryBits.push(`${report.createdParts} repuestos`)
   if (report.updatedParts > 0) summaryBits.push(`${report.updatedParts} actualizados`)
   if (report.deletedParts > 0) summaryBits.push(`${report.deletedParts} eliminados`)
+  if (report.skippedUnauthorizedParts > 0) summaryBits.push(`${report.skippedUnauthorizedParts} protegidos (sin permiso)`)
   if (summaryBits.length === 0) summaryBits.push('cambios procesados')
 
   showToast(
@@ -4318,7 +4328,32 @@ const handleEditGroup = (grpId?: string | null) => {
   openAdminCatalogModal('grupo', targetId)
 }
 
+const currentCatalogActor = computed(() =>
+  buildCatalogActorFromUser(authStore.user, authStore.isAdmin)
+)
+
+const canModifyPart = (part: RepuestoTecnico | null | undefined): boolean => {
+  if (!part) return false
+  return canActorModifyRepuesto(part, currentCatalogActor.value)
+}
+
+const getPartOwnerLabel = (part: RepuestoTecnico | null | undefined): string => {
+  if (!part) return ''
+  const owner = extractRepuestoOwner(part)
+  return owner.name || owner.email || ''
+}
+
 const handleEditPart = (part: RepuestoTecnico) => {
+  if (!canModifyPart(part)) {
+    const ownerLabel = getPartOwnerLabel(part)
+    showToast(
+      ownerLabel
+        ? `Solo el administrador o ${ownerLabel} puede modificar este repuesto`
+        : 'Solo el administrador puede modificar este repuesto',
+      3500
+    )
+    return
+  }
   adminModalTab.value = 'repuesto'
   adminModalEditGroupId.value = null
   adminModalEditPart.value = part
@@ -4354,6 +4389,16 @@ const formatCatalogPrice = (val?: number | null): string => {
 }
 
 const startInlinePriceEdit = (part: RepuestoTecnico) => {
+  if (!canModifyPart(part)) {
+    const ownerLabel = getPartOwnerLabel(part)
+    showToast(
+      ownerLabel
+        ? `Solo el administrador o ${ownerLabel} puede editar el precio de este repuesto`
+        : 'Solo el administrador puede editar el precio de este repuesto',
+      3500
+    )
+    return
+  }
   if (savingPricePartId.value) return
   editingPricePartId.value = part.id
   editingPriceDraft.value = Number(part.precio) > 0 ? Number(part.precio).toFixed(2) : ''
@@ -4373,6 +4418,11 @@ const cancelInlinePriceEdit = () => {
 }
 
 const saveInlinePriceEdit = async (part: RepuestoTecnico) => {
+  if (!canModifyPart(part)) {
+    cancelInlinePriceEdit()
+    showToast('No tienes permiso para modificar el precio de este repuesto', 3500)
+    return
+  }
   if (savingPricePartId.value) return
   const rawText = String(editingPriceDraft.value ?? '').trim().replace(',', '.')
   const parsed = rawText === '' ? 0 : Number(rawText)
@@ -4771,6 +4821,9 @@ onUnmounted(() => {
               </span>
               <span v-if="importBannerReport.deletedParts > 0 || importBannerReport.deletedFamilies > 0" class="px-2.5 py-0.5 rounded-lg bg-rose-700 text-white border border-rose-300/60">
                 Eliminados: {{ importBannerReport.deletedParts }} rep.<template v-if="importBannerReport.deletedFamilies > 0"> · {{ importBannerReport.deletedFamilies }} fam.</template>
+              </span>
+              <span v-if="importBannerReport.skippedUnauthorizedParts > 0" class="px-2.5 py-0.5 rounded-lg bg-amber-300 text-slate-900">
+                Protegidos (sin permiso): {{ importBannerReport.skippedUnauthorizedParts }}
               </span>
               <span v-if="importBannerReport.createdBrands > 0 || importBannerReport.createdModels > 0" class="px-2.5 py-0.5 rounded-lg bg-emerald-900/40 text-white border border-white/25">
                 Marcas +{{ importBannerReport.createdBrands }} · Modelos +{{ importBannerReport.createdModels }}
@@ -7391,7 +7444,7 @@ onUnmounted(() => {
                 <!-- 4.5. Precio Unitario (Edición inline directa en catálogo) -->
                 <td class="py-2 px-3 align-middle text-right border-b border-r border-slate-100 whitespace-nowrap">
                   <div
-                    v-if="editingPricePartId === part.id"
+                    v-if="editingPricePartId === part.id && canModifyPart(part)"
                     class="inline-flex items-center justify-end gap-1"
                     @click.stop
                   >
@@ -7435,7 +7488,7 @@ onUnmounted(() => {
                   </div>
 
                   <button
-                    v-else
+                    v-else-if="canModifyPart(part)"
                     type="button"
                     @click="startInlinePriceEdit(part)"
                     :class="[
@@ -7452,6 +7505,19 @@ onUnmounted(() => {
                       class="w-3 h-3 text-emerald-600 opacity-50 group-hover/price:opacity-100 transition shrink-0"
                     />
                   </button>
+
+                  <span
+                    v-else
+                    :class="[
+                      'inline-flex items-center justify-end px-2.5 py-1 rounded-lg border text-xs font-mono font-extrabold',
+                      Number(part.precio) > 0
+                        ? 'bg-slate-50 text-slate-700 border-slate-200'
+                        : 'bg-slate-50 text-slate-400 border-slate-200'
+                    ]"
+                    :title="getPartOwnerLabel(part) ? `Subido por ${getPartOwnerLabel(part)} (solo lectura)` : 'Solo el administrador puede editar este precio'"
+                  >
+                    {{ Number(part.precio) > 0 ? formatCatalogPrice(part.precio) : '—' }}
+                  </span>
                 </td>
 
                 <!-- 5. Acciones Rápidas -->
@@ -7468,6 +7534,7 @@ onUnmounted(() => {
                     </button>
 
                     <button
+                      v-if="canModifyPart(part)"
                       type="button"
                       @click="handleEditPart(part)"
                       class="px-2 py-1 rounded-md border border-slate-200 hover:bg-cyan-50 hover:border-cyan-200 text-slate-700 hover:text-[#038391] text-[11px] font-semibold transition flex items-center gap-1"
@@ -8455,6 +8522,7 @@ onUnmounted(() => {
 
             <div class="flex items-center gap-2">
               <button
+                v-if="modalPart && canModifyPart(modalPart)"
                 type="button"
                 @click="handleEditPart(modalPart); closeTechnicalSheet()"
                 class="px-3.5 py-2 border border-[#04C4D9]/35 bg-sky-50 hover:bg-sky-100 text-[#004B97] font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
@@ -8463,6 +8531,13 @@ onUnmounted(() => {
                 <Edit3 class="w-3.5 h-3.5" />
                 <span>Modificar Repuesto</span>
               </button>
+              <span
+                v-else-if="modalPart"
+                class="px-3 py-1.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-[11px] font-semibold"
+                title="Solo el administrador o quien subió este repuesto puede modificarlo"
+              >
+                Solo lectura{{ getPartOwnerLabel(modalPart) ? ` · Subido por ${getPartOwnerLabel(modalPart)}` : ' · Admin' }}
+              </span>
 
               <button
                 type="button"

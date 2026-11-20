@@ -2,8 +2,10 @@ import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import {
   catalogService,
+  chunkArray,
   clearCatalogPartsCache,
   normalizeText,
+  runWithConcurrency,
   type Fabricante,
   type GrupoRepuesto,
   type Modelo,
@@ -11,6 +13,14 @@ import {
   type RepuestoTecnico,
   type TablaConfiguracion
 } from './catalogService'
+import {
+  canActorModifyRepuesto,
+  extractRepuestoOwner,
+  preserveOwnerOnSpecs,
+  stampOwnerOnSpecs,
+  type CatalogActor,
+  type RepuestoOwnerMeta
+} from '@/utils/catalogPermissions'
 import {
   convertTemplateToGrupoInsert,
   type FamilyTemplate,
@@ -146,6 +156,7 @@ export interface CatalogImportOptions {
   syncFamilyDeleteMissing?: boolean
   syncTargetGrupo?: GrupoRepuesto | null
   deletePartsWithDeletedFamily?: boolean
+  actor?: CatalogActor | null
   onProgress?: (current: number, total: number, label: string) => void
 }
 
@@ -160,6 +171,7 @@ export interface CatalogImportReport {
   updatedParts: number
   deletedParts: number
   skippedParts: number
+  skippedUnauthorizedParts: number
   createdBrands: number
   createdModels: number
   deletedPartIds: string[]
@@ -3200,9 +3212,50 @@ interface ExistingPartIndexEntry {
   id: string
   codigo_oem: string
   categoria: string
+  owner: RepuestoOwnerMeta
 }
 
-async function loadExistingPartIndices(inMemoryParts: RepuestoTecnico[]): Promise<{
+const INDEX_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+async function fetchPartIndexChunk(
+  filterField: 'id' | 'codigo_oem',
+  values: string[]
+): Promise<Array<Record<string, unknown>>> {
+  if (values.length === 0) return []
+  const aliasSelect =
+    'id, codigo_oem, categoria, created_by_user_id:especificaciones_tecnicas->>created_by_user_id, created_by_email:especificaciones_tecnicas->>created_by_email, created_by_name:especificaciones_tecnicas->>created_by_name, created_by_role:especificaciones_tecnicas->>created_by_role'
+
+  try {
+    const { data, error } = await supabase
+      .from('repuestos_tecnicos')
+      .select(aliasSelect)
+      .in(filterField, values)
+    if (!error && Array.isArray(data)) {
+      return data as Array<Record<string, unknown>>
+    }
+  } catch {
+    // fallback abajo
+  }
+
+  try {
+    const { data: fbData, error: fbError } = await supabase
+      .from('repuestos_tecnicos')
+      .select('id, codigo_oem, categoria, especificaciones_tecnicas')
+      .in(filterField, values)
+    if (!fbError && Array.isArray(fbData)) {
+      return fbData as Array<Record<string, unknown>>
+    }
+  } catch (err) {
+    console.warn(`[ImportService] Error consultando índice por ${filterField}:`, err)
+  }
+
+  return []
+}
+
+async function loadExistingPartIndices(
+  inMemoryParts: RepuestoTecnico[],
+  candidateParts: ParsedPartRow[]
+): Promise<{
   oemIndex: Map<string, string>
   idIndex: Map<string, ExistingPartIndexEntry>
 }> {
@@ -3212,41 +3265,73 @@ async function loadExistingPartIndices(inMemoryParts: RepuestoTecnico[]): Promis
   for (const p of inMemoryParts) {
     const cleanOem = String(p.codigo_oem || '').trim().toUpperCase()
     const cleanId = String(p.id || '').trim()
+    const owner = extractRepuestoOwner(p)
     if (cleanId) {
-      idIndex.set(cleanId, { id: cleanId, codigo_oem: cleanOem, categoria: p.categoria || '' })
+      idIndex.set(cleanId, {
+        id: cleanId,
+        codigo_oem: cleanOem,
+        categoria: p.categoria || '',
+        owner
+      })
     }
     if (cleanOem && cleanId) {
       oemIndex.set(cleanOem, cleanId)
     }
   }
 
+  const candidateIds = Array.from(
+    new Set(
+      candidateParts
+        .map(p => String(p.sourceId || '').trim())
+        .filter(id => id && INDEX_UUID_RE.test(id))
+    )
+  )
+  const candidateOems = Array.from(
+    new Set(
+      candidateParts
+        .flatMap(p => {
+          const raw = String(p.codigo_oem || '').trim()
+          const upper = raw.toUpperCase()
+          return raw && raw !== upper ? [upper, raw] : upper ? [upper] : []
+        })
+        .filter(Boolean)
+    )
+  )
+
   try {
-    const PAGE_SIZE = 1000
-    const MAX_PAGES = 50
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const from = page * PAGE_SIZE
-      const to = from + PAGE_SIZE - 1
-      const { data, error } = await supabase
-        .from('repuestos_tecnicos')
-        .select('id, codigo_oem, categoria')
-        .order('id', { ascending: true })
-        .range(from, to)
+    const fetchedRows: Array<Record<string, unknown>> = []
+    const idChunks = chunkArray(candidateIds, 200)
+    const oemChunks = chunkArray(candidateOems, 150)
 
-      if (error || !Array.isArray(data)) break
+    await Promise.all([
+      runWithConcurrency(idChunks, 6, async chunk => {
+        const rows = await fetchPartIndexChunk('id', chunk)
+        fetchedRows.push(...rows)
+      }),
+      runWithConcurrency(oemChunks, 6, async chunk => {
+        const rows = await fetchPartIndexChunk('codigo_oem', chunk)
+        fetchedRows.push(...rows)
+      })
+    ])
 
-      for (const row of data) {
-        const cleanId = String(row.id || '').trim()
-        const cleanOem = String(row.codigo_oem || '').trim().toUpperCase()
-        const cleanCat = String(row.categoria || '').trim()
-        if (cleanId) {
-          idIndex.set(cleanId, { id: cleanId, codigo_oem: cleanOem, categoria: cleanCat })
-        }
-        if (cleanOem && cleanId && !oemIndex.has(cleanOem)) {
-          oemIndex.set(cleanOem, cleanId)
-        }
+    for (const row of fetchedRows) {
+      const cleanId = String(row.id || '').trim()
+      const cleanOem = String(row.codigo_oem || '').trim().toUpperCase()
+      const cleanCat = String(row.categoria || '').trim()
+      const owner = extractRepuestoOwner(row)
+      if (cleanId) {
+        const existingMem = idIndex.get(cleanId)
+        const hasRemoteOwner = Boolean(owner.userId || owner.email)
+        idIndex.set(cleanId, {
+          id: cleanId,
+          codigo_oem: cleanOem,
+          categoria: cleanCat || existingMem?.categoria || '',
+          owner: hasRemoteOwner ? owner : existingMem?.owner || owner
+        })
       }
-
-      if (data.length < PAGE_SIZE) break
+      if (cleanOem && cleanId && !oemIndex.has(cleanOem)) {
+        oemIndex.set(cleanOem, cleanId)
+      }
     }
   } catch (err) {
     console.warn('[ImportService] No se pudo consultar índice OEM remoto, usando caché local:', err)
@@ -3277,12 +3362,16 @@ export const executeCatalogImport = async (
     updatedParts: 0,
     deletedParts: 0,
     skippedParts: 0,
+    skippedUnauthorizedParts: 0,
     createdBrands: 0,
     createdModels: 0,
     deletedPartIds: [],
     deletedFamilyIds: [],
     errors: []
   }
+
+  const actor = options.actor ?? null
+  const isPrimaryAdmin = Boolean(actor?.isAdmin)
 
   const validFamilies = (parsed.families || []).filter(f => f.status !== 'error')
   const validMotors = parsed.motors.filter(m => m.status !== 'error')
@@ -3293,11 +3382,13 @@ export const executeCatalogImport = async (
   const totalSteps = validFamilies.length + validMotors.length + partsToDelete.length + partsToUpsert.length
   let currentStep = 0
 
+  options.onProgress?.(0, Math.max(totalSteps, 1), 'Consultando coincidencias existentes en catálogo...')
+
   const gruposList = [...(context.grupos || [])]
   const fabList = [...context.fabricantes]
   const modList = [...context.modelos]
   const motList = [...context.motores]
-  const { oemIndex, idIndex } = await loadExistingPartIndices(context.repuestos)
+  const { oemIndex, idIndex } = await loadExistingPartIndices(context.repuestos, validParts)
 
   const deletedFamilyKeys = new Set<string>()
   const retainedPartIds = new Set<string>()
@@ -3305,7 +3396,7 @@ export const executeCatalogImport = async (
   // 0. Procesar Familias Técnicas (eliminaciones, actualizaciones o altas)
   for (const fRow of validFamilies) {
     currentStep++
-    options.onProgress?.(currentStep, totalSteps, `Familia ${fRow.nombre || fRow.codigo}`)
+    options.onProgress?.(currentStep, Math.max(totalSteps, 1), `Familia ${fRow.nombre || fRow.codigo}`)
     try {
       const normName = normalizeText(fRow.nombre)
       const normCode = normalizeText(fRow.codigo)
@@ -3318,6 +3409,15 @@ export const executeCatalogImport = async (
       const existing = existingIdx >= 0 ? gruposList[existingIdx] : undefined
 
       if (fRow.action === 'delete') {
+        if (!isPrimaryAdmin) {
+          report.skippedFamilies++
+          report.errors.push({
+            rowLabel: `${fRow.sheetName} fila ${fRow.rowIndex} (${fRow.nombre || fRow.codigo || fRow.sourceId || 'Familia'})`,
+            message: 'Solo el administrador principal puede eliminar familias del catálogo.'
+          })
+          continue
+        }
+
         if (!existing) {
           report.skippedFamilies++
           report.errors.push({
@@ -3435,6 +3535,14 @@ export const executeCatalogImport = async (
           continue
         }
         if (options.duplicateStrategy === 'update') {
+          if (!isPrimaryAdmin) {
+            report.skippedFamilies++
+            report.errors.push({
+              rowLabel: `${fRow.sheetName} fila ${fRow.rowIndex} (${fRow.nombre || existing.nombre})`,
+              message: 'Configuración de familia existente omitida: solo el administrador puede modificar familias existentes.'
+            })
+            continue
+          }
           const prevCategoria = existing.categoria
           const updated = await catalogService.updateGrupo(existing.id, insertPayload)
           gruposList[existingIdx] = updated
@@ -3468,49 +3576,155 @@ export const executeCatalogImport = async (
     }
   }
 
-  const resolveOrCreateFabricante = async (name: string): Promise<Fabricante | undefined> => {
-    const clean = name.trim()
-    if (!clean) return undefined
-    const normTarget = normalizeText(clean)
-    const found = fabList.find(f => normalizeText(f.nombre) === normTarget)
-    if (found) return found
-    if (!options.autoCreateEntities) return undefined
-    const created = await catalogService.createFabricante({ nombre: clean })
-    fabList.push(created)
-    report.createdBrands++
-    return created
+  // Índices en memoria O(1) para resolución rápida de marcas, modelos y motores
+  const fabByNorm = new Map<string, Fabricante>()
+  for (const f of fabList) {
+    const k = normalizeText(f.nombre)
+    if (k && !fabByNorm.has(k)) fabByNorm.set(k, f)
   }
 
-  const resolveOrCreateModelIds = async (fabId: string, modelNames: string[]): Promise<string[]> => {
+  const modByFabAndNorm = new Map<string, Modelo>()
+  for (const m of modList) {
+    const k = `${m.fabricante_id}::${normalizeText(m.nombre)}`
+    if (!modByFabAndNorm.has(k)) modByFabAndNorm.set(k, m)
+  }
+
+  const motorByFabAndNorm = new Map<string, Motor>()
+  const motorByNormFallback = new Map<string, Motor>()
+  for (const mot of motList) {
+    const normC = normalizeText(mot.codigo)
+    if (!normC) continue
+    if (mot.fabricante_id) {
+      const fk = `${mot.fabricante_id}::${normC}`
+      if (!motorByFabAndNorm.has(fk)) motorByFabAndNorm.set(fk, mot)
+    }
+    if (!motorByNormFallback.has(normC)) motorByNormFallback.set(normC, mot)
+  }
+
+  const findExistingMotor = (codigo: string, fabId?: string): Motor | undefined => {
+    const normCode = normalizeText(codigo)
+    if (!normCode) return undefined
+    if (fabId) return motorByFabAndNorm.get(`${fabId}::${normCode}`)
+    return motorByNormFallback.get(normCode)
+  }
+
+  const registerCreatedMotor = (mot: Motor) => {
+    motList.unshift(mot)
+    const normC = normalizeText(mot.codigo)
+    if (normC) {
+      if (mot.fabricante_id) motorByFabAndNorm.set(`${mot.fabricante_id}::${normC}`, mot)
+      if (!motorByNormFallback.has(normC)) motorByNormFallback.set(normC, mot)
+    }
+  }
+
+  // Filtrar previamente partes que pertenecen a una familia recién eliminada
+  const activePartsToUpsert = partsToUpsert.filter(pRow => {
+    const famCheckTokens = [
+      normalizeText(pRow.familiaRaw),
+      normalizeText(pRow.resolvedGrupoCodigo || ''),
+      normalizeText(pRow.resolvedGrupoNombre || ''),
+      normalizeText(pRow.categoria)
+    ].filter(Boolean)
+    if (famCheckTokens.some(t => deletedFamilyKeys.has(t))) {
+      report.skippedParts++
+      return false
+    }
+    return true
+  })
+
+  // 1A. Pre-crear en paralelo todas las marcas faltantes (motores + repuestos)
+  if (options.autoCreateEntities) {
+    const missingBrandsMap = new Map<string, string>()
+    const registerCandidateBrand = (rawBrand: string | undefined) => {
+      const clean = String(rawBrand || '').trim()
+      if (!clean) return
+      const norm = normalizeText(clean)
+      if (!norm || fabByNorm.has(norm) || missingBrandsMap.has(norm)) return
+      missingBrandsMap.set(norm, clean)
+    }
+    for (const mRow of validMotors) registerCandidateBrand(mRow.fabricante)
+    for (const pRow of activePartsToUpsert) {
+      if (pRow.motorCodigo && pRow.fabricante) registerCandidateBrand(pRow.fabricante)
+    }
+
+    const brandsToCreate = Array.from(missingBrandsMap.values())
+    if (brandsToCreate.length > 0) {
+      options.onProgress?.(currentStep, Math.max(totalSteps, 1), `Registrando ${brandsToCreate.length} marca(s)...`)
+      await runWithConcurrency(brandsToCreate, 6, async brandName => {
+        try {
+          const norm = normalizeText(brandName)
+          if (fabByNorm.has(norm)) return
+          const created = await catalogService.createFabricante({ nombre: brandName })
+          fabList.push(created)
+          fabByNorm.set(norm, created)
+          report.createdBrands++
+        } catch (err) {
+          console.warn(`[ImportService] No se pudo crear marca ${brandName}:`, err)
+        }
+      })
+    }
+
+    // 1B. Pre-crear en paralelo todos los modelos faltantes
+    const missingModelsMap = new Map<string, { fabId: string; name: string }>()
+    const registerCandidateModels = (fabId: string | undefined, modelNames: string[]) => {
+      if (!fabId) return
+      for (const rawName of modelNames) {
+        const clean = rawName.replace(/\s+/g, ' ').trim()
+        if (!clean) continue
+        const key = `${fabId}::${normalizeText(clean)}`
+        if (!modByFabAndNorm.has(key) && !missingModelsMap.has(key)) {
+          missingModelsMap.set(key, { fabId, name: clean })
+        }
+      }
+    }
+    for (const mRow of validMotors) {
+      const fab = fabByNorm.get(normalizeText(mRow.fabricante))
+      registerCandidateModels(fab?.id, mRow.modelos)
+    }
+    for (const pRow of activePartsToUpsert) {
+      if (pRow.motorCodigo && pRow.fabricante && pRow.modelos.length > 0) {
+        const fab = fabByNorm.get(normalizeText(pRow.fabricante))
+        registerCandidateModels(fab?.id, pRow.modelos)
+      }
+    }
+
+    const modelsToCreate = Array.from(missingModelsMap.values())
+    if (modelsToCreate.length > 0) {
+      options.onProgress?.(currentStep, Math.max(totalSteps, 1), `Registrando ${modelsToCreate.length} modelo(s)...`)
+      await runWithConcurrency(modelsToCreate, 8, async item => {
+        try {
+          const key = `${item.fabId}::${normalizeText(item.name)}`
+          if (modByFabAndNorm.has(key)) return
+          const created = await catalogService.createModelo(item.fabId, item.name)
+          modList.push(created)
+          modByFabAndNorm.set(key, created)
+          report.createdModels++
+        } catch (err) {
+          console.warn(`[ImportService] No se pudo crear modelo ${item.name}:`, err)
+        }
+      })
+    }
+  }
+
+  const resolveModelIdsSync = (fabId: string, modelNames: string[]): string[] => {
     const ids: string[] = []
     for (const rawName of modelNames) {
       const clean = rawName.replace(/\s+/g, ' ').trim()
       if (!clean) continue
-      const normTarget = normalizeText(clean)
-      let found = modList.find(m => m.fabricante_id === fabId && normalizeText(m.nombre) === normTarget)
-      if (!found && options.autoCreateEntities) {
-        found = await catalogService.createModelo(fabId, clean)
-        modList.push(found)
-        report.createdModels++
-      }
+      const found = modByFabAndNorm.get(`${fabId}::${normalizeText(clean)}`)
       if (found) ids.push(found.id)
     }
     return Array.from(new Set(ids))
   }
 
-  const findExistingMotor = (codigo: string, fabId?: string): Motor | undefined => {
-    const normCode = normalizeText(codigo)
-    return motList.find(
-      m => normalizeText(m.codigo) === normCode && (!fabId || m.fabricante_id === fabId)
-    )
-  }
+  // 1C. Procesar Motores explícitos en paralelo (deduplicados)
+  if (validMotors.length > 0) {
+    const queuedMotorKeys = new Set<string>()
+    const explicitMotorsToCreate: Array<{ row: ParsedMotorRow; fab: Fabricante; modeloIds: string[] }> = []
 
-  // 1. Procesar Motores
-  for (const mRow of validMotors) {
-    currentStep++
-    options.onProgress?.(currentStep, totalSteps, `Motor ${mRow.fabricante} ${mRow.codigo}`)
-    try {
-      const fab = await resolveOrCreateFabricante(mRow.fabricante)
+    for (const mRow of validMotors) {
+      currentStep++
+      const fab = fabByNorm.get(normalizeText(mRow.fabricante))
       if (!fab) {
         report.skippedMotors++
         report.errors.push({
@@ -3520,42 +3734,115 @@ export const executeCatalogImport = async (
         continue
       }
 
-      const existing = findExistingMotor(mRow.codigo, fab.id)
-      if (existing) {
+      const key = `${fab.id}::${normalizeText(mRow.codigo)}`
+      if (findExistingMotor(mRow.codigo, fab.id) || queuedMotorKeys.has(key)) {
         report.skippedMotors++
         continue
       }
-
-      const modeloIds = await resolveOrCreateModelIds(fab.id, mRow.modelos)
-      const createdMotor = await catalogService.createMotor({
-        fabricante_id: fab.id,
-        codigo: mRow.codigo,
-        numero_id: mRow.numero_id,
-        denominacion_venta: mRow.denominacion_venta,
-        modelo_id: modeloIds[0],
-        modelo_ids: modeloIds,
-        modelos_nombres: mRow.modelos,
-        cilindros: mRow.cilindros,
-        valvulas: mRow.valvulas,
-        cilindrada_cc: mRow.cilindrada_cc,
-        kw: mRow.kw,
-        cv: mRow.cv,
-        combustible: mRow.combustible,
-        diametro_cilindro_std_mm: mRow.diametro_cilindro_std_mm,
-        aspiracion: mRow.aspiracion,
-        anios: mRow.anios
+      queuedMotorKeys.add(key)
+      explicitMotorsToCreate.push({
+        row: mRow,
+        fab,
+        modeloIds: resolveModelIdsSync(fab.id, mRow.modelos)
       })
-      motList.unshift(createdMotor)
-      report.createdMotors++
-    } catch (err) {
-      report.errors.push({
-        rowLabel: `${mRow.sheetName} fila ${mRow.rowIndex} (${mRow.codigo})`,
-        message: err instanceof Error ? err.message : String(err)
+    }
+
+    if (explicitMotorsToCreate.length > 0) {
+      options.onProgress?.(
+        currentStep,
+        Math.max(totalSteps, 1),
+        `Creando ${explicitMotorsToCreate.length} motor(es) en paralelo...`
+      )
+      await runWithConcurrency(explicitMotorsToCreate, 6, async item => {
+        try {
+          const { row: mRow, fab, modeloIds } = item
+          const createdMotor = await catalogService.createMotor({
+            fabricante_id: fab.id,
+            codigo: mRow.codigo,
+            numero_id: mRow.numero_id,
+            denominacion_venta: mRow.denominacion_venta,
+            modelo_id: modeloIds[0],
+            modelo_ids: modeloIds,
+            modelos_nombres: mRow.modelos,
+            cilindros: mRow.cilindros,
+            valvulas: mRow.valvulas,
+            cilindrada_cc: mRow.cilindrada_cc,
+            kw: mRow.kw,
+            cv: mRow.cv,
+            combustible: mRow.combustible,
+            diametro_cilindro_std_mm: mRow.diametro_cilindro_std_mm,
+            aspiracion: mRow.aspiracion,
+            anios: mRow.anios
+          })
+          registerCreatedMotor(createdMotor)
+          report.createdMotors++
+        } catch (err) {
+          report.errors.push({
+            rowLabel: `${item.row.sheetName} fila ${item.row.rowIndex} (${item.row.codigo})`,
+            message: err instanceof Error ? err.message : String(err)
+          })
+        }
       })
     }
   }
 
-  // 2. Ejecutar eliminaciones explícitas de repuestos (accion = "eliminar") en lotes
+  // 1D. Pre-crear en paralelo motores implícitos referenciados en la hoja de Repuestos
+  if (options.autoCreateEntities && activePartsToUpsert.length > 0) {
+    const implicitMotorQueue = new Map<
+      string,
+      { fab: Fabricante; codigo: string; modelosSet: Set<string> }
+    >()
+    for (const pRow of activePartsToUpsert) {
+      if (!pRow.motorCodigo || !pRow.fabricante) continue
+      const fab = fabByNorm.get(normalizeText(pRow.fabricante))
+      if (!fab) continue
+      if (findExistingMotor(pRow.motorCodigo, fab.id)) continue
+      const key = `${fab.id}::${normalizeText(pRow.motorCodigo)}`
+      if (!implicitMotorQueue.has(key)) {
+        implicitMotorQueue.set(key, {
+          fab,
+          codigo: pRow.motorCodigo,
+          modelosSet: new Set<string>()
+        })
+      }
+      const bucket = implicitMotorQueue.get(key)!
+      pRow.modelos.forEach(m => {
+        const clean = m.trim()
+        if (clean) bucket.modelosSet.add(clean)
+      })
+    }
+
+    const implicitMotorsList = Array.from(implicitMotorQueue.values())
+    if (implicitMotorsList.length > 0) {
+      options.onProgress?.(
+        currentStep,
+        Math.max(totalSteps, 1),
+        `Creando ${implicitMotorsList.length} motor(es) nuevos detectados en repuestos...`
+      )
+      await runWithConcurrency(implicitMotorsList, 6, async spec => {
+        try {
+          const modelosNombres = Array.from(spec.modelosSet)
+          const modeloIds = resolveModelIdsSync(spec.fab.id, modelosNombres)
+          const createdMotor = await catalogService.createMotor({
+            fabricante_id: spec.fab.id,
+            codigo: spec.codigo,
+            modelo_id: modeloIds[0],
+            modelo_ids: modeloIds,
+            modelos_nombres: modelosNombres,
+            combustible: 'Diésel',
+            cilindros: 4,
+            valvulas: 8
+          })
+          registerCreatedMotor(createdMotor)
+          report.createdMotors++
+        } catch (err) {
+          console.warn(`[ImportService] No se pudo crear motor implícito ${spec.codigo}:`, err)
+        }
+      })
+    }
+  }
+
+  // 2. Ejecutar eliminaciones explícitas de repuestos (accion = "eliminar") en lotes con validación de propietario
   if (partsToDelete.length > 0) {
     const deleteIdsSet = new Set<string>()
     for (const pRow of partsToDelete) {
@@ -3563,22 +3850,34 @@ export const executeCatalogImport = async (
       const bySourceId = pRow.sourceId && idIndex.has(pRow.sourceId) ? pRow.sourceId : undefined
       const byOem = pRow.codigo_oem ? oemIndex.get(pRow.codigo_oem.toUpperCase()) : undefined
       const resolvedId = bySourceId || byOem
-      if (resolvedId) {
-        deleteIdsSet.add(resolvedId)
-      } else {
+      if (!resolvedId) {
         report.skippedParts++
         report.errors.push({
           rowLabel: `${pRow.sheetName} fila ${pRow.rowIndex} (${pRow.codigo_oem || pRow.sourceId || 'Repuesto'})`,
           message: 'Repuesto no encontrado para eliminar (puede que ya haya sido eliminado)'
         })
+        continue
       }
+
+      const existingEntry = idIndex.get(resolvedId)
+      if (!canActorModifyRepuesto(existingEntry?.owner || null, actor)) {
+        report.skippedUnauthorizedParts++
+        report.skippedParts++
+        report.errors.push({
+          rowLabel: `${pRow.sheetName} fila ${pRow.rowIndex} (${pRow.codigo_oem || existingEntry?.codigo_oem || resolvedId})`,
+          message: 'Sin permiso para eliminar: solo el administrador o quien subió este repuesto puede eliminarlo.'
+        })
+        continue
+      }
+
+      deleteIdsSet.add(resolvedId)
     }
 
     const explicitDeleteIds = Array.from(deleteIdsSet)
     if (explicitDeleteIds.length > 0) {
       options.onProgress?.(
         currentStep,
-        totalSteps,
+        Math.max(totalSteps, 1),
         `Eliminando ${explicitDeleteIds.length} repuesto(s) marcados...`
       )
       const delRes = await catalogService.deleteRepuestosBulk(explicitDeleteIds)
@@ -3598,26 +3897,37 @@ export const executeCatalogImport = async (
     }
   }
 
-  // 3. Procesar altas y actualizaciones de Repuestos
-  for (const pRow of partsToUpsert) {
-    currentStep++
-    options.onProgress?.(currentStep, totalSteps, `Repuesto ${pRow.codigo_oem}`)
-    try {
-      const famCheckTokens = [
-        normalizeText(pRow.familiaRaw),
-        normalizeText(pRow.resolvedGrupoCodigo || ''),
-        normalizeText(pRow.resolvedGrupoNombre || ''),
-        normalizeText(pRow.categoria)
-      ].filter(Boolean)
-      if (famCheckTokens.some(t => deletedFamilyKeys.has(t))) {
-        report.skippedParts++
-        continue
-      }
+  // 3. Clasificar y procesar altas y actualizaciones de Repuestos en lote
+  interface QueuedCreateEntry {
+    row: ParsedPartRow
+    part: Partial<RepuestoTecnico>
+    equivalencias: ParsedPartRow['equivalencias']
+    resolvedCategoria: string
+    motorId?: string
+    modelos: string[]
+  }
+  interface QueuedUpdateEntry {
+    id: string
+    row: ParsedPartRow
+    part: Partial<RepuestoTecnico>
+    equivalencias: ParsedPartRow['equivalencias']
+    existingEntry: ExistingPartIndexEntry
+    resolvedCategoria: string
+    motorId?: string
+    modelos: string[]
+  }
 
-      const bySourceId =
-        pRow.sourceId && idIndex.has(pRow.sourceId) ? pRow.sourceId : undefined
+  const updateMap = new Map<string, QueuedUpdateEntry>()
+  const createQueue: QueuedCreateEntry[] = []
+  const queuedCreateByOem = new Map<string, number>()
+
+  for (const pRow of activePartsToUpsert) {
+    currentStep++
+    try {
+      const bySourceId = pRow.sourceId && idIndex.has(pRow.sourceId) ? pRow.sourceId : undefined
       const byOem = pRow.codigo_oem ? oemIndex.get(pRow.codigo_oem.toUpperCase()) : undefined
       const existingPartId = bySourceId || byOem
+      const existingEntry = existingPartId ? idIndex.get(existingPartId) : undefined
 
       if (existingPartId && options.duplicateStrategy === 'skip') {
         retainedPartIds.add(existingPartId)
@@ -3625,31 +3935,25 @@ export const executeCatalogImport = async (
         continue
       }
 
-      // Resolver fabricante / motor / modelos si vienen en la fila
-      let resolvedMotor: Motor | undefined
-      if (pRow.motorCodigo) {
-        const fab = pRow.fabricante ? await resolveOrCreateFabricante(pRow.fabricante) : undefined
-        resolvedMotor = findExistingMotor(pRow.motorCodigo, fab?.id)
-        if (!resolvedMotor && fab && options.autoCreateEntities) {
-          const modeloIds = await resolveOrCreateModelIds(fab.id, pRow.modelos)
-          resolvedMotor = await catalogService.createMotor({
-            fabricante_id: fab.id,
-            codigo: pRow.motorCodigo,
-            modelo_id: modeloIds[0],
-            modelo_ids: modeloIds,
-            modelos_nombres: pRow.modelos,
-            combustible: 'Diésel',
-            cilindros: 4,
-            valvulas: 8
+      if (existingPartId && existingEntry && options.duplicateStrategy === 'update') {
+        if (!canActorModifyRepuesto(existingEntry.owner, actor)) {
+          report.skippedUnauthorizedParts++
+          report.skippedParts++
+          retainedPartIds.add(existingPartId)
+          report.errors.push({
+            rowLabel: `${pRow.sheetName} fila ${pRow.rowIndex} (${pRow.codigo_oem})`,
+            message: 'Sin permiso para modificar repuesto existente: solo el administrador o quien lo subió puede editarlo.'
           })
-          motList.unshift(resolvedMotor)
-          report.createdMotors++
-        } else if (resolvedMotor && fab && pRow.modelos.length > 0 && options.autoCreateEntities) {
-          await resolveOrCreateModelIds(fab.id, pRow.modelos)
+          continue
         }
       }
 
-      // Re-enlazar categoría/subsistema si corresponde a una familia recién importada en el mismo archivo
+      let resolvedMotor: Motor | undefined
+      if (pRow.motorCodigo) {
+        const fab = pRow.fabricante ? fabByNorm.get(normalizeText(pRow.fabricante)) : undefined
+        resolvedMotor = findExistingMotor(pRow.motorCodigo, fab?.id)
+      }
+
       const matchedRuntimeGroup = pRow.familiaRaw
         ? resolveGrupoMatch(pRow.familiaRaw, gruposList, options.defaultGrupo)
         : resolveGrupoMatch(pRow.categoria, gruposList, options.defaultGrupo)
@@ -3664,6 +3968,26 @@ export const executeCatalogImport = async (
           : pRow.imagen_url
             ? [pRow.imagen_url]
             : []
+
+      const baseSpecs: Record<string, unknown> = {
+        codigos_oem_adicionales: pRow.codigos_oem_adicionales,
+        marca: pRow.fabricante ? pRow.fabricante.toUpperCase() : undefined,
+        modelos: pRow.modelos,
+        modelo: pRow.modelos.join(' / ') || undefined,
+        ano: pRow.anio,
+        catalogo_origen: pRow.catalogo_origen,
+        disenos_anillo: pRow.disenos_anillo,
+        descripcion_tecnica: pRow.descripcion_tecnica
+      }
+      const baseDims: Record<string, unknown> = {
+        ...pRow.dimensiones,
+        codigos_oem_adicionales: pRow.codigos_oem_adicionales
+      }
+
+      const isUpdatingExisting = Boolean(existingPartId && existingEntry && options.duplicateStrategy === 'update')
+      const finalSpecs = isUpdatingExisting
+        ? preserveOwnerOnSpecs(existingEntry!.owner, baseSpecs)
+        : stampOwnerOnSpecs(baseSpecs, actor)
 
       const partPayload: Partial<RepuestoTecnico> = {
         motor_id: resolvedMotor?.id,
@@ -3696,48 +4020,50 @@ export const executeCatalogImport = async (
         paso_rosca_mm: pRow.paso_rosca_mm,
         longitud_perno_mm: pRow.longitud_perno_mm,
         cantidad_piezas: pRow.cantidad_piezas,
-        dimensiones: {
-          ...pRow.dimensiones,
-          codigos_oem_adicionales: pRow.codigos_oem_adicionales
-        },
-        especificaciones_tecnicas: {
-          codigos_oem_adicionales: pRow.codigos_oem_adicionales,
-          marca: pRow.fabricante ? pRow.fabricante.toUpperCase() : undefined,
-          modelos: pRow.modelos,
-          modelo: pRow.modelos.join(' / ') || undefined,
-          ano: pRow.anio,
-          catalogo_origen: pRow.catalogo_origen,
-          disenos_anillo: pRow.disenos_anillo,
-          descripcion_tecnica: pRow.descripcion_tecnica
-        }
+        dimensiones: baseDims,
+        especificaciones_tecnicas: finalSpecs
       }
 
-      if (existingPartId && options.duplicateStrategy === 'update') {
-        const updated = await catalogService.updateRepuesto(existingPartId, partPayload, pRow.equivalencias)
-        const prevEntry = idIndex.get(existingPartId)
-        if (prevEntry?.codigo_oem && oemIndex.get(prevEntry.codigo_oem) === existingPartId) {
-          oemIndex.delete(prevEntry.codigo_oem)
-        }
-        const newOem = updated.codigo_oem.toUpperCase()
-        oemIndex.set(newOem, existingPartId)
-        idIndex.set(existingPartId, {
-          id: existingPartId,
-          codigo_oem: newOem,
-          categoria: updated.categoria || resolvedPartCategoria
-        })
+      if (isUpdatingExisting && existingPartId && existingEntry) {
         retainedPartIds.add(existingPartId)
-        report.updatedParts++
-      } else {
-        const created = await catalogService.createRepuesto(partPayload, pRow.equivalencias)
-        const createdOem = created.codigo_oem.toUpperCase()
-        oemIndex.set(createdOem, created.id)
-        idIndex.set(created.id, {
-          id: created.id,
-          codigo_oem: createdOem,
-          categoria: created.categoria || resolvedPartCategoria
+        updateMap.set(existingPartId, {
+          id: existingPartId,
+          row: pRow,
+          part: partPayload,
+          equivalencias: pRow.equivalencias,
+          existingEntry,
+          resolvedCategoria: resolvedPartCategoria,
+          motorId: resolvedMotor?.id,
+          modelos: pRow.modelos
         })
-        retainedPartIds.add(created.id)
-        report.createdParts++
+      } else {
+        const oemUpper = (pRow.codigo_oem || '').trim().toUpperCase()
+        if (!existingPartId && oemUpper && options.duplicateStrategy !== 'create' && queuedCreateByOem.has(oemUpper)) {
+          if (options.duplicateStrategy === 'skip') {
+            report.skippedParts++
+            continue
+          }
+          const qIdx = queuedCreateByOem.get(oemUpper)!
+          createQueue[qIdx] = {
+            row: pRow,
+            part: partPayload,
+            equivalencias: pRow.equivalencias,
+            resolvedCategoria: resolvedPartCategoria,
+            motorId: resolvedMotor?.id,
+            modelos: pRow.modelos
+          }
+          continue
+        }
+        const nextIdx = createQueue.length
+        createQueue.push({
+          row: pRow,
+          part: partPayload,
+          equivalencias: pRow.equivalencias,
+          resolvedCategoria: resolvedPartCategoria,
+          motorId: resolvedMotor?.id,
+          modelos: pRow.modelos
+        })
+        if (oemUpper) queuedCreateByOem.set(oemUpper, nextIdx)
       }
     } catch (err) {
       report.errors.push({
@@ -3747,7 +4073,112 @@ export const executeCatalogImport = async (
     }
   }
 
-  // 4. Sincronización opcional de familia: eliminar repuestos de la familia ausentes en el archivo
+  const motorModelsToSync = new Map<string, Set<string>>()
+  const collectMotorModels = (motorId: string | undefined, modelos: string[]) => {
+    if (!motorId || modelos.length === 0) return
+    if (!motorModelsToSync.has(motorId)) motorModelsToSync.set(motorId, new Set())
+    const target = motorModelsToSync.get(motorId)!
+    for (const m of modelos) {
+      const clean = m.trim()
+      if (clean) target.add(clean)
+    }
+  }
+
+  const updatesList = Array.from(updateMap.values())
+  if (updatesList.length > 0) {
+    options.onProgress?.(
+      currentStep,
+      Math.max(totalSteps, 1),
+      `Actualizando ${updatesList.length} repuesto(s) en lote...`
+    )
+    const updRes = await catalogService.updateRepuestosBulk(
+      updatesList.map(u => ({
+        id: u.id,
+        part: u.part,
+        equivalencias: u.equivalencias
+      })),
+      { skipMotorModelSync: true, concurrency: 10 }
+    )
+    report.updatedParts += updRes.updated.length
+    const failedIds = new Set(updRes.failed.map(f => f.id))
+    for (const item of updatesList) {
+      if (!failedIds.has(item.id)) {
+        collectMotorModels(item.motorId, item.modelos)
+      }
+    }
+    for (const upd of updRes.updated) {
+      const prevEntry = idIndex.get(upd.id)
+      if (prevEntry?.codigo_oem && oemIndex.get(prevEntry.codigo_oem) === upd.id) {
+        oemIndex.delete(prevEntry.codigo_oem)
+      }
+      const newOem = upd.codigo_oem.toUpperCase()
+      oemIndex.set(newOem, upd.id)
+      idIndex.set(upd.id, {
+        id: upd.id,
+        codigo_oem: newOem,
+        categoria: upd.categoria || prevEntry?.categoria || '',
+        owner: extractRepuestoOwner(upd)
+      })
+    }
+    for (const fail of updRes.failed) {
+      const item = updateMap.get(fail.id)
+      report.errors.push({
+        rowLabel: item ? `${item.row.sheetName} fila ${item.row.rowIndex} (${item.row.codigo_oem})` : fail.id,
+        message: fail.error
+      })
+    }
+  }
+
+  if (createQueue.length > 0) {
+    options.onProgress?.(
+      currentStep,
+      Math.max(totalSteps, 1),
+      `Creando ${createQueue.length} repuesto(s) en lote...`
+    )
+    const crtRes = await catalogService.createRepuestosBulk(
+      createQueue.map(c => ({
+        part: c.part,
+        equivalencias: c.equivalencias
+      })),
+      { skipMotorModelSync: true, chunkSize: 80 }
+    )
+    report.createdParts += crtRes.created.length
+    const failedIndexes = new Set(crtRes.failed.map(f => f.index))
+    createQueue.forEach((item, idx) => {
+      if (!failedIndexes.has(idx)) {
+        collectMotorModels(item.motorId, item.modelos)
+      }
+    })
+    for (const created of crtRes.created) {
+      const createdOem = created.codigo_oem.toUpperCase()
+      oemIndex.set(createdOem, created.id)
+      idIndex.set(created.id, {
+        id: created.id,
+        codigo_oem: createdOem,
+        categoria: created.categoria || '',
+        owner: extractRepuestoOwner(created)
+      })
+      retainedPartIds.add(created.id)
+    }
+    for (const fail of crtRes.failed) {
+      const item = createQueue[fail.index]
+      report.errors.push({
+        rowLabel: item ? `${item.row.sheetName} fila ${item.row.rowIndex} (${item.row.codigo_oem})` : `Fila ${fail.index + 1}`,
+        message: fail.error
+      })
+    }
+  }
+
+  if (motorModelsToSync.size > 0) {
+    options.onProgress?.(
+      Math.max(currentStep, 1),
+      Math.max(totalSteps, 1),
+      `Sincronizando modelos en ${motorModelsToSync.size} motor(es)...`
+    )
+    await catalogService.syncPartModelsWithMotorBulk(motorModelsToSync, false)
+  }
+
+  // 4. Sincronización opcional de familia: eliminar repuestos de la familia ausentes en el archivo (con validación de propietario)
   if (
     options.syncFamilyDeleteMissing &&
     options.syncTargetGrupo &&
@@ -3763,17 +4194,29 @@ export const executeCatalogImport = async (
 
       const existingFamilyParts = await catalogService.getAllRepuestosForGrupoExport(runtimeSyncGrupo)
       const alreadyDeletedSet = new Set(report.deletedPartIds)
-      const missingIds = existingFamilyParts
-        .filter(p => !retainedPartIds.has(p.id) && !alreadyDeletedSet.has(p.id))
+      const missingParts = existingFamilyParts.filter(
+        p => !retainedPartIds.has(p.id) && !alreadyDeletedSet.has(p.id)
+      )
+      const authorizedMissingIds = missingParts
+        .filter(p => canActorModifyRepuesto(p, actor))
         .map(p => p.id)
+      const unauthorizedMissingCount = missingParts.length - authorizedMissingIds.length
 
-      if (missingIds.length > 0) {
+      if (unauthorizedMissingCount > 0) {
+        report.skippedUnauthorizedParts += unauthorizedMissingCount
+        report.errors.push({
+          rowLabel: `Sincronización de familia (${runtimeSyncGrupo.nombre})`,
+          message: `${unauthorizedMissingCount} repuesto(s) ausentes de otros usuarios o del administrador se conservaron por falta de permisos para eliminarlos.`
+        })
+      }
+
+      if (authorizedMissingIds.length > 0) {
         options.onProgress?.(
-          totalSteps,
-          totalSteps,
-          `Sincronizando familia: eliminando ${missingIds.length} repuesto(s)...`
+          Math.max(totalSteps, 1),
+          Math.max(totalSteps, 1),
+          `Sincronizando familia: eliminando ${authorizedMissingIds.length} repuesto(s)...`
         )
-        const syncRes = await catalogService.deleteRepuestosBulk(missingIds)
+        const syncRes = await catalogService.deleteRepuestosBulk(authorizedMissingIds)
         report.deletedParts += syncRes.deletedIds.length
         report.deletedPartIds.push(...syncRes.deletedIds)
         if (syncRes.failedIds.length > 0) {

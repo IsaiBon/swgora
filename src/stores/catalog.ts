@@ -9,8 +9,34 @@ import {
   type GrupoRepuesto,
   type GrupoRepuestoInsert
 } from '@/services/catalogService'
+import { useAuthStore } from '@/stores/auth'
+import {
+  buildCatalogActorFromUser,
+  canActorModifyRepuesto,
+  extractRepuestoOwner,
+  stampOwnerOnSpecs,
+  preserveOwnerOnSpecs,
+  type CatalogActor,
+  type RepuestoOwnerMeta
+} from '@/utils/catalogPermissions'
 
 export const useCatalogStore = defineStore('catalog', () => {
+  const authStore = useAuthStore()
+
+  function getCatalogActor(): CatalogActor | null {
+    return buildCatalogActorFromUser(authStore.user, authStore.isAdmin)
+  }
+
+  async function resolveRepuestoOwnerMeta(partId: string): Promise<RepuestoOwnerMeta | null> {
+    const inMemory = repuestos.value.find(r => r.id === partId)
+    if (inMemory) {
+      const meta = extractRepuestoOwner(inMemory)
+      if (meta.userId || meta.email) {
+        return meta
+      }
+    }
+    return await catalogService.getRepuestoOwnerById(partId)
+  }
   // Estado base sincronizado con Supabase
   const fabricantes = ref<Fabricante[]>([])
   const modelos = ref<Modelo[]>([])
@@ -473,7 +499,14 @@ export const useCatalogStore = defineStore('catalog', () => {
     isSaving.value = true
     error.value = null
     try {
-      const created = await catalogService.createRepuesto(partData, equivalencias)
+      const actor = getCatalogActor()
+      const stampedPayload: Partial<RepuestoTecnico> = actor
+        ? {
+            ...partData,
+            especificaciones_tecnicas: stampOwnerOnSpecs(partData.especificaciones_tecnicas, actor)
+          }
+        : partData
+      const created = await catalogService.createRepuesto(stampedPayload, equivalencias)
       // Añadir inmediatamente al inicio de la lista reactiva
       repuestos.value.unshift(created)
       if (created.motor_id) {
@@ -531,7 +564,21 @@ export const useCatalogStore = defineStore('catalog', () => {
     isSaving.value = true
     error.value = null
     try {
-      const updated = await catalogService.updateRepuesto(partId, partData, equivalencias)
+      const actor = getCatalogActor()
+      const ownerMeta = await resolveRepuestoOwnerMeta(partId)
+      if (!canActorModifyRepuesto(ownerMeta, actor)) {
+        const msg = 'No tienes permiso para modificar este repuesto: solo el administrador o quien lo subió puede editarlo.'
+        error.value = msg
+        throw new Error(msg)
+      }
+      const mergedSpecs = preserveOwnerOnSpecs(ownerMeta, partData.especificaciones_tecnicas)
+      const safePartData: Partial<RepuestoTecnico> = {
+        ...partData,
+        ...(partData.especificaciones_tecnicas !== undefined
+          ? { especificaciones_tecnicas: mergedSpecs }
+          : {})
+      }
+      const updated = await catalogService.updateRepuesto(partId, safePartData, equivalencias)
       const idx = repuestos.value.findIndex(r => r.id === partId)
       if (idx >= 0) {
         repuestos.value[idx] = updated
@@ -588,6 +635,13 @@ export const useCatalogStore = defineStore('catalog', () => {
   async function updateRepuestoPrecio(partId: string, precio: number): Promise<number> {
     error.value = null
     try {
+      const actor = getCatalogActor()
+      const ownerMeta = await resolveRepuestoOwnerMeta(partId)
+      if (!canActorModifyRepuesto(ownerMeta, actor)) {
+        const msg = 'No tienes permiso para cambiar el precio de este repuesto: solo el administrador o quien lo subió puede editarlo.'
+        error.value = msg
+        throw new Error(msg)
+      }
       const savedPrice = await catalogService.updateRepuestoPrecio(partId, precio)
       repuestos.value = repuestos.value.map(r =>
         r.id === partId ? { ...r, precio: savedPrice } : r
@@ -607,6 +661,13 @@ export const useCatalogStore = defineStore('catalog', () => {
     isSaving.value = true
     error.value = null
     try {
+      const actor = getCatalogActor()
+      const ownerMeta = await resolveRepuestoOwnerMeta(partId)
+      if (!canActorModifyRepuesto(ownerMeta, actor)) {
+        const msg = 'No tienes permiso para eliminar este repuesto: solo el administrador o quien lo subió puede eliminarlo.'
+        error.value = msg
+        throw new Error(msg)
+      }
       await catalogService.deleteRepuesto(partId)
       repuestos.value = repuestos.value.filter(r => r.id !== partId && r.codigo_oem !== partId)
       return true
@@ -626,6 +687,22 @@ export const useCatalogStore = defineStore('catalog', () => {
     isSaving.value = true
     error.value = null
     try {
+      const actor = getCatalogActor()
+      if (!actor?.isAdmin && partIds.length > 0) {
+        const ownersMap = await catalogService.getRepuestosOwnersByIds(partIds)
+        const unauthorizedIds = partIds.filter(id => {
+          const ownerMeta = ownersMap.get(id)
+          const inMemory = repuestos.value.find(r => r.id === id)
+          const hasRecordedOwner = Boolean(ownerMeta?.userId || ownerMeta?.email)
+          const source = hasRecordedOwner ? ownerMeta : (inMemory || ownerMeta || null)
+          return !canActorModifyRepuesto(source, actor)
+        })
+        if (unauthorizedIds.length > 0) {
+          const msg = `No tienes permiso para eliminar ${unauthorizedIds.length} repuesto(s) que fueron subidos por otro usuario o por el administrador.`
+          error.value = msg
+          throw new Error(msg)
+        }
+      }
       const result = await catalogService.deleteRepuestosBulk(partIds)
       if (result.deletedIds.length > 0) {
         const deletedSet = new Set(result.deletedIds)

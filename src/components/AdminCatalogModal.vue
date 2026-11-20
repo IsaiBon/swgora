@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useCatalogStore } from '@/stores/catalog'
+import { useAuthStore } from '@/stores/auth'
+import {
+  buildCatalogActorFromUser,
+  canActorModifyRepuesto,
+  extractRepuestoOwner
+} from '@/utils/catalogPermissions'
 import PartImageUploader from '@/components/catalog/PartImageUploader.vue'
 import FamilyTemplatePicker from '@/components/catalog/FamilyTemplatePicker.vue'
 import { 
@@ -63,6 +69,11 @@ const emit = defineEmits<{
 }>()
 
 const catalogStore = useCatalogStore()
+const authStore = useAuthStore()
+
+const currentCatalogActor = computed(() =>
+  buildCatalogActorFromUser(authStore.user, authStore.isAdmin)
+)
 
 // Pestaña activa ('repuesto' | 'grupo')
 const activeTab = ref<'repuesto' | 'grupo'>(props.initialTab || 'repuesto')
@@ -116,6 +127,17 @@ const hasThirdRing = ref<boolean>(false)
 const ringRows = ref<RingFormRow[]>(createDefaultRingRows())
 const saveErrorMessage = ref<string>('')
 
+const canModifyEditingPart = computed<boolean>(() => {
+  if (!isEditPartMode.value || !props.editPart) return true
+  return canActorModifyRepuesto(props.editPart, currentCatalogActor.value)
+})
+
+const editingPartOwnerLabel = computed<string>(() => {
+  if (!props.editPart) return ''
+  const owner = extractRepuestoOwner(props.editPart)
+  return owner.name || owner.email || 'Administrador / Sistema'
+})
+
 export interface SubfilaFormRow {
   id: string
   tipo: string
@@ -147,6 +169,11 @@ const resolveGroupByTarget = (target?: string | null): GrupoRepuesto | null => {
 
 const handleDeletePart = async () => {
   if (!editingPartId.value) return
+  if (!canModifyEditingPart.value) {
+    saveErrorMessage.value = 'Solo puedes eliminar los repuestos que tú subiste.'
+    showDeleteConfirm.value = false
+    return
+  }
   isDeletingPart.value = true
   try {
     const pId = editingPartId.value
@@ -1500,6 +1527,10 @@ const formatRingVal = (val: number | null | undefined): string => {
 }
 
 const handleSavePart = async () => {
+  if (isEditPartMode.value && !canModifyEditingPart.value) {
+    saveErrorMessage.value = 'Solo puedes modificar los repuestos que tú subiste.'
+    return
+  }
   if (!validatePartForm()) {
     return
   }
@@ -2440,6 +2471,19 @@ onUnmounted(() => {
                   Editando Repuesto: <span class="font-mono text-slate-900 bg-white px-2 py-0.5 rounded border border-cyan-200">{{ partCodigoOem || editingPartId }}</span>
                 </p>
               </div>
+            </div>
+          </div>
+
+          <div
+            v-if="isEditPartMode && !canModifyEditingPart"
+            class="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-xs font-semibold text-amber-900 flex items-start gap-2"
+          >
+            <AlertCircle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p class="font-extrabold">Solo lectura para tu cuenta</p>
+              <p class="text-[11px] font-medium text-amber-800 mt-0.5">
+                Este repuesto fue registrado por <strong>{{ editingPartOwnerLabel }}</strong>. Solo ese usuario o el Administrador principal pueden modificarlo o eliminarlo.
+              </p>
             </div>
           </div>
 
@@ -3690,8 +3734,8 @@ onUnmounted(() => {
             Cancelar
           </button>
 
-          <!-- Botón Eliminar Repuesto (solo en modo edición de repuesto) -->
-          <div v-if="activeTab === 'repuesto' && isEditPartMode" class="relative">
+          <!-- Botón Eliminar Repuesto (solo en modo edición de repuesto permitido) -->
+          <div v-if="activeTab === 'repuesto' && isEditPartMode && canModifyEditingPart" class="relative">
             <button
               v-if="!showDeleteConfirm"
               type="button"
@@ -3732,7 +3776,7 @@ onUnmounted(() => {
             v-if="activeTab === 'repuesto'"
             type="button"
             @click="handleSavePart"
-            :disabled="isSubmittingPart"
+            :disabled="isSubmittingPart || (isEditPartMode && !canModifyEditingPart)"
             class="px-5 py-2.5 rounded-xl studio-cta-primary disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-2 transition shadow-sm active:scale-95 cursor-pointer"
           >
             <Loader2 v-if="isSubmittingPart" class="w-4 h-4 animate-spin" />
