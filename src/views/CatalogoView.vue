@@ -80,6 +80,9 @@ const isCartDrawerOpen = ref(false)
 const isBulkDeleteConfirmOpen = ref(false)
 const isBulkDeleting = ref(false)
 const bulkDeleteError = ref('')
+const editingPricePartId = ref<string | null>(null)
+const editingPriceDraft = ref<string>('')
+const savingPricePartId = ref<string | null>(null)
 
 watch(
   () => [
@@ -93,6 +96,9 @@ watch(
     isBulkDeleteConfirmOpen.value = false
     isBulkDeleting.value = false
     bulkDeleteError.value = ''
+    editingPricePartId.value = null
+    editingPriceDraft.value = ''
+    savingPricePartId.value = null
     catalogSelectionStore.clear()
   }
 )
@@ -2094,8 +2100,9 @@ const addToWorkOrder = (part: RepuestoTecnico) => {
     if (addedPartId.value === part.id) addedPartId.value = null
   }, 1400)
 
+  const priceLabel = Number(part.precio) > 0 ? ` (${formatCatalogPrice(part.precio)})` : ''
   showToast(
-    `✓ ${part.codigo_oem} añadido al listado de orden (${orderCartStore.uniqueCount} en listado)`
+    `✓ ${part.codigo_oem}${priceLabel} añadido al listado de orden (${orderCartStore.uniqueCount} en listado)`
   )
 }
 
@@ -2681,6 +2688,8 @@ const handleResetAll = async () => {
   catalogSelectionStore.clear()
   isBulkDeleteConfirmOpen.value = false
   bulkDeleteError.value = ''
+  editingPricePartId.value = null
+  editingPriceDraft.value = ''
   resetMeasurementsFilters()
   await catalogStore.resetFilters()
   showToast('Filtros y búsqueda restablecidos')
@@ -4240,8 +4249,69 @@ const onPartCreated = (newPart: RepuestoTecnico) => {
 const onPartUpdated = (updatedPart: RepuestoTecnico) => {
   showToast(`✓ Repuesto ${updatedPart.codigo_oem} modificado exitosamente`)
   adminModalEditPart.value = null
+  orderCartStore.updatePartPrice(updatedPart.id, Number(updatedPart.precio) || 0)
   if (modalPart.value && modalPart.value.id === updatedPart.id) {
     modalPart.value = updatedPart
+  }
+}
+
+// =============================================================================
+// EDICIÓN RÁPIDA DE PRECIO EN CATÁLOGO (SINCRONIZADA CON SUPABASE Y LISTADO)
+// =============================================================================
+const formatCatalogPrice = (val?: number | null): string => {
+  const num = Number(val || 0)
+  return `$${(Number.isFinite(num) && num > 0 ? num : 0).toFixed(2)}`
+}
+
+const startInlinePriceEdit = (part: RepuestoTecnico) => {
+  if (savingPricePartId.value) return
+  editingPricePartId.value = part.id
+  editingPriceDraft.value = Number(part.precio) > 0 ? Number(part.precio).toFixed(2) : ''
+  void nextTick(() => {
+    const inputEl = document.getElementById(`inline-price-input-${part.id}`) as HTMLInputElement | null
+    if (inputEl) {
+      inputEl.focus()
+      inputEl.select()
+    }
+  })
+}
+
+const cancelInlinePriceEdit = () => {
+  if (savingPricePartId.value) return
+  editingPricePartId.value = null
+  editingPriceDraft.value = ''
+}
+
+const saveInlinePriceEdit = async (part: RepuestoTecnico) => {
+  if (savingPricePartId.value) return
+  const rawText = String(editingPriceDraft.value ?? '').trim().replace(',', '.')
+  const parsed = rawText === '' ? 0 : Number(rawText)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    showToast('Ingresa un precio válido mayor o igual a 0')
+    return
+  }
+
+  const cleanPrice = parsed > 0 ? Number(parsed.toFixed(2)) : 0
+  savingPricePartId.value = part.id
+  try {
+    const savedPrice = await catalogStore.updateRepuestoPrecio(part.id, cleanPrice)
+    orderCartStore.updatePartPrice(part.id, savedPrice)
+    if (modalPart.value?.id === part.id) {
+      modalPart.value = { ...modalPart.value, precio: savedPrice }
+    }
+    editingPricePartId.value = null
+    editingPriceDraft.value = ''
+    showToast(
+      savedPrice > 0
+        ? `✓ Precio de ${part.codigo_oem} actualizado a ${formatCatalogPrice(savedPrice)}`
+        : `✓ Precio de ${part.codigo_oem} borrado (manual en orden)`
+    )
+  } catch (err: unknown) {
+    showToast(
+      err instanceof Error ? err.message : 'No se pudo actualizar el precio del repuesto'
+    )
+  } finally {
+    savingPricePartId.value = null
   }
 }
 
@@ -6466,6 +6536,7 @@ onUnmounted(() => {
                   </th>
                 </template>
 
+                <th rowspan="2" class="py-1.5 px-3 w-32 min-w-[125px] text-right whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Precio</th>
                 <th rowspan="2" class="py-1.5 px-3 min-w-[240px] text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
               </tr>
               <!-- Fila 2 de Cabecera: Sub-columnas -->
@@ -6481,7 +6552,7 @@ onUnmounted(() => {
               </tr>
             </thead>
 
-            <!-- Caso B: Cabecera Estándar de 4 Columnas (Vista Normal plana o Vista en Tabla con sub-tabla incrustada) -->
+            <!-- Caso B: Cabecera Estándar de 5 Columnas (Vista Normal plana o Vista en Tabla con sub-tabla incrustada) -->
             <thead v-else class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
                 <th
@@ -6505,16 +6576,17 @@ onUnmounted(() => {
                   Código OEM
                 </th>
                 
-                <th v-if="isCurrentGroupTableView" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                <th v-if="isCurrentGroupTableView" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || 'MEDIDAS').toUpperCase() }}: {{ activeTableGroupColumns.map(c => c.etiqueta_corta || c.etiqueta).join(' / ') || 'Especificaciones' }}
                 </th>
-                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                <th v-else-if="currentGroupDefinition?.parametros && currentGroupDefinition.parametros.length > 0" class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   {{ (selectedComponent?.title || selectedComponent?.category || 'COTAS').toUpperCase() }}: {{ currentGroupDefinition.parametros.filter(p => p.requerido).map(p => p.etiqueta_corta || p.etiqueta).join(' × ') || currentGroupDefinition.parametros.map(p => p.etiqueta_corta || p.etiqueta).slice(0, 4).join(' × ') }}
                 </th>
-                <th v-else class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">
+                <th v-else class="py-1.5 px-3 whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Especificaciones Técnicas (mm)
                 </th>
 
+                <th class="py-1.5 px-3 w-32 min-w-[125px] text-right whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">Precio</th>
                 <th class="py-1.5 px-3 min-w-[240px] text-right whitespace-nowrap align-middle border-b border-slate-200 bg-slate-100/95">Acciones</th>
               </tr>
             </thead>
@@ -6529,6 +6601,7 @@ onUnmounted(() => {
                   <td v-for="col in activeTableGroupColumns" :key="`skel-col-${col.id}`" class="py-2 px-2 border-b border-slate-100"><div class="h-3.5 w-12 mx-auto bg-slate-200 rounded"></div></td>
                 </template>
                 <td v-else class="py-2 px-3 border-b border-slate-100"><div class="h-3.5 w-36 bg-slate-200 rounded"></div></td>
+                <td class="py-2 px-3 text-right border-b border-slate-100"><div class="h-4 w-16 bg-slate-200 rounded ml-auto"></div></td>
                 <td class="py-2 px-3 text-right border-b border-slate-100"><div class="h-3.5 w-14 bg-slate-200 rounded ml-auto"></div></td>
               </tr>
             </tbody>
@@ -7172,6 +7245,72 @@ onUnmounted(() => {
 
                 </td>
 
+                <!-- 4.5. Precio Unitario (Edición inline directa en catálogo) -->
+                <td class="py-2 px-3 align-middle text-right border-b border-r border-slate-100 whitespace-nowrap">
+                  <div
+                    v-if="editingPricePartId === part.id"
+                    class="inline-flex items-center justify-end gap-1"
+                    @click.stop
+                  >
+                    <div class="relative flex items-center">
+                      <span class="absolute left-2 text-[11px] font-mono font-extrabold text-emerald-700 pointer-events-none">$</span>
+                      <input
+                        :id="`inline-price-input-${part.id}`"
+                        v-model="editingPriceDraft"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputmode="decimal"
+                        placeholder="0.00"
+                        :disabled="savingPricePartId === part.id"
+                        @keydown.enter.prevent="saveInlinePriceEdit(part)"
+                        @keydown.esc.prevent="cancelInlinePriceEdit"
+                        class="w-20 pl-5 pr-1.5 py-1 text-xs font-mono font-bold text-right text-slate-900 bg-white border border-[#04C4D9] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/30 disabled:opacity-50"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      :disabled="savingPricePartId === part.id"
+                      @click="saveInlinePriceEdit(part)"
+                      class="p-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer disabled:opacity-50"
+                      title="Guardar precio (Enter)"
+                      aria-label="Guardar precio"
+                    >
+                      <Loader2 v-if="savingPricePartId === part.id" class="w-3.5 h-3.5 animate-spin" />
+                      <Check v-else class="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="savingPricePartId === part.id"
+                      @click="cancelInlinePriceEdit"
+                      class="p-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer disabled:opacity-50"
+                      title="Cancelar (Esc)"
+                      aria-label="Cancelar edición de precio"
+                    >
+                      <X class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <button
+                    v-else
+                    type="button"
+                    @click="startInlinePriceEdit(part)"
+                    :class="[
+                      'group/price inline-flex items-center justify-end gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-extrabold transition cursor-pointer',
+                      Number(part.precio) > 0
+                        ? 'bg-emerald-50/80 hover:bg-emerald-100/80 text-emerald-800 border-emerald-200'
+                        : 'bg-slate-50 hover:bg-sky-50 text-slate-500 hover:text-[#004B97] border-dashed border-slate-300 hover:border-[#04C4D9] font-sans font-bold text-[11px]'
+                    ]"
+                    :title="Number(part.precio) > 0 ? 'Clic para editar precio' : 'Clic para asignar precio a este repuesto'"
+                  >
+                    <span>{{ Number(part.precio) > 0 ? formatCatalogPrice(part.precio) : '+ Precio' }}</span>
+                    <Edit3
+                      v-if="Number(part.precio) > 0"
+                      class="w-3 h-3 text-emerald-600 opacity-50 group-hover/price:opacity-100 transition shrink-0"
+                    />
+                  </button>
+                </td>
+
                 <!-- 5. Acciones Rápidas -->
                 <td class="py-2 px-3 align-middle text-right border-b border-slate-100">
                   <div class="flex items-center justify-end gap-1">
@@ -7224,7 +7363,7 @@ onUnmounted(() => {
               <!-- Empty State -->
               <tr v-if="displayedParts.length === 0">
                 <td
-                  :colspan="(hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal' ? 3 + Math.max(1, activeTableGroupColumns.length) : 4) + (authStore.isAdmin ? 1 : 0)"
+                  :colspan="(hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal' ? 4 + Math.max(1, activeTableGroupColumns.length) : 5) + (authStore.isAdmin ? 1 : 0)"
                   class="py-10 text-center text-slate-400 bg-white"
                 >
                   <div class="max-w-sm mx-auto space-y-2">
@@ -7484,7 +7623,7 @@ onUnmounted(() => {
           
           <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-5 py-3.5 flex items-center justify-between">
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[10px] font-mono font-bold uppercase tracking-widest text-[#BFEBF2] block">
                   Ficha Técnica de Homologación
                 </span>
@@ -7494,6 +7633,18 @@ onUnmounted(() => {
                   :class="getBrandBadgeClass(getPartCatalogBrand(modalPart))"
                 >
                   {{ getPartCatalogBrand(modalPart) }}
+                </span>
+                <span
+                  v-if="Number(modalPart.precio) > 0"
+                  class="px-2 py-0.5 rounded-md bg-emerald-400/20 border border-emerald-300/40 text-emerald-100 font-mono text-[11px] font-black"
+                >
+                  {{ formatCatalogPrice(modalPart.precio) }}
+                </span>
+                <span
+                  v-else
+                  class="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 text-sky-100/80 text-[10px] font-semibold"
+                >
+                  Sin precio
                 </span>
               </div>
               <h3 class="text-base font-black text-white mt-0.5">

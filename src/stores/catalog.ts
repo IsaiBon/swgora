@@ -583,6 +583,24 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
+   * Actualiza rápidamente el precio de un repuesto en Supabase y en el listado reactivo
+   */
+  async function updateRepuestoPrecio(partId: string, precio: number): Promise<number> {
+    error.value = null
+    try {
+      const savedPrice = await catalogService.updateRepuestoPrecio(partId, precio)
+      repuestos.value = repuestos.value.map(r =>
+        r.id === partId ? { ...r, precio: savedPrice } : r
+      )
+      return savedPrice
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar el precio del repuesto'
+      error.value = msg
+      throw err
+    }
+  }
+
+  /**
    * Elimina un repuesto técnico de Supabase y de la lista reactiva
    */
   async function deleteRepuesto(partId: string) {
@@ -954,6 +972,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     resetFilters,
     createRepuesto,
     updateRepuesto,
+    updateRepuestoPrecio,
     deleteRepuesto,
     deleteRepuestosBulk,
     toggleOnlyMotorsWithParts,

@@ -4341,6 +4341,50 @@ export const catalogService = {
   },
 
   /**
+   * Actualiza únicamente el precio de un repuesto técnico en Supabase y cachés locales
+   */
+  async updateRepuestoPrecio(partId: string, precio: number): Promise<number> {
+    const num = Number(precio)
+    const cleanPrecio = Number.isFinite(num) && num > 0 ? Number(num.toFixed(2)) : 0
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    if (UUID_REGEX.test(partId)) {
+      const { error } = await supabase
+        .from('repuestos_tecnicos')
+        .update({
+          precio: cleanPrecio,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', partId)
+
+      if (error) {
+        throw new Error(`No se pudo actualizar el precio: ${error.message}`)
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const localParts = getLocalCustomRepuestos()
+        const idx = localParts.findIndex(p => p.id === partId || p.codigo_oem === partId)
+        if (idx >= 0 && localParts[idx]) {
+          localParts[idx] = { ...localParts[idx], precio: cleanPrecio }
+          localStorage.setItem(LOCAL_PARTS_STORAGE_KEY, JSON.stringify(localParts))
+        }
+      } catch (e) {
+        console.warn('[CatalogService] Error actualizando precio en respaldo local:', e)
+      }
+    }
+
+    const mockItem = mockRepuestos.find(r => r.id === partId || r.codigo_oem === partId)
+    if (mockItem) {
+      mockItem.precio = cleanPrecio
+    }
+
+    clearCatalogPartsCache()
+    return cleanPrecio
+  },
+
+  /**
    * Elimina un repuesto técnico de Supabase y del almacenamiento local
    */
   async deleteRepuesto(partId: string): Promise<boolean> {

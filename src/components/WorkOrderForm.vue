@@ -353,7 +353,7 @@ const importItemsFromOrderCart = (): boolean => {
       existing.operation = operationLabel
       existing.selected = true
       existing.quantity = qty
-      if (unitPrice !== null && (!existing.unitPrice || Number(existing.unitPrice) <= 0)) {
+      if (unitPrice !== null) {
         existing.unitPrice = unitPrice
         existing.subtotal = subtotal
       } else if (existing.unitPrice && Number(existing.unitPrice) > 0) {

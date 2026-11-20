@@ -142,7 +142,7 @@ export const useOrderCartStore = defineStore('orderCart', () => {
       existing.quantity += cleanQty
       if (!existing.code && normalizedCode) existing.code = normalizedCode
       if (!existing.name && normalizedName) existing.name = normalizedName
-      if (!(existing.price > 0) && normalizedPrice > 0) existing.price = normalizedPrice
+      if (normalizedPrice > 0) existing.price = normalizedPrice
       if (!existing.brand && normalizedBrand) existing.brand = normalizedBrand
       if (!existing.motor && normalizedMotor) existing.motor = normalizedMotor
       if (!existing.catalogOrigin && normalizedOrigin) existing.catalogOrigin = normalizedOrigin
@@ -178,6 +178,14 @@ export const useOrderCartStore = defineStore('orderCart', () => {
     const found = rawItems.value.find(item => item.id === partId)
     if (!found) return
     found.quantity = cleanQty
+  }
+
+  const updatePartPrice = (partId: string, price: number): void => {
+    if (!activeAccountScope.value || ownerScope.value !== activeAccountScope.value) return
+    const found = rawItems.value.find(item => item.id === partId)
+    if (!found) return
+    const cleanPrice = sanitizeNumber(price, 0)
+    found.price = cleanPrice > 0 ? Number(cleanPrice.toFixed(2)) : 0
   }
 
   const increment = (partId: string): void => {
@@ -240,6 +248,7 @@ export const useOrderCartStore = defineStore('orderCart', () => {
     isInCart,
     addPart,
     setQuantity,
+    updatePartPrice,
     increment,
     decrement,
     removePart,

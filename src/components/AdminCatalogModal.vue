@@ -467,6 +467,7 @@ const partModelo = ref<string>('')
 const partModelosAdicionales = ref<string[]>([])
 const partAno = ref<string>('')
 const partNombre = ref<string>('')
+const partPrecio = ref<string | number>('')
 const partSubsistema = ref<string>('Block')
 const partCatalogoOrigen = ref<string>('OEM')
 const partImagenUrl = ref<string>('')
@@ -1077,6 +1078,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   )
 
   partNombre.value = part.nombre || ''
+  partPrecio.value = Number(part.precio) > 0 ? Number(Number(part.precio).toFixed(2)) : ''
   const spec = (part.especificaciones_tecnicas as any) || {}
   const dims = (part.dimensiones as any) || {}
   partMarca.value = spec.marca || spec.fabricantes?.[0] || spec.marcas_vehiculo?.[0] || dims.marca || dims.marcas_compatibles?.[0] || (part.motor?.fabricante?.nombre) || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : '') || ''
@@ -1785,6 +1787,15 @@ const handleSavePart = async () => {
     const finalNombre = partNombre.value.trim() || 
       `${partMarca.value.trim().toUpperCase()} ${combinedModeloLabel} - ${activeGroup.value?.nombre || 'Repuesto'} (${primaryOemClean})`
 
+    const rawPrecioVal =
+      partPrecio.value === '' || partPrecio.value === null || partPrecio.value === undefined
+        ? 0
+        : Number(String(partPrecio.value).replace(',', '.'))
+    const cleanPrecio =
+      Number.isFinite(rawPrecioVal) && rawPrecioVal > 0
+        ? Number(rawPrecioVal.toFixed(2))
+        : 0
+
     const partPayload = {
       motor_id: partMotorId.value || undefined,
       codigo_oem: primaryOemClean,
@@ -1792,7 +1803,7 @@ const handleSavePart = async () => {
       nombre: finalNombre,
       subsistema: partSubsistema.value,
       categoria: activeGroup.value?.categoria || 'General',
-      precio: editingPartId.value && props.editPart ? (props.editPart.precio ?? 0) : 0,
+      precio: cleanPrecio,
       stock: editingPartId.value && props.editPart ? (props.editPart.stock ?? 0) : 0,
       estado: editingPartId.value && props.editPart ? (props.editPart.estado ?? 'Disponible') : 'Disponible',
       catalogo_origen: partCatalogoOrigen.value,
@@ -1856,6 +1867,7 @@ function resetPartForm() {
   partModelosAdicionales.value = []
   partAno.value = ''
   partNombre.value = ''
+  partPrecio.value = ''
   partSubsistema.value = activeGroup.value?.subsistema || 'Block'
   partMotorId.value = ''
   motorSearchQuery.value = ''
@@ -2697,11 +2709,11 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Descripción + Motor Asociado -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
+              <!-- Descripción + Motor Asociado + Precio -->
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-start">
+                <div class="sm:col-span-5">
                   <label class="block text-[11px] font-bold text-slate-700 mb-1">
-                    Descripción Técnica <span class="text-[10px] font-normal text-slate-400">(Opcional)</span>
+                    Descripción Técnica <span class="text-[10px] font-normal text-slate-400">(Opc.)</span>
                   </label>
                   <input
                     v-model="partNombre"
@@ -2712,7 +2724,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Motor Asociado -->
-                <div class="relative combobox-motor-asociado">
+                <div class="sm:col-span-4 relative combobox-motor-asociado">
                   <div class="flex items-center justify-between mb-1">
                     <label class="block text-[11px] font-bold text-slate-700">
                       Motor Asociado <span class="text-[10px] font-normal text-slate-400">(Opc.)</span>
@@ -2793,6 +2805,25 @@ onUnmounted(() => {
                     <div v-if="filteredMotoresList.length === 0" class="p-3 text-center text-xs text-slate-500 italic">
                       No se encontraron motores para "{{ motorSearchQuery }}"
                     </div>
+                  </div>
+                </div>
+
+                <!-- Precio Unitario -->
+                <div class="sm:col-span-3">
+                  <label class="block text-[11px] font-bold text-slate-700 mb-1">
+                    Precio ($)
+                  </label>
+                  <div class="relative flex items-center">
+                    <span class="absolute left-2.5 text-xs font-mono font-extrabold text-emerald-700 pointer-events-none">$</span>
+                    <input
+                      v-model="partPrecio"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputmode="decimal"
+                      placeholder="0.00"
+                      class="w-full pl-6 pr-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
+                    />
                   </div>
                 </div>
               </div>
