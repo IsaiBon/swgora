@@ -2,8 +2,16 @@
 import { ref, computed, watch } from 'vue'
 import { useCatalogStore } from '@/stores/catalog'
 import {
+  catalogService,
+  normalizeText,
+  type GrupoRepuesto,
+  type RepuestoTecnico
+} from '@/services/catalogService'
+import {
   downloadCatalogExcelTemplate,
   downloadCatalogJsonTemplate,
+  exportFamilyToExcel,
+  exportFamilyToJson,
   parseCatalogImportFile,
   parseCatalogJsonText,
   executeCatalogImport,
@@ -29,7 +37,11 @@ import {
   Layers,
   Info,
   Trash2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  ShieldAlert
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -44,17 +56,27 @@ const emit = defineEmits<{
 
 const catalogStore = useCatalogStore()
 
-// Plantilla específica y carga
+// Plantilla específica, exportación de familia y carga
 const specificTarget = ref<string>('motors_only')
+const exportFamilyId = ref<string>('')
+const isExportingFamily = ref<boolean>(false)
+const exportFeedback = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 const defaultImportGroupId = ref<string>('')
 const inputMode = ref<'file' | 'paste'>('file')
 const rawJsonText = ref<string>('')
 const selectedFile = ref<File | null>(null)
 const isDragging = ref<boolean>(false)
 
-// Opciones de importación
+// Opciones de importación y sincronización de familia
 const duplicateStrategy = ref<DuplicateStrategy>('skip')
 const autoCreateEntities = ref<boolean>(true)
+const autoUpdateActivatedNotice = ref<boolean>(false)
+const syncFamilyDeleteMissing = ref<boolean>(false)
+const syncExistingParts = ref<RepuestoTecnico[]>([])
+const isLoadingSyncParts = ref<boolean>(false)
+const showSyncMissingPreview = ref<boolean>(false)
+const pendingDestructiveConfirm = ref<boolean>(false)
+let syncFetchToken = 0
 
 // Estado de parseo, vista previa e importación
 const parseError = ref<string | null>(null)
@@ -83,6 +105,15 @@ const selectedTemplateGroup = computed(() => {
   )
 })
 
+const selectedExportGroup = computed<GrupoRepuesto | null>(() => {
+  if (!exportFamilyId.value) return null
+  return (
+    catalogStore.grupos.find(
+      g => g.id === exportFamilyId.value || g.codigo === exportFamilyId.value
+    ) || null
+  )
+})
+
 const templateScopeHint = computed(() => {
   if (resolvedTemplateScope.value === 'motors_only') {
     return 'Incluye solo: Motores + Instrucciones'
@@ -106,7 +137,9 @@ const selectedDefaultImportGroup = computed(() => {
 
 watch(specificTarget, newTarget => {
   if (newTarget.startsWith('grupo:')) {
-    defaultImportGroupId.value = newTarget.slice('grupo:'.length)
+    const targetCode = newTarget.slice('grupo:'.length)
+    defaultImportGroupId.value = targetCode
+    exportFamilyId.value = targetCode
   } else {
     defaultImportGroupId.value = ''
   }
@@ -117,48 +150,107 @@ watch(
   open => {
     if (open) {
       if (props.preselectedGroupId) {
-        specificTarget.value = `grupo:${props.preselectedGroupId}`
+        const matched = catalogStore.grupos.find(
+          g => g.id === props.preselectedGroupId || g.codigo === props.preselectedGroupId
+        )
+        const resolvedCode = matched?.codigo || props.preselectedGroupId
+        specificTarget.value = `grupo:${resolvedCode}`
+        exportFamilyId.value = resolvedCode
+        defaultImportGroupId.value = resolvedCode
       } else {
         specificTarget.value = 'motors_only'
+        exportFamilyId.value = catalogStore.grupos[0]?.codigo || ''
+        defaultImportGroupId.value = ''
       }
-      defaultImportGroupId.value = props.preselectedGroupId || ''
       parseError.value = null
       importReport.value = null
+      exportFeedback.value = null
+      pendingDestructiveConfirm.value = false
     }
   }
 )
 
 const pickInitialPreviewTab = (res: CatalogImportParseResult): 'repuestos' | 'motores' | 'familias' => {
-  if (res.families.length > 0 && res.parts.length === 0 && res.motors.length === 0) {
+  if (res.parts.length > 0) {
+    return 'repuestos'
+  }
+  if (res.families.length > 0 && res.motors.length === 0) {
     return 'familias'
   }
-  if (res.parts.length === 0 && res.motors.length > 0) {
+  if (res.motors.length > 0) {
     return 'motores'
   }
-  if (res.parts.length === 0 && res.families.length > 0) {
-    return 'familias'
-  }
   return 'repuestos'
+}
+
+const applyPostParseState = (res: CatalogImportParseResult) => {
+  previewTab.value = pickInitialPreviewTab(res)
+  pendingDestructiveConfirm.value = false
+  syncFamilyDeleteMissing.value = false
+  showSyncMissingPreview.value = false
+  if (res.isFamilyExportPackage) {
+    duplicateStrategy.value = 'update'
+    autoUpdateActivatedNotice.value = true
+  } else {
+    autoUpdateActivatedNotice.value = false
+  }
+}
+
+const handleExportFamily = async (format: 'excel' | 'json') => {
+  const grupo = selectedExportGroup.value
+  if (!grupo || isExportingFamily.value) return
+
+  isExportingFamily.value = true
+  exportFeedback.value = null
+  try {
+    const allParts = await catalogService.getAllRepuestosForGrupoExport(grupo)
+    const exportCtx = {
+      motores: catalogStore.motores,
+      fabricantes: catalogStore.fabricantes,
+      modelos: catalogStore.modelos
+    }
+    const res =
+      format === 'excel'
+        ? exportFamilyToExcel(grupo, allParts, exportCtx)
+        : exportFamilyToJson(grupo, allParts, exportCtx)
+
+    exportFeedback.value = {
+      type: 'success',
+      text: `✓ Familia "${grupo.nombre}" exportada en ${res.fileName} (${res.exportedPartsCount} repuesto(s)). Edita o marca "eliminar" en el archivo y vuelve a cargarlo aquí.`
+    }
+  } catch (err) {
+    exportFeedback.value = {
+      type: 'error',
+      text:
+        err instanceof Error
+          ? err.message
+          : 'No se pudo exportar la familia completa.'
+    }
+  } finally {
+    isExportingFamily.value = false
+  }
 }
 
 const reparseCurrentInput = async () => {
   parseError.value = null
   try {
     if (inputMode.value === 'file' && selectedFile.value) {
-      parseResult.value = await parseCatalogImportFile(
+      const parsed = await parseCatalogImportFile(
         selectedFile.value,
         catalogStore.grupos,
         selectedDefaultImportGroup.value
       )
-      previewTab.value = pickInitialPreviewTab(parseResult.value)
+      parseResult.value = parsed
+      applyPostParseState(parsed)
     } else if (inputMode.value === 'paste' && rawJsonText.value.trim()) {
-      parseResult.value = parseCatalogJsonText(
+      const parsed = parseCatalogJsonText(
         rawJsonText.value,
         'json_pegado.json',
         catalogStore.grupos,
         selectedDefaultImportGroup.value
       )
-      previewTab.value = pickInitialPreviewTab(parseResult.value)
+      parseResult.value = parsed
+      applyPostParseState(parsed)
     }
   } catch (err) {
     parseError.value = err instanceof Error ? err.message : 'No se pudo interpretar el archivo'
@@ -212,6 +304,11 @@ const handleClearLoaded = () => {
   parseError.value = null
   importReport.value = null
   expandedPartIdx.value = null
+  autoUpdateActivatedNotice.value = false
+  syncFamilyDeleteMissing.value = false
+  syncExistingParts.value = []
+  showSyncMissingPreview.value = false
+  pendingDestructiveConfirm.value = false
 }
 
 // =============================================================================
@@ -241,16 +338,29 @@ const SQL_COTA_FIELDS: Array<{ key: keyof ParsedPartRow; label: string; isText?:
 const revalidateFamilyRow = (fam: ParsedFamilyRow) => {
   const msgs: string[] = []
   let st: ParsedFamilyRow['status'] = 'valid'
-  if (!fam.nombre.trim()) {
-    st = 'error'
-    msgs.push('Falta el nombre de la familia')
-  }
-  if (!fam.columnas || fam.columnas.length === 0) {
-    if (st === 'valid') st = 'warning'
-    msgs.push('Sin columnas definidas')
+  if (fam.action === 'delete') {
+    if (!fam.sourceId && !fam.codigo.trim() && !fam.nombre.trim()) {
+      st = 'error'
+      msgs.push('Falta id, codigo o nombre para eliminar')
+    }
+  } else {
+    if (!fam.nombre.trim()) {
+      st = 'error'
+      msgs.push('Falta el nombre de la familia')
+    }
+    if (!fam.columnas || fam.columnas.length === 0) {
+      if (st === 'valid') st = 'warning'
+      msgs.push('Sin columnas definidas')
+    }
   }
   fam.status = st
   fam.messages = msgs
+}
+
+const toggleFamilyRowAction = (fam: ParsedFamilyRow) => {
+  fam.action = fam.action === 'delete' ? 'upsert' : 'delete'
+  pendingDestructiveConfirm.value = false
+  revalidateFamilyRow(fam)
 }
 
 const onFamilyFilasInput = (fam: ParsedFamilyRow, val: string) => {
@@ -265,25 +375,39 @@ const onFamilyFilasInput = (fam: ParsedFamilyRow, val: string) => {
 const removePreviewFamily = (idx: number) => {
   if (!parseResult.value) return
   parseResult.value.families.splice(idx, 1)
+  pendingDestructiveConfirm.value = false
 }
 
 const revalidatePartRow = (row: ParsedPartRow) => {
   const msgs: string[] = []
   let st: ParsedPartRow['status'] = 'valid'
-  if (!String(row.codigo_oem || '').trim()) {
-    st = 'error'
-    msgs.push('Falta codigo_oem')
-  }
-  if (!String(row.nombre || '').trim()) {
-    st = 'error'
-    msgs.push('Falta nombre del repuesto')
-  }
-  if (String(row.motorCodigo || '').trim() && !String(row.fabricante || '').trim()) {
-    if (st === 'valid') st = 'warning'
-    msgs.push('Motor indicado sin fabricante')
+  if (row.action === 'delete') {
+    if (!row.sourceId && !String(row.codigo_oem || '').trim()) {
+      st = 'error'
+      msgs.push('Falta id o codigo_oem para eliminar')
+    }
+  } else {
+    if (!String(row.codigo_oem || '').trim()) {
+      st = 'error'
+      msgs.push('Falta codigo_oem')
+    }
+    if (!String(row.nombre || '').trim()) {
+      st = 'error'
+      msgs.push('Falta nombre del repuesto')
+    }
+    if (String(row.motorCodigo || '').trim() && !String(row.fabricante || '').trim()) {
+      if (st === 'valid') st = 'warning'
+      msgs.push('Motor indicado sin fabricante')
+    }
   }
   row.status = st
   row.messages = msgs
+}
+
+const togglePartRowAction = (row: ParsedPartRow) => {
+  row.action = row.action === 'delete' ? 'upsert' : 'delete'
+  pendingDestructiveConfirm.value = false
+  revalidatePartRow(row)
 }
 
 const onPartFamilyChange = (row: ParsedPartRow, value: string) => {
@@ -409,6 +533,7 @@ const onPartDimInput = (row: ParsedPartRow, dimKey: string, val: string) => {
 const removePreviewPart = (idx: number) => {
   if (!parseResult.value) return
   parseResult.value.parts.splice(idx, 1)
+  pendingDestructiveConfirm.value = false
   if (expandedPartIdx.value === idx) expandedPartIdx.value = null
   else if (expandedPartIdx.value !== null && expandedPartIdx.value > idx) expandedPartIdx.value--
 }
@@ -440,6 +565,104 @@ const removePreviewMotor = (idx: number) => {
   parseResult.value.motors.splice(idx, 1)
 }
 
+// =============================================================================
+// DETECCIÓN DE FAMILIA OBJETIVO Y SINCRONIZACIÓN DE ELIMINADOS
+// =============================================================================
+const detectedSyncGrupo = computed<GrupoRepuesto | null>(() => {
+  const res = parseResult.value
+  if (!res) return null
+  if (res.families.some(f => f.action === 'delete')) return null
+
+  const findGrupoInStore = (idHint?: string, codeHint?: string, nameHint?: string) => {
+    return (
+      catalogStore.grupos.find(
+        g =>
+          (idHint && g.id === idHint) ||
+          (codeHint && normalizeText(g.codigo) === normalizeText(codeHint)) ||
+          (nameHint && normalizeText(g.nombre) === normalizeText(nameHint))
+      ) || null
+    )
+  }
+
+  if (res.exportMeta) {
+    const byMeta = findGrupoInStore(
+      res.exportMeta.familia_id,
+      res.exportMeta.familia_codigo,
+      res.exportMeta.familia_nombre
+    )
+    if (byMeta) return byMeta
+  }
+
+  if (res.families.length === 1) {
+    const f = res.families[0]!
+    const byFamilyRow = findGrupoInStore(f.sourceId, f.codigo, f.nombre)
+    if (byFamilyRow) return byFamilyRow
+  }
+
+  if (res.parts.length > 0) {
+    const resolvedCodes = Array.from(
+      new Set(res.parts.map(p => p.resolvedGrupoCodigo).filter((c): c is string => Boolean(c)))
+    )
+    if (resolvedCodes.length === 1) {
+      const byParts = findGrupoInStore(undefined, resolvedCodes[0], undefined)
+      if (byParts) return byParts
+    }
+  }
+
+  if (selectedDefaultImportGroup.value && res.parts.length > 0) {
+    return selectedDefaultImportGroup.value
+  }
+
+  return null
+})
+
+watch(
+  [() => parseResult.value, detectedSyncGrupo],
+  async ([res, grupo]) => {
+    const token = ++syncFetchToken
+    if (!res || !grupo) {
+      syncExistingParts.value = []
+      syncFamilyDeleteMissing.value = false
+      isLoadingSyncParts.value = false
+      return
+    }
+    isLoadingSyncParts.value = true
+    try {
+      const existingParts = await catalogService.getAllRepuestosForGrupoExport(grupo)
+      if (token === syncFetchToken) {
+        syncExistingParts.value = existingParts
+      }
+    } catch {
+      if (token === syncFetchToken) {
+        syncExistingParts.value = []
+      }
+    } finally {
+      if (token === syncFetchToken) {
+        isLoadingSyncParts.value = false
+      }
+    }
+  }
+)
+
+const syncMissingParts = computed<RepuestoTecnico[]>(() => {
+  const res = parseResult.value
+  if (!res || !detectedSyncGrupo.value) return []
+
+  const fileIds = new Set(
+    res.parts.map(p => p.sourceId).filter((id): id is string => Boolean(id))
+  )
+  const fileOems = new Set(
+    res.parts.map(p => (p.codigo_oem || '').trim().toUpperCase()).filter(Boolean)
+  )
+
+  return syncExistingParts.value.filter(ep => {
+    if (fileIds.has(ep.id)) return false
+    const oem = (ep.codigo_oem || '').trim().toUpperCase()
+    if (oem && fileOems.has(oem)) return false
+    return true
+  })
+})
+
 const validFamiliesCount = computed(
   () => parseResult.value?.families.filter(f => f.status !== 'error').length || 0
 )
@@ -449,6 +672,27 @@ const validMotorsCount = computed(
 const validPartsCount = computed(
   () => parseResult.value?.parts.filter(p => p.status !== 'error').length || 0
 )
+const deleteFamiliesCount = computed(
+  () => parseResult.value?.families.filter(f => f.status !== 'error' && f.action === 'delete').length || 0
+)
+const explicitDeletePartsCount = computed(
+  () => parseResult.value?.parts.filter(p => p.status !== 'error' && p.action === 'delete').length || 0
+)
+const syncMissingCount = computed(() =>
+  syncFamilyDeleteMissing.value && detectedSyncGrupo.value ? syncMissingParts.value.length : 0
+)
+const totalDeleteOperationsCount = computed(
+  () => deleteFamiliesCount.value + explicitDeletePartsCount.value + syncMissingCount.value
+)
+const hasAnyExecutableChange = computed(
+  () =>
+    validFamiliesCount.value +
+      validMotorsCount.value +
+      validPartsCount.value +
+      syncMissingCount.value >
+    0
+)
+
 const errorRowsCount = computed(() => {
   if (!parseResult.value) return 0
   return (
@@ -472,9 +716,19 @@ const progressPercent = computed(() => {
 })
 
 const handleRunImport = async () => {
-  if (!parseResult.value) return
-  const totalValid = validFamiliesCount.value + validMotorsCount.value + validPartsCount.value
-  if (totalValid === 0) return
+  if (!parseResult.value || !hasAnyExecutableChange.value) return
+
+  if (totalDeleteOperationsCount.value > 0 && !pendingDestructiveConfirm.value) {
+    pendingDestructiveConfirm.value = true
+    return
+  }
+
+  pendingDestructiveConfirm.value = false
+  const totalValid =
+    validFamiliesCount.value +
+    validMotorsCount.value +
+    validPartsCount.value +
+    (syncMissingCount.value > 0 ? 1 : 0)
 
   isImporting.value = true
   progressCurrent.value = 0
@@ -489,6 +743,9 @@ const handleRunImport = async () => {
         defaultGrupo: selectedDefaultImportGroup.value,
         duplicateStrategy: duplicateStrategy.value,
         autoCreateEntities: autoCreateEntities.value,
+        syncFamilyDeleteMissing: syncFamilyDeleteMissing.value,
+        syncTargetGrupo: detectedSyncGrupo.value,
+        deletePartsWithDeletedFamily: true,
         onProgress: (cur, tot, lbl) => {
           progressCurrent.value = cur
           progressTotal.value = tot
@@ -549,10 +806,10 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             </div>
             <div>
               <h2 class="text-base sm:text-lg font-extrabold tracking-tight">
-                Importar Catálogo (Excel / JSON) y Plantillas
+                Importar / Exportar Catálogo (Excel / JSON) y Plantillas
               </h2>
               <p class="text-[11px] sm:text-xs text-blue-100/90">
-                Descarga la plantilla con ejemplos o carga masivamente repuestos, equivalencias y motores.
+                Exporta una familia completa para editar o eliminar por lote, descarga plantillas o carga archivos.
               </p>
             </div>
           </div>
@@ -569,67 +826,145 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
 
         <!-- Body -->
         <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          <!-- PASO 1: PLANTILLAS -->
-          <section class="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 sm:p-4 space-y-3">
+          <!-- PASO 1: EXPORTAR FAMILIA COMPLETA Y PLANTILLAS -->
+          <section class="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 sm:p-4 space-y-3.5">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2">
                 <span class="w-5 h-5 rounded-md bg-[#004B97] text-white text-[11px] font-bold flex items-center justify-center">
                   1
                 </span>
                 <h3 class="text-xs sm:text-sm font-extrabold text-slate-900">
-                  Descargar Plantilla de Ejemplo
+                  Exportar Familia Completa o Descargar Plantilla
                 </h3>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
-              <div class="md:col-span-6">
-                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  ¿Qué datos desea llenar específicamente?
-                </label>
-                <select
-                  v-model="specificTarget"
-                  class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9]"
-                >
-                  <option value="motors_only">Solo Motores (altas de motores y modelos)</option>
-                  <option value="families_only">Solo Familias (crear o actualizar familias, filas y columnas)</option>
-                  <option value="parts_all">Solo Repuestos (todas las medidas estándar)</option>
-                  <option
-                    v-for="g in catalogStore.grupos"
-                    :key="`tpl-grp-${g.id}`"
-                    :value="`grupo:${g.codigo}`"
+            <!-- Exportar familia entera con datos reales -->
+            <div class="rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-[11px] font-extrabold text-[#004B97] uppercase tracking-wider flex items-center gap-1.5">
+                  <Download class="w-3.5 h-3.5 text-[#04C4D9]" />
+                  <span>Exportar Familia Entera (Esquema + Todos sus Repuestos)</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+                <div class="md:col-span-6">
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Familia a exportar
+                  </label>
+                  <select
+                    v-model="exportFamilyId"
+                    :disabled="isExportingFamily || catalogStore.grupos.length === 0"
+                    class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9] disabled:opacity-60"
                   >
-                    Solo Repuestos · Familia: {{ g.nombre }}
-                  </option>
-                </select>
+                    <option
+                      v-for="g in catalogStore.grupos"
+                      :key="`exp-grp-${g.id}`"
+                      :value="g.codigo"
+                    >
+                      {{ g.nombre }} ({{ g.categoria }})
+                    </option>
+                  </select>
+                </div>
+
+                <div class="md:col-span-3">
+                  <button
+                    type="button"
+                    :disabled="isExportingFamily || !selectedExportGroup"
+                    @click="handleExportFamily('excel')"
+                    class="w-full px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Loader2 v-if="isExportingFamily" class="w-3.5 h-3.5 animate-spin" />
+                    <Download v-else class="w-3.5 h-3.5" />
+                    <span>Exportar Excel (.xlsx)</span>
+                  </button>
+                </div>
+
+                <div class="md:col-span-3">
+                  <button
+                    type="button"
+                    :disabled="isExportingFamily || !selectedExportGroup"
+                    @click="handleExportFamily('json')"
+                    class="w-full px-3 py-2 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Loader2 v-if="isExportingFamily" class="w-3.5 h-3.5 animate-spin" />
+                    <FileJson v-else class="w-3.5 h-3.5" />
+                    <span>Exportar JSON (.json)</span>
+                  </button>
+                </div>
               </div>
 
-              <div class="md:col-span-3">
-                <button
-                  type="button"
-                  @click="downloadCatalogExcelTemplate(catalogStore.grupos, resolvedTemplateScope, selectedTemplateGroup)"
-                  class="w-full px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
-                >
-                  <Download class="w-3.5 h-3.5" />
-                  <span>Plantilla Excel (.xlsx)</span>
-                </button>
-              </div>
+              <p class="text-[11px] text-slate-600">
+                Descarga la familia completa con su ID interno para <strong>editar medidas, códigos OEM, precios</strong> o marcar filas con <code class="px-1 py-0.5 bg-white border border-cyan-200 rounded font-mono text-[10px]">accion = eliminar</code> y re-importar en el Paso 2.
+              </p>
 
-              <div class="md:col-span-3">
-                <button
-                  type="button"
-                  @click="downloadCatalogJsonTemplate(catalogStore.grupos, resolvedTemplateScope, selectedTemplateGroup)"
-                  class="w-full px-3 py-2 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
-                >
-                  <FileJson class="w-3.5 h-3.5" />
-                  <span>Plantilla JSON (.json)</span>
-                </button>
+              <div
+                v-if="exportFeedback"
+                :class="[
+                  'p-2.5 rounded-lg border text-xs font-semibold flex items-start gap-2',
+                  exportFeedback.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                ]"
+              >
+                <CheckCircle2 v-if="exportFeedback.type === 'success'" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <XCircle v-else class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{{ exportFeedback.text }}</span>
               </div>
             </div>
 
-            <div class="text-[11px] text-slate-500 flex items-center gap-1.5">
-              <Info class="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
-              <span>{{ templateScopeHint }}</span>
+            <!-- Plantilla vacía / de ejemplo -->
+            <div class="pt-1 border-t border-slate-200/80 space-y-2.5">
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+                <div class="md:col-span-6">
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    O descargar plantilla vacía de ejemplo
+                  </label>
+                  <select
+                    v-model="specificTarget"
+                    class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9]"
+                  >
+                    <option value="motors_only">Solo Motores (altas de motores y modelos)</option>
+                    <option value="families_only">Solo Familias (crear o actualizar familias, filas y columnas)</option>
+                    <option value="parts_all">Solo Repuestos (todas las medidas estándar)</option>
+                    <option
+                      v-for="g in catalogStore.grupos"
+                      :key="`tpl-grp-${g.id}`"
+                      :value="`grupo:${g.codigo}`"
+                    >
+                      Solo Repuestos · Familia: {{ g.nombre }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="md:col-span-3">
+                  <button
+                    type="button"
+                    @click="downloadCatalogExcelTemplate(catalogStore.grupos, resolvedTemplateScope, selectedTemplateGroup)"
+                    class="w-full px-3 py-2 rounded-lg bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-700 text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                  >
+                    <Download class="w-3.5 h-3.5" />
+                    <span>Plantilla Excel (.xlsx)</span>
+                  </button>
+                </div>
+
+                <div class="md:col-span-3">
+                  <button
+                    type="button"
+                    @click="downloadCatalogJsonTemplate(catalogStore.grupos, resolvedTemplateScope, selectedTemplateGroup)"
+                    class="w-full px-3 py-2 rounded-lg bg-white hover:bg-sky-50 border border-[#004B97]/30 text-[#004B97] text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                  >
+                    <FileJson class="w-3.5 h-3.5" />
+                    <span>Plantilla JSON (.json)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="text-[11px] text-slate-500 flex items-center gap-1.5">
+                <Info class="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
+                <span>{{ templateScopeHint }}</span>
+              </div>
             </div>
           </section>
 
@@ -749,13 +1084,13 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
 
               <div class="md:col-span-4">
                 <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  Si el Código OEM ya existe
+                  Si el registro / OEM ya existe
                 </label>
                 <select
                   v-model="duplicateStrategy"
                   class="w-full px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 >
-                  <option value="skip">Omitir duplicado (recomendado)</option>
+                  <option value="skip">Omitir duplicado</option>
                   <option value="update">Actualizar registro existente</option>
                   <option value="create">Crear siempre nuevo registro</option>
                 </select>
@@ -770,6 +1105,77 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                   />
                   <span>Crear marcas / motores faltantes</span>
                 </label>
+              </div>
+            </div>
+
+            <!-- Aviso automático de archivo exportado -->
+            <div
+              v-if="parseResult && autoUpdateActivatedNotice"
+              class="p-2.5 rounded-xl bg-sky-50 border border-sky-200 text-[#004B97] text-xs font-semibold flex items-center gap-2"
+            >
+              <Info class="w-4 h-4 text-[#0284C7] shrink-0" />
+              <span>
+                Archivo de exportación detectado: se activó automáticamente <strong>«Actualizar registro existente»</strong> para aplicar ediciones por ID incluso si modificaste códigos OEM.
+              </span>
+            </div>
+
+            <!-- Sincronización opcional de familia (eliminar faltantes) -->
+            <div
+              v-if="parseResult && detectedSyncGrupo"
+              class="rounded-xl border p-3 space-y-2 transition"
+              :class="syncFamilyDeleteMissing ? 'bg-rose-50/70 border-rose-300' : 'bg-slate-50/80 border-slate-200'"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <label class="inline-flex items-start gap-2.5 text-xs font-bold text-slate-800 cursor-pointer select-none">
+                  <input
+                    v-model="syncFamilyDeleteMissing"
+                    @change="pendingDestructiveConfirm = false"
+                    type="checkbox"
+                    :disabled="isLoadingSyncParts"
+                    class="w-4 h-4 mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500 accent-rose-600"
+                  />
+                  <span>
+                    Sincronizar familia <span class="text-[#004B97]">«{{ detectedSyncGrupo.nombre }}»</span>:
+                    <template v-if="isLoadingSyncParts">
+                      <span class="text-slate-500 font-medium"> calculando diferencias...</span>
+                    </template>
+                    <template v-else-if="syncMissingParts.length > 0">
+                      <span class="text-rose-700">
+                        eliminar del catálogo los {{ syncMissingParts.length }} repuesto(s) que quitaste del archivo
+                      </span>
+                    </template>
+                    <template v-else>
+                      <span class="text-emerald-700 font-semibold">
+                        sin repuestos faltantes ({{ syncExistingParts.length }} cubiertos)
+                      </span>
+                    </template>
+                  </span>
+                </label>
+
+                <button
+                  v-if="syncFamilyDeleteMissing && syncMissingParts.length > 0"
+                  type="button"
+                  @click="showSyncMissingPreview = !showSyncMissingPreview"
+                  class="px-2.5 py-1 rounded-lg bg-white border border-rose-200 text-rose-700 hover:bg-rose-100/70 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>{{ showSyncMissingPreview ? 'Ocultar lista' : `Ver ${syncMissingParts.length} a eliminar` }}</span>
+                  <ChevronUp v-if="showSyncMissingPreview" class="w-3.5 h-3.5" />
+                  <ChevronDown v-else class="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div
+                v-if="syncFamilyDeleteMissing && showSyncMissingPreview && syncMissingParts.length > 0"
+                class="max-h-36 overflow-auto rounded-lg border border-rose-200 bg-white divide-y divide-rose-100 text-[11px]"
+              >
+                <div
+                  v-for="mp in syncMissingParts"
+                  :key="`sync-miss-${mp.id}`"
+                  class="px-3 py-1.5 flex items-center justify-between gap-2"
+                >
+                  <span class="font-mono font-bold text-rose-700 shrink-0">{{ mp.codigo_oem }}</span>
+                  <span class="text-slate-700 truncate">{{ mp.nombre }}</span>
+                </div>
               </div>
             </div>
 
@@ -803,16 +1209,22 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                   v-if="parseResult.families.length > 0"
                   class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900"
                 >
-                  Familias listas: {{ validFamiliesCount }}
+                  Familias: {{ validFamiliesCount }}
                 </span>
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                  Repuestos listos: {{ validPartsCount }}
+                  Repuestos: {{ validPartsCount }}
                 </span>
                 <span
                   v-if="parseResult.motors.length > 0"
                   class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-sky-100 text-[#004B97]"
                 >
-                  Motores listos: {{ validMotorsCount }}
+                  Motores: {{ validMotorsCount }}
+                </span>
+                <span
+                  v-if="totalDeleteOperationsCount > 0"
+                  class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-600 text-white"
+                >
+                  A eliminar: {{ totalDeleteOperationsCount }}
                 </span>
                 <span
                   v-if="warningRowsCount > 0"
@@ -887,6 +1299,16 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               {{ w }}
             </div>
 
+            <div
+              v-if="deleteFamiliesCount > 0"
+              class="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold flex items-center gap-2"
+            >
+              <ShieldAlert class="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                Atención: hay {{ deleteFamiliesCount }} familia(s) marcada(s) para eliminar. Al confirmar, se eliminará la familia completa junto con todos sus repuestos.
+              </span>
+            </div>
+
             <!-- Tabla Preview Familias (Editable antes de importar) -->
             <div
               v-if="previewTab === 'familias'"
@@ -896,6 +1318,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <thead class="sticky top-0 z-10 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
                   <tr>
                     <th class="py-2 px-2 border-b border-slate-200">Estado</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Acción</th>
                     <th class="py-2 px-2 border-b border-slate-200">Nombre de Familia</th>
                     <th class="py-2 px-2 border-b border-slate-200">Subsistema</th>
                     <th class="py-2 px-2 border-b border-slate-200">Vista</th>
@@ -908,36 +1331,65 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                   <tr
                     v-for="(fam, fIdx) in parseResult.families.slice(0, 100)"
                     :key="`prev-fam-${fIdx}`"
-                    :class="fam.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50/70'"
+                    :class="
+                      fam.status === 'error'
+                        ? 'bg-rose-50/70'
+                        : fam.action === 'delete'
+                          ? 'bg-rose-50/80'
+                          : 'hover:bg-slate-50/70'
+                    "
                   >
                     <td class="py-1.5 px-2 whitespace-nowrap align-top">
                       <span
-                        v-if="fam.status === 'valid'"
-                        class="inline-flex items-center gap-1 text-emerald-700 font-bold"
-                      >
-                        <CheckCircle2 class="w-3.5 h-3.5" /> Listo
-                      </span>
-                      <span
-                        v-else-if="fam.status === 'warning'"
-                        class="inline-flex items-center gap-1 text-amber-700 font-bold"
-                        :title="fam.messages.join(' | ')"
-                      >
-                        <AlertTriangle class="w-3.5 h-3.5" /> Aviso
-                      </span>
-                      <span
-                        v-else
+                        v-if="fam.status === 'error'"
                         class="inline-flex items-center gap-1 text-rose-700 font-bold"
                         :title="fam.messages.join(' | ')"
                       >
                         <XCircle class="w-3.5 h-3.5" /> Error
                       </span>
+                      <span
+                        v-else-if="fam.action === 'delete'"
+                        class="inline-flex items-center gap-1 text-rose-700 font-bold"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" /> Baja
+                      </span>
+                      <span
+                        v-else-if="fam.status === 'valid'"
+                        class="inline-flex items-center gap-1 text-emerald-700 font-bold"
+                      >
+                        <CheckCircle2 class="w-3.5 h-3.5" /> Listo
+                      </span>
+                      <span
+                        v-else
+                        class="inline-flex items-center gap-1 text-amber-700 font-bold"
+                        :title="fam.messages.join(' | ')"
+                      >
+                        <AlertTriangle class="w-3.5 h-3.5" /> Aviso
+                      </span>
                       <div v-if="fam.messages.length > 0" class="text-[10px] text-slate-500 max-w-[130px]">
                         {{ fam.messages.join(' · ') }}
                       </div>
                     </td>
-                    <td class="py-1.5 px-2 align-top space-y-1">
+                    <td class="py-1.5 px-2 align-top whitespace-nowrap">
+                      <button
+                        type="button"
+                        @click="toggleFamilyRowAction(fam)"
+                        :class="[
+                          'px-2 py-1 rounded-md border text-[10px] font-bold transition cursor-pointer inline-flex items-center gap-1',
+                          fam.action === 'delete'
+                            ? 'bg-rose-600 text-white border-rose-700 hover:bg-rose-700'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        ]"
+                        :title="fam.action === 'delete' ? 'Cambiar a Guardar / Actualizar' : 'Marcar esta familia para eliminar'"
+                      >
+                        <Trash2 v-if="fam.action === 'delete'" class="w-3 h-3" />
+                        <span>{{ fam.action === 'delete' ? 'Eliminar familia' : 'Guardar / Act.' }}</span>
+                      </button>
+                    </td>
+                    <td class="py-1.5 px-2 align-top space-y-1" :class="{ 'opacity-60': fam.action === 'delete' }">
                       <input
                         v-model="fam.nombre"
+                        :disabled="fam.action === 'delete'"
                         @input="revalidateFamilyRow(fam)"
                         type="text"
                         placeholder="Nombre familia *"
@@ -945,14 +1397,16 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                       />
                       <input
                         v-model="fam.codigo"
+                        :disabled="fam.action === 'delete'"
                         type="text"
                         placeholder="codigo_slug"
                         class="block w-40 px-2 py-0.5 rounded border border-slate-100 bg-slate-50 font-mono text-[10px] text-slate-500 focus:outline-none focus:border-[#04C4D9]"
                       />
                     </td>
-                    <td class="py-1.5 px-2 align-top">
+                    <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60': fam.action === 'delete' }">
                       <select
                         v-model="fam.subsistema"
+                        :disabled="fam.action === 'delete'"
                         class="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
                       >
                         <option value="Block">Block</option>
@@ -962,18 +1416,20 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                         <option value="General">General</option>
                       </select>
                     </td>
-                    <td class="py-1.5 px-2 align-top">
+                    <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60': fam.action === 'delete' }">
                       <select
                         v-model="fam.tipo_vista"
+                        :disabled="fam.action === 'delete'"
                         class="px-2 py-1 rounded border border-slate-200 bg-white text-[11px] font-bold text-slate-700 focus:outline-none focus:border-[#04C4D9]"
                       >
                         <option value="normal">Normal</option>
                         <option value="tabla">Tabla</option>
                       </select>
                     </td>
-                    <td class="py-1.5 px-2 align-top">
+                    <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60': fam.action === 'delete' }">
                       <input
                         v-if="fam.tipo_vista === 'tabla'"
+                        :disabled="fam.action === 'delete'"
                         :value="fam.filas.map(r => r.nombre).join(', ')"
                         @change="onFamilyFilasInput(fam, ($event.target as HTMLInputElement).value)"
                         type="text"
@@ -982,7 +1438,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                       />
                       <span v-else class="text-slate-400">—</span>
                     </td>
-                    <td class="py-1.5 px-2 align-top font-mono text-[10px] text-slate-700 space-y-1">
+                    <td class="py-1.5 px-2 align-top font-mono text-[10px] text-slate-700 space-y-1" :class="{ 'opacity-60': fam.action === 'delete' }">
                       <div
                         v-for="(col, cIdx) in fam.columnas"
                         :key="`fam-col-${fIdx}-${cIdx}`"
@@ -990,12 +1446,14 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                       >
                         <input
                           v-model="col.etiqueta"
+                          :disabled="fam.action === 'delete'"
                           type="text"
                           placeholder="Etiqueta"
                           class="w-28 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[10px] font-sans focus:outline-none focus:border-[#04C4D9]"
                         />
                         <input
                           v-model="col.unidad"
+                          :disabled="fam.action === 'delete'"
                           type="text"
                           placeholder="u."
                           class="w-12 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[10px] focus:outline-none focus:border-[#04C4D9]"
@@ -1007,9 +1465,9 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                         type="button"
                         @click="removePreviewFamily(fIdx)"
                         class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
-                        title="Quitar familia"
+                        title="Quitar fila de la vista previa (no modifica la BD)"
                       >
-                        <Trash2 class="w-3.5 h-3.5" />
+                        <X class="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
@@ -1026,6 +1484,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <thead class="sticky top-0 z-10 bg-slate-100 text-slate-700 uppercase text-[10px] font-bold">
                   <tr>
                     <th class="py-2 px-2 border-b border-slate-200">Estado</th>
+                    <th class="py-2 px-2 border-b border-slate-200">Acción</th>
                     <th class="py-2 px-2 border-b border-slate-200">Código OEM</th>
                     <th class="py-2 px-2 border-b border-slate-200">Nombre / Descripción</th>
                     <th class="py-2 px-2 border-b border-slate-200">Familia</th>
@@ -1041,36 +1500,65 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                     :key="`prev-part-${rIdx}`"
                   >
                     <tr
-                      :class="row.status === 'error' ? 'bg-rose-50/70' : 'hover:bg-slate-50/70'"
+                      :class="
+                        row.status === 'error'
+                          ? 'bg-rose-50/70'
+                          : row.action === 'delete'
+                            ? 'bg-rose-50/80'
+                            : 'hover:bg-slate-50/70'
+                      "
                     >
                       <td class="py-1.5 px-2 whitespace-nowrap align-top">
                         <span
-                          v-if="row.status === 'valid'"
-                          class="inline-flex items-center gap-1 text-emerald-700 font-bold"
-                        >
-                          <CheckCircle2 class="w-3.5 h-3.5" /> Listo
-                        </span>
-                        <span
-                          v-else-if="row.status === 'warning'"
-                          class="inline-flex items-center gap-1 text-amber-700 font-bold"
-                          :title="row.messages.join(' | ')"
-                        >
-                          <AlertTriangle class="w-3.5 h-3.5" /> Aviso
-                        </span>
-                        <span
-                          v-else
+                          v-if="row.status === 'error'"
                           class="inline-flex items-center gap-1 text-rose-700 font-bold"
                           :title="row.messages.join(' | ')"
                         >
                           <XCircle class="w-3.5 h-3.5" /> Error
                         </span>
+                        <span
+                          v-else-if="row.action === 'delete'"
+                          class="inline-flex items-center gap-1 text-rose-700 font-bold"
+                        >
+                          <Trash2 class="w-3.5 h-3.5" /> Baja
+                        </span>
+                        <span
+                          v-else-if="row.status === 'valid'"
+                          class="inline-flex items-center gap-1 text-emerald-700 font-bold"
+                        >
+                          <CheckCircle2 class="w-3.5 h-3.5" /> Listo
+                        </span>
+                        <span
+                          v-else
+                          class="inline-flex items-center gap-1 text-amber-700 font-bold"
+                          :title="row.messages.join(' | ')"
+                        >
+                          <AlertTriangle class="w-3.5 h-3.5" /> Aviso
+                        </span>
                         <div v-if="row.messages.length > 0" class="text-[10px] text-slate-500 max-w-[130px]">
                           {{ row.messages.join(' · ') }}
                         </div>
                       </td>
-                      <td class="py-1.5 px-2 align-top space-y-1">
+                      <td class="py-1.5 px-2 align-top whitespace-nowrap">
+                        <button
+                          type="button"
+                          @click="togglePartRowAction(row)"
+                          :class="[
+                            'px-2 py-1 rounded-md border text-[10px] font-bold transition cursor-pointer inline-flex items-center gap-1',
+                            row.action === 'delete'
+                              ? 'bg-rose-600 text-white border-rose-700 hover:bg-rose-700'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          ]"
+                          :title="row.action === 'delete' ? 'Cambiar a Guardar / Actualizar' : 'Marcar para eliminar del catálogo'"
+                        >
+                          <Trash2 v-if="row.action === 'delete'" class="w-3 h-3" />
+                          <span>{{ row.action === 'delete' ? 'Eliminar' : 'Guardar' }}</span>
+                        </button>
+                      </td>
+                      <td class="py-1.5 px-2 align-top space-y-1" :class="{ 'opacity-60': row.action === 'delete' }">
                         <input
                           v-model="row.codigo_oem"
+                          :disabled="row.action === 'delete'"
                           @input="revalidatePartRow(row)"
                           type="text"
                           placeholder="Código OEM *"
@@ -1078,24 +1566,27 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                         />
                         <input
                           :value="row.codigos_oem_adicionales.join(', ')"
+                          :disabled="row.action === 'delete'"
                           @change="onPartOemAdicionalesInput(row, ($event.target as HTMLInputElement).value)"
                           type="text"
                           placeholder="+ OEMs (coma)"
                           class="block w-28 px-2 py-0.5 rounded border border-slate-100 bg-slate-50 font-mono text-[9px] text-slate-600 focus:outline-none focus:border-[#04C4D9]"
                         />
                       </td>
-                      <td class="py-1.5 px-2 align-top">
+                      <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60 line-through': row.action === 'delete' }">
                         <input
                           v-model="row.nombre"
+                          :disabled="row.action === 'delete'"
                           @input="revalidatePartRow(row)"
                           type="text"
                           placeholder="Nombre / Descripción *"
                           class="w-40 px-2 py-1 rounded border border-slate-200 bg-white font-medium text-slate-800 text-[11px] focus:outline-none focus:border-[#04C4D9]"
                         />
                       </td>
-                      <td class="py-1.5 px-2 align-top">
+                      <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60': row.action === 'delete' }">
                         <select
                           :value="row.resolvedGrupoCodigo || row.familiaRaw || row.categoria"
+                          :disabled="row.action === 'delete'"
                           @change="onPartFamilyChange(row, ($event.target as HTMLSelectElement).value)"
                           class="w-32 px-2 py-1 rounded border border-slate-200 bg-white text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
                         >
@@ -1114,10 +1605,11 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                           </option>
                         </select>
                       </td>
-                      <td class="py-1.5 px-2 align-top space-y-1">
+                      <td class="py-1.5 px-2 align-top space-y-1" :class="{ 'opacity-60': row.action === 'delete' }">
                         <div class="flex items-center gap-1">
                           <input
                             v-model="row.fabricante"
+                            :disabled="row.action === 'delete'"
                             @input="revalidatePartRow(row)"
                             type="text"
                             placeholder="Marca"
@@ -1125,6 +1617,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                           />
                           <input
                             v-model="row.motorCodigo"
+                            :disabled="row.action === 'delete'"
                             @input="revalidatePartRow(row)"
                             type="text"
                             placeholder="Motor"
@@ -1134,6 +1627,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                         <div class="flex items-center gap-1">
                           <input
                             :value="row.modelos.join(', ')"
+                            :disabled="row.action === 'delete'"
                             @change="onPartModelsInput(row, ($event.target as HTMLInputElement).value)"
                             type="text"
                             placeholder="Modelos (coma)"
@@ -1141,6 +1635,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                           />
                           <input
                             :value="row.anio || ''"
+                            :disabled="row.action === 'delete'"
                             @input="onPartYearInput(row, ($event.target as HTMLInputElement).value)"
                             type="text"
                             placeholder="Año"
@@ -1148,20 +1643,22 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                           />
                         </div>
                       </td>
-                      <td class="py-1.5 px-2 align-top">
+                      <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60': row.action === 'delete' }">
                         <input
                           :value="formatEquivalenciasText(row)"
+                          :disabled="row.action === 'delete'"
                           @change="onPartEquivalenciasInput(row, ($event.target as HTMLInputElement).value)"
                           type="text"
                           placeholder="RIK: 123; NPR: 456"
                           class="w-36 px-2 py-1 rounded border border-slate-200 bg-white font-mono text-[10px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
                         />
                       </td>
-                      <td class="py-1.5 px-2 align-top">
+                      <td class="py-1.5 px-2 align-top" :class="{ 'opacity-60': row.action === 'delete' }">
                         <button
                           type="button"
+                          :disabled="row.action === 'delete'"
                           @click="expandedPartIdx = expandedPartIdx === rIdx ? null : rIdx"
-                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition cursor-pointer"
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition cursor-pointer disabled:opacity-50"
                           :class="expandedPartIdx === rIdx
                             ? 'bg-[#004B97] text-white border-[#004B97]'
                             : 'bg-slate-50 hover:bg-cyan-50 text-slate-700 border-slate-200 hover:border-[#04C4D9]'"
@@ -1179,15 +1676,15 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                           type="button"
                           @click="removePreviewPart(rIdx)"
                           class="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
-                          title="Quitar fila"
+                          title="Quitar fila de la vista previa (no elimina de BD; usa Acción -> Eliminar para borrar de BD)"
                         >
-                          <Trash2 class="w-3.5 h-3.5" />
+                          <X class="w-3.5 h-3.5" />
                         </button>
                       </td>
                     </tr>
                     <!-- Fila desplegable para editar medidas, precio, stock y origen -->
-                    <tr v-if="expandedPartIdx === rIdx" class="bg-cyan-50/40">
-                      <td colspan="8" class="px-3 py-2.5 border-t border-cyan-100">
+                    <tr v-if="expandedPartIdx === rIdx && row.action !== 'delete'" class="bg-cyan-50/40">
+                      <td colspan="9" class="px-3 py-2.5 border-t border-cyan-100">
                         <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-[10px]">
                           <div>
                             <label class="block font-bold text-slate-600 mb-0.5">Catálogo origen</label>
@@ -1372,7 +1869,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             <div class="flex items-center justify-between text-xs font-bold text-[#004B97]">
               <span class="flex items-center gap-2">
                 <Loader2 class="w-4 h-4 animate-spin text-[#04C4D9]" />
-                <span>Importando: {{ progressLabel }}</span>
+                <span>Procesando: {{ progressLabel }}</span>
               </span>
               <span class="font-mono">{{ progressCurrent }} / {{ progressTotal }} ({{ progressPercent }}%)</span>
             </div>
@@ -1396,10 +1893,10 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 </div>
                 <div>
                   <h4 class="text-lg sm:text-xl font-black tracking-tight text-white">
-                    ¡Importación completada con éxito!
+                    ¡Importación y sincronización completada!
                   </h4>
                   <p class="text-xs sm:text-sm text-emerald-50 font-medium mt-0.5">
-                    Los registros fueron guardados y sincronizados en el catálogo de SWGORA.
+                    Los registros fueron aplicados y sincronizados en el catálogo de SWGORA.
                   </p>
                 </div>
               </div>
@@ -1412,7 +1909,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               </button>
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
               <div
                 v-if="importReport.createdFamilies > 0 || importReport.updatedFamilies > 0"
                 class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-indigo-200"
@@ -1435,7 +1932,22 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <div class="text-[10px] font-extrabold uppercase tracking-wider text-[#004B97]">Actualizados</div>
                 <div class="text-2xl font-black font-mono text-[#0D1B3E] mt-0.5">{{ importReport.updatedParts }}</div>
               </div>
-              <div class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-cyan-200">
+              <div
+                v-if="importReport.deletedParts > 0 || importReport.deletedFamilies > 0"
+                class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-rose-300"
+              >
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-rose-700">Eliminados</div>
+                <div class="text-2xl font-black font-mono text-rose-700 mt-0.5">
+                  {{ importReport.deletedParts }}
+                  <span v-if="importReport.deletedFamilies > 0" class="text-xs text-rose-600 block font-sans">
+                    + {{ importReport.deletedFamilies }} fam.
+                  </span>
+                </div>
+              </div>
+              <div
+                v-else
+                class="rounded-xl bg-white/95 text-slate-900 p-3 shadow-sm border border-cyan-200"
+              >
                 <div class="text-[10px] font-extrabold uppercase tracking-wider text-cyan-800">Marcas / Modelos</div>
                 <div class="text-lg font-black font-mono text-cyan-950 mt-1">+{{ importReport.createdBrands }} / +{{ importReport.createdModels }}</div>
               </div>
@@ -1445,9 +1957,9 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               v-if="importReport.skippedFamilies > 0 || importReport.skippedParts > 0 || importReport.skippedMotors > 0"
               class="text-xs font-bold text-emerald-50 bg-black/15 rounded-xl px-3.5 py-2 inline-flex flex-wrap items-center gap-3"
             >
-              <span v-if="importReport.skippedFamilies > 0">Familias omitidas (ya existían): {{ importReport.skippedFamilies }}</span>
-              <span v-if="importReport.skippedMotors > 0">Motores omitidos (ya existían): {{ importReport.skippedMotors }}</span>
-              <span v-if="importReport.skippedParts > 0">Repuestos omitidos (ya existían): {{ importReport.skippedParts }}</span>
+              <span v-if="importReport.skippedFamilies > 0">Familias omitidas: {{ importReport.skippedFamilies }}</span>
+              <span v-if="importReport.skippedMotors > 0">Motores omitidos: {{ importReport.skippedMotors }}</span>
+              <span v-if="importReport.skippedParts > 0">Repuestos omitidos: {{ importReport.skippedParts }}</span>
             </div>
 
             <div
@@ -1469,7 +1981,41 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
             <span>{{ catalogStore.grupos.length }} familias disponibles en el sistema</span>
           </div>
 
-          <div class="flex items-center gap-2">
+          <!-- Confirmación destructiva de 2 pasos -->
+          <div
+            v-if="pendingDestructiveConfirm && totalDeleteOperationsCount > 0"
+            class="flex flex-wrap items-center gap-2 bg-rose-50 border border-rose-300 rounded-xl px-3 py-2"
+          >
+            <span class="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+              <ShieldAlert class="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                Se eliminarán permanentemente
+                <template v-if="deleteFamiliesCount > 0">{{ deleteFamiliesCount }} familia(s)</template>
+                <template v-if="deleteFamiliesCount > 0 && (explicitDeletePartsCount + syncMissingCount) > 0"> y </template>
+                <template v-if="(explicitDeletePartsCount + syncMissingCount) > 0">{{ explicitDeletePartsCount + syncMissingCount }} repuesto(s)</template>.
+                ¿Confirmar?
+              </span>
+            </span>
+            <button
+              type="button"
+              :disabled="isImporting"
+              @click="pendingDestructiveConfirm = false"
+              class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              :disabled="isImporting"
+              @click="handleRunImport"
+              class="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Trash2 class="w-3.5 h-3.5" />
+              <span>Sí, aplicar cambios y eliminar</span>
+            </button>
+          </div>
+
+          <div v-else class="flex items-center gap-2">
             <button
               type="button"
               :disabled="isImporting"
@@ -1481,17 +2027,25 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
 
             <button
               type="button"
-              :disabled="isImporting || !parseResult || validFamiliesCount + validMotorsCount + validPartsCount === 0"
+              :disabled="isImporting || !parseResult || !hasAnyExecutableChange"
               @click="handleRunImport"
-              class="px-4 py-2 rounded-xl bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer"
+              :class="[
+                'px-4 py-2 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50 cursor-pointer',
+                totalDeleteOperationsCount > 0
+                  ? 'bg-rose-600 hover:bg-rose-700'
+                  : 'bg-[#004B97] hover:bg-[#0D1B3E]'
+              ]"
             >
               <Loader2 v-if="isImporting" class="w-3.5 h-3.5 animate-spin" />
+              <RefreshCw v-else-if="totalDeleteOperationsCount > 0" class="w-3.5 h-3.5" />
               <Upload v-else class="w-3.5 h-3.5" />
               <span>
                 {{
                   isImporting
-                    ? 'Importando...'
-                    : `Importar ${validFamiliesCount + validPartsCount + validMotorsCount} registro(s)`
+                    ? 'Procesando...'
+                    : totalDeleteOperationsCount > 0
+                      ? `Aplicar cambios (${totalDeleteOperationsCount} eliminación(es))`
+                      : `Importar ${validFamiliesCount + validPartsCount + validMotorsCount} registro(s)`
                 }}
               </span>
             </button>

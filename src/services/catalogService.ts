@@ -3263,6 +3263,106 @@ export const catalogService = {
   },
 
   /**
+   * Obtiene TODOS los repuestos de una familia (paginado sin tope de 150 ni 1000)
+   * para exportación completa o sincronización al re-importar.
+   */
+  async getAllRepuestosForGrupoExport(
+    grupo: Pick<GrupoRepuesto, 'id' | 'codigo' | 'nombre' | 'categoria'>
+  ): Promise<RepuestoTecnico[]> {
+    const targetCategories = Array.from(
+      new Set([grupo.categoria, grupo.nombre].map(v => String(v || '').trim()).filter(Boolean))
+    )
+    const matchLocalCategory = (cat?: string): boolean => {
+      const normCat = normalizeText(cat || '')
+      return targetCategories.some(t => normalizeText(t) === normCat)
+    }
+
+    const hydrateMockOrLocal = (list: RepuestoTecnico[]): RepuestoTecnico[] =>
+      list.map(r => {
+        const mot = r.motor || mockMotores.find(m => m.id === r.motor_id)
+        const fab = mot?.fabricante || (mot ? mockFabricantes.find(f => f.id === mot.fabricante_id) : undefined)
+        return {
+          ...r,
+          motor: mot ? { ...mot, fabricante: fab } : undefined
+        }
+      })
+
+    const PAGE_SIZE = 500
+    const MAX_PAGES = 50
+    const collected: RepuestoTecnico[] = []
+    const seenIds = new Set<string>()
+    let queryFailed = false
+
+    const fetchPaginatedForCategory = async (categoryValue: string): Promise<boolean> => {
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const from = page * PAGE_SIZE
+        const to = from + PAGE_SIZE - 1
+        const { data, error } = await supabase
+          .from('repuestos_tecnicos')
+          .select(REPUESTO_STRICT_COLUMNS as any)
+          .eq('categoria', categoryValue)
+          .order('codigo_oem', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to)
+
+        if (error) {
+          queryFailed = true
+          return false
+        }
+
+        const rows = (data as unknown as Record<string, unknown>[] | null) || []
+        for (const row of rows) {
+          const mapped = mapDbRepuestoToFrontend(row)
+          if (!seenIds.has(mapped.id)) {
+            seenIds.add(mapped.id)
+            collected.push(mapped)
+          }
+        }
+        if (rows.length < PAGE_SIZE) {
+          return true
+        }
+      }
+      return true
+    }
+
+    try {
+      const primaryCategory = grupo.categoria?.trim() || grupo.nombre?.trim() || ''
+      if (primaryCategory) {
+        await fetchPaginatedForCategory(primaryCategory)
+      }
+      if (
+        !queryFailed &&
+        collected.length === 0 &&
+        grupo.nombre?.trim() &&
+        grupo.nombre.trim() !== primaryCategory
+      ) {
+        await fetchPaginatedForCategory(grupo.nombre.trim())
+      }
+
+      if (!queryFailed) {
+        const localMatching = hydrateMockOrLocal(
+          getLocalCustomRepuestos().filter(r => matchLocalCategory(r.categoria))
+        )
+        for (const lp of localMatching) {
+          if (!seenIds.has(lp.id)) {
+            seenIds.add(lp.id)
+            collected.push(lp)
+          }
+        }
+        return collected
+      }
+    } catch (err) {
+      console.warn('[CatalogService] Error cargando repuestos completos de familia en Supabase:', err)
+    }
+
+    // Respaldo únicamente si falló la consulta remota
+    const fallbackList = [...mockRepuestos, ...getLocalCustomRepuestos()].filter(r =>
+      matchLocalCategory(r.categoria)
+    )
+    return hydrateMockOrLocal(fallbackList)
+  },
+
+  /**
    * Obtiene la lista de motores vinculados a un fabricante/marca específica
    */
   async getMotorsByBrand(brand: string): Promise<Motor[]> {

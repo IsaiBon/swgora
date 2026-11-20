@@ -2,12 +2,14 @@ import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import {
   catalogService,
+  clearCatalogPartsCache,
   normalizeText,
   type Fabricante,
   type GrupoRepuesto,
   type Modelo,
   type Motor,
-  type RepuestoTecnico
+  type RepuestoTecnico,
+  type TablaConfiguracion
 } from './catalogService'
 import {
   convertTemplateToGrupoInsert,
@@ -17,10 +19,24 @@ import {
 
 export type DuplicateStrategy = 'skip' | 'update' | 'create'
 export type TemplateScope = 'general' | 'motors_only' | 'parts_only' | 'families_only'
+export type ImportRowAction = 'upsert' | 'delete'
+
+export interface FamilyExportMeta {
+  tipo: 'exportacion_familia'
+  version: 1
+  familia_id: string
+  familia_codigo: string
+  familia_nombre: string
+  familia_categoria: string
+  exportado_en: string
+  total_repuestos: number
+}
 
 export interface ParsedFamilyRow {
   rowIndex: number
   sheetName: string
+  sourceId?: string
+  action: ImportRowAction
   codigo: string
   nombre: string
   categoria: string
@@ -30,6 +46,7 @@ export interface ParsedFamilyRow {
   tipo_vista: 'normal' | 'tabla'
   titulo_primera_columna?: string
   titulo_grupo_filas?: string
+  rawTablaConfig?: Partial<TablaConfiguracion>
   filas: Array<{ nombre: string; tipo_fila: 'normal' | 'central'; grupo_central?: string }>
   columnas: TemplateColumnDef[]
   status: 'valid' | 'warning' | 'error'
@@ -66,6 +83,8 @@ export interface ParsedEquivalenciaInput {
 export interface ParsedPartRow {
   rowIndex: number
   sheetName: string
+  sourceId?: string
+  action: ImportRowAction
   codigo_oem: string
   codigos_oem_adicionales: string[]
   nombre: string
@@ -84,6 +103,7 @@ export interface ParsedPartRow {
   estado: 'Disponible' | 'Bajo Stock' | 'Agotado'
   descripcion_tecnica?: string
   imagen_url?: string
+  imagenes?: string[]
   equivalencias: ParsedEquivalenciaInput[]
   dimensiones: Record<string, unknown>
   disenos_anillo: string[]
@@ -115,26 +135,35 @@ export interface CatalogImportParseResult {
   motors: ParsedMotorRow[]
   parts: ParsedPartRow[]
   warnings: string[]
+  exportMeta?: FamilyExportMeta | null
+  isFamilyExportPackage?: boolean
 }
 
 export interface CatalogImportOptions {
   defaultGrupo?: GrupoRepuesto | null
   duplicateStrategy: DuplicateStrategy
   autoCreateEntities: boolean
+  syncFamilyDeleteMissing?: boolean
+  syncTargetGrupo?: GrupoRepuesto | null
+  deletePartsWithDeletedFamily?: boolean
   onProgress?: (current: number, total: number, label: string) => void
 }
 
 export interface CatalogImportReport {
   createdFamilies: number
   updatedFamilies: number
+  deletedFamilies: number
   skippedFamilies: number
   createdMotors: number
   skippedMotors: number
   createdParts: number
   updatedParts: number
+  deletedParts: number
   skippedParts: number
   createdBrands: number
   createdModels: number
+  deletedPartIds: string[]
+  deletedFamilyIds: string[]
   errors: Array<{ rowLabel: string; message: string }>
 }
 
@@ -367,6 +396,94 @@ const parseMotorRowObject = (
   }
 }
 
+const parseRowAction = (raw: unknown): ImportRowAction => {
+  const norm = normalizeKey(String(raw || ''))
+  if (['eliminar', 'borrar', 'delete', 'remove', 'quitar', 'baja'].includes(norm)) {
+    return 'delete'
+  }
+  return 'upsert'
+}
+
+const dedupeColumnDefs = (cols: TemplateColumnDef[]): TemplateColumnDef[] => {
+  const seen = new Set<string>()
+  const result: TemplateColumnDef[] = []
+  for (const col of cols) {
+    const keySig = col.clave
+      ? normalizeKey(col.clave)
+      : normalizeKey(`${col.columna_padre || ''}_${col.etiqueta || ''}`)
+    if (!keySig || seen.has(keySig)) continue
+    seen.add(keySig)
+    result.push(col)
+  }
+  return result
+}
+
+const buildSyntheticGruposForParsing = (
+  baseGrupos: GrupoRepuesto[],
+  parsedFamilies: ParsedFamilyRow[]
+): GrupoRepuesto[] => {
+  const merged = [...baseGrupos]
+  for (const fRow of parsedFamilies) {
+    if (fRow.action === 'delete' || fRow.status === 'error' || !fRow.nombre.trim()) continue
+    const tpl: FamilyTemplate = {
+      id: fRow.codigo || fRow.sourceId || `imp_${Date.now()}`,
+      nombre: fRow.nombre,
+      categoria: fRow.categoria || fRow.nombre,
+      subsistema: fRow.subsistema || 'Block',
+      descripcion: fRow.descripcion || `Familia ${fRow.nombre}`,
+      icono: fRow.icono || 'Layers',
+      tipo_vista: fRow.tipo_vista,
+      ...(fRow.tipo_vista === 'tabla'
+        ? {
+            tabla_config: {
+              ...(fRow.rawTablaConfig || {}),
+              titulo_primera_columna: fRow.titulo_primera_columna || 'Componente',
+              ...(fRow.titulo_grupo_filas ? { titulo_grupo_filas: fRow.titulo_grupo_filas } : {}),
+              modo_filas: fRow.rawTablaConfig?.modo_filas || 'subfilas',
+              subfilas_activas: true,
+              subfilas: fRow.filas.length > 0 ? fRow.filas.map(r => r.nombre) : ['Componente 1'],
+              subfila_padres: fRow.filas.length > 0 ? fRow.filas.map(r => r.grupo_central || '') : [''],
+              subfila_tipos: fRow.filas.length > 0 ? fRow.filas.map(r => r.tipo_fila) : ['normal']
+            }
+          }
+        : {}),
+      columnas: fRow.columnas
+    }
+    const insertPayload = convertTemplateToGrupoInsert(
+      tpl,
+      fRow.nombre,
+      fRow.categoria || fRow.nombre,
+      fRow.subsistema
+    )
+    const syntheticGrupo: GrupoRepuesto = {
+      id: fRow.sourceId || fRow.codigo || insertPayload.codigo || fRow.nombre,
+      codigo: fRow.codigo || insertPayload.codigo || fRow.nombre,
+      nombre: insertPayload.nombre,
+      categoria: insertPayload.categoria,
+      subsistema: insertPayload.subsistema || fRow.subsistema || 'Block',
+      descripcion: insertPayload.descripcion,
+      icono: insertPayload.icono || 'Layers',
+      tipo_vista: insertPayload.tipo_vista,
+      tabla_config: insertPayload.tabla_config,
+      parametros: insertPayload.parametros,
+      activo: true
+    }
+
+    const idx = merged.findIndex(
+      g =>
+        (fRow.sourceId && g.id === fRow.sourceId) ||
+        normalizeText(g.codigo) === normalizeText(syntheticGrupo.codigo) ||
+        normalizeText(g.nombre) === normalizeText(syntheticGrupo.nombre)
+    )
+    if (idx >= 0) {
+      merged[idx] = { ...merged[idx], ...syntheticGrupo, id: merged[idx]!.id }
+    } else {
+      merged.push(syntheticGrupo)
+    }
+  }
+  return merged
+}
+
 const parsePartRowObject = (
   rawObj: Record<string, unknown>,
   rowIndex: number,
@@ -378,6 +495,9 @@ const parsePartRowObject = (
   if (nonEmptyValues.length === 0) return null
 
   const norm = buildRowNormalizedMap(rawObj)
+  const sourceId =
+    String(pickField(norm, ['id', 'repuesto_id', 'part_id']) || '').trim() || undefined
+  const action = parseRowAction(pickField(norm, ['accion', 'operacion', 'action']))
 
   const rawOemVal = pickField(norm, ['codigo_oem', 'oem', 'codigo', 'numero_parte', 'part_number'])
   const oemTokens = splitTokens(rawOemVal).map(c => c.toUpperCase())
@@ -435,7 +555,43 @@ const parsePartRowObject = (
     rawEstado === 'Bajo Stock' || rawEstado === 'Agotado' ? rawEstado : 'Disponible'
   const descripcion_tecnica =
     String(pickField(norm, ['descripcion_tecnica', 'notas', 'observaciones']) || '').trim() || undefined
-  const imagen_url = String(pickField(norm, ['imagen_url', 'foto', 'imagen']) || '').trim() || undefined
+  let imagen_url = String(pickField(norm, ['imagen_url', 'foto', 'imagen']) || '').trim() || undefined
+
+  const extraImagenes: string[] = []
+  const rawImagenesSource = rawObj.imagenes ?? pickField(norm, ['imagenes_json', 'imagenes'])
+  if (Array.isArray(rawImagenesSource)) {
+    for (const u of rawImagenesSource) {
+      const cleanU = String(u || '').trim()
+      if (cleanU) extraImagenes.push(cleanU)
+    }
+  } else if (typeof rawImagenesSource === 'string' && rawImagenesSource.trim()) {
+    const trimmedImg = rawImagenesSource.trim()
+    if (trimmedImg.startsWith('[')) {
+      try {
+        const arr = JSON.parse(trimmedImg)
+        if (Array.isArray(arr)) {
+          arr.forEach(u => {
+            const cleanU = String(u || '').trim()
+            if (cleanU) extraImagenes.push(cleanU)
+          })
+        }
+      } catch {
+        // Ignorar JSON inválido en imagenes_json
+      }
+    } else {
+      trimmedImg
+        .split(/[\n,;]+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .forEach(u => extraImagenes.push(u))
+    }
+  }
+  const imagenes = Array.from(
+    new Set([...(imagen_url ? [imagen_url] : []), ...extraImagenes].filter(Boolean))
+  )
+  if (!imagen_url && imagenes.length > 0) {
+    imagen_url = imagenes[0]
+  }
 
   const equivalencias = parseEquivalenciasField(
     pickField(norm, ['equivalencias', 'alternos', 'cruces', 'catalogos_alternos']),
@@ -903,26 +1059,35 @@ const parsePartRowObject = (
   const messages: string[] = []
   let status: ParsedPartRow['status'] = 'valid'
 
-  if (!codigo_oem) {
-    status = 'error'
-    messages.push('Falta codigo_oem')
-  }
-  if (!nombre) {
-    status = 'error'
-    messages.push('Falta nombre del repuesto')
-  }
-  if (!resolvedGrupo && familiaRaw) {
-    if (status === 'valid') status = 'warning'
-    messages.push(`Familia "${familiaRaw}" no coincide exactamente; se usará categoría "${categoria}"`)
-  }
-  if (motorCodigo && !fabricante) {
-    if (status === 'valid') status = 'warning'
-    messages.push('Motor indicado sin fabricante')
+  if (action === 'delete') {
+    if (!sourceId && !codigo_oem) {
+      status = 'error'
+      messages.push('Falta id o codigo_oem para eliminar el repuesto')
+    }
+  } else {
+    if (!codigo_oem) {
+      status = 'error'
+      messages.push('Falta codigo_oem')
+    }
+    if (!nombre) {
+      status = 'error'
+      messages.push('Falta nombre del repuesto')
+    }
+    if (!resolvedGrupo && familiaRaw) {
+      if (status === 'valid') status = 'warning'
+      messages.push(`Familia "${familiaRaw}" no coincide exactamente; se usará categoría "${categoria}"`)
+    }
+    if (motorCodigo && !fabricante) {
+      if (status === 'valid') status = 'warning'
+      messages.push('Motor indicado sin fabricante')
+    }
   }
 
   return {
     rowIndex,
     sheetName,
+    sourceId,
+    action,
     codigo_oem,
     codigos_oem_adicionales,
     nombre,
@@ -941,6 +1106,7 @@ const parsePartRowObject = (
     estado,
     descripcion_tecnica,
     imagen_url,
+    imagenes,
     equivalencias,
     dimensiones,
     disenos_anillo: Array.from(disenosSet),
@@ -1207,6 +1373,9 @@ const buildParsedFamilyRow = (
   if (nonEmptyValues.length === 0) return null
 
   const norm = buildRowNormalizedMap(rawObj)
+  const sourceId =
+    String(pickField(norm, ['id', 'familia_id', 'grupo_id']) || '').trim() || undefined
+  const action = parseRowAction(pickField(norm, ['accion', 'operacion', 'action']))
   const nombre = String(pickField(norm, ['nombre', 'familia', 'nombre_familia', 'titulo']) || '').trim()
   const codigoRaw = String(pickField(norm, ['codigo', 'slug']) || '').trim()
   const codigo =
@@ -1222,9 +1391,24 @@ const buildParsedFamilyRow = (
   const descripcion = String(pickField(norm, ['descripcion', 'notas']) || '').trim() || undefined
   const icono = String(pickField(norm, ['icono', 'icon']) || 'Layers').trim() || 'Layers'
 
-  const tablaCfg = (rawObj.tabla_config && typeof rawObj.tabla_config === 'object'
-    ? (rawObj.tabla_config as Record<string, unknown>)
-    : null)
+  let tablaCfg: Record<string, unknown> | null =
+    rawObj.tabla_config && typeof rawObj.tabla_config === 'object'
+      ? (rawObj.tabla_config as Record<string, unknown>)
+      : null
+  if (!tablaCfg) {
+    const rawTablaCfgStr = pickField(norm, ['tabla_config_json', 'tabla_config'])
+    if (typeof rawTablaCfgStr === 'string' && rawTablaCfgStr.trim().startsWith('{')) {
+      try {
+        const parsedCfg = JSON.parse(rawTablaCfgStr.trim())
+        if (parsedCfg && typeof parsedCfg === 'object') {
+          tablaCfg = parsedCfg as Record<string, unknown>
+        }
+      } catch {
+        // Ignorar JSON inválido en celda tabla_config_json
+      }
+    }
+  }
+  const rawTablaConfig = tablaCfg ? ({ ...tablaCfg } as Partial<TablaConfiguracion>) : undefined
 
   const rawTipoVista = normalizeKey(
     String(pickField(norm, ['tipo_vista', 'vista', 'formato_visualizacion']) || '')
@@ -1260,34 +1444,44 @@ const buildParsedFamilyRow = (
   const hasExplicitColHeader =
     pickField(norm, ['etiqueta', 'nombre_columna', 'columna', 'medida', 'label', 'etiqueta_corta']) !== undefined
 
-  const combinedCols: TemplateColumnDef[] = [...inlineCols, ...extraColumns]
+  const rawCols: TemplateColumnDef[] = [...inlineCols, ...extraColumns]
   if (hasExplicitColHeader && singleRowCol) {
-    combinedCols.push(singleRowCol)
+    rawCols.push(singleRowCol)
   }
+  const combinedCols = dedupeColumnDefs(rawCols)
 
   const messages: string[] = []
   let status: ParsedFamilyRow['status'] = 'valid'
 
-  if (!nombre) {
-    status = 'error'
-    messages.push('Falta el nombre de la familia')
-  }
+  if (action === 'delete') {
+    if (!sourceId && !codigo && !nombre) {
+      status = 'error'
+      messages.push('Falta id, codigo o nombre para identificar la familia a eliminar')
+    }
+  } else {
+    if (!nombre) {
+      status = 'error'
+      messages.push('Falta el nombre de la familia')
+    }
 
-  if (combinedCols.length === 0) {
-    status = status === 'error' ? 'error' : 'warning'
-    messages.push('Sin columnas definidas; se creará columna por defecto "Medida 1 (mm)"')
-    combinedCols.push({
-      etiqueta: 'Medida 1',
-      unidad: 'mm',
-      tipo_dato: 'numero',
-      requerido: true,
-      filtrable: true
-    })
+    if (combinedCols.length === 0) {
+      status = status === 'error' ? 'error' : 'warning'
+      messages.push('Sin columnas definidas; se creará columna por defecto "Medida 1 (mm)"')
+      combinedCols.push({
+        etiqueta: 'Medida 1',
+        unidad: 'mm',
+        tipo_dato: 'numero',
+        requerido: true,
+        filtrable: true
+      })
+    }
   }
 
   return {
     rowIndex,
     sheetName,
+    sourceId,
+    action,
     codigo,
     nombre,
     categoria,
@@ -1297,6 +1491,7 @@ const buildParsedFamilyRow = (
     tipo_vista,
     titulo_primera_columna,
     titulo_grupo_filas,
+    rawTablaConfig,
     filas,
     columnas: combinedCols,
     status,
@@ -1431,8 +1626,9 @@ export const parseCatalogJsonText = (
   const payloads = extractJsonPayloads(jsonText)
   const families: ParsedFamilyRow[] = []
   const motors: ParsedMotorRow[] = []
-  const rawPartsCollected: ParsedPartRow[] = []
+  const pendingPartObjs: Array<{ obj: Record<string, unknown>; rowIndex: number; sheetName: string }> = []
   const warnings: string[] = []
+  let exportMeta: FamilyExportMeta | null = null
 
   for (const parsed of payloads) {
     if (Array.isArray(parsed)) {
@@ -1454,12 +1650,30 @@ export const parseCatalogJsonText = (
           const m = parseMotorRowObject(obj, idx + 1, 'JSON')
           if (m) motors.push(m)
         } else {
-          const p = parsePartRowObject(obj, idx + 1, 'JSON', grupos, defaultGrupo)
-          if (p) rawPartsCollected.push(p)
+          pendingPartObjs.push({ obj, rowIndex: idx + 1, sheetName: 'JSON' })
         }
       })
     } else if (parsed && typeof parsed === 'object') {
       const root = parsed as Record<string, unknown>
+      if (
+        !exportMeta &&
+        root._export_meta &&
+        typeof root._export_meta === 'object' &&
+        (root._export_meta as Record<string, unknown>).tipo === 'exportacion_familia'
+      ) {
+        const metaObj = root._export_meta as Record<string, unknown>
+        exportMeta = {
+          tipo: 'exportacion_familia',
+          version: 1,
+          familia_id: String(metaObj.familia_id || '').trim(),
+          familia_codigo: String(metaObj.familia_codigo || '').trim(),
+          familia_nombre: String(metaObj.familia_nombre || '').trim(),
+          familia_categoria: String(metaObj.familia_categoria || '').trim(),
+          exportado_en: String(metaObj.exportado_en || '').trim(),
+          total_repuestos: Number(metaObj.total_repuestos || 0)
+        }
+      }
+
       const rawFamilies = Array.isArray(root.familias)
         ? root.familias
         : Array.isArray(root.grupos)
@@ -1488,8 +1702,11 @@ export const parseCatalogJsonText = (
       })
       rawParts.forEach((item, idx) => {
         if (item && typeof item === 'object') {
-          const p = parsePartRowObject(item as Record<string, unknown>, idx + 1, 'JSON.repuestos', grupos, defaultGrupo)
-          if (p) rawPartsCollected.push(p)
+          pendingPartObjs.push({
+            obj: item as Record<string, unknown>,
+            rowIndex: idx + 1,
+            sheetName: 'JSON.repuestos'
+          })
         }
       })
 
@@ -1499,12 +1716,52 @@ export const parseCatalogJsonText = (
     }
   }
 
+  const effectiveGrupos = buildSyntheticGruposForParsing(grupos, families)
+  const metaDefaultGrupo =
+    defaultGrupo ||
+    (exportMeta
+      ? effectiveGrupos.find(
+          g =>
+            (exportMeta!.familia_id && g.id === exportMeta!.familia_id) ||
+            (exportMeta!.familia_codigo && normalizeText(g.codigo) === normalizeText(exportMeta!.familia_codigo)) ||
+            (exportMeta!.familia_nombre && normalizeText(g.nombre) === normalizeText(exportMeta!.familia_nombre))
+        )
+      : undefined) ||
+    (families.length === 1 && families[0]!.action !== 'delete'
+      ? effectiveGrupos.find(
+          g =>
+            normalizeText(g.codigo) === normalizeText(families[0]!.codigo) ||
+            normalizeText(g.nombre) === normalizeText(families[0]!.nombre)
+        )
+      : undefined)
+
+  const rawPartsCollected: ParsedPartRow[] = []
+  for (const item of pendingPartObjs) {
+    const p = parsePartRowObject(item.obj, item.rowIndex, item.sheetName, effectiveGrupos, metaDefaultGrupo)
+    if (p) rawPartsCollected.push(p)
+  }
+
   const parts = filterPlaceholderSampleParts(rawPartsCollected)
+  const isFamilyExportPackage = Boolean(
+    exportMeta ||
+      families.some(f => Boolean(f.sourceId) || f.action === 'delete') ||
+      parts.some(p => Boolean(p.sourceId) || p.action === 'delete')
+  )
+
   if (families.length === 0 && motors.length === 0 && parts.length === 0 && warnings.length === 0) {
     warnings.push('No se encontraron registros válidos en el JSON proporcionado.')
   }
 
-  return { fileName, format: 'json', families, motors, parts, warnings }
+  return {
+    fileName,
+    format: 'json',
+    families,
+    motors,
+    parts,
+    warnings,
+    exportMeta,
+    isFamilyExportPackage
+  }
 }
 
 export const parseCatalogImportFile = async (
@@ -1532,7 +1789,8 @@ export const parseCatalogImportFile = async (
 
   // 1. Pre-recolectar hojas de columnas de familias (Columnas_Familia / Medida_Familia / Parametros)
   const columnsByFamilyKey = new Map<string, TemplateColumnDef[]>()
-  const familySheetNames = new Set<string>()
+  const familySheetNames: string[] = []
+  const dataSheetNames: string[] = []
   const columnSheetNames = new Set<string>()
 
   for (const sheetName of workbook.SheetNames) {
@@ -1547,74 +1805,85 @@ export const parseCatalogImportFile = async (
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
       for (const row of rows) {
         const norm = buildRowNormalizedMap(row)
-        const famKey = normalizeText(String(pickField(norm, ['familia', 'nombre_familia', 'grupo']) || ''))
+        const famKeyName = normalizeText(String(pickField(norm, ['familia', 'nombre_familia', 'grupo']) || ''))
+        const famKeyCode = normalizeText(String(pickField(norm, ['familia_codigo', 'codigo_familia']) || ''))
         const colDef = parseColumnDefFromObject(row)
-        if (famKey && colDef) {
-          const arr = columnsByFamilyKey.get(famKey) || []
+        if (!colDef) continue
+        for (const fk of Array.from(new Set([famKeyName, famKeyCode].filter(Boolean)))) {
+          const arr = columnsByFamilyKey.get(fk) || []
           arr.push(colDef)
-          columnsByFamilyKey.set(famKey, arr)
+          columnsByFamilyKey.set(fk, arr)
         }
       }
     } else if (normSheet.includes('familia') || normSheet.includes('grupo')) {
-      familySheetNames.add(sheetName)
+      familySheetNames.push(sheetName)
+    } else {
+      dataSheetNames.push(sheetName)
     }
   }
 
-  // 2. Procesar todas las hojas del libro
-  for (const sheetName of workbook.SheetNames) {
-    const normSheet = normalizeKey(sheetName)
-    // Ignorar hojas de instrucciones o hojas auxiliares de columnas ya procesadas
-    if (
-      normSheet.includes('instruccion') ||
-      normSheet.includes('guia') ||
-      normSheet.includes('ayuda') ||
-      columnSheetNames.has(sheetName)
-    ) {
-      continue
-    }
-
+  // 2. Procesar PRIMERO las hojas de Familias para resolver columnas dinámicas antes de leer Repuestos
+  for (const sheetName of familySheetNames) {
     const ws = workbook.Sheets[sheetName]
     if (!ws) continue
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
     if (rows.length === 0) continue
 
-    if (familySheetNames.has(sheetName)) {
-      const groupedByNombre = new Map<string, ParsedFamilyRow>()
-      rows.forEach((row: Record<string, unknown>, idx: number) => {
-        const parsedRow = buildParsedFamilyRow(row, idx + 2, sheetName)
-        if (!parsedRow) return
-        const famKey = normalizeText(parsedRow.nombre || `row_${idx}`)
-        const existing = groupedByNombre.get(famKey)
-        if (existing) {
-          const newCols = parsedRow.columnas.filter(
-            c => !(parsedRow.messages.some(m => m.includes('Sin columnas')) && c.etiqueta === 'Medida 1')
-          )
-          existing.columnas.push(...newCols)
-          if (existing.filas.length === 0 && parsedRow.filas.length > 0) {
-            existing.filas = parsedRow.filas
-            existing.tipo_vista = parsedRow.tipo_vista
-          }
-        } else {
-          const extraCols = famKey ? columnsByFamilyKey.get(famKey) || [] : []
-          if (extraCols.length > 0) {
-            // Reemplazar columna placeholder si las columnas venían en hoja Columnas_Familia
-            const hasPlaceholder = parsedRow.messages.some(m => m.includes('Sin columnas'))
-            if (hasPlaceholder) {
-              parsedRow.columnas = [...extraCols]
-              parsedRow.messages = parsedRow.messages.filter(m => !m.includes('Sin columnas'))
-              if (parsedRow.messages.length === 0 && parsedRow.nombre) {
-                parsedRow.status = 'valid'
-              }
-            } else {
-              parsedRow.columnas.push(...extraCols)
+    const groupedByNombre = new Map<string, ParsedFamilyRow>()
+    rows.forEach((row: Record<string, unknown>, idx: number) => {
+      const parsedRow = buildParsedFamilyRow(row, idx + 2, sheetName)
+      if (!parsedRow) return
+      const famKey = normalizeText(parsedRow.nombre || parsedRow.codigo || `row_${idx}`)
+      const famCodeKey = normalizeText(parsedRow.codigo || '')
+      const existing = groupedByNombre.get(famKey)
+      if (existing) {
+        const newCols = parsedRow.columnas.filter(
+          c => !(parsedRow.messages.some(m => m.includes('Sin columnas')) && c.etiqueta === 'Medida 1')
+        )
+        existing.columnas = dedupeColumnDefs([...existing.columnas, ...newCols])
+        if (existing.filas.length === 0 && parsedRow.filas.length > 0) {
+          existing.filas = parsedRow.filas
+          existing.tipo_vista = parsedRow.tipo_vista
+        }
+      } else {
+        const extraFromName = famKey ? columnsByFamilyKey.get(famKey) || [] : []
+        const extraFromCode = famCodeKey && famCodeKey !== famKey ? columnsByFamilyKey.get(famCodeKey) || [] : []
+        const extraCols = dedupeColumnDefs([...extraFromName, ...extraFromCode])
+        if (extraCols.length > 0 && parsedRow.action !== 'delete') {
+          const hasPlaceholder = parsedRow.messages.some(m => m.includes('Sin columnas'))
+          const existingColsWithoutPlaceholder = hasPlaceholder ? [] : parsedRow.columnas
+          parsedRow.columnas = dedupeColumnDefs([...extraCols, ...existingColsWithoutPlaceholder])
+          if (hasPlaceholder) {
+            parsedRow.messages = parsedRow.messages.filter(m => !m.includes('Sin columnas'))
+            if (parsedRow.messages.length === 0 && parsedRow.nombre) {
+              parsedRow.status = 'valid'
             }
           }
-          groupedByNombre.set(famKey, parsedRow)
         }
-      })
-      families.push(...groupedByNombre.values())
-      continue
-    }
+        groupedByNombre.set(famKey, parsedRow)
+      }
+    })
+    families.push(...groupedByNombre.values())
+  }
+
+  // 3. Procesar Motores y Repuestos usando el esquema de familias resuelto
+  const effectiveGrupos = buildSyntheticGruposForParsing(grupos, families)
+  const resolvedDefaultGrupo =
+    defaultGrupo ||
+    (families.length === 1 && families[0]!.action !== 'delete'
+      ? effectiveGrupos.find(
+          g =>
+            normalizeText(g.codigo) === normalizeText(families[0]!.codigo) ||
+            normalizeText(g.nombre) === normalizeText(families[0]!.nombre)
+        )
+      : undefined)
+
+  for (const sheetName of dataSheetNames) {
+    const normSheet = normalizeKey(sheetName)
+    const ws = workbook.Sheets[sheetName]
+    if (!ws) continue
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+    if (rows.length === 0) continue
 
     const isMotorsSheet =
       normSheet.includes('motor') && !normSheet.includes('anillo') && !normSheet.includes('repuesto')
@@ -1624,13 +1893,33 @@ export const parseCatalogImportFile = async (
         const m = parseMotorRowObject(row, idx + 2, sheetName)
         if (m) motors.push(m)
       } else {
-        const p = parsePartRowObject(row, idx + 2, sheetName, grupos, defaultGrupo)
+        const p = parsePartRowObject(row, idx + 2, sheetName, effectiveGrupos, resolvedDefaultGrupo)
         if (p) parts.push(p)
       }
     })
   }
 
   const filteredParts = filterPlaceholderSampleParts(parts)
+  const exportMeta: FamilyExportMeta | null =
+    families.length === 1 &&
+    (Boolean(families[0]!.sourceId) || filteredParts.some(p => Boolean(p.sourceId)))
+      ? {
+          tipo: 'exportacion_familia',
+          version: 1,
+          familia_id: families[0]!.sourceId || '',
+          familia_codigo: families[0]!.codigo,
+          familia_nombre: families[0]!.nombre,
+          familia_categoria: families[0]!.categoria,
+          exportado_en: '',
+          total_repuestos: filteredParts.length
+        }
+      : null
+
+  const isFamilyExportPackage = Boolean(
+    exportMeta ||
+      families.some(f => Boolean(f.sourceId) || f.action === 'delete') ||
+      filteredParts.some(p => Boolean(p.sourceId) || p.action === 'delete')
+  )
 
   if (families.length === 0 && motors.length === 0 && filteredParts.length === 0) {
     warnings.push('No se encontraron filas con datos en el archivo Excel.')
@@ -1642,7 +1931,9 @@ export const parseCatalogImportFile = async (
     families,
     motors,
     parts: filteredParts,
-    warnings
+    warnings,
+    exportMeta,
+    isFamilyExportPackage
   }
 }
 
@@ -2233,30 +2524,735 @@ export const downloadCatalogJsonTemplate = (
 }
 
 // =============================================================================
+// EXPORTACIÓN COMPLETA DE UNA FAMILIA (ESQUEMA + REPUESTOS + MOTORES)
+// =============================================================================
+
+const isRingsGrupo = (grupo: GrupoRepuesto): boolean => {
+  const cod = (grupo.codigo || '').toLowerCase()
+  const cat = (grupo.categoria || '').toLowerCase()
+  const nom = (grupo.nombre || '').toLowerCase()
+  return cod === 'anillos_motor' || cat.includes('anillo') || nom.includes('anillo')
+}
+
+const serializeFilasTablaForExcel = (grupo: GrupoRepuesto): string => {
+  if (grupo.tipo_vista !== 'tabla' || !grupo.tabla_config?.subfilas?.length) {
+    return ''
+  }
+  const subfilas = grupo.tabla_config.subfilas
+  const padres = grupo.tabla_config.subfila_padres || []
+  const tipos = grupo.tabla_config.subfila_tipos || []
+  return subfilas
+    .map((name, idx) => {
+      if (tipos[idx] === 'central') return `[central] ${name}`
+      const padre = (padres[idx] || '').trim()
+      return padre ? `${padre}: ${name}` : name
+    })
+    .filter(Boolean)
+    .join('; ')
+}
+
+const sanitizeExportFilenamePart = (raw: string): string => {
+  return (
+    String(raw || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'familia'
+  )
+}
+
+const formatExportDateStamp = (): string => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}${m}${day}`
+}
+
+const STANDARD_SQL_EXPORT_KEYS: Array<keyof RepuestoTecnico> = [
+  'diametro_cabeza_mm',
+  'diametro_vastago_mm',
+  'longitud_total_mm',
+  'angulo_asiento_grados',
+  'diametro_interior_mm',
+  'diametro_exterior_mm',
+  'altura_mm',
+  'medida_rosca',
+  'paso_rosca_mm',
+  'longitud_perno_mm',
+  'cantidad_piezas'
+]
+
+interface ResolvedExportContextData {
+  usedMotors: Motor[]
+  motorById: Map<string, Motor>
+  fabById: Map<string, Fabricante>
+  modeloById: Map<string, Modelo>
+}
+
+const buildResolvedExportContext = (
+  repuestos: RepuestoTecnico[],
+  context: {
+    motores: Motor[]
+    fabricantes: Fabricante[]
+    modelos: Modelo[]
+  }
+): ResolvedExportContextData => {
+  const motorById = new Map<string, Motor>()
+  for (const m of context.motores) motorById.set(m.id, m)
+  const fabById = new Map<string, Fabricante>()
+  for (const f of context.fabricantes) fabById.set(f.id, f)
+  const modeloById = new Map<string, Modelo>()
+  for (const mod of context.modelos) modeloById.set(mod.id, mod)
+
+  const usedMotorsMap = new Map<string, Motor>()
+  for (const part of repuestos) {
+    const mot = part.motor || (part.motor_id ? motorById.get(part.motor_id) : undefined)
+    if (mot && mot.id && !usedMotorsMap.has(mot.id)) {
+      usedMotorsMap.set(mot.id, mot)
+    }
+  }
+
+  return {
+    usedMotors: Array.from(usedMotorsMap.values()),
+    motorById,
+    fabById,
+    modeloById
+  }
+}
+
+const resolvePartExportMeta = (
+  part: RepuestoTecnico,
+  ctx: ResolvedExportContextData
+) => {
+  const mot = part.motor || (part.motor_id ? ctx.motorById.get(part.motor_id) : undefined)
+  const fabName =
+    mot?.fabricante?.nombre ||
+    (mot?.fabricante_id ? ctx.fabById.get(mot.fabricante_id)?.nombre : undefined) ||
+    String(part.especificaciones_tecnicas?.marca || part.dimensiones?.marca || '')
+
+  const rawModelTokens: string[] = []
+  const specModels = part.especificaciones_tecnicas?.modelos
+  const dimModels = part.dimensiones?.modelos
+  if (Array.isArray(specModels)) {
+    rawModelTokens.push(...specModels.map(m => String(m || '').trim()))
+  } else if (Array.isArray(dimModels)) {
+    rawModelTokens.push(...dimModels.map(m => String(m || '').trim()))
+  } else {
+    const singleMod = String(
+      part.especificaciones_tecnicas?.modelo || part.dimensiones?.modelo || ''
+    ).trim()
+    if (singleMod) {
+      rawModelTokens.push(...singleMod.split(/[,/;|]+/).map(s => s.trim()))
+    }
+  }
+  if (rawModelTokens.length === 0 && mot) {
+    if (Array.isArray(mot.modelos_nombres) && mot.modelos_nombres.length > 0) {
+      rawModelTokens.push(...mot.modelos_nombres)
+    } else if (Array.isArray(mot.modelo_ids) && mot.modelo_ids.length > 0) {
+      for (const mid of mot.modelo_ids) {
+        const modObj = ctx.modeloById.get(mid)
+        if (modObj?.nombre) rawModelTokens.push(modObj.nombre)
+      }
+    } else if (mot.modelo?.nombre) {
+      rawModelTokens.push(mot.modelo.nombre)
+    }
+  }
+
+  const modelos = Array.from(new Set(rawModelTokens.map(m => m.trim()).filter(Boolean)))
+  const anio = String(part.especificaciones_tecnicas?.ano || part.dimensiones?.ano || '').trim()
+  const imagenes = Array.from(
+    new Set([
+      ...(Array.isArray(part.imagenes) ? part.imagenes.map(u => String(u || '').trim()) : []),
+      part.imagen_url ? String(part.imagen_url).trim() : ''
+    ].filter(Boolean))
+  )
+
+  const equivalenciasList = (part.equivalencias || []).map(eq => ({
+    marca_alterna: eq.marca_alterna,
+    codigo_alterno: eq.codigo_alterno,
+    ...(eq.notas ? { notas: eq.notas } : {})
+  }))
+  const equivalenciasText = equivalenciasList
+    .map(eq => `${eq.marca_alterna}: ${eq.codigo_alterno}`)
+    .join('; ')
+
+  return {
+    mot,
+    fabricante: fabName,
+    motorCodigo: mot?.codigo || '',
+    modelos,
+    anio,
+    imagenes,
+    imagen_url: imagenes[0] || part.imagen_url || '',
+    equivalenciasList,
+    equivalenciasText
+  }
+}
+
+const serializeMotorForExport = (
+  mot: Motor,
+  ctx: ResolvedExportContextData
+): Record<string, unknown> => {
+  const fabName =
+    mot.fabricante?.nombre ||
+    (mot.fabricante_id ? ctx.fabById.get(mot.fabricante_id)?.nombre : '') ||
+    ''
+  const modNames: string[] = []
+  if (Array.isArray(mot.modelos_nombres) && mot.modelos_nombres.length > 0) {
+    modNames.push(...mot.modelos_nombres)
+  } else if (Array.isArray(mot.modelo_ids) && mot.modelo_ids.length > 0) {
+    for (const mid of mot.modelo_ids) {
+      const m = ctx.modeloById.get(mid)
+      if (m?.nombre) modNames.push(m.nombre)
+    }
+  } else if (mot.modelo?.nombre) {
+    modNames.push(mot.modelo.nombre)
+  }
+
+  return {
+    fabricante: fabName,
+    codigo: mot.codigo,
+    modelos: Array.from(new Set(modNames.map(s => s.trim()).filter(Boolean))).join(', '),
+    denominacion_venta: mot.denominacion_venta || mot.nombre_comercial || '',
+    anios: mot.anios || '',
+    combustible: mot.combustible || 'Diésel',
+    cilindros: mot.cilindros ?? '',
+    cilindrada_cc: mot.cilindrada_cc ?? '',
+    valvulas: mot.valvulas ?? '',
+    diametro_cilindro_std_mm: mot.diametro_cilindro_std_mm ?? '',
+    aspiracion: mot.aspiracion || '',
+    kw: mot.kw ?? '',
+    cv: mot.cv ?? ''
+  }
+}
+
+const splitPartRingsForExport = (part: RepuestoTecnico) => {
+  const dims = (part.dimensiones || {}) as Record<string, unknown>
+  const rawAnillos = Array.isArray(dims.anillos)
+    ? (dims.anillos as Array<Record<string, unknown>>)
+    : []
+
+  const compRings: Array<Record<string, unknown>> = []
+  let oilRing: Record<string, unknown> | null = null
+
+  if (rawAnillos.length > 0) {
+    let oilIdx = rawAnillos.findIndex(r => {
+      const t = String(r.tipo_aro || '').toLowerCase()
+      const pos = String(r.posicion || r.nombre || '').toLowerCase()
+      return t === 'aceite' || pos.includes('aceite') || pos.includes('oil')
+    })
+    if (oilIdx < 0 && rawAnillos.length >= 2) {
+      oilIdx = rawAnillos.length - 1
+    }
+    rawAnillos.forEach((r, idx) => {
+      if (idx === oilIdx) oilRing = r
+      else compRings.push(r)
+    })
+  } else {
+    const pushIfAny = (hVal: unknown) => {
+      if (hVal !== undefined && hVal !== null && hVal !== '') {
+        compRings.push({ h1: hVal })
+      }
+    }
+    pushIfAny(part.espesor_anillo1_mm ?? dims.espesor_anillo1_mm)
+    pushIfAny(part.espesor_anillo2_mm ?? dims.espesor_anillo2_mm)
+    pushIfAny(part.espesor_anillo3_mm ?? dims.espesor_anillo3_mm)
+    const oilH = part.espesor_aceite_mm ?? dims.espesor_aceite_mm
+    if (oilH !== undefined && oilH !== null && oilH !== '') {
+      oilRing = { h1: oilH }
+    }
+  }
+
+  return { compRings, oilRing }
+}
+
+const sanitizeParamForExport = (p: GrupoRepuesto['parametros'][number]) => ({
+  clave: p.clave,
+  etiqueta: p.etiqueta,
+  ...(p.columna_padre ? { columna_padre: p.columna_padre } : {}),
+  tipo_dato: p.tipo_dato || 'numero',
+  unidad: p.unidad || '',
+  ...(Array.isArray(p.opciones) && p.opciones.length > 0 ? { opciones: p.opciones } : {}),
+  ...(p.compartido_filas ? { compartido_filas: true } : {}),
+  requerido: p.requerido !== false,
+  filtrable: p.filtrable !== false,
+  ...(p.descripcion ? { descripcion: p.descripcion } : {})
+})
+
+export const exportFamilyToExcel = (
+  grupo: GrupoRepuesto,
+  repuestos: RepuestoTecnico[],
+  context: {
+    motores: Motor[]
+    fabricantes: Fabricante[]
+    modelos: Modelo[]
+  }
+): { fileName: string; exportedPartsCount: number } => {
+  const wb = XLSX.utils.book_new()
+  const ctx = buildResolvedExportContext(repuestos, context)
+  const ringsMode = isRingsGrupo(grupo)
+  const cleanParams = (grupo.parametros || []).map(sanitizeParamForExport)
+  const filasTablaTexto = serializeFilasTablaForExcel(grupo)
+
+  // 1. Hoja Familias
+  const hasTablaConfigExport = Boolean(grupo.tipo_vista === 'tabla' && grupo.tabla_config)
+  const familyHeaders = [
+    'accion',
+    'id',
+    'codigo',
+    'nombre',
+    'categoria',
+    'subsistema',
+    'tipo_vista',
+    'filas_tabla',
+    'titulo_primera_columna',
+    'titulo_grupo_filas',
+    'icono',
+    'descripcion',
+    ...(hasTablaConfigExport ? ['tabla_config_json'] : [])
+  ]
+  const familyRow: Record<string, unknown> = {
+    accion: '',
+    id: grupo.id,
+    codigo: grupo.codigo,
+    nombre: grupo.nombre,
+    categoria: grupo.categoria,
+    subsistema: grupo.subsistema || 'Block',
+    tipo_vista: grupo.tipo_vista || 'normal',
+    filas_tabla: filasTablaTexto,
+    titulo_primera_columna:
+      grupo.tipo_vista === 'tabla' ? grupo.tabla_config?.titulo_primera_columna || 'Componente' : '',
+    titulo_grupo_filas:
+      grupo.tipo_vista === 'tabla' ? grupo.tabla_config?.titulo_grupo_filas || '' : '',
+    icono: grupo.icono || 'Layers',
+    descripcion: grupo.descripcion || '',
+    ...(hasTablaConfigExport ? { tabla_config_json: JSON.stringify(grupo.tabla_config) } : {})
+  }
+  const wsFam = XLSX.utils.json_to_sheet([familyRow], { header: familyHeaders })
+  wsFam['!cols'] = familyHeaders.map(col =>
+    col === 'filas_tabla' || col === 'descripcion' || col === 'tabla_config_json'
+      ? { wch: 36 }
+      : col === 'id'
+        ? { wch: 38 }
+        : { wch: Math.max(16, col.length + 4) }
+  )
+  XLSX.utils.book_append_sheet(wb, wsFam, 'Familias')
+
+  // 2. Hoja Columnas_Familia
+  const colHeaders = [
+    'familia',
+    'familia_codigo',
+    'clave',
+    'etiqueta',
+    'columna_padre',
+    'tipo_dato',
+    'unidad',
+    'opciones',
+    'compartido_filas',
+    'requerido',
+    'filtrable',
+    'descripcion'
+  ]
+  const colRows = cleanParams.map(p => ({
+    familia: grupo.nombre,
+    familia_codigo: grupo.codigo,
+    clave: p.clave,
+    etiqueta: p.etiqueta,
+    columna_padre: p.columna_padre || '',
+    tipo_dato: p.tipo_dato,
+    unidad: p.unidad || '',
+    opciones: p.opciones ? p.opciones.join(', ') : '',
+    compartido_filas: p.compartido_filas ? 'Si' : 'No',
+    requerido: p.requerido ? 'Si' : 'No',
+    filtrable: p.filtrable ? 'Si' : 'No',
+    descripcion: p.descripcion || ''
+  }))
+  const wsCols =
+    colRows.length > 0
+      ? XLSX.utils.json_to_sheet(colRows, { header: colHeaders })
+      : XLSX.utils.aoa_to_sheet([colHeaders])
+  wsCols['!cols'] = colHeaders.map(c =>
+    c === 'descripcion' || c === 'opciones' ? { wch: 30 } : { wch: Math.max(16, c.length + 4) }
+  )
+  XLSX.utils.book_append_sheet(wb, wsCols, 'Columnas_Familia')
+
+  // 3. Hoja Repuestos
+  const partMetaByIdx = repuestos.map(p => resolvePartExportMeta(p, ctx))
+  const hasMultiImages = partMetaByIdx.some(m => m.imagenes.length > 1)
+  const paramKeysSet = new Set(cleanParams.map(p => p.clave))
+
+  const measureColumns: string[] = []
+  let maxCompRings = 2
+  const ringDataByIdx = ringsMode ? repuestos.map(splitPartRingsForExport) : []
+
+  if (ringsMode) {
+    maxCompRings = Math.max(2, ...ringDataByIdx.map(r => r.compRings.length))
+    measureColumns.push('diametro_cilindro_mm')
+    for (let i = 1; i <= maxCompRings; i++) {
+      measureColumns.push(`anillo${i}_grosor`, `anillo${i}_altura`, `anillo${i}_diseno`)
+    }
+    measureColumns.push('anillo_aceite_grosor', `anillo_aceite_altura`, `anillo_aceite_diseno`, 'disenos_anillo')
+  } else {
+    for (const p of cleanParams) {
+      if (p.clave && !measureColumns.includes(p.clave)) {
+        measureColumns.push(p.clave)
+      }
+    }
+    if (
+      grupo.tipo_vista === 'tabla' ||
+      repuestos.some(p => Array.isArray((p.dimensiones as Record<string, unknown> | undefined)?.subfilas))
+    ) {
+      measureColumns.push('subfilas_json')
+    }
+    for (const sqlKey of STANDARD_SQL_EXPORT_KEYS) {
+      const kStr = String(sqlKey)
+      if (paramKeysSet.has(kStr)) continue
+      const hasValue = repuestos.some(r => {
+        const v = (r as unknown as Record<string, unknown>)[kStr] ?? r.dimensiones?.[kStr]
+        return v !== undefined && v !== null && v !== ''
+      })
+      if (hasValue) measureColumns.push(kStr)
+    }
+  }
+
+  const partHeaders = [
+    'accion',
+    'id',
+    'codigo_oem',
+    'codigos_oem_adicionales',
+    'nombre',
+    'familia',
+    'categoria',
+    'subsistema',
+    'fabricante',
+    'motor',
+    'modelos',
+    'anio',
+    'catalogo_origen',
+    'precio',
+    'stock',
+    'estado',
+    'equivalencias',
+    ...measureColumns,
+    'descripcion_tecnica',
+    'imagen_url',
+    ...(hasMultiImages ? ['imagenes_json'] : [])
+  ]
+
+  const partRows = repuestos.map((part, idx) => {
+    const meta = partMetaByIdx[idx]!
+    const dims = (part.dimensiones || {}) as Record<string, unknown>
+    const rowObj: Record<string, unknown> = {
+      accion: '',
+      id: part.id,
+      codigo_oem: part.codigo_oem,
+      codigos_oem_adicionales: (part.codigos_oem_adicionales || []).join(', '),
+      nombre: part.nombre,
+      familia: grupo.codigo,
+      categoria: part.categoria || grupo.categoria,
+      subsistema: part.subsistema || grupo.subsistema || 'Block',
+      fabricante: meta.fabricante,
+      motor: meta.motorCodigo,
+      modelos: meta.modelos.join(', '),
+      anio: meta.anio,
+      catalogo_origen: part.catalogo_origen || 'OEM',
+      precio: Number(part.precio || 0),
+      stock: Number(part.stock || 0),
+      estado: part.estado || 'Disponible',
+      equivalencias: meta.equivalenciasText
+    }
+
+    if (ringsMode) {
+      const ringInfo = ringDataByIdx[idx]!
+      rowObj.diametro_cilindro_mm = part.diametro_cilindro_mm ?? dims.diametro_cilindro_mm ?? ''
+      for (let i = 1; i <= maxCompRings; i++) {
+        const ring = ringInfo.compRings[i - 1]
+        rowObj[`anillo${i}_grosor`] = ring?.h1 ?? ''
+        rowObj[`anillo${i}_altura`] = ring?.a1 ?? ''
+        rowObj[`anillo${i}_diseno`] = ring?.tipo_diseno ?? ring?.perfil ?? ring?.forma ?? ''
+      }
+      rowObj.anillo_aceite_grosor = ringInfo.oilRing?.h1 ?? part.espesor_aceite_mm ?? ''
+      rowObj.anillo_aceite_altura = ringInfo.oilRing?.a1 ?? ''
+      rowObj.anillo_aceite_diseno =
+        ringInfo.oilRing?.tipo_diseno ?? ringInfo.oilRing?.perfil ?? ringInfo.oilRing?.forma ?? ''
+      rowObj.disenos_anillo = Array.isArray(part.disenos_anillo) ? part.disenos_anillo.join(', ') : ''
+    } else {
+      for (const param of cleanParams) {
+        let rawVal = dims[param.clave] ?? (part as unknown as Record<string, unknown>)[param.clave]
+        if (typeof rawVal === 'boolean') rawVal = rawVal ? 'Si' : 'No'
+        else if (Array.isArray(rawVal)) rawVal = rawVal.map(v => String(v || '').trim()).filter(Boolean).join(', ')
+        rowObj[param.clave] = rawVal ?? ''
+      }
+      if (measureColumns.includes('subfilas_json')) {
+        rowObj.subfilas_json = Array.isArray(dims.subfilas) ? JSON.stringify(dims.subfilas) : ''
+      }
+      for (const sqlKey of STANDARD_SQL_EXPORT_KEYS) {
+        const kStr = String(sqlKey)
+        if (!paramKeysSet.has(kStr) && measureColumns.includes(kStr)) {
+          rowObj[kStr] = (part as unknown as Record<string, unknown>)[kStr] ?? dims[kStr] ?? ''
+        }
+      }
+    }
+
+    rowObj.descripcion_tecnica =
+      part.descripcion_tecnica || String(part.especificaciones_tecnicas?.descripcion_tecnica || '') || ''
+    rowObj.imagen_url = meta.imagen_url
+    if (hasMultiImages) {
+      rowObj.imagenes_json = meta.imagenes.length > 0 ? JSON.stringify(meta.imagenes) : ''
+    }
+
+    return rowObj
+  })
+
+  const wsParts =
+    partRows.length > 0
+      ? XLSX.utils.json_to_sheet(partRows, { header: partHeaders })
+      : XLSX.utils.aoa_to_sheet([partHeaders])
+  wsParts['!cols'] = partHeaders.map(col => {
+    if (col === 'id') return { wch: 38 }
+    if (col === 'nombre' || col === 'equivalencias' || col === 'descripcion_tecnica') return { wch: 32 }
+    if (col === 'subfilas_json' || col === 'imagenes_json' || col === 'imagen_url') return { wch: 36 }
+    return { wch: Math.max(15, col.length + 4) }
+  })
+  XLSX.utils.book_append_sheet(wb, wsParts, 'Repuestos')
+
+  // 4. Hoja Motores relacionados
+  if (ctx.usedMotors.length > 0) {
+    const motorRows = ctx.usedMotors.map(m => serializeMotorForExport(m, ctx))
+    const wsMotors = XLSX.utils.json_to_sheet(motorRows, { header: MOTOR_TEMPLATE_COLUMNS })
+    wsMotors['!cols'] = MOTOR_TEMPLATE_COLUMNS.map(col => ({ wch: Math.max(15, col.length + 3) }))
+    XLSX.utils.book_append_sheet(wb, wsMotors, 'Motores')
+  }
+
+  // 5. Hoja Instrucciones
+  const guideRows = [
+    {
+      Campo_o_Accion: '=== EXPORTACIÓN COMPLETA DE FAMILIA SWGORA ===',
+      Detalle: `Familia "${grupo.nombre}" (${grupo.codigo}) con ${repuestos.length} repuesto(s) exportado(s).`
+    },
+    {
+      Campo_o_Accion: 'EDITAR REPUESTOS O ESQUEMA',
+      Detalle:
+        'Modifica cualquier dato en Familias, Columnas_Familia o Repuestos conservando la columna "id". Incluso puedes cambiar el "codigo_oem" sin duplicar el registro.'
+    },
+    {
+      Campo_o_Accion: 'AGREGAR NUEVOS REPUESTOS',
+      Detalle:
+        'Agrega nuevas filas en la hoja Repuestos dejando las columnas "id" y "accion" vacías.'
+    },
+    {
+      Campo_o_Accion: 'ELIMINAR REPUESTOS MARCADOS',
+      Detalle:
+        'Escribe la palabra "eliminar" en la columna "accion" de los repuestos que desees borrar del catálogo, o elimínalos de la hoja y activa "Sincronizar familia" al re-importar.'
+    },
+    {
+      Campo_o_Accion: 'ELIMINAR LA FAMILIA COMPLETA',
+      Detalle:
+        'Escribe "eliminar" en la columna "accion" de la hoja Familias si deseas borrar toda la familia junto con sus repuestos.'
+    }
+  ]
+  const wsGuide = XLSX.utils.json_to_sheet(guideRows)
+  wsGuide['!cols'] = [{ wch: 40 }, { wch: 105 }]
+  XLSX.utils.book_append_sheet(wb, wsGuide, 'Instrucciones')
+
+  const safeCode = sanitizeExportFilenamePart(grupo.codigo || grupo.nombre)
+  const fileName = `familia_${safeCode}_${formatExportDateStamp()}.xlsx`
+  XLSX.writeFile(wb, fileName)
+  return { fileName, exportedPartsCount: repuestos.length }
+}
+
+export const exportFamilyToJson = (
+  grupo: GrupoRepuesto,
+  repuestos: RepuestoTecnico[],
+  context: {
+    motores: Motor[]
+    fabricantes: Fabricante[]
+    modelos: Modelo[]
+  }
+): { fileName: string; exportedPartsCount: number } => {
+  const ctx = buildResolvedExportContext(repuestos, context)
+  const ringsMode = isRingsGrupo(grupo)
+  const cleanParams = (grupo.parametros || []).map(sanitizeParamForExport)
+  const cleanTablaConfig =
+    grupo.tipo_vista === 'tabla' && grupo.tabla_config
+      ? { ...grupo.tabla_config }
+      : undefined
+
+  const meta: FamilyExportMeta = {
+    tipo: 'exportacion_familia',
+    version: 1,
+    familia_id: grupo.id,
+    familia_codigo: grupo.codigo,
+    familia_nombre: grupo.nombre,
+    familia_categoria: grupo.categoria,
+    exportado_en: new Date().toISOString(),
+    total_repuestos: repuestos.length
+  }
+
+  const familiaObj = {
+    accion: '',
+    id: grupo.id,
+    codigo: grupo.codigo,
+    nombre: grupo.nombre,
+    categoria: grupo.categoria,
+    subsistema: grupo.subsistema || 'Block',
+    descripcion: grupo.descripcion || '',
+    icono: grupo.icono || 'Layers',
+    tipo_vista: grupo.tipo_vista || 'normal',
+    ...(cleanTablaConfig ? { tabla_config: cleanTablaConfig } : {}),
+    ...(grupo.tipo_vista === 'tabla' && grupo.tabla_config?.subfilas?.length
+      ? { filas_tabla: serializeFilasTablaForExcel(grupo) }
+      : {}),
+    columnas: cleanParams
+  }
+
+  const partsPayload = repuestos.map(part => {
+    const metaPart = resolvePartExportMeta(part, ctx)
+    const dims = (part.dimensiones || {}) as Record<string, unknown>
+    const obj: Record<string, unknown> = {
+      accion: '',
+      id: part.id,
+      codigo_oem: part.codigo_oem,
+      ...(part.codigos_oem_adicionales?.length
+        ? { codigos_oem_adicionales: part.codigos_oem_adicionales }
+        : {}),
+      nombre: part.nombre,
+      familia: grupo.codigo,
+      categoria: part.categoria || grupo.categoria,
+      subsistema: part.subsistema || grupo.subsistema || 'Block',
+      fabricante: metaPart.fabricante,
+      motor: metaPart.motorCodigo,
+      modelos: metaPart.modelos,
+      anio: metaPart.anio,
+      catalogo_origen: part.catalogo_origen || 'OEM',
+      precio: Number(part.precio || 0),
+      stock: Number(part.stock || 0),
+      estado: part.estado || 'Disponible',
+      equivalencias: metaPart.equivalenciasList
+    }
+
+    if (ringsMode) {
+      if (part.diametro_cilindro_mm != null || dims.diametro_cilindro_mm != null) {
+        obj.diametro_cilindro_mm = part.diametro_cilindro_mm ?? dims.diametro_cilindro_mm
+      }
+      if (part.espesor_anillo1_mm != null) obj.espesor_anillo1_mm = part.espesor_anillo1_mm
+      if (part.espesor_anillo2_mm != null) obj.espesor_anillo2_mm = part.espesor_anillo2_mm
+      if (part.espesor_anillo3_mm != null) obj.espesor_anillo3_mm = part.espesor_anillo3_mm
+      if (part.espesor_aceite_mm != null) obj.espesor_aceite_mm = part.espesor_aceite_mm
+      if (Array.isArray(dims.anillos)) obj.anillos = dims.anillos
+      if (Array.isArray(part.disenos_anillo) && part.disenos_anillo.length > 0) {
+        obj.disenos_anillo = part.disenos_anillo
+      }
+    } else {
+      for (const param of cleanParams) {
+        const val = dims[param.clave] ?? (part as unknown as Record<string, unknown>)[param.clave]
+        if (val !== undefined && val !== null && val !== '') {
+          obj[param.clave] = val
+        }
+      }
+      if (Array.isArray(dims.subfilas)) {
+        obj.filas = dims.subfilas
+      }
+      for (const sqlKey of STANDARD_SQL_EXPORT_KEYS) {
+        const kStr = String(sqlKey)
+        const val = (part as unknown as Record<string, unknown>)[kStr] ?? dims[kStr]
+        if (obj[kStr] === undefined && val !== undefined && val !== null && val !== '') {
+          obj[kStr] = val
+        }
+      }
+    }
+
+    const desc = part.descripcion_tecnica || String(part.especificaciones_tecnicas?.descripcion_tecnica || '')
+    if (desc) obj.descripcion_tecnica = desc
+    if (metaPart.imagen_url) obj.imagen_url = metaPart.imagen_url
+    if (metaPart.imagenes.length > 1) obj.imagenes = metaPart.imagenes
+
+    return obj
+  })
+
+  const payload = {
+    _export_meta: meta,
+    _instrucciones: {
+      editar: 'Modifica cualquier dato manteniendo "id" para actualizar (puedes cambiar codigo_oem sin duplicar).',
+      agregar: 'Agrega elementos en "repuestos" sin "id" y con "accion": "".',
+      eliminar_registros: 'Cambia "accion": "eliminar" en el repuesto o familia que desees eliminar.',
+      sincronizar: 'También puedes quitar repuestos del arreglo y activar "Sincronizar familia" al importar.'
+    },
+    familias: [familiaObj],
+    motores: ctx.usedMotors.map(m => serializeMotorForExport(m, ctx)),
+    repuestos: partsPayload
+  }
+
+  const safeCode = sanitizeExportFilenamePart(grupo.codigo || grupo.nombre)
+  const fileName = `familia_${safeCode}_${formatExportDateStamp()}.json`
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  triggerDownloadBlob(blob, fileName)
+  return { fileName, exportedPartsCount: repuestos.length }
+}
+
+// =============================================================================
 // EJECUCIÓN DE IMPORTACIÓN MASIVA EN SUPABASE + STORE LOCAL
 // =============================================================================
 
-async function loadExistingOemIndex(inMemoryParts: RepuestoTecnico[]): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
+interface ExistingPartIndexEntry {
+  id: string
+  codigo_oem: string
+  categoria: string
+}
+
+async function loadExistingPartIndices(inMemoryParts: RepuestoTecnico[]): Promise<{
+  oemIndex: Map<string, string>
+  idIndex: Map<string, ExistingPartIndexEntry>
+}> {
+  const oemIndex = new Map<string, string>()
+  const idIndex = new Map<string, ExistingPartIndexEntry>()
+
   for (const p of inMemoryParts) {
-    if (p.codigo_oem) {
-      map.set(p.codigo_oem.trim().toUpperCase(), p.id)
+    const cleanOem = String(p.codigo_oem || '').trim().toUpperCase()
+    const cleanId = String(p.id || '').trim()
+    if (cleanId) {
+      idIndex.set(cleanId, { id: cleanId, codigo_oem: cleanOem, categoria: p.categoria || '' })
+    }
+    if (cleanOem && cleanId) {
+      oemIndex.set(cleanOem, cleanId)
     }
   }
+
   try {
-    const { data, error } = await supabase.from('repuestos_tecnicos').select('id, codigo_oem')
-    if (!error && Array.isArray(data)) {
+    const PAGE_SIZE = 1000
+    const MAX_PAGES = 50
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE_SIZE
+      const to = from + PAGE_SIZE - 1
+      const { data, error } = await supabase
+        .from('repuestos_tecnicos')
+        .select('id, codigo_oem, categoria')
+        .order('id', { ascending: true })
+        .range(from, to)
+
+      if (error || !Array.isArray(data)) break
+
       for (const row of data) {
-        const oem = String(row.codigo_oem || '').trim().toUpperCase()
-        if (oem && !map.has(oem)) {
-          map.set(oem, String(row.id))
+        const cleanId = String(row.id || '').trim()
+        const cleanOem = String(row.codigo_oem || '').trim().toUpperCase()
+        const cleanCat = String(row.categoria || '').trim()
+        if (cleanId) {
+          idIndex.set(cleanId, { id: cleanId, codigo_oem: cleanOem, categoria: cleanCat })
+        }
+        if (cleanOem && cleanId && !oemIndex.has(cleanOem)) {
+          oemIndex.set(cleanOem, cleanId)
         }
       }
+
+      if (data.length < PAGE_SIZE) break
     }
   } catch (err) {
     console.warn('[ImportService] No se pudo consultar índice OEM remoto, usando caché local:', err)
   }
-  return map
+
+  return { oemIndex, idIndex }
 }
 
 export const executeCatalogImport = async (
@@ -2273,34 +3269,111 @@ export const executeCatalogImport = async (
   const report: CatalogImportReport = {
     createdFamilies: 0,
     updatedFamilies: 0,
+    deletedFamilies: 0,
     skippedFamilies: 0,
     createdMotors: 0,
     skippedMotors: 0,
     createdParts: 0,
     updatedParts: 0,
+    deletedParts: 0,
     skippedParts: 0,
     createdBrands: 0,
     createdModels: 0,
+    deletedPartIds: [],
+    deletedFamilyIds: [],
     errors: []
   }
 
   const validFamilies = (parsed.families || []).filter(f => f.status !== 'error')
   const validMotors = parsed.motors.filter(m => m.status !== 'error')
   const validParts = parsed.parts.filter(p => p.status !== 'error')
-  const totalSteps = validFamilies.length + validMotors.length + validParts.length
+  const partsToDelete = validParts.filter(p => p.action === 'delete')
+  const partsToUpsert = validParts.filter(p => p.action !== 'delete')
+
+  const totalSteps = validFamilies.length + validMotors.length + partsToDelete.length + partsToUpsert.length
   let currentStep = 0
 
   const gruposList = [...(context.grupos || [])]
   const fabList = [...context.fabricantes]
   const modList = [...context.modelos]
   const motList = [...context.motores]
-  const oemIndex = await loadExistingOemIndex(context.repuestos)
+  const { oemIndex, idIndex } = await loadExistingPartIndices(context.repuestos)
 
-  // 0. Procesar Familias Técnicas nuevas o por actualizar
+  const deletedFamilyKeys = new Set<string>()
+  const retainedPartIds = new Set<string>()
+
+  // 0. Procesar Familias Técnicas (eliminaciones, actualizaciones o altas)
   for (const fRow of validFamilies) {
     currentStep++
-    options.onProgress?.(currentStep, totalSteps, `Familia ${fRow.nombre}`)
+    options.onProgress?.(currentStep, totalSteps, `Familia ${fRow.nombre || fRow.codigo}`)
     try {
+      const normName = normalizeText(fRow.nombre)
+      const normCode = normalizeText(fRow.codigo)
+      const existingIdx = gruposList.findIndex(
+        g =>
+          (fRow.sourceId && g.id === fRow.sourceId) ||
+          (normCode && normalizeText(g.codigo) === normCode) ||
+          (normName && normalizeText(g.nombre) === normName)
+      )
+      const existing = existingIdx >= 0 ? gruposList[existingIdx] : undefined
+
+      if (fRow.action === 'delete') {
+        if (!existing) {
+          report.skippedFamilies++
+          report.errors.push({
+            rowLabel: `${fRow.sheetName} fila ${fRow.rowIndex} (${fRow.nombre || fRow.codigo || fRow.sourceId || 'Familia'})`,
+            message: 'Familia no encontrada para eliminar (puede que ya haya sido eliminada)'
+          })
+          continue
+        }
+
+        if (options.deletePartsWithDeletedFamily !== false) {
+          const familyParts = await catalogService.getAllRepuestosForGrupoExport(existing)
+          const familyPartIds = familyParts.map(p => p.id)
+          if (familyPartIds.length > 0) {
+            const delRes = await catalogService.deleteRepuestosBulk(familyPartIds)
+            report.deletedParts += delRes.deletedIds.length
+            report.deletedPartIds.push(...delRes.deletedIds)
+            for (const did of delRes.deletedIds) {
+              const entry = idIndex.get(did)
+              if (entry?.codigo_oem) oemIndex.delete(entry.codigo_oem.toUpperCase())
+              idIndex.delete(did)
+            }
+            if (delRes.failedIds.length > 0) {
+              report.errors.push({
+                rowLabel: `${fRow.sheetName} fila ${fRow.rowIndex} (${existing.nombre})`,
+                message: `${delRes.failedIds.length} repuesto(s) no pudieron eliminarse${delRes.errorMessage ? `: ${delRes.errorMessage}` : ''}`
+              })
+            }
+          }
+        }
+
+        await catalogService.deleteGrupo(existing.id, existing.codigo)
+        clearCatalogPartsCache()
+        report.deletedFamilies++
+        report.deletedFamilyIds.push(existing.id)
+        gruposList.splice(existingIdx, 1)
+        ;[existing.id, normalizeText(existing.codigo), normalizeText(existing.nombre), normalizeText(existing.categoria)]
+          .filter(Boolean)
+          .forEach(k => deletedFamilyKeys.add(k))
+        continue
+      }
+
+      const baseTablaCfg: Partial<TablaConfiguracion> = {
+        ...(existing?.tabla_config || {}),
+        ...(fRow.rawTablaConfig || {})
+      }
+      const fallbackSubfilas = Array.isArray(baseTablaCfg.subfilas) && baseTablaCfg.subfilas.length > 0
+        ? baseTablaCfg.subfilas
+        : ['Componente 1']
+      const fallbackPadres = Array.isArray(baseTablaCfg.subfila_padres) && baseTablaCfg.subfila_padres.length > 0
+        ? baseTablaCfg.subfila_padres
+        : fallbackSubfilas.map(() => '')
+      const fallbackTipos: Array<'normal' | 'central'> =
+        Array.isArray(baseTablaCfg.subfila_tipos) && baseTablaCfg.subfila_tipos.length > 0
+          ? baseTablaCfg.subfila_tipos
+          : fallbackSubfilas.map(() => 'normal')
+
       const tpl: FamilyTemplate = {
         id: fRow.codigo || `imp_${Date.now()}`,
         nombre: fRow.nombre,
@@ -2312,16 +3385,37 @@ export const executeCatalogImport = async (
         ...(fRow.tipo_vista === 'tabla'
           ? {
               tabla_config: {
-                titulo_primera_columna: fRow.titulo_primera_columna || 'Componente',
-                ...(fRow.titulo_grupo_filas ? { titulo_grupo_filas: fRow.titulo_grupo_filas } : {}),
-                modo_filas: 'subfilas' as const,
+                ...(baseTablaCfg.tiene_cabecera_marca !== undefined
+                  ? { tiene_cabecera_marca: baseTablaCfg.tiene_cabecera_marca }
+                  : {}),
+                ...(baseTablaCfg.usar_prefijo_titulo !== undefined
+                  ? { usar_prefijo_titulo: baseTablaCfg.usar_prefijo_titulo }
+                  : {}),
+                ...(baseTablaCfg.etiqueta_ultima_fila !== undefined
+                  ? { etiqueta_ultima_fila: baseTablaCfg.etiqueta_ultima_fila }
+                  : {}),
+                ...(baseTablaCfg.habilitar_identificador !== undefined
+                  ? { habilitar_identificador: baseTablaCfg.habilitar_identificador }
+                  : {}),
+                ...(baseTablaCfg.etiqueta_identificador !== undefined
+                  ? { etiqueta_identificador: baseTablaCfg.etiqueta_identificador }
+                  : {}),
+                ...(baseTablaCfg.opciones_identificador !== undefined
+                  ? { opciones_identificador: baseTablaCfg.opciones_identificador }
+                  : {}),
+                titulo_primera_columna:
+                  fRow.titulo_primera_columna || baseTablaCfg.titulo_primera_columna || 'Componente',
+                ...(fRow.titulo_grupo_filas || baseTablaCfg.titulo_grupo_filas
+                  ? { titulo_grupo_filas: fRow.titulo_grupo_filas || baseTablaCfg.titulo_grupo_filas }
+                  : {}),
+                modo_filas: baseTablaCfg.modo_filas || ('subfilas' as const),
                 subfilas_activas: true,
                 subfilas:
-                  fRow.filas.length > 0 ? fRow.filas.map(r => r.nombre) : ['Componente 1'],
+                  fRow.filas.length > 0 ? fRow.filas.map(r => r.nombre) : fallbackSubfilas,
                 subfila_padres:
-                  fRow.filas.length > 0 ? fRow.filas.map(r => r.grupo_central || '') : [''],
+                  fRow.filas.length > 0 ? fRow.filas.map(r => r.grupo_central || '') : fallbackPadres,
                 subfila_tipos:
-                  fRow.filas.length > 0 ? fRow.filas.map(r => r.tipo_fila) : ['normal']
+                  fRow.filas.length > 0 ? fRow.filas.map(r => r.tipo_fila) : fallbackTipos
               }
             }
           : {}),
@@ -2335,22 +3429,23 @@ export const executeCatalogImport = async (
         fRow.subsistema
       )
 
-      const normName = normalizeText(fRow.nombre)
-      const normCode = normalizeText(insertPayload.codigo || fRow.codigo)
-      const existingIdx = gruposList.findIndex(
-        g => normalizeText(g.codigo) === normCode || normalizeText(g.nombre) === normName
-      )
-      const existing = existingIdx >= 0 ? gruposList[existingIdx] : undefined
-
       if (existing) {
         if (options.duplicateStrategy === 'skip') {
           report.skippedFamilies++
           continue
         }
         if (options.duplicateStrategy === 'update') {
+          const prevCategoria = existing.categoria
           const updated = await catalogService.updateGrupo(existing.id, insertPayload)
           gruposList[existingIdx] = updated
           report.updatedFamilies++
+          if (prevCategoria && updated.categoria && prevCategoria !== updated.categoria) {
+            await supabase
+              .from('repuestos_tecnicos')
+              .update({ categoria: updated.categoria, updated_at: new Date().toISOString() })
+              .eq('categoria', prevCategoria)
+            clearCatalogPartsCache()
+          }
           continue
         }
         // Estrategia 'create': asegurar código único para no chocar con restricción UNIQUE de codigo
@@ -2460,13 +3555,72 @@ export const executeCatalogImport = async (
     }
   }
 
-  // 2. Procesar Repuestos
-  for (const pRow of validParts) {
+  // 2. Ejecutar eliminaciones explícitas de repuestos (accion = "eliminar") en lotes
+  if (partsToDelete.length > 0) {
+    const deleteIdsSet = new Set<string>()
+    for (const pRow of partsToDelete) {
+      currentStep++
+      const bySourceId = pRow.sourceId && idIndex.has(pRow.sourceId) ? pRow.sourceId : undefined
+      const byOem = pRow.codigo_oem ? oemIndex.get(pRow.codigo_oem.toUpperCase()) : undefined
+      const resolvedId = bySourceId || byOem
+      if (resolvedId) {
+        deleteIdsSet.add(resolvedId)
+      } else {
+        report.skippedParts++
+        report.errors.push({
+          rowLabel: `${pRow.sheetName} fila ${pRow.rowIndex} (${pRow.codigo_oem || pRow.sourceId || 'Repuesto'})`,
+          message: 'Repuesto no encontrado para eliminar (puede que ya haya sido eliminado)'
+        })
+      }
+    }
+
+    const explicitDeleteIds = Array.from(deleteIdsSet)
+    if (explicitDeleteIds.length > 0) {
+      options.onProgress?.(
+        currentStep,
+        totalSteps,
+        `Eliminando ${explicitDeleteIds.length} repuesto(s) marcados...`
+      )
+      const delRes = await catalogService.deleteRepuestosBulk(explicitDeleteIds)
+      report.deletedParts += delRes.deletedIds.length
+      report.deletedPartIds.push(...delRes.deletedIds)
+      for (const did of delRes.deletedIds) {
+        const entry = idIndex.get(did)
+        if (entry?.codigo_oem) oemIndex.delete(entry.codigo_oem.toUpperCase())
+        idIndex.delete(did)
+      }
+      if (delRes.failedIds.length > 0) {
+        report.errors.push({
+          rowLabel: 'Eliminación de repuestos',
+          message: `${delRes.failedIds.length} repuesto(s) no pudieron eliminarse${delRes.errorMessage ? `: ${delRes.errorMessage}` : ''}`
+        })
+      }
+    }
+  }
+
+  // 3. Procesar altas y actualizaciones de Repuestos
+  for (const pRow of partsToUpsert) {
     currentStep++
     options.onProgress?.(currentStep, totalSteps, `Repuesto ${pRow.codigo_oem}`)
     try {
-      const existingPartId = oemIndex.get(pRow.codigo_oem.toUpperCase())
+      const famCheckTokens = [
+        normalizeText(pRow.familiaRaw),
+        normalizeText(pRow.resolvedGrupoCodigo || ''),
+        normalizeText(pRow.resolvedGrupoNombre || ''),
+        normalizeText(pRow.categoria)
+      ].filter(Boolean)
+      if (famCheckTokens.some(t => deletedFamilyKeys.has(t))) {
+        report.skippedParts++
+        continue
+      }
+
+      const bySourceId =
+        pRow.sourceId && idIndex.has(pRow.sourceId) ? pRow.sourceId : undefined
+      const byOem = pRow.codigo_oem ? oemIndex.get(pRow.codigo_oem.toUpperCase()) : undefined
+      const existingPartId = bySourceId || byOem
+
       if (existingPartId && options.duplicateStrategy === 'skip') {
+        retainedPartIds.add(existingPartId)
         report.skippedParts++
         continue
       }
@@ -2504,6 +3658,13 @@ export const executeCatalogImport = async (
         ? pRow.subsistema
         : (matchedRuntimeGroup?.subsistema || pRow.subsistema)
 
+      const resolvedImagenes =
+        pRow.imagenes && pRow.imagenes.length > 0
+          ? pRow.imagenes
+          : pRow.imagen_url
+            ? [pRow.imagen_url]
+            : []
+
       const partPayload: Partial<RepuestoTecnico> = {
         motor_id: resolvedMotor?.id,
         codigo_oem: pRow.codigo_oem,
@@ -2515,8 +3676,8 @@ export const executeCatalogImport = async (
         stock: pRow.stock,
         estado: pRow.estado,
         catalogo_origen: pRow.catalogo_origen,
-        imagen_url: pRow.imagen_url,
-        imagenes: pRow.imagen_url ? [pRow.imagen_url] : [],
+        imagen_url: pRow.imagen_url || resolvedImagenes[0],
+        imagenes: resolvedImagenes,
         disenos_anillo: pRow.disenos_anillo,
         descripcion_tecnica: pRow.descripcion_tecnica,
         diametro_cabeza_mm: pRow.diametro_cabeza_mm,
@@ -2552,16 +3713,79 @@ export const executeCatalogImport = async (
       }
 
       if (existingPartId && options.duplicateStrategy === 'update') {
-        await catalogService.updateRepuesto(existingPartId, partPayload, pRow.equivalencias)
+        const updated = await catalogService.updateRepuesto(existingPartId, partPayload, pRow.equivalencias)
+        const prevEntry = idIndex.get(existingPartId)
+        if (prevEntry?.codigo_oem && oemIndex.get(prevEntry.codigo_oem) === existingPartId) {
+          oemIndex.delete(prevEntry.codigo_oem)
+        }
+        const newOem = updated.codigo_oem.toUpperCase()
+        oemIndex.set(newOem, existingPartId)
+        idIndex.set(existingPartId, {
+          id: existingPartId,
+          codigo_oem: newOem,
+          categoria: updated.categoria || resolvedPartCategoria
+        })
+        retainedPartIds.add(existingPartId)
         report.updatedParts++
       } else {
         const created = await catalogService.createRepuesto(partPayload, pRow.equivalencias)
-        oemIndex.set(created.codigo_oem.toUpperCase(), created.id)
+        const createdOem = created.codigo_oem.toUpperCase()
+        oemIndex.set(createdOem, created.id)
+        idIndex.set(created.id, {
+          id: created.id,
+          codigo_oem: createdOem,
+          categoria: created.categoria || resolvedPartCategoria
+        })
+        retainedPartIds.add(created.id)
         report.createdParts++
       }
     } catch (err) {
       report.errors.push({
         rowLabel: `${pRow.sheetName} fila ${pRow.rowIndex} (${pRow.codigo_oem})`,
+        message: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
+
+  // 4. Sincronización opcional de familia: eliminar repuestos de la familia ausentes en el archivo
+  if (
+    options.syncFamilyDeleteMissing &&
+    options.syncTargetGrupo &&
+    !report.deletedFamilyIds.includes(options.syncTargetGrupo.id)
+  ) {
+    try {
+      const runtimeSyncGrupo =
+        gruposList.find(
+          g =>
+            g.id === options.syncTargetGrupo!.id ||
+            normalizeText(g.codigo) === normalizeText(options.syncTargetGrupo!.codigo)
+        ) || options.syncTargetGrupo
+
+      const existingFamilyParts = await catalogService.getAllRepuestosForGrupoExport(runtimeSyncGrupo)
+      const alreadyDeletedSet = new Set(report.deletedPartIds)
+      const missingIds = existingFamilyParts
+        .filter(p => !retainedPartIds.has(p.id) && !alreadyDeletedSet.has(p.id))
+        .map(p => p.id)
+
+      if (missingIds.length > 0) {
+        options.onProgress?.(
+          totalSteps,
+          totalSteps,
+          `Sincronizando familia: eliminando ${missingIds.length} repuesto(s)...`
+        )
+        const syncRes = await catalogService.deleteRepuestosBulk(missingIds)
+        report.deletedParts += syncRes.deletedIds.length
+        report.deletedPartIds.push(...syncRes.deletedIds)
+        if (syncRes.failedIds.length > 0) {
+          report.errors.push({
+            rowLabel: `Sincronización de familia (${runtimeSyncGrupo.nombre})`,
+            message: `${syncRes.failedIds.length} repuesto(s) no pudieron eliminarse${syncRes.errorMessage ? `: ${syncRes.errorMessage}` : ''}`
+          })
+        }
+      }
+    } catch (err) {
+      report.errors.push({
+        rowLabel: `Sincronización de familia (${options.syncTargetGrupo.nombre})`,
         message: err instanceof Error ? err.message : String(err)
       })
     }
