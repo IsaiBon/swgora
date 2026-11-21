@@ -511,11 +511,11 @@ const orderGrandTotal = computed(() => {
           <tr>
             <td class="w-1/2 pr-2 py-1 align-middle border-b border-slate-300">
               <span class="font-bold text-slate-800 uppercase text-[9px] mr-1.5">Marca:</span>
-              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.vehicleBrand || 'N/A' }}</span>
+              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.vehicleBrand || '' }}</span>
             </td>
             <td class="w-1/2 pl-2 py-1 align-middle border-b border-slate-300">
               <span class="font-bold text-slate-800 uppercase text-[9px] mr-1.5">Motor:</span>
-              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.vehicleModel || order.engine || order.engineType || 'N/A' }}</span>
+              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.vehicleModel || order.engine || order.engineType || '' }}</span>
             </td>
           </tr>
 
