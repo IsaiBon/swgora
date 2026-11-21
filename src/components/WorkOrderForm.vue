@@ -867,7 +867,12 @@ onUnmounted(() => {
 const loadExistingOrder = (order: Order) => {
   orderNumber.value = order.orderNumber
   orderDate.value = order.date
-  orderStatus.value = order.status === 'En Proceso' ? 'En Proceso' : 'Pendiente'
+  orderStatus.value =
+    order.status === 'En Proceso'
+      ? 'En Proceso'
+      : order.status === 'Terminado'
+        ? 'Terminado'
+        : 'Pendiente'
   docType.value = order.type || 'orden'
   if (authStore.isSubAdmin && authStore.activeRutaId) {
     selectedRutaId.value = authStore.activeRutaId
@@ -1465,16 +1470,23 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     'w-full h-[38px] font-bold text-xs rounded-full pl-3 pr-7 appearance-none cursor-pointer focus:outline-none focus:ring-2 transition text-center shadow-2xs truncate',
                     orderStatus === 'Pendiente'
                       ? 'bg-[#F6F0E4] border border-[#E6DAC2] text-[#6E5835] focus:ring-[#D4C3A3]'
-                      : 'bg-[#E3F5F8] border border-[#9AD2DC] text-[#12697A] focus:ring-[#147488]'
+                      : orderStatus === 'Terminado'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 focus:ring-emerald-400'
+                        : 'bg-[#E3F5F8] border border-[#9AD2DC] text-[#12697A] focus:ring-[#147488]'
                   ]"
                 >
                   <option value="Pendiente">Pendiente</option>
                   <option value="En Proceso">En Proceso</option>
+                  <option value="Terminado">Terminado</option>
                 </select>
                 <ChevronDown
                   :class="[
                     'w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition shrink-0',
-                    orderStatus === 'Pendiente' ? 'text-[#6E5835]' : 'text-[#12697A]'
+                    orderStatus === 'Pendiente'
+                      ? 'text-[#6E5835]'
+                      : orderStatus === 'Terminado'
+                        ? 'text-emerald-700'
+                        : 'text-[#12697A]'
                   ]"
                 />
               </div>

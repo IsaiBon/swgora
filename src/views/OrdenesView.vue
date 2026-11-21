@@ -695,7 +695,7 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                 <Filter class="w-3.5 h-3.5 text-[#147488]" /> Estado:
               </span>
               <button
-                v-for="status in ['Todos', 'En Proceso', 'Pendiente']"
+                v-for="status in ['Todos', 'En Proceso', 'Pendiente', 'Terminado']"
                 :key="status"
                 type="button"
                 @click="selectedStatus = status"

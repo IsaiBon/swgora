@@ -85,7 +85,7 @@ let clientSearchDebounce: any = null
 
 // Filtros de la Tabla de Órdenes Recientes
 const tableSearchQuery = ref('')
-const tableStatusFilter = ref<string>('Todos')
+const tableStatusFilter = ref<string>('Global')
 const tableComponentFilter = ref<string>('Todos')
 
 // Notificación Toast
@@ -1135,13 +1135,13 @@ const tableFilteredOrders = computed(() => {
     }
 
     // Filtro por Estado en pestaña
-    if (tableStatusFilter.value !== 'Todos') {
-      if (tableStatusFilter.value === 'Activas') {
-        if (order.status === 'Cancelada' || order.status === 'Entregado') return false
-      } else if (tableStatusFilter.value === 'Terminadas') {
+    if (tableStatusFilter.value !== 'Global') {
+      if (tableStatusFilter.value === 'Pendientes') {
+        if (order.status !== 'Pendiente') return false
+      } else if (tableStatusFilter.value === 'En Proceso') {
+        if (order.status !== 'En Proceso') return false
+      } else if (tableStatusFilter.value === 'Terminados') {
         if (order.status !== 'Terminado' && order.status !== 'Completada') return false
-      } else if (order.status !== tableStatusFilter.value) {
-        return false
       }
     }
 
@@ -2355,7 +2355,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
           <!-- Filtros de Pestaña de Estado -->
           <div class="flex items-center gap-1 bg-slate-100/90 border border-slate-200/80 p-1 rounded-xl flex-wrap">
             <button
-              v-for="st in ['Todos', 'Activas', 'Pendiente', 'En Proceso', 'Terminadas']"
+              v-for="st in ['Global', 'Pendientes', 'En Proceso', 'Terminados']"
               :key="st"
               type="button"
               @click="tableStatusFilter = st"
