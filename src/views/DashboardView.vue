@@ -86,6 +86,7 @@ let clientSearchDebounce: any = null
 // Filtros de la Tabla de Órdenes Recientes
 const tableSearchQuery = ref('')
 const tableStatusFilter = ref<string>('Global')
+const tableTypeFilter = ref<'ALL' | 'orden' | 'cotizacion'>('ALL')
 const tableComponentFilter = ref<string>('Todos')
 
 // Notificación Toast
@@ -1132,6 +1133,12 @@ const tableFilteredOrders = computed(() => {
         (order.vehicleModel && order.vehicleModel.toLowerCase().includes(q)) ||
         (order.engine && order.engine.toLowerCase().includes(q))
       if (!matchesSearch) return false
+    }
+
+    // Filtro por Tipo de Orden
+    if (tableTypeFilter.value !== 'ALL') {
+      const normalizedType = order.type === 'cotizacion' ? 'cotizacion' : 'orden'
+      if (normalizedType !== tableTypeFilter.value) return false
     }
 
     // Filtro por Estado en pestaña
@@ -2350,6 +2357,21 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               placeholder="Buscar por orden, cliente, motor..."
               class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-[#0D1B3E] placeholder-slate-400 focus:bg-white focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20 transition-all"
             />
+          </div>
+
+          <!-- Filtro de Tipos de Orden -->
+          <div class="flex items-center gap-1.5 bg-slate-100/90 border border-slate-200/80 px-2.5 py-1 rounded-xl">
+            <span class="font-mono text-[10px] font-bold uppercase tracking-wider text-[#004B97] shrink-0">
+              Tipos de orden:
+            </span>
+            <select
+              v-model="tableTypeFilter"
+              class="bg-transparent text-xs font-bold text-[#0D1B3E] focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="ALL">Todas</option>
+              <option value="orden">Órdenes de trabajo</option>
+              <option value="cotizacion">Cotizaciones</option>
+            </select>
           </div>
 
           <!-- Filtros de Pestaña de Estado -->
