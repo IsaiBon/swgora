@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch, nextTick } from 'vue'
 import type { Order } from '@/services/ordersService'
 import { useTallerStore } from '@/stores/taller'
 
@@ -28,10 +28,9 @@ const shouldShowSubtotals = computed(() => {
 })
 
 const tallerStore = useTallerStore()
-
-onMounted(async () => {
-  await tallerStore.loadTallerInfo()
-})
+const docRootRef = ref<HTMLElement | null>(null)
+const autoUseDouble = ref(false)
+let layoutEvalSeq = 0
 
 const isCotizacion = computed(() => props.order?.type === 'cotizacion')
 
@@ -69,6 +68,10 @@ interface PrintableSection {
   title: string
   items: PrintableItem[]
   subtotal: number
+}
+
+interface DisplaySection extends PrintableSection {
+  hideSubtotal?: boolean
 }
 
 // Orden canónico de secciones idéntico al Excel y al formato físico de taller
@@ -197,22 +200,131 @@ const orderMaterials = computed(() => {
   return (props.order?.materials || []).filter(m => m.name && m.name.trim().length > 0)
 })
 
-// Conteo total de filas estimadas en modo 1 sección continua
-// (1 fila por encabezado de cada categoría + 1 fila por cada operación/repuesto)
-const totalSingleRows = computed(() => {
-  return groupedSections.value.reduce((sum, s) => sum + 1 + s.items.length, 0)
-})
-
-// Decisión de layout adaptable:
-// - Si layoutMode === 'single': fuerza 1 sección (ancho completo).
-// - Si layoutMode === 'double': fuerza 2 secciones (doble columna paralela).
-// - Si layoutMode === 'auto':
-//   Si totalSingleRows <= 13: cabe con holgura en 1 sección dentro de 1 página.
-//   Si totalSingleRows > 13: pasa automáticamente a 2 secciones para aprovechar el ancho y mantenerse en 1 sola página.
+// Decisión de layout adaptable real al espacio de 1 hoja Carta:
+// - Si layoutMode === 'single': fuerza 1 columna (ancho completo).
+// - Si layoutMode === 'double': fuerza 2 columnas paralelas.
+// - Si layoutMode === 'auto': mide la altura renderizada real en 1 columna y solo cambia a 2 columnas cuando excede el alto útil de 1 hoja Carta.
 const isDoubleSection = computed(() => {
   if (props.layoutMode === 'single') return false
   if (props.layoutMode === 'double') return true
-  return totalSingleRows.value > 13
+  return autoUseDouble.value
+})
+
+const evaluateAutoLayout = async () => {
+  const currentSeq = ++layoutEvalSeq
+  if (props.layoutMode !== 'auto') return
+
+  autoUseDouble.value = false
+  await nextTick()
+  if (currentSeq !== layoutEvalSeq) return
+
+  const el = docRootRef.value
+  if (!el) return
+
+  const w = Math.max(el.offsetWidth || 760, 700)
+  const maxSinglePageHeightPx = Math.floor(w * (265.4 / 201.9)) - 18
+  if (el.scrollHeight > maxSinglePageHeightPx) {
+    autoUseDouble.value = true
+    await nextTick()
+  }
+}
+
+onMounted(async () => {
+  await tallerStore.loadTallerInfo()
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    try {
+      await document.fonts.ready
+    } catch {
+      // Ignorar fallback de fuentes
+    }
+  }
+  await evaluateAutoLayout()
+})
+
+watch(
+  [
+    () => props.order,
+    () => props.layoutMode,
+    shouldShowSubtotals,
+    () => tallerStore.tallerInfo.nombre,
+    () => tallerStore.tallerInfo.direccion,
+    () => tallerStore.tallerInfo.eslogan,
+    () => tallerStore.tallerInfo.logo_url
+  ],
+  async () => {
+    await evaluateAutoLayout()
+  },
+  { deep: true }
+)
+
+const balancedColumns = computed<{ left: DisplaySection[]; right: DisplaySection[] }>(() => {
+  const sections = groupedSections.value
+  if (sections.length === 0) {
+    return { left: [], right: [] }
+  }
+
+  const canonicalLeft: DisplaySection[] = displayLeftSections.value
+  const canonicalRight: DisplaySection[] = displayRightSections.value
+  const leftRows = canonicalLeft.reduce((sum, s) => sum + 1 + s.items.length, 0)
+  const rightRows = canonicalRight.reduce((sum, s) => sum + 1 + s.items.length, 0)
+
+  if (canonicalLeft.length > 0 && canonicalRight.length > 0 && Math.max(leftRows, rightRows) <= 24) {
+    return { left: canonicalLeft, right: canonicalRight }
+  }
+
+  const totalRows = sections.reduce((sum, s) => sum + 1 + s.items.length, 0)
+  const targetLeft = Math.ceil(totalRows / 2)
+  const left: DisplaySection[] = []
+  const right: DisplaySection[] = []
+  let currentLeftRows = 0
+  let movedToRight = false
+
+  for (const section of sections) {
+    const secRows = 1 + section.items.length
+    if (movedToRight || currentLeftRows >= targetLeft) {
+      right.push(section)
+      movedToRight = true
+      continue
+    }
+
+    if (currentLeftRows + secRows <= targetLeft + 1 || (section.items.length <= 2 && currentLeftRows < targetLeft)) {
+      left.push(section)
+      currentLeftRows += secRows
+      continue
+    }
+
+    if (left.length > 0 && targetLeft - currentLeftRows <= 2) {
+      right.push(section)
+      movedToRight = true
+      continue
+    }
+
+    const splitAt = Math.min(section.items.length - 1, Math.max(1, targetLeft - currentLeftRows - 1))
+    if (splitAt > 0 && splitAt < section.items.length) {
+      left.push({
+        title: section.title,
+        items: section.items.slice(0, splitAt),
+        subtotal: section.subtotal,
+        hideSubtotal: true
+      })
+      right.push({
+        title: `${section.title} (CONT.)`,
+        items: section.items.slice(splitAt),
+        subtotal: section.subtotal
+      })
+      movedToRight = true
+    } else {
+      right.push(section)
+      movedToRight = true
+    }
+  }
+
+  return { left, right }
+})
+
+defineExpose({
+  evaluateAutoLayout,
+  isDoubleSection
 })
 
 const computedLaborTotal = computed(() => {
@@ -249,13 +361,14 @@ const orderGrandTotal = computed(() => {
 <template>
   <div
     v-if="order"
+    ref="docRootRef"
     id="printable-work-order"
     style="font-family: Arial, Helvetica, sans-serif;"
     :class="[
-      'text-slate-900 relative bg-white mx-auto',
+      'text-slate-900 relative bg-white mx-auto w-[760px] min-w-[760px] max-w-[760px] print:w-full print:min-w-0 print:max-w-full',
       variant === 'pdf'
-        ? 'p-3.5 sm:p-4 rounded-none border-none shadow-none w-full max-w-[760px]'
-        : 'p-4 sm:p-5 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0 max-w-[780px]',
+        ? 'p-3.5 rounded-none border-none shadow-none'
+        : 'p-4 sm:p-5 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
       isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
     ]"
   >
@@ -270,34 +383,45 @@ const orderGrandTotal = computed(() => {
         
         <!-- Logo + Información de la Empresa Rectificadora (Dinámica desde Supabase) -->
         <div class="flex items-center gap-4 flex-1 min-w-0">
-          <div class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 flex items-center justify-center p-1 border border-slate-200 rounded-xl bg-slate-50/50">
+          <div
+            class="shrink-0 flex items-center justify-center p-1 border border-slate-200 rounded-xl bg-slate-50/50 overflow-hidden"
+            style="width: 84px; height: 84px;"
+          >
             <img
               :src="tallerStore.tallerInfo.logo_url || '/logo-taller.png'"
               alt="Logo Rectificadora"
-              class="max-w-full max-h-full object-contain"
+              style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block;"
               @error="(e: any) => { if (e.target.src !== '/logo-taller.png') e.target.src = '/logo-taller.png'; else e.target.style.display = 'none'; }"
             />
           </div>
 
           <div class="flex-1 min-w-0">
-            <h1 class="text-base sm:text-lg font-black tracking-tight text-slate-900 uppercase leading-snug">
+            <h1 class="text-lg font-black tracking-tight text-slate-900 uppercase leading-snug">
               {{ tallerStore.tallerInfo.nombre }}
             </h1>
-            <p class="text-xs sm:text-[12px] font-medium text-slate-700 mt-1 leading-snug flex items-center gap-1.5">
-              <span class="text-rose-600 text-sm shrink-0 select-none">📍</span>
+            <p class="text-[12px] font-medium text-slate-700 mt-1 leading-snug flex items-start gap-1.5">
+              <svg
+                viewBox="0 0 24 24"
+                width="13"
+                height="13"
+                class="shrink-0 mt-0.5 fill-[#e11d48]"
+                aria-hidden="true"
+              >
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z" />
+              </svg>
               <span>{{ tallerStore.tallerInfo.direccion }}</span>
             </p>
-            <div class="flex items-center flex-wrap gap-x-4 gap-y-1 text-xs sm:text-[12px] font-bold text-slate-800 mt-1.5">
+            <div class="flex items-center flex-wrap gap-x-4 gap-y-1 text-[12px] font-bold text-slate-800 mt-1.5">
               <!-- WhatsApp Celular 1 -->
               <span v-if="tallerStore.tallerInfo.celular1" class="inline-flex items-center gap-1.5">
-                <svg viewBox="0 0 24 24" class="w-4 h-4 inline-block shrink-0 fill-[#25D366]">
+                <svg viewBox="0 0 24 24" width="14" height="14" class="w-3.5 h-3.5 inline-block shrink-0 fill-[#25D366]">
                   <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.11 7.44C8.95 7.44 8.68 7.5 8.46 7.74C8.23 7.98 7.6 8.57 7.6 9.78C7.6 10.99 8.48 12.16 8.6 12.33C8.73 12.49 10.33 14.96 12.78 16.02C13.36 16.27 13.82 16.42 14.17 16.53C14.76 16.72 15.3 16.69 15.72 16.63C16.19 16.56 17.17 16.04 17.37 15.47C17.58 14.9 17.58 14.41 17.51 14.31C17.45 14.21 17.3 14.15 17.06 14.03C16.83 13.91 15.69 13.35 15.48 13.27C15.27 13.19 15.12 13.15 14.97 13.39C14.81 13.62 14.37 14.15 14.23 14.31C14.1 14.46 13.96 14.48 13.73 14.36C13.5 14.24 12.52 13.92 11.37 12.9C10.47 12.1 9.87 11.11 9.75 10.9C9.63 10.69 9.74 10.58 9.85 10.46C9.96 10.36 10.09 10.18 10.21 10.04C10.33 9.9 10.37 9.79 10.45 9.64C10.53 9.48 10.49 9.35 10.43 9.23C10.37 9.11 9.89 7.93 9.7 7.45C9.51 6.98 9.32 7.05 9.17 7.04C9.04 7.04 8.89 7.04 8.73 7.04"/>
                 </svg>
                 <span>Cel: {{ tallerStore.tallerInfo.celular1 }}</span>
               </span>
               <!-- WhatsApp Celular 2 -->
               <span v-if="tallerStore.tallerInfo.celular2" class="inline-flex items-center gap-1.5">
-                <svg viewBox="0 0 24 24" class="w-4 h-4 inline-block shrink-0 fill-[#25D366]">
+                <svg viewBox="0 0 24 24" width="14" height="14" class="w-3.5 h-3.5 inline-block shrink-0 fill-[#25D366]">
                   <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.11 7.44C8.95 7.44 8.68 7.5 8.46 7.74C8.23 7.98 7.6 8.57 7.6 9.78C7.6 10.99 8.48 12.16 8.6 12.33C8.73 12.49 10.33 14.96 12.78 16.02C13.36 16.27 13.82 16.42 14.17 16.53C14.76 16.72 15.3 16.69 15.72 16.63C16.19 16.56 17.17 16.04 17.37 15.47C17.58 14.9 17.58 14.41 17.51 14.31C17.45 14.21 17.3 14.15 17.06 14.03C16.83 13.91 15.69 13.35 15.48 13.27C15.27 13.19 15.12 13.15 14.97 13.39C14.81 13.62 14.37 14.15 14.23 14.31C14.1 14.46 13.96 14.48 13.73 14.36C13.5 14.24 12.52 13.92 11.37 12.9C10.47 12.1 9.87 11.11 9.75 10.9C9.63 10.69 9.74 10.58 9.85 10.46C9.96 10.36 10.09 10.18 10.21 10.04C10.33 9.9 10.37 9.79 10.45 9.64C10.53 9.48 10.49 9.35 10.43 9.23C10.37 9.11 9.89 7.93 9.7 7.45C9.51 6.98 9.32 7.05 9.17 7.04C9.04 7.04 8.89 7.04 8.73 7.04"/>
                 </svg>
                 <span>Cel: {{ tallerStore.tallerInfo.celular2 }}</span>
@@ -363,23 +487,23 @@ const orderGrandTotal = computed(() => {
           <tr>
             <td class="w-1/2 pr-2 py-1 align-middle border-b border-slate-300">
               <span class="font-bold text-slate-800 uppercase text-[9px] mr-1.5">Nombre:</span>
-              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.customer || '— Sin Asignar —' }}</span>
+              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.customer || '' }}</span>
             </td>
             <td class="w-1/2 pl-2 py-1 align-middle border-b border-slate-300">
               <span class="font-bold text-slate-800 uppercase text-[9px] mr-1.5">Taller:</span>
-              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.workshop || 'Particular' }}</span>
+              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.workshop || '' }}</span>
             </td>
           </tr>
 
           <!-- Fila 2: Dirección y Teléfono -->
           <tr>
-            <td class="w-2/3 pr-2 py-1 align-middle border-b border-slate-300">
+            <td class="w-1/2 pr-2 py-1 align-middle border-b border-slate-300">
               <span class="font-bold text-slate-800 uppercase text-[9px] mr-1.5">Dirección:</span>
-              <span class="text-slate-800 text-[10px]">{{ order.customerAddress || 'San Miguel, El Salvador' }}</span>
+              <span class="text-slate-800 text-[10px]">{{ order.customerAddress || '' }}</span>
             </td>
-            <td class="w-1/3 pl-2 py-1 align-middle border-b border-slate-300">
+            <td class="w-1/2 pl-2 py-1 align-middle border-b border-slate-300">
               <span class="font-bold text-slate-800 uppercase text-[9px] mr-1.5">Tel:</span>
-              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.customerPhone || 'N/A' }}</span>
+              <span class="font-semibold text-slate-900 text-[10.5px]">{{ order.customerPhone || '' }}</span>
             </td>
           </tr>
 
@@ -480,14 +604,14 @@ const orderGrandTotal = computed(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <template v-if="displayLeftSections.length > 0">
-                    <template v-for="section in displayLeftSections" :key="section.title">
-                      <!-- Encabezado de Sección: BIELAS, BANCADA, CIGÜEÑAL, CULATA (SIN FONDO NEGRO) -->
+                  <template v-if="balancedColumns.left.length > 0">
+                    <template v-for="section in balancedColumns.left" :key="section.title">
+                      <!-- Encabezado de Sección Izquierda (SIN FONDO NEGRO) -->
                       <tr class="bg-slate-100 text-slate-900 font-black text-[9px] uppercase tracking-wider border-y border-slate-700">
                         <td colspan="4" class="py-0.5 px-1.5">
                           <div class="flex justify-between items-center leading-normal">
                             <span>{{ section.title }}</span>
-                            <span v-if="shouldShowSubtotals" class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                            <span v-if="shouldShowSubtotals && !section.hideSubtotal" class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
                           </div>
                         </td>
                       </tr>
@@ -516,14 +640,14 @@ const orderGrandTotal = computed(() => {
                   </template>
                   <tr v-else class="border-b border-slate-200">
                     <td colspan="4" class="py-6 px-2 text-center text-[9.5px] text-slate-400 italic">
-                      — Sin operaciones de bielas / culata facturadas —
+                      — Sin ítems en esta columna —
                     </td>
                   </tr>
                 </tbody>
               </table>
             </td>
 
-            <!-- ================= SECCIÓN DERECHA: BLOCKS Y REPUESTOS ================= -->
+            <!-- ================= SECCIÓN DERECHA: BLOCKS / REPUESTOS / CONTINUACIÓN ================= -->
             <td class="w-1/2 align-top p-0">
               <table class="w-full text-[9.5px] border-collapse" style="table-layout: fixed;">
                 <thead class="bg-slate-100 border-b-2 border-slate-900 font-bold uppercase text-slate-900 text-[8.5px]">
@@ -535,14 +659,14 @@ const orderGrandTotal = computed(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <template v-if="displayRightSections.length > 0">
-                    <template v-for="section in displayRightSections" :key="section.title">
-                      <!-- Encabezado de Sección: BLOCKS, REPUESTOS (SIN FONDO NEGRO) -->
+                  <template v-if="balancedColumns.right.length > 0">
+                    <template v-for="section in balancedColumns.right" :key="section.title">
+                      <!-- Encabezado de Sección Derecha (SIN FONDO NEGRO) -->
                       <tr class="bg-slate-100 text-slate-900 font-black text-[9px] uppercase tracking-wider border-y border-slate-700">
                         <td colspan="4" class="py-0.5 px-1.5">
                           <div class="flex justify-between items-center leading-normal">
                             <span>{{ section.title }}</span>
-                            <span v-if="shouldShowSubtotals" class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
+                            <span v-if="shouldShowSubtotals && !section.hideSubtotal" class="text-[8.5px] font-semibold text-slate-600">Subtotal: ${{ section.subtotal.toFixed(2) }}</span>
                           </div>
                         </td>
                       </tr>
@@ -571,7 +695,7 @@ const orderGrandTotal = computed(() => {
                   </template>
                   <tr v-else class="border-b border-slate-200">
                     <td colspan="4" class="py-6 px-2 text-center text-[9.5px] text-slate-400 italic">
-                      — Sin repuestos ni operaciones de block facturadas —
+                      — Sin ítems en esta columna —
                     </td>
                   </tr>
                 </tbody>

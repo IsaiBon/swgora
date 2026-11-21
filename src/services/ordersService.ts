@@ -436,7 +436,7 @@ function mapDbToOrder(row: any): Order {
   return {
     id: String(row.id),
     orderNumber: row.numero_orden || '#00000',
-    customer: row.cliente || 'Cliente General',
+    customer: row.cliente ? String(row.cliente) : '',
     customerId: row.cliente_id || undefined,
     customerCode: row.cliente_codigo || undefined,
     customerPhone: row.cliente_telefono || undefined,
@@ -523,7 +523,7 @@ function mapOrderToDb(order: Order | (Omit<Order, 'id'> & { id?: string })) {
   return {
     id: order.id,
     numero_orden: order.orderNumber,
-    cliente: order.customer || 'Cliente General',
+    cliente: (order.customer || '').trim(),
     cliente_id: order.customerId || null,
     cliente_codigo: order.customerCode || null,
     cliente_telefono: order.customerPhone || null,
@@ -605,6 +605,44 @@ function getOperationsCatalogStorageKey(): string {
     : OPERATIONS_CATALOG_STORAGE_KEY
 }
 
+const DEFAULT_OPERATIONS_MAP = new Map<string, FormOperationItem>(
+  DEFAULT_OPERATIONS_CATALOG.map(op => [op.id, op])
+)
+
+function isDualMeasureOperationName(opName: string): boolean {
+  const lower = (opName || '').toLowerCase()
+  const isCrankAction = lower.includes('rectificar') || lower.includes('pulir')
+  return isCrankAction && lower.includes('banco') && lower.includes('biela')
+}
+
+function sanitizeCatalogOperation(item: FormOperationItem): FormOperationItem {
+  const cleaned: FormOperationItem = { ...item }
+  const isDualName = isDualMeasureOperationName(cleaned.operation)
+
+  if (
+    cleaned.measure === '' &&
+    cleaned.measureBanco === '' &&
+    cleaned.measureBiela === '' &&
+    !isDualName
+  ) {
+    delete cleaned.measure
+    delete cleaned.measureBanco
+    delete cleaned.measureBiela
+  }
+
+  const defaultDef = DEFAULT_OPERATIONS_MAP.get(cleaned.id)
+  if (defaultDef) {
+    if (defaultDef.measureBanco === undefined && cleaned.measureBanco === '') {
+      delete cleaned.measureBanco
+    }
+    if (defaultDef.measureBiela === undefined && cleaned.measureBiela === '') {
+      delete cleaned.measureBiela
+    }
+  }
+
+  return cleaned
+}
+
 function getStoredOperationsCatalog(): FormOperationItem[] {
   if (typeof window === 'undefined') return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
   try {
@@ -616,7 +654,11 @@ function getStoredOperationsCatalog(): FormOperationItem[] {
     }
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed
+      const sanitized = parsed.map(sanitizeCatalogOperation)
+      if (JSON.stringify(sanitized) !== JSON.stringify(parsed)) {
+        localStorage.setItem(storageKey, JSON.stringify(sanitized))
+      }
+      return sanitized
     }
     return JSON.parse(JSON.stringify(DEFAULT_OPERATIONS_CATALOG))
   } catch (e) {
@@ -1020,9 +1062,9 @@ export const ordersService = {
       quantity: null,
       unitPrice: null,
       subtotal: null,
-      measure: item.measure ?? '',
-      measureBanco: item.measureBanco ?? '',
-      measureBiela: item.measureBiela ?? '',
+      ...(item.measure !== undefined ? { measure: item.measure } : {}),
+      ...(item.measureBanco !== undefined ? { measureBanco: item.measureBanco } : {}),
+      ...(item.measureBiela !== undefined ? { measureBiela: item.measureBiela } : {}),
       isCustom: true
     }
     catalog.push(newItem)
@@ -1035,11 +1077,21 @@ export const ordersService = {
     const index = catalog.findIndex(o => o.id === id)
     if (index === -1) return null
 
-    catalog[index] = {
+    const updatedItem: FormOperationItem = {
       ...catalog[index],
       ...updates,
       operation: updates.operation ? updates.operation.trim() : catalog[index].operation
     }
+    if ('measure' in updates && updates.measure === undefined) {
+      delete updatedItem.measure
+    }
+    if ('measureBanco' in updates && updates.measureBanco === undefined) {
+      delete updatedItem.measureBanco
+    }
+    if ('measureBiela' in updates && updates.measureBiela === undefined) {
+      delete updatedItem.measureBiela
+    }
+    catalog[index] = updatedItem
     saveStoredOperationsCatalog(catalog)
     return Promise.resolve(catalog[index])
   },

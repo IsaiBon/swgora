@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, onUnmounted, ref } from 'vue'
+import { computed, watch, onUnmounted, ref, nextTick } from 'vue'
 import type { Order } from '@/services/ordersService'
 import { Printer, Download, X, FileText } from 'lucide-vue-next'
 import WorkOrderDocument from './WorkOrderDocument.vue'
@@ -16,6 +16,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const workOrderDocRef = ref<InstanceType<typeof WorkOrderDocument> | null>(null)
 const directShareRef = ref<InstanceType<typeof DirectOrderPdfShare> | null>(null)
 const isSharingWhatsApp = ref(false)
 const shareFeedback = ref<{ text: string; type: 'success' | 'error' } | null>(null)
@@ -94,6 +95,8 @@ const handleDownload = async () => {
   if (!props.order || isDownloading.value) return
   isDownloading.value = true
   try {
+    await workOrderDocRef.value?.evaluateAutoLayout()
+    await nextTick()
     const el = document.getElementById('printable-work-order')
     if (el) {
       const orderToExport = {
@@ -113,6 +116,8 @@ const handleShareWhatsApp = async () => {
   if (!props.order || isSharingWhatsApp.value || !directShareRef.value) return
   isSharingWhatsApp.value = true
   try {
+    await workOrderDocRef.value?.evaluateAutoLayout()
+    await nextTick()
     const el = document.getElementById('printable-work-order')
     const result = await directShareRef.value.shareOrder(props.order, {
       sourceElement: el,
@@ -163,9 +168,9 @@ const handleShareWhatsApp = async () => {
                 @click="selectedLayout = 'auto'"
                 :class="selectedLayout === 'auto' ? 'bg-white text-[#0D1B3E] shadow-xs font-bold' : 'hover:text-white'"
                 class="px-2 py-1 rounded-lg transition text-xs cursor-pointer"
-                title="Adaptable automáticamente según cantidad de operaciones"
+                title="Adaptable automáticamente según el espacio de la hoja Carta"
               >
-                Auto (Adaptable)
+                {{ selectedLayout === 'auto' ? (workOrderDocRef?.isDoubleSection ? 'Auto (2 col)' : 'Auto (1 col)') : 'Auto (Adaptable)' }}
               </button>
               <button
                 type="button"
@@ -270,10 +275,15 @@ const handleShareWhatsApp = async () => {
         <!-- 2. Contenedor scrollable interno para adaptar el documento -->
         <div
           id="printable-work-order-scroll"
-          class="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/80 print:p-0 print:bg-white print:overflow-visible"
+          class="flex-1 overflow-auto p-3 sm:p-6 bg-slate-100/80 print:p-0 print:bg-white print:overflow-visible"
         >
           <!-- Hoja física de la orden limpia -->
-          <WorkOrderDocument :order="order" :layoutMode="selectedLayout" :showSubtotals="showSubtotalsOverride" />
+          <WorkOrderDocument
+            ref="workOrderDocRef"
+            :order="order"
+            :layoutMode="selectedLayout"
+            :showSubtotals="showSubtotalsOverride"
+          />
         </div>
 
         <!-- 3. Barra de pie informativa y salida rápida (oculta en impresión) -->

@@ -437,13 +437,15 @@ export function buildOrderWhatsAppMessage(
   const lines: string[] = []
 
   if (options.preset === 'pdf_companion') {
-    const greetingTarget = customerName && customerName !== 'Cliente General' && customerName !== '— Sin Asignar —'
-      ? `*${customerName}*`
-      : 'estimado cliente'
+    const validCustomer = customerName && customerName !== 'Cliente General' && customerName !== '— Sin Asignar —'
+      ? customerName
+      : ''
+    const primaryRecipient = validCustomer || workshopClient
+    const greetingTarget = primaryRecipient ? `*${primaryRecipient}*` : 'estimado cliente'
     lines.push(`Hola ${greetingTarget}, le saludamos de *${workshopName}*.`)
     lines.push('')
     lines.push(`Le compartimos su *${docTitle} N° ${order.orderNumber}* (${formattedDate}):`)
-    if (workshopClient && workshopClient !== customerName) {
+    if (workshopClient && workshopClient !== primaryRecipient) {
       lines.push(`• *Taller:* ${workshopClient}`)
     }
     lines.push(`• *Vehículo / Motor:* ${vehicleLabel}`)

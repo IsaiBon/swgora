@@ -103,6 +103,54 @@ const clientName = ref('')
 const clientPhone = ref('')
 const clientAddress = ref('')
 const clientWorkshop = ref('')
+const clientNameContainerRef = ref<HTMLElement | null>(null)
+const clientWorkshopContainerRef = ref<HTMLElement | null>(null)
+const isClientNameSuggestionsOpen = ref(false)
+const isClientWorkshopSuggestionsOpen = ref(false)
+
+const getClientWorkshopLabel = (client: Cliente): string => {
+  return (
+    client.especificaciones_tecnicas?.taller ||
+    client.especificaciones_tecnicas?.empresa ||
+    ''
+  ).trim()
+}
+
+const filteredClientNameSuggestions = computed(() => {
+  const q = clientName.value.trim().toLowerCase()
+  const list = allRegisteredClients.value.filter(c => Boolean(c.nombre && c.nombre.trim()))
+  if (!q) return list.slice(0, 10)
+  return list
+    .filter(c => c.nombre.toLowerCase().includes(q) || (c.codigo && c.codigo.toLowerCase().includes(q)))
+    .slice(0, 10)
+})
+
+const filteredClientWorkshopSuggestions = computed(() => {
+  const q = clientWorkshop.value.trim().toLowerCase()
+  const candidates: Array<{ client: Cliente; label: string }> = []
+  const seenLabels = new Set<string>()
+
+  for (const client of allRegisteredClients.value) {
+    const explicitWorkshop = getClientWorkshopLabel(client)
+    const label = explicitWorkshop || (client.tipo === 'Tallerista' ? (client.nombre || '').trim() : '')
+    if (!label) continue
+    if (
+      q &&
+      !label.toLowerCase().includes(q) &&
+      !(client.nombre || '').toLowerCase().includes(q) &&
+      !(client.codigo || '').toLowerCase().includes(q)
+    ) {
+      continue
+    }
+    const key = `${label.toLowerCase()}__${(client.telefono || '').trim()}`
+    if (seenLabels.has(key)) continue
+    seenLabels.add(key)
+    candidates.push({ client, label })
+    if (candidates.length >= 10) break
+  }
+
+  return candidates
+})
 
 // Campos Vehículo / Motor
 const vehicleBrand = ref('')
@@ -625,14 +673,28 @@ const handleMeasureChange = (op: FormOperationItem) => {
 }
 
 const resetRow = (op: FormOperationItem) => {
+  const isDual = isDualMeasureOperation(op)
+  const isSingle = isSingleMeasureOperation(op) || isValveTypeOperation(op)
+
   op.selected = false
   op.quantity = null
   op.unitPrice = null
   op.subtotal = null
   op.lastEdited = undefined
-  op.measure = ''
-  op.measureBanco = ''
-  op.measureBiela = ''
+
+  if (isDual) {
+    delete op.measure
+    op.measureBanco = ''
+    op.measureBiela = ''
+  } else if (isSingle) {
+    op.measure = ''
+    delete op.measureBanco
+    delete op.measureBiela
+  } else {
+    delete op.measure
+    delete op.measureBanco
+    delete op.measureBiela
+  }
 }
 
 const removeCustomOperation = (id: string) => {
@@ -821,7 +883,7 @@ const loadExistingOrder = (order: Order) => {
       selectedCustomerType.value = matched.tipo
     }
   }
-  clientName.value = order.customer
+  clientName.value = order.customer || ''
   clientPhone.value = order.customerPhone || ''
   clientAddress.value = order.customerAddress || ''
   clientWorkshop.value = order.workshop || ''
@@ -857,9 +919,18 @@ const loadExistingOrder = (order: Order) => {
         match.quantity = savedOp.quantity
         match.unitPrice = savedOp.unitPrice
         match.subtotal = savedOp.subtotal
-        match.measure = savedOp.measure || ''
-        match.measureBanco = savedOp.measureBanco || ''
-        match.measureBiela = savedOp.measureBiela || ''
+        if (savedOp.measure) {
+          match.measure = savedOp.measure
+        } else if (match.measure !== undefined) {
+          match.measure = ''
+        }
+        if (savedOp.measureBanco || savedOp.measureBiela || isDualMeasureOperation(savedOp.operation)) {
+          match.measureBanco = savedOp.measureBanco || ''
+          match.measureBiela = savedOp.measureBiela || ''
+        } else if (match.measureBanco !== undefined || match.measureBiela !== undefined) {
+          match.measureBanco = ''
+          match.measureBiela = ''
+        }
       } else {
         // Operación personalizada previa: insertar en la sección de su componente/categoría
         const customItem: FormOperationItem = {
@@ -870,9 +941,13 @@ const loadExistingOrder = (order: Order) => {
           quantity: savedOp.quantity,
           unitPrice: savedOp.unitPrice,
           subtotal: savedOp.subtotal,
-          measure: savedOp.measure || '',
-          measureBanco: savedOp.measureBanco || '',
-          measureBiela: savedOp.measureBiela || '',
+          ...(savedOp.measure ? { measure: savedOp.measure } : {}),
+          ...(savedOp.measureBanco || savedOp.measureBiela || isDualMeasureOperation(savedOp.operation)
+            ? {
+                measureBanco: savedOp.measureBanco || '',
+                measureBiela: savedOp.measureBiela || ''
+              }
+            : {}),
           isCustom: true
         }
         insertOperationInCategory(customItem)
@@ -935,11 +1010,34 @@ const clearClientSearch = () => {
   clientSearchInputRef.value?.focus()
 }
 
-// Cerrar dropdown al hacer clic fuera del contenedor del buscador
+// Cerrar dropdown al hacer clic fuera del contenedor del buscador o campos inline
 const handleClickOutsideClientSearch = (event: MouseEvent) => {
-  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (clientSearchContainerRef.value && !clientSearchContainerRef.value.contains(target)) {
     showClientDropdown.value = false
   }
+  if (clientNameContainerRef.value && !clientNameContainerRef.value.contains(target)) {
+    isClientNameSuggestionsOpen.value = false
+  }
+  if (clientWorkshopContainerRef.value && !clientWorkshopContainerRef.value.contains(target)) {
+    isClientWorkshopSuggestionsOpen.value = false
+  }
+}
+
+const openClientNameSuggestions = async () => {
+  if (allRegisteredClients.value.length === 0 && !isSearchingClients.value) {
+    await loadAllClients()
+  }
+  isClientNameSuggestionsOpen.value = true
+  isClientWorkshopSuggestionsOpen.value = false
+}
+
+const openClientWorkshopSuggestions = async () => {
+  if (allRegisteredClients.value.length === 0 && !isSearchingClients.value) {
+    await loadAllClients()
+  }
+  isClientWorkshopSuggestionsOpen.value = true
+  isClientNameSuggestionsOpen.value = false
 }
 
 const selectCustomer = (client: Cliente) => {
@@ -949,9 +1047,35 @@ const selectCustomer = (client: Cliente) => {
   clientName.value = client.nombre
   clientPhone.value = client.telefono || ''
   clientAddress.value = client.direccion || ''
-  clientWorkshop.value = client.especificaciones_tecnicas?.taller || client.especificaciones_tecnicas?.empresa || ''
+  clientWorkshop.value = getClientWorkshopLabel(client)
   clientSearchQuery.value = ''
   showClientDropdown.value = false
+  isClientNameSuggestionsOpen.value = false
+  isClientWorkshopSuggestionsOpen.value = false
+  formErrors.value.clientName = false
+}
+
+const selectClientNameSuggestion = (client: Cliente) => {
+  selectCustomer(client)
+  isClientNameSuggestionsOpen.value = false
+}
+
+const selectClientWorkshopSuggestion = (client: Cliente, workshopLabel: string) => {
+  selectedCustomerId.value = client.id
+  selectedCustomerCode.value = client.codigo
+  selectedCustomerType.value = client.tipo
+  clientWorkshop.value = workshopLabel
+  if (client.telefono) {
+    clientPhone.value = client.telefono
+  }
+  if (client.direccion) {
+    clientAddress.value = client.direccion
+  }
+  const trimmedNombre = (client.nombre || '').trim()
+  if (trimmedNombre && trimmedNombre.toLowerCase() !== workshopLabel.trim().toLowerCase()) {
+    clientName.value = trimmedNombre
+  }
+  isClientWorkshopSuggestionsOpen.value = false
   formErrors.value.clientName = false
 }
 
@@ -1136,7 +1260,7 @@ const handleSaveOrder = async () => {
       date: orderDate.value,
       status: orderStatus.value,
       type: docType.value,
-      customer: clientName.value.trim() || clientWorkshop.value.trim() || '',
+      customer: clientName.value.trim(),
       customerId: selectedCustomerId.value,
       customerCode: selectedCustomerCode.value,
       workshopCode: isTallerista ? (selectedCustomerCode.value || undefined) : undefined,
@@ -1540,26 +1664,110 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
 
           <!-- Campos del cliente -->
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
-            <div class="space-y-1">
+            <!-- Nombre Completo con autocompletado directo -->
+            <div class="space-y-1 relative" ref="clientNameContainerRef">
               <label class="text-[11px] font-semibold text-slate-500">
                 <span>Nombre Completo (Opcional)</span>
               </label>
-              <input
-                v-model="clientName"
-                type="text"
-                placeholder="Ej. Juan Pérez"
-                class="w-full px-3 py-2 rounded-xl text-xs font-medium transition bg-slate-50/90 border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
-              />
+              <div class="relative">
+                <input
+                  v-model="clientName"
+                  @focus="openClientNameSuggestions"
+                  @input="isClientNameSuggestionsOpen = true"
+                  @keydown.esc="isClientNameSuggestionsOpen = false"
+                  type="text"
+                  placeholder="Ej. Juan Pérez"
+                  class="w-full px-3 py-2 pr-8 rounded-xl text-xs font-medium transition bg-slate-50/90 border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
+                />
+                <button
+                  type="button"
+                  @click="isClientNameSuggestionsOpen ? (isClientNameSuggestionsOpen = false) : openClientNameSuggestions()"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#004B97] p-0.5 transition cursor-pointer"
+                  tabindex="-1"
+                  title="Ver clientes registrados"
+                >
+                  <ChevronDown class="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div
+                v-if="isClientNameSuggestionsOpen && filteredClientNameSuggestions.length > 0"
+                class="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 z-30 max-h-52 overflow-y-auto py-1 divide-y divide-slate-100"
+              >
+                <button
+                  v-for="c in filteredClientNameSuggestions"
+                  :key="`name-${c.id}`"
+                  type="button"
+                  @mousedown.prevent="selectClientNameSuggestion(c)"
+                  class="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#004B97] transition flex items-center justify-between gap-2 cursor-pointer"
+                >
+                  <div class="min-w-0 truncate">
+                    <div class="font-bold text-slate-900 truncate">{{ c.nombre }}</div>
+                    <div v-if="getClientWorkshopLabel(c) || c.telefono" class="text-[10px] text-slate-500 truncate">
+                      {{ [getClientWorkshopLabel(c), c.telefono].filter(Boolean).join(' · ') }}
+                    </div>
+                  </div>
+                  <span class="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                    {{ c.codigo || (c.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
+                  </span>
+                </button>
+              </div>
             </div>
-            <div class="space-y-1">
+
+            <!-- Taller / Empresa con autocompletado directo -->
+            <div class="space-y-1 relative" ref="clientWorkshopContainerRef">
               <label class="text-[11px] font-semibold text-slate-500">Taller / Empresa</label>
-              <input
-                v-model="clientWorkshop"
-                type="text"
-                placeholder="Ej. Taller Mecánico Gómez"
-                class="w-full px-3 py-2 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
-              />
+              <div class="relative">
+                <input
+                  v-model="clientWorkshop"
+                  @focus="openClientWorkshopSuggestions"
+                  @input="isClientWorkshopSuggestionsOpen = true"
+                  @keydown.esc="isClientWorkshopSuggestionsOpen = false"
+                  type="text"
+                  placeholder="Ej. Taller Mecánico Gómez"
+                  class="w-full px-3 py-2 pr-8 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
+                />
+                <button
+                  type="button"
+                  @click="isClientWorkshopSuggestionsOpen ? (isClientWorkshopSuggestionsOpen = false) : openClientWorkshopSuggestions()"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#004B97] p-0.5 transition cursor-pointer"
+                  tabindex="-1"
+                  title="Ver talleres registrados"
+                >
+                  <ChevronDown class="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div
+                v-if="isClientWorkshopSuggestionsOpen && filteredClientWorkshopSuggestions.length > 0"
+                class="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 z-30 max-h-52 overflow-y-auto py-1 divide-y divide-slate-100"
+              >
+                <button
+                  v-for="item in filteredClientWorkshopSuggestions"
+                  :key="`ws-${item.client.id}`"
+                  type="button"
+                  @mousedown.prevent="selectClientWorkshopSuggestion(item.client, item.label)"
+                  class="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#004B97] transition flex items-center justify-between gap-2 cursor-pointer"
+                >
+                  <div class="min-w-0 truncate">
+                    <div class="font-bold text-slate-900 truncate">{{ item.label }}</div>
+                    <div
+                      v-if="(item.client.nombre && item.client.nombre.trim().toLowerCase() !== item.label.toLowerCase()) || item.client.telefono"
+                      class="text-[10px] text-slate-500 truncate"
+                    >
+                      {{ [
+                        item.client.nombre && item.client.nombre.trim().toLowerCase() !== item.label.toLowerCase() ? item.client.nombre : '',
+                        item.client.telefono
+                      ].filter(Boolean).join(' · ') }}
+                    </div>
+                  </div>
+                  <span class="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#F6F0E4] text-[#6E5835] border border-[#E6DAC2] shrink-0">
+                    {{ item.client.codigo || (item.client.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
+                  </span>
+                </button>
+              </div>
             </div>
+
             <div class="space-y-1">
               <label class="text-[11px] font-semibold text-slate-500">Teléfono</label>
               <input

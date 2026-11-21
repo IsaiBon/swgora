@@ -21,6 +21,7 @@ const sharingOrderId = ref<string | null>(null)
 const offscreenOrder = ref<Order | null>(null)
 const offscreenShowSubtotals = ref<boolean>(true)
 const offscreenContainerRef = ref<HTMLElement | null>(null)
+const offscreenDocRef = ref<InstanceType<typeof WorkOrderDocument> | null>(null)
 
 const shareOrder = async (
   order: Order,
@@ -55,6 +56,8 @@ const shareOrder = async (
     if (!targetElement) {
       offscreenShowSubtotals.value = showSubtotals
       offscreenOrder.value = orderToShare
+      await nextTick()
+      await offscreenDocRef.value?.evaluateAutoLayout()
       await nextTick()
       await new Promise((resolve) => setTimeout(resolve, 60))
 
@@ -125,6 +128,7 @@ defineExpose({
     >
       <div ref="offscreenContainerRef" class="bg-white">
         <WorkOrderDocument
+          ref="offscreenDocRef"
           :order="offscreenOrder"
           :showSubtotals="offscreenShowSubtotals"
           variant="pdf"

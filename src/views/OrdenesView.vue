@@ -253,6 +253,7 @@ const handleShareWhatsAppOrder = async (order: Order) => {
 const downloadingOrderId = ref<string | null>(null)
 const orderForDownload = ref<Order | null>(null)
 const downloadContainerRef = ref<HTMLElement | null>(null)
+const downloadDocRef = ref<InstanceType<typeof WorkOrderDocument> | null>(null)
 
 const handleDownloadOrder = async (order: Order) => {
   if (downloadingOrderId.value) return
@@ -261,6 +262,8 @@ const handleDownloadOrder = async (order: Order) => {
 
   try {
     await tallerStore.loadTallerInfo()
+    await nextTick()
+    await downloadDocRef.value?.evaluateAutoLayout()
     await nextTick()
     await new Promise((resolve) => setTimeout(resolve, 80))
 
@@ -778,9 +781,18 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                   </span>
                 </td>
                 <td class="px-5 py-3.5">
-                  <div class="font-bold text-[#0D1B3E]">{{ order.customer || '— Sin Asignar —' }}</div>
-                  <div v-if="order.workshop" class="text-[11px] text-[#004B97] font-medium">{{ order.workshop }}</div>
-                  <div v-else-if="!order.customer" class="text-[11px] text-amber-600 font-semibold">Cliente por asignar</div>
+                  <template v-if="order.customer">
+                    <div class="font-bold text-[#0D1B3E]">{{ order.customer }}</div>
+                    <div v-if="order.workshop" class="text-[11px] text-[#004B97] font-medium">{{ order.workshop }}</div>
+                  </template>
+                  <template v-else-if="order.workshop">
+                    <div class="font-bold text-[#0D1B3E]">{{ order.workshop }}</div>
+                    <div class="text-[11px] text-[#004B97] font-medium">Taller</div>
+                  </template>
+                  <template v-else>
+                    <div class="font-bold text-[#0D1B3E]">— Sin Asignar —</div>
+                    <div class="text-[11px] text-amber-600 font-semibold">Cliente por asignar</div>
+                  </template>
                 </td>
                 <td class="px-5 py-3.5 text-slate-700">
                   <div class="font-semibold text-[#0D1B3E]">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Motor de banco' }}</div>
@@ -919,6 +931,7 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
     >
       <div ref="downloadContainerRef" class="bg-white">
         <WorkOrderDocument
+          ref="downloadDocRef"
           :order="orderForDownload"
           :showSubtotals="typeof orderForDownload.showSubtotals === 'boolean' ? orderForDownload.showSubtotals : true"
           variant="pdf"
