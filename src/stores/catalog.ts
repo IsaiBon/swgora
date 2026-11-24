@@ -51,7 +51,8 @@ export const useCatalogStore = defineStore('catalog', () => {
   const modeloIdsDelMotor = ref<string[]>([])
   const selectedMotorId = ref<string | null>(null)
   const selectedComponentId = ref<string | null>(null) // 'ajuste_valvula' | 'valvula' | 'anillos_motor' | 'tornillos_culata' | null
-  const onlyMotorsWithParts = ref<boolean>(true) // Por defecto: omitir motores sin repuestos asociados en catálogo
+  const motorPartsFilter = ref<'all' | 'with_parts' | 'without_parts'>('all')
+  const onlyMotorsWithParts = ref<boolean>(false) // Por defecto: mostrar todos los motores
 
   // Filtros de búsqueda y catálogo alterno
   const searchQuery = ref<string>('')
@@ -126,8 +127,10 @@ export const useCatalogStore = defineStore('catalog', () => {
       list = list.filter(m => m.fabricante_id === selectedFabricanteId.value)
     }
     // El filtro por modelo ya lo aplica catalogService.getMotores (relación N:M modelo_motor)
-    if (onlyMotorsWithParts.value) {
+    if (motorPartsFilter.value === 'with_parts' || onlyMotorsWithParts.value) {
       list = list.filter(m => m.parts_count === undefined || m.parts_count > 0)
+    } else if (motorPartsFilter.value === 'without_parts') {
+      list = list.filter(m => (m.parts_count || 0) === 0)
     }
     return list
   })
@@ -236,14 +239,18 @@ export const useCatalogStore = defineStore('catalog', () => {
   /**
    * Alternar o configurar la exclusión de motores sin repuestos
    */
-  async function toggleOnlyMotorsWithParts() {
-    onlyMotorsWithParts.value = !onlyMotorsWithParts.value
+  async function setMotorPartsFilter(mode: 'all' | 'with_parts' | 'without_parts') {
+    motorPartsFilter.value = mode
+    onlyMotorsWithParts.value = mode === 'with_parts'
     await fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
   }
 
+  async function toggleOnlyMotorsWithParts() {
+    await setMotorPartsFilter(onlyMotorsWithParts.value ? 'all' : 'with_parts')
+  }
+
   async function setOnlyMotorsWithParts(val: boolean) {
-    onlyMotorsWithParts.value = val
-    await fetchMotores(selectedFabricanteId.value || undefined, selectedModeloId.value || undefined)
+    await setMotorPartsFilter(val ? 'with_parts' : 'all')
   }
 
   /**
@@ -994,6 +1001,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     modeloIdsDelMotor,
     selectedMotorId,
     selectedComponentId,
+    motorPartsFilter,
     onlyMotorsWithParts,
     searchQuery,
     activeBrandFilter,
@@ -1052,6 +1060,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     updateRepuestoPrecio,
     deleteRepuesto,
     deleteRepuestosBulk,
+    setMotorPartsFilter,
     toggleOnlyMotorsWithParts,
     setOnlyMotorsWithParts,
     initCatalog

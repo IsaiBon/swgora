@@ -4606,11 +4606,16 @@ const saveInlinePriceEdit = async (part: RepuestoTecnico) => {
   }
 }
 
-const toggleMotorsWithPartsOnly = async () => {
-  await catalogStore.toggleOnlyMotorsWithParts()
-  showToast(catalogStore.onlyMotorsWithParts 
-    ? 'Filtro activado: Omitiendo motores sin repuestos asociados' 
-    : 'Filtro desactivado: Mostrando todos los motores registrados')
+const setMotorsPartsFilter = async (mode: 'all' | 'with_parts' | 'without_parts') => {
+  await catalogStore.setMotorPartsFilter(mode)
+  motorCurrentPage.value = 1
+  if (mode === 'with_parts') {
+    showToast('Mostrando solo motores con repuestos')
+  } else if (mode === 'without_parts') {
+    showToast('Mostrando solo motores sin repuestos')
+  } else {
+    showToast('Mostrando todos los motores registrados')
+  }
 }
 
 const onGroupCreated = async (newGroup: GrupoRepuesto) => {
@@ -5244,17 +5249,21 @@ onUnmounted(() => {
                 <Edit3 class="w-2.5 h-2.5" />
                 <span>Editar</span>
               </button>
-              <button
-                type="button"
-                @click="toggleMotorsWithPartsOnly"
-                class="text-[9px] font-bold px-1.5 py-0.5 rounded transition cursor-pointer"
-                :class="catalogStore.onlyMotorsWithParts 
-                  ? 'bg-[#04C4D9]/15 text-[#038391] border border-[#04C4D9]/40' 
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'"
-                :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
+              <select
+                :value="catalogStore.motorPartsFilter"
+                @change="setMotorsPartsFilter(($event.target as HTMLSelectElement).value as 'all' | 'with_parts' | 'without_parts')"
+                class="text-[9px] font-bold px-1 py-0.5 rounded border transition cursor-pointer focus:outline-none"
+                :class="catalogStore.motorPartsFilter === 'with_parts'
+                  ? 'bg-[#04C4D9]/15 text-[#038391] border-[#04C4D9]/40'
+                  : catalogStore.motorPartsFilter === 'without_parts'
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'"
+                title="Filtrar motores por disponibilidad de repuestos"
               >
-                {{ catalogStore.onlyMotorsWithParts ? 'C/Rep' : 'Todos' }}
-              </button>
+                <option value="all">Todos</option>
+                <option value="without_parts">Sin repuestos</option>
+                <option value="with_parts">Con repuestos</option>
+              </select>
             </div>
           </div>
 
@@ -5783,18 +5792,36 @@ onUnmounted(() => {
           <span class="text-xs font-mono text-slate-400">({{ brandMotorsList.length }})</span>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100/80 p-0.5 gap-0.5">
           <button
             type="button"
-            @click="toggleMotorsWithPartsOnly"
-            class="text-[11px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            :class="catalogStore.onlyMotorsWithParts 
-              ? 'bg-[#04C4D9]/15 text-[#038391] border-[#04C4D9]/40 hover:bg-[#04C4D9]/25' 
-              : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'"
-            :title="catalogStore.onlyMotorsWithParts ? 'Mostrando solo motores con repuestos' : 'Mostrando todos los motores'"
+            @click="setMotorsPartsFilter('all')"
+            class="text-[11px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+            :class="catalogStore.motorPartsFilter === 'all'
+              ? 'bg-white text-[#004B97] shadow-2xs border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900'"
           >
-            <span class="w-1.5 h-1.5 rounded-full" :class="catalogStore.onlyMotorsWithParts ? 'bg-[#04C4D9]' : 'bg-slate-400'"></span>
-            <span>{{ catalogStore.onlyMotorsWithParts ? 'Solo con repuestos' : 'Todos los motores' }}</span>
+            Todos
+          </button>
+          <button
+            type="button"
+            @click="setMotorsPartsFilter('without_parts')"
+            class="text-[11px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+            :class="catalogStore.motorPartsFilter === 'without_parts'
+              ? 'bg-amber-50 text-amber-800 shadow-2xs border border-amber-300'
+              : 'text-slate-600 hover:text-slate-900'"
+          >
+            Sin repuestos
+          </button>
+          <button
+            type="button"
+            @click="setMotorsPartsFilter('with_parts')"
+            class="text-[11px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+            :class="catalogStore.motorPartsFilter === 'with_parts'
+              ? 'bg-[#04C4D9]/15 text-[#038391] shadow-2xs border border-[#04C4D9]/40'
+              : 'text-slate-600 hover:text-slate-900'"
+          >
+            Con repuestos
           </button>
         </div>
       </div>
@@ -6054,8 +6081,27 @@ onUnmounted(() => {
               </template>
 
               <tr v-if="paginatedMotors.length === 0 && recommendedMotorsList.length === 0">
-                <td :colspan="authStore.isAdmin ? 13 : 12" class="py-8 text-center text-slate-400 bg-white">
-                  No hay motores que coincidan con la búsqueda.
+                <td :colspan="authStore.isAdmin ? 13 : 12" class="py-8 px-4 text-center bg-white">
+                  <p class="text-slate-500 text-xs font-medium mb-3">
+                    No hay motores que coincidan con la búsqueda{{ selectedBrand ? ` en ${selectedBrand.nombre}` : '' }}.
+                  </p>
+                  <div class="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      @click="setMotorsPartsFilter(catalogStore.motorPartsFilter === 'without_parts' ? 'all' : 'without_parts')"
+                      class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold transition cursor-pointer"
+                    >
+                      {{ catalogStore.motorPartsFilter === 'without_parts' ? 'Mostrar todos los motores' : 'Mostrar sin repuestos' }}
+                    </button>
+                    <button
+                      type="button"
+                      @click="openQuickCreateMotorModal(motorInput || '')"
+                      class="px-3 py-1.5 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                    >
+                      <Plus class="w-3.5 h-3.5" />
+                      <span>Agregar nuevo motor</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -6872,6 +6918,15 @@ onUnmounted(() => {
             >
               <ArrowUpDown class="w-3 h-3" />
               <span>{{ currentTableOrientation === 'vertical' ? 'Vista Vertical' : 'Vista Horizontal' }}</span>
+            </button>
+            <button
+              type="button"
+              @click="openAdminCatalogModal('repuesto')"
+              class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#04C4D9] hover:bg-[#038391] text-[#0D1B3E] hover:text-white text-[11px] font-extrabold transition cursor-pointer shadow-2xs"
+              title="Agregar un nuevo repuesto al catálogo"
+            >
+              <Plus class="w-3 h-3 stroke-[2.5]" />
+              <span>Agregar repuesto</span>
             </button>
             <span v-if="selectedMotor" class="font-mono text-[#04C4D9] text-[11px]">
               MOTOR {{ selectedMotor.codigo }}
