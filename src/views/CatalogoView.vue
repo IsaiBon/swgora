@@ -6088,13 +6088,6 @@ onUnmounted(() => {
                   <div class="flex flex-wrap items-center justify-center gap-2">
                     <button
                       type="button"
-                      @click="setMotorsPartsFilter(catalogStore.motorPartsFilter === 'without_parts' ? 'all' : 'without_parts')"
-                      class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold transition cursor-pointer"
-                    >
-                      {{ catalogStore.motorPartsFilter === 'without_parts' ? 'Mostrar todos los motores' : 'Mostrar sin repuestos' }}
-                    </button>
-                    <button
-                      type="button"
                       @click="openQuickCreateMotorModal(motorInput || '')"
                       class="px-3 py-1.5 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
                     >
