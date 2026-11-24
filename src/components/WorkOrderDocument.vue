@@ -365,13 +365,14 @@ const orderGrandTotal = computed(() => {
     id="printable-work-order"
     style="font-family: Arial, Helvetica, sans-serif;"
     :class="[
-      'text-slate-900 relative bg-white mx-auto w-[760px] min-w-[760px] max-w-[760px] print:w-full print:min-w-0 print:max-w-full',
+      'text-slate-900 relative bg-white mx-auto w-[760px] min-w-[760px] max-w-[760px] print:w-full print:min-w-0 print:max-w-full flex flex-col justify-between',
       variant === 'pdf'
-        ? 'p-3.5 rounded-none border-none shadow-none'
-        : 'p-4 sm:p-5 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
+        ? 'p-3.5 rounded-none border-none shadow-none min-h-[990px]'
+        : 'p-4 sm:p-5 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0 print:min-h-[262mm]',
       isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
     ]"
   >
+    <div>
     <!-- Marca de agua para cotizaciones -->
     <div v-if="isCotizacion" class="watermark-text select-none">
       COTIZACIÓN
@@ -706,8 +707,10 @@ const orderGrandTotal = computed(() => {
       </table>
     </div>
 
+    </div>
+
     <!-- 4. PIE DE PÁGINA: MATERIALES + FIRMA + RECUADRO DE TOTALES (TABLA NATIVA 2 COLUMNAS) -->
-    <table class="w-full border-collapse mt-2 no-break" style="table-layout: fixed;">
+    <table class="w-full border-collapse mt-auto pt-3 no-break" style="table-layout: fixed;">
       <tbody>
         <tr>
           <!-- Izquierda: Materiales + Eslogan + Firma -->

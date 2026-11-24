@@ -3069,8 +3069,151 @@ export const exportFamilyToExcel = (
   wsGuide['!cols'] = [{ wch: 40 }, { wch: 105 }]
   XLSX.utils.book_append_sheet(wb, wsGuide, 'Instrucciones')
 
+  // Asegurar que "Repuestos" sea siempre la primera hoja visible al abrir en Excel
+  wb.SheetNames = [
+    'Repuestos',
+    ...wb.SheetNames.filter(name => name !== 'Repuestos')
+  ]
+
   const safeCode = sanitizeExportFilenamePart(grupo.codigo || grupo.nombre)
   const fileName = `familia_${safeCode}_${formatExportDateStamp()}.xlsx`
+  XLSX.writeFile(wb, fileName)
+  return { fileName, exportedPartsCount: repuestos.length }
+}
+
+/**
+ * Exporta todas las familias y todos los repuestos del catálogo en un solo archivo Excel.
+ */
+export const exportAllCatalogToExcel = (
+  grupos: GrupoRepuesto[],
+  repuestos: RepuestoTecnico[],
+  context: {
+    motores: Motor[]
+    fabricantes: Fabricante[]
+    modelos: Modelo[]
+  }
+): { fileName: string; exportedPartsCount: number } => {
+  const wb = XLSX.utils.book_new()
+  const ctx = buildResolvedExportContext(repuestos, context)
+
+  const extraParamKeys: string[] = []
+  for (const g of grupos) {
+    for (const p of g.parametros || []) {
+      if (p.clave && !extraParamKeys.includes(p.clave)) {
+        extraParamKeys.push(p.clave)
+      }
+    }
+  }
+  const hasMultiImages = repuestos.some(p => resolvePartExportMeta(p, ctx).imagenes.length > 1)
+  const partHeaders = [
+    'accion',
+    'id',
+    'codigo_oem',
+    'nombre',
+    'familia',
+    'categoria',
+    'fabricante',
+    'motor',
+    'modelos',
+    'ano',
+    'catalogo_origen',
+    'equivalencias',
+    'precio',
+    'stock',
+    'estado',
+    ...extraParamKeys,
+    'subfilas_json',
+    'descripcion_tecnica',
+    'imagen_url',
+    ...(hasMultiImages ? ['imagenes_json'] : [])
+  ]
+
+  const partRows = repuestos.map(part => {
+    const meta = resolvePartExportMeta(part, ctx)
+    const dims = (part.dimensiones || {}) as Record<string, unknown>
+    const rowObj: Record<string, unknown> = {
+      accion: '',
+      id: part.id,
+      codigo_oem: part.codigo_oem || '',
+      nombre: part.nombre || '',
+      familia: part.categoria || '',
+      categoria: part.categoria || '',
+      fabricante: meta.fabricante,
+      motor: meta.motorCodigo,
+      modelos: meta.modelos.join(', '),
+      ano: meta.anio,
+      catalogo_origen: part.catalogo_origen || 'OEM',
+      equivalencias: meta.equivalenciasText,
+      precio: Number(part.precio ?? 0),
+      stock: Number(part.stock ?? 0),
+      estado: part.estado || 'Disponible'
+    }
+    for (const key of extraParamKeys) {
+      const rawVal = dims[key] ?? (part as unknown as Record<string, unknown>)[key]
+      rowObj[key] = Array.isArray(rawVal)
+        ? rawVal.map(v => String(v || '').trim()).filter(Boolean).join(', ')
+        : rawVal ?? ''
+    }
+    rowObj.subfilas_json = Array.isArray(dims.subfilas) ? JSON.stringify(dims.subfilas) : ''
+    rowObj.descripcion_tecnica =
+      part.descripcion_tecnica || String(part.especificaciones_tecnicas?.descripcion_tecnica || '') || ''
+    rowObj.imagen_url = meta.imagen_url
+    if (hasMultiImages) {
+      rowObj.imagenes_json = meta.imagenes.length > 0 ? JSON.stringify(meta.imagenes) : ''
+    }
+    return rowObj
+  })
+
+  const wsParts =
+    partRows.length > 0
+      ? XLSX.utils.json_to_sheet(partRows, { header: partHeaders })
+      : XLSX.utils.aoa_to_sheet([partHeaders])
+  wsParts['!cols'] = partHeaders.map(col => {
+    if (col === 'id') return { wch: 38 }
+    if (col === 'nombre' || col === 'equivalencias' || col === 'descripcion_tecnica') return { wch: 32 }
+    if (col === 'subfilas_json' || col === 'imagenes_json' || col === 'imagen_url') return { wch: 36 }
+    return { wch: Math.max(15, col.length + 4) }
+  })
+  XLSX.utils.book_append_sheet(wb, wsParts, 'Repuestos')
+
+  const familyHeaders = [
+    'accion',
+    'id',
+    'codigo',
+    'nombre',
+    'categoria',
+    'subsistema',
+    'tipo_vista',
+    'filas_tabla',
+    'icono',
+    'descripcion'
+  ]
+  const familyRows = grupos.map(g => ({
+    accion: '',
+    id: g.id,
+    codigo: g.codigo,
+    nombre: g.nombre,
+    categoria: g.categoria,
+    subsistema: g.subsistema || 'Block',
+    tipo_vista: g.tipo_vista || 'normal',
+    filas_tabla: serializeFilasTablaForExcel(g),
+    icono: g.icono || 'Layers',
+    descripcion: g.descripcion || ''
+  }))
+  const wsFam =
+    familyRows.length > 0
+      ? XLSX.utils.json_to_sheet(familyRows, { header: familyHeaders })
+      : XLSX.utils.aoa_to_sheet([familyHeaders])
+  XLSX.utils.book_append_sheet(wb, wsFam, 'Familias')
+
+  if (ctx.usedMotors.length > 0) {
+    const motorRows = ctx.usedMotors.map(m => serializeMotorForExport(m, ctx))
+    const wsMotors = XLSX.utils.json_to_sheet(motorRows, { header: MOTOR_TEMPLATE_COLUMNS })
+    wsMotors['!cols'] = MOTOR_TEMPLATE_COLUMNS.map(col => ({ wch: Math.max(15, col.length + 3) }))
+    XLSX.utils.book_append_sheet(wb, wsMotors, 'Motores')
+  }
+
+  const fileName = `catalogo_completo_swgora_${formatExportDateStamp()}.xlsx`
   XLSX.writeFile(wb, fileName)
   return { fileName, exportedPartsCount: repuestos.length }
 }

@@ -445,7 +445,7 @@ const selectMotor = (mot: Motor | null) => {
   } else {
     partMotorId.value = mot.id
     const brand = getBrandName(mot.fabricante_id)
-    motorSearchQuery.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : (brand ? ` (${brand})` : '')}`
+    motorSearchQuery.value = mot.codigo
     // Cascada inversa: sincronizar Marca, Modelo y Año si el motor ya los tiene asociados
     if (mot.fabricante_id && brand) {
       partMarca.value = brand.toUpperCase()
@@ -1181,8 +1181,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     partMotorId.value = part.motor_id
     const mot = part.motor || catalogStore.motores.find(m => m.id === part.motor_id)
     if (mot) {
-      const brand = getBrandName(mot.fabricante_id)
-      motorSearchQuery.value = `${mot.codigo}${mot.nombre_comercial ? ` - ${mot.nombre_comercial}` : (brand ? ` (${brand})` : '')}`
+      motorSearchQuery.value = mot.codigo
     } else {
       motorSearchQuery.value = part.motor_id
     }
@@ -2840,7 +2839,7 @@ onUnmounted(() => {
                         <div class="flex items-center gap-1.5 flex-wrap">
                           <strong class="font-extrabold text-[#004B97]">{{ mot.codigo }}</strong>
                           <span class="text-slate-500 font-medium text-[11px]">{{ getBrandName(mot.fabricante_id) }}</span>
-                          <span v-if="mot.nombre_comercial" class="text-slate-600 text-[10px]">({{ mot.nombre_comercial }})</span>
+                          <span v-if="mot.nombre_comercial && mot.nombre_comercial.toLowerCase() !== `motor ${mot.codigo.toLowerCase()}`" class="text-slate-600 text-[10px]">({{ mot.nombre_comercial }})</span>
                         </div>
                       </div>
                       <Check v-if="partMotorId === mot.id" class="w-3.5 h-3.5 text-[#04C4D9] shrink-0" />

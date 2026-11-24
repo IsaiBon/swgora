@@ -18,6 +18,7 @@ import {
   downloadCatalogJsonTemplate,
   exportFamilyToExcel,
   exportFamilyToJson,
+  exportAllCatalogToExcel,
   parseCatalogImportFile,
   parseCatalogJsonText,
   executeCatalogImport,
@@ -115,8 +116,10 @@ const selectedTemplateGroup = computed(() => {
   )
 })
 
+const isExportAllSelected = computed(() => exportFamilyId.value === '__ALL__')
+
 const selectedExportGroup = computed<GrupoRepuesto | null>(() => {
-  if (!exportFamilyId.value) return null
+  if (!exportFamilyId.value || exportFamilyId.value === '__ALL__') return null
   return (
     catalogStore.grupos.find(
       g => g.id === exportFamilyId.value || g.codigo === exportFamilyId.value
@@ -207,26 +210,72 @@ const applyPostParseState = (res: CatalogImportParseResult) => {
 }
 
 const handleExportFamily = async (format: 'excel' | 'json') => {
+  if (isExportingFamily.value) return
+  const exportAll = isExportAllSelected.value
   const grupo = selectedExportGroup.value
-  if (!grupo || isExportingFamily.value) return
+  if (!exportAll && !grupo) return
 
   isExportingFamily.value = true
   exportFeedback.value = null
   try {
-    const allParts = await catalogService.getAllRepuestosForGrupoExport(grupo)
     const exportCtx = {
       motores: catalogStore.motores,
       fabricantes: catalogStore.fabricantes,
       modelos: catalogStore.modelos
     }
+
+    if (exportAll) {
+      const seen = new Set<string>()
+      const allParts: RepuestoTecnico[] = []
+      for (const g of catalogStore.grupos) {
+        const gParts = await catalogService.getAllRepuestosForGrupoExport(g)
+        for (const p of gParts) {
+          if (!seen.has(p.id)) {
+            seen.add(p.id)
+            allParts.push(p)
+          }
+        }
+      }
+      if (format === 'excel') {
+        const res = exportAllCatalogToExcel(catalogStore.grupos, allParts, exportCtx)
+        exportFeedback.value = {
+          type: 'success',
+          text: `✓ Catálogo completo exportado en ${res.fileName} (${res.exportedPartsCount} repuesto(s) en la hoja Repuestos).`
+        }
+      } else {
+        const payload = {
+          exported_at: new Date().toISOString(),
+          total_familias: catalogStore.grupos.length,
+          total_repuestos: allParts.length,
+          familias: catalogStore.grupos,
+          repuestos: allParts
+        }
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `catalogo_completo_swgora_${new Date().toISOString().slice(0, 10)}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        exportFeedback.value = {
+          type: 'success',
+          text: `✓ Catálogo completo exportado en JSON (${allParts.length} repuesto(s)).`
+        }
+      }
+      return
+    }
+
+    const allParts = await catalogService.getAllRepuestosForGrupoExport(grupo!)
     const res =
       format === 'excel'
-        ? exportFamilyToExcel(grupo, allParts, exportCtx)
-        : exportFamilyToJson(grupo, allParts, exportCtx)
+        ? exportFamilyToExcel(grupo!, allParts, exportCtx)
+        : exportFamilyToJson(grupo!, allParts, exportCtx)
 
     exportFeedback.value = {
       type: 'success',
-      text: `✓ Familia "${grupo.nombre}" exportada en ${res.fileName} (${res.exportedPartsCount} repuesto(s)). Edita o marca "eliminar" en el archivo y vuelve a cargarlo aquí.`
+      text: `✓ Familia "${grupo!.nombre}" exportada en ${res.fileName} (${res.exportedPartsCount} repuesto(s) en la hoja Repuestos). Edita o marca "eliminar" en el archivo y vuelve a cargarlo aquí.`
     }
   } catch (err) {
     exportFeedback.value = {
@@ -896,6 +945,9 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                     :disabled="isExportingFamily || catalogStore.grupos.length === 0"
                     class="w-full px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-[#04C4D9] disabled:opacity-60"
                   >
+                    <option value="__ALL__">
+                      Todo el Catálogo (Todas las familias y repuestos)
+                    </option>
                     <option
                       v-for="g in catalogStore.grupos"
                       :key="`exp-grp-${g.id}`"
@@ -909,7 +961,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <div class="md:col-span-3">
                   <button
                     type="button"
-                    :disabled="isExportingFamily || !selectedExportGroup"
+                    :disabled="isExportingFamily || (!selectedExportGroup && !isExportAllSelected)"
                     @click="handleExportFamily('excel')"
                     class="w-full px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
                   >
@@ -922,7 +974,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                 <div class="md:col-span-3">
                   <button
                     type="button"
-                    :disabled="isExportingFamily || !selectedExportGroup"
+                    :disabled="isExportingFamily || (!selectedExportGroup && !isExportAllSelected)"
                     @click="handleExportFamily('json')"
                     class="w-full px-3 py-2 rounded-lg bg-[#004B97] hover:bg-[#0D1B3E] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer disabled:opacity-50"
                   >

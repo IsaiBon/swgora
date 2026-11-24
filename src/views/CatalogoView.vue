@@ -366,6 +366,14 @@ const isSavingQuickMotor = ref<boolean>(false)
 const confirmDeleteMotor = ref<boolean>(false)
 const isDeletingQuickMotor = ref<boolean>(false)
 
+// Selección múltiple y eliminación masiva de motores (estado en memoria)
+const selectedMotorIds = ref<string[]>([])
+const confirmBulkDeleteMotors = ref<boolean>(false)
+const isBulkDeletingMotors = ref<boolean>(false)
+
+// Flujo cruzado entre modales de Motor <-> Modelo
+const pendingCrossModalReturn = ref<'motor' | 'model' | null>(null)
+
 const isQuickCreateModelOpen = ref<boolean>(false)
 const editingModelId = ref<string | null>(null)
 const quickModelBrandId = ref<string>('')
@@ -589,11 +597,132 @@ const handleSaveQuickMotor = async () => {
         anios: quickMotorYears.value.trim() || undefined
       })
       isQuickCreateMotorOpen.value = false
-      await handleSelectMotor(created)
-      showToast(`✓ Motor "${created.codigo}" registrado y seleccionado`)
+      if (pendingCrossModalReturn.value === 'model') {
+        pendingCrossModalReturn.value = null
+        if (!quickModelAvailableMotors.value.some(m => m.id === created.id)) {
+          quickModelAvailableMotors.value = [created, ...quickModelAvailableMotors.value]
+        }
+        if (!quickModelMotorIds.value.includes(created.id)) {
+          quickModelMotorIds.value = [...quickModelMotorIds.value, created.id]
+        }
+        isQuickCreateModelOpen.value = true
+        showToast(`✓ Motor "${created.codigo}" registrado y vinculado al modelo`)
+      } else {
+        await handleSelectMotor(created)
+        showToast(`✓ Motor "${created.codigo}" registrado y seleccionado`)
+      }
     }
   } finally {
     isSavingQuickMotor.value = false
+  }
+}
+
+const openModelFromMotorModal = async () => {
+  const brandId = quickMotorBrandId.value || selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || ''
+  isQuickCreateMotorOpen.value = false
+  pendingCrossModalReturn.value = 'motor'
+  await openQuickCreateModelModal('')
+  if (brandId) {
+    quickModelBrandId.value = brandId
+    await loadQuickModelMotors(brandId)
+  }
+}
+
+const openMotorFromModelModal = () => {
+  const brandId = quickModelBrandId.value || selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || ''
+  isQuickCreateModelOpen.value = false
+  pendingCrossModalReturn.value = 'model'
+  openQuickCreateMotorModal('')
+  if (brandId) {
+    quickMotorBrandId.value = brandId
+  }
+}
+
+const closeQuickMotorModal = () => {
+  isQuickCreateMotorOpen.value = false
+  if (pendingCrossModalReturn.value === 'model') {
+    pendingCrossModalReturn.value = null
+    isQuickCreateModelOpen.value = true
+  }
+}
+
+const closeQuickModelModal = () => {
+  isQuickCreateModelOpen.value = false
+  if (pendingCrossModalReturn.value === 'motor') {
+    pendingCrossModalReturn.value = null
+    isQuickCreateMotorOpen.value = true
+  }
+}
+
+const toggleSelectMotorRow = (motorId: string) => {
+  if (!authStore.isAdmin) return
+  confirmBulkDeleteMotors.value = false
+  if (selectedMotorIds.value.includes(motorId)) {
+    selectedMotorIds.value = selectedMotorIds.value.filter(id => id !== motorId)
+  } else {
+    selectedMotorIds.value = [...selectedMotorIds.value, motorId]
+  }
+}
+
+const allPageMotorsSelected = computed<boolean>(() => {
+  if (!authStore.isAdmin || paginatedMotors.value.length === 0) return false
+  return paginatedMotors.value.every(m => selectedMotorIds.value.includes(m.id))
+})
+
+const toggleSelectAllPageMotors = () => {
+  if (!authStore.isAdmin || paginatedMotors.value.length === 0) return
+  confirmBulkDeleteMotors.value = false
+  const pageIds = paginatedMotors.value.map(m => m.id)
+  if (allPageMotorsSelected.value) {
+    selectedMotorIds.value = selectedMotorIds.value.filter(id => !pageIds.includes(id))
+  } else {
+    selectedMotorIds.value = Array.from(new Set([...selectedMotorIds.value, ...pageIds]))
+  }
+}
+
+const selectAllFilteredMotors = () => {
+  if (!authStore.isAdmin || brandMotorsList.value.length === 0) return
+  confirmBulkDeleteMotors.value = false
+  selectedMotorIds.value = Array.from(new Set([...selectedMotorIds.value, ...brandMotorsList.value.map(m => m.id)]))
+}
+
+const clearSelectedMotors = () => {
+  selectedMotorIds.value = []
+  confirmBulkDeleteMotors.value = false
+}
+
+const handleBulkDeleteMotors = async () => {
+  if (!authStore.isAdmin || selectedMotorIds.value.length === 0 || isBulkDeletingMotors.value) return
+  isBulkDeletingMotors.value = true
+  const idsToDelete = [...selectedMotorIds.value]
+  let deletedCount = 0
+  let failedCount = 0
+  try {
+    for (const id of idsToDelete) {
+      try {
+        await catalogStore.deleteMotor(id)
+        deletedCount++
+        selectedMotorIds.value = selectedMotorIds.value.filter(selId => selId !== id)
+        if (selectedMotor.value?.id === id) {
+          selectedMotor.value = null
+          motorInput.value = ''
+        }
+      } catch {
+        failedCount++
+      }
+    }
+    confirmBulkDeleteMotors.value = false
+    if (failedCount > 0) {
+      showToast(`✓ ${deletedCount} motor(es) eliminado(s); ${failedCount} no se pudieron eliminar`)
+    } else {
+      showToast(
+        deletedCount === 1
+          ? '✓ 1 motor eliminado del catálogo'
+          : `✓ ${deletedCount} motores eliminados del catálogo`
+      )
+    }
+  } finally {
+    isBulkDeletingMotors.value = false
   }
 }
 
@@ -737,12 +866,23 @@ const handleSaveQuickModel = async () => {
       )
       await catalogStore.syncModeloMotores(created.id, motorsToLink)
       isQuickCreateModelOpen.value = false
-      await handleSelectModel(created)
-      showToast(
-        motorsToLink.length > 0
-          ? `✓ Modelo "${created.nombre}" registrado y vinculado con ${motorsToLink.length} motor(es)`
-          : `✓ Modelo "${created.nombre}" registrado y seleccionado`
-      )
+      if (pendingCrossModalReturn.value === 'motor') {
+        pendingCrossModalReturn.value = null
+        if (!quickMotorModelId.value) {
+          quickMotorModelId.value = created.id
+        } else if (!quickMotorAdditionalModelIds.value.includes(created.id) && quickMotorModelId.value !== created.id) {
+          quickMotorAdditionalModelIds.value = [...quickMotorAdditionalModelIds.value, created.id]
+        }
+        isQuickCreateMotorOpen.value = true
+        showToast(`✓ Modelo "${created.nombre}" creado y asignado al motor`)
+      } else {
+        await handleSelectModel(created)
+        showToast(
+          motorsToLink.length > 0
+            ? `✓ Modelo "${created.nombre}" registrado y vinculado con ${motorsToLink.length} motor(es)`
+            : `✓ Modelo "${created.nombre}" registrado y seleccionado`
+        )
+      }
     }
   } catch (err) {
     showToast(err instanceof Error ? err.message : 'No se pudo guardar el modelo')
@@ -5659,11 +5799,87 @@ onUnmounted(() => {
           <span class="text-[11px] text-[#BFEBF2] font-semibold font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
         </div>
 
+        <!-- Barra contextual de eliminación masiva de motores (Solo Administradores) -->
+        <div
+          v-if="authStore.isAdmin && selectedMotorIds.length > 0"
+          class="bg-rose-50 border-b border-rose-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600 text-white font-bold shadow-2xs">
+              <Check class="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>
+                {{ selectedMotorIds.length }}
+                {{ selectedMotorIds.length === 1 ? 'motor seleccionado' : 'motores seleccionados' }}
+              </span>
+            </span>
+
+            <button
+              v-if="brandMotorsList.length > paginatedMotors.length && selectedMotorIds.length < brandMotorsList.length"
+              type="button"
+              @click="selectAllFilteredMotors"
+              class="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-100/70 border border-rose-200 text-rose-800 font-semibold transition cursor-pointer"
+            >
+              Seleccionar todos los filtrados ({{ brandMotorsList.length }})
+            </button>
+
+            <button
+              type="button"
+              @click="clearSelectedMotors"
+              class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold transition cursor-pointer"
+            >
+              Limpiar selección
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <template v-if="!confirmBulkDeleteMotors">
+              <button
+                type="button"
+                @click="confirmBulkDeleteMotors = true"
+                class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold inline-flex items-center gap-1.5 shadow-sm transition active:scale-[0.98] cursor-pointer"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+                <span>Eliminar seleccionados ({{ selectedMotorIds.length }})</span>
+              </button>
+            </template>
+            <template v-else>
+              <span class="text-[11px] font-bold text-rose-800">¿Confirmar eliminación?</span>
+              <button
+                type="button"
+                @click="confirmBulkDeleteMotors = false"
+                :disabled="isBulkDeletingMotors"
+                class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 font-semibold hover:bg-slate-100 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                @click="handleBulkDeleteMotors"
+                :disabled="isBulkDeletingMotors"
+                class="px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold inline-flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
+              >
+                <Loader2 v-if="isBulkDeletingMotors" class="w-3.5 h-3.5 animate-spin" />
+                <Trash2 v-else class="w-3.5 h-3.5" />
+                <span>Sí, eliminar ({{ selectedMotorIds.length }})</span>
+              </button>
+            </template>
+          </div>
+        </div>
+
         <!-- Contenedor con scroll interno -->
         <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-separate border-spacing-0">
             <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
               <tr>
+                <th v-if="authStore.isAdmin" class="py-2 px-2 w-9 text-center border-r border-b border-slate-200 bg-slate-50">
+                  <input
+                    type="checkbox"
+                    :checked="allPageMotorsSelected"
+                    @change="toggleSelectAllPageMotors"
+                    class="w-3.5 h-3.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    title="Seleccionar todos los motores de esta página"
+                  />
+                </th>
                 <th class="py-2 px-2.5 w-9 text-center border-r border-b border-slate-200 bg-slate-50"></th>
                 <th class="py-2 px-3 w-24 border-r border-b border-slate-200 bg-slate-50">ID / Ref</th>
                 <th class="py-2 px-3.5 w-44 border-r border-b border-slate-200 bg-slate-50">Código Motor</th>
@@ -5700,7 +5916,7 @@ onUnmounted(() => {
             <tbody v-else class="divide-y divide-slate-100">
               <template v-for="section in motorTableSections" :key="section.id">
                 <tr v-if="section.id === 'recommended'" class="bg-slate-50/90">
-                  <td colspan="12" class="py-1.5 px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-y border-slate-200">
+                  <td :colspan="authStore.isAdmin ? 13 : 12" class="py-1.5 px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-y border-slate-200">
                     Recomendaciones
                   </td>
                 </tr>
@@ -5711,11 +5927,24 @@ onUnmounted(() => {
                   @click="handleSelectMotor(mot)"
                   :class="[
                     'transition cursor-pointer group',
-                    selectedMotor?.id === mot.id
-                      ? 'bg-cyan-50/80 font-bold'
-                      : 'hover:bg-slate-50 text-slate-700'
+                    selectedMotorIds.includes(mot.id)
+                      ? 'bg-rose-50/70'
+                      : selectedMotor?.id === mot.id
+                        ? 'bg-cyan-50/80 font-bold'
+                        : 'hover:bg-slate-50 text-slate-700'
                   ]"
                 >
+                  <!-- 0. Checkbox selección masiva (Solo Administradores) -->
+                  <td v-if="authStore.isAdmin" class="py-2 px-2 text-center align-middle border-r border-slate-100" @click.stop>
+                    <input
+                      type="checkbox"
+                      :checked="selectedMotorIds.includes(mot.id)"
+                      @change="toggleSelectMotorRow(mot.id)"
+                      class="w-3.5 h-3.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                      title="Seleccionar motor para acciones en lote"
+                    />
+                  </td>
+
                   <!-- 1. Icono de Información (i) -->
                   <td class="py-2 px-2.5 text-center align-middle border-r border-slate-100">
                     <button
@@ -5814,7 +6043,7 @@ onUnmounted(() => {
               </template>
 
               <tr v-if="paginatedMotors.length === 0 && recommendedMotorsList.length === 0">
-                <td colspan="12" class="py-8 text-center text-slate-400 bg-white">
+                <td :colspan="authStore.isAdmin ? 13 : 12" class="py-8 text-center text-slate-400 bg-white">
                   No hay motores que coincidan con la búsqueda.
                 </td>
               </tr>
@@ -6874,22 +7103,13 @@ onUnmounted(() => {
                     </div>
 
                     <div class="min-w-0">
-                      <div class="flex items-center gap-1.5 flex-wrap">
-                        <span 
-                          v-if="getPartCatalogBrand(part)"
-                          class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
-                          :class="getBrandBadgeClass(getPartCatalogBrand(part))"
-                        >
-                          {{ getPartCatalogBrand(part) }}
-                        </span>
-                        <div class="font-bold text-slate-900 text-xs leading-tight">
-                          {{ part.nombre }}
-                        </div>
+                      <div class="font-bold text-slate-900 text-xs leading-tight">
+                        {{ part.nombre }}
                       </div>
 
-                      <!-- Badges de vehículo, año y cilindros (Información técnica estilo Dokuro / TecDoc) -->
+                      <!-- Badges de vehículo, código de motor, año y cilindros -->
                       <div 
-                        v-if="getPartVehicleModelsLabel(part) || (part.especificaciones_tecnicas as any)?.ano || (part.especificaciones_tecnicas as any)?.cilindros"
+                        v-if="getPartVehicleModelsLabel(part) || part.motor?.codigo || ((part.especificaciones_tecnicas as any)?.motores_compatibles && (part.especificaciones_tecnicas as any).motores_compatibles.length > 0) || (part.especificaciones_tecnicas as any)?.ano || (part.especificaciones_tecnicas as any)?.cilindros"
                         class="flex flex-wrap items-center gap-1 mt-1 text-[10px]"
                       >
                         <span 
@@ -6898,6 +7118,13 @@ onUnmounted(() => {
                           title="Modelo de vehículo y aplicación técnica"
                         >
                           {{ getPartVehicleModelsLabel(part) }}
+                        </span>
+                        <span 
+                          v-if="part.motor?.codigo || ((part.especificaciones_tecnicas as any)?.motores_compatibles && (part.especificaciones_tecnicas as any).motores_compatibles.length > 0)"
+                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 text-[#038391] font-mono font-bold border border-cyan-200"
+                          title="Código de motor"
+                        >
+                          {{ part.motor?.codigo || (part.especificaciones_tecnicas as any).motores_compatibles.join('/') }}
                         </span>
                         <span 
                           v-if="(part.especificaciones_tecnicas as any)?.ano && (part.especificaciones_tecnicas as any)?.ano !== '—'"
@@ -6914,19 +7141,6 @@ onUnmounted(() => {
                           {{ (part.especificaciones_tecnicas as any).cilindros }}
                         </span>
                       </div>
-
-                      <span class="text-[10px] font-semibold text-slate-400 uppercase mt-0.5 block">
-                        <span v-if="part.motor?.fabricante?.nombre || (part.motor?.fabricante_id && getBrandName(part.motor.fabricante_id)) || ((part.especificaciones_tecnicas as any)?.fabricantes && (part.especificaciones_tecnicas as any).fabricantes[0])" class="text-slate-600 font-bold mr-1">
-                          {{ part.motor?.fabricante?.nombre || (part.motor?.fabricante_id ? getBrandName(part.motor.fabricante_id) : undefined) || (part.especificaciones_tecnicas as any).fabricantes[0] }} •
-                        </span>
-                        {{ part.subsistema }}
-                        <span v-if="part.motor?.codigo || ((part.especificaciones_tecnicas as any)?.motores_compatibles && (part.especificaciones_tecnicas as any).motores_compatibles.length > 0)">
-                          • Motor {{ part.motor?.codigo || (part.especificaciones_tecnicas as any).motores_compatibles.join('/') }}
-                        </span>
-                        <span v-if="getPartCatalogBrand(part)" class="text-slate-500 font-bold">
-                          • Catálogo {{ getPartCatalogBrand(part) }}
-                        </span>
-                      </span>
                     </div>
                   </div>
                 </td>
@@ -8706,7 +8920,7 @@ onUnmounted(() => {
             </div>
             <button
               type="button"
-              @click="isQuickCreateMotorOpen = false"
+              @click="closeQuickMotorModal"
               class="p-1 text-slate-400 hover:text-white rounded-lg transition"
             >
               <X class="w-4 h-4" />
@@ -8750,13 +8964,23 @@ onUnmounted(() => {
                   <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
                     Modelo(s) de Vehículo
                   </label>
-                  <button
-                    type="button"
-                    @click="addQuickMotorModelRow()"
-                    class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] transition cursor-pointer"
-                  >
-                    + Agregar modelo
-                  </button>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      @click="openModelFromMotorModal()"
+                      class="text-[10px] font-extrabold text-emerald-700 hover:text-emerald-900 transition cursor-pointer"
+                      title="Crear un modelo nuevo que no aparece en la lista"
+                    >
+                      + Nuevo modelo
+                    </button>
+                    <button
+                      type="button"
+                      @click="addQuickMotorModelRow()"
+                      class="text-[10px] font-extrabold text-[#038391] hover:text-[#004B97] transition cursor-pointer"
+                    >
+                      + Agregar otro
+                    </button>
+                  </div>
                 </div>
                 <select
                   v-model="quickMotorModelId"
@@ -8939,7 +9163,7 @@ onUnmounted(() => {
             </div>
             <button
               type="button"
-              @click="isQuickCreateModelOpen = false"
+              @click="closeQuickModelModal"
               class="p-1 text-slate-400 hover:text-white rounded-lg transition"
             >
               <X class="w-4 h-4" />
@@ -9002,9 +9226,19 @@ onUnmounted(() => {
                 <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
                   Vincular con Motor(es)
                 </label>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="quickModelMotorIds.length > 0 ? 'bg-cyan-100 text-[#004B97]' : 'bg-slate-200/70 text-slate-500'">
-                  {{ quickModelMotorIds.length }} seleccionado(s)
-                </span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    @click="openMotorFromModelModal"
+                    class="text-[10px] font-extrabold text-emerald-700 hover:text-emerald-900 transition cursor-pointer"
+                    title="Crear un nuevo motor para vincularlo"
+                  >
+                    + Nuevo motor
+                  </button>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :class="quickModelMotorIds.length > 0 ? 'bg-cyan-100 text-[#004B97]' : 'bg-slate-200/70 text-slate-500'">
+                    {{ quickModelMotorIds.length }} seleccionado(s)
+                  </span>
+                </div>
               </div>
 
               <!-- Chips de motores seleccionados -->
