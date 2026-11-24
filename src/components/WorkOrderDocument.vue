@@ -365,14 +365,14 @@ const orderGrandTotal = computed(() => {
     id="printable-work-order"
     style="font-family: Arial, Helvetica, sans-serif;"
     :class="[
-      'text-slate-900 relative bg-white mx-auto w-[760px] min-w-[760px] max-w-[760px] print:w-full print:min-w-0 print:max-w-full flex flex-col justify-between',
+      'text-slate-900 relative bg-white mx-auto w-[760px] min-w-[760px] max-w-[760px] min-h-[990px] print:w-full print:min-w-0 print:max-w-full print:min-h-[262mm] flex flex-col justify-between',
       variant === 'pdf'
-        ? 'p-3.5 rounded-none border-none shadow-none min-h-[990px]'
-        : 'p-4 sm:p-5 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0 print:min-h-[262mm]',
+        ? 'p-3.5 rounded-none border-none shadow-none'
+        : 'p-4 sm:p-5 shadow-md rounded-xl border border-slate-200 print:shadow-none print:border-none print:rounded-none print:p-0',
       isCotizacion ? 'watermark-cotizacion' : 'order-formal-theme'
     ]"
   >
-    <div>
+    <div class="flex-1 flex flex-col">
     <!-- Marca de agua para cotizaciones -->
     <div v-if="isCotizacion" class="watermark-text select-none">
       COTIZACIÓN
@@ -534,8 +534,8 @@ const orderGrandTotal = computed(() => {
     <!-- 3. TABLA DE OPERACIONES Y REPUESTOS (ADAPTABLE: 1 SECCIÓN O 2 SECCIONES) -->
     
     <!-- CASO A: 1 SECCIÓN (COLUMNA ÚNICA COMPLETA) - Si cabe en 1 hoja -->
-    <div v-if="!isDoubleSection" class="border-2 border-slate-900 rounded overflow-hidden bg-white mb-2">
-      <table class="w-full text-[10px] border-collapse" style="table-layout: fixed;">
+    <div v-if="!isDoubleSection" class="border-2 border-slate-900 rounded overflow-hidden bg-white mb-2 flex-1 flex flex-col">
+      <table class="w-full h-full text-[10px] border-collapse flex-1" style="table-layout: fixed;">
         <thead class="bg-slate-100 border-b-2 border-slate-900 font-bold uppercase text-slate-900 text-[8.5px]">
           <tr>
             <th class="py-1 px-1.5 text-center w-12 border-r border-slate-400">CANT.</th>
@@ -578,6 +578,13 @@ const orderGrandTotal = computed(() => {
                 </td>
               </tr>
             </template>
+            <!-- Fila de relleno para extender las líneas de la tabla hasta el pie de página -->
+            <tr style="height: 100%;" class="bg-white">
+              <td class="border-r border-slate-200">&nbsp;</td>
+              <td class="border-r border-slate-200">&nbsp;</td>
+              <td class="border-r border-slate-200">&nbsp;</td>
+              <td>&nbsp;</td>
+            </tr>
           </template>
           <tr v-else class="border-b border-slate-200">
             <td colspan="4" class="py-8 px-2 text-center text-[10px] text-slate-400 italic">
@@ -589,8 +596,8 @@ const orderGrandTotal = computed(() => {
     </div>
 
     <!-- CASO B: 2 SECCIONES (DOBLE COLUMNA PARALELA) - Si no cabe en 1 sección en 1 hoja -->
-    <div v-else class="border-2 border-slate-900 rounded overflow-hidden bg-white mb-2">
-      <table class="w-full border-collapse" style="table-layout: fixed;">
+    <div v-else class="border-2 border-slate-900 rounded overflow-hidden bg-white mb-2 flex-1 flex flex-col">
+      <table class="w-full h-full border-collapse flex-1" style="table-layout: fixed;">
         <tbody>
           <tr>
             <!-- ================= SECCIÓN IZQUIERDA: BIELAS, BANCADA, CIGÜEÑAL, CULATA ================= -->

@@ -1144,9 +1144,22 @@ function generarPasswordSeguraModal() {
   esNuevaPasswordVisible.value = true
 }
 
+function puedeVerPasswordDeUsuario(objetivo: Perfil): boolean {
+  const currentEmail = (auth.user?.email || '').trim().toLowerCase()
+  const targetEmail = (objetivo.email || '').trim().toLowerCase()
+  if (currentEmail === 'admin@jrblanco.com') return true
+  if (targetEmail === 'admin@jrblanco.com') return false
+  if (currentEmail === 'jrblanco@gmail.com') return true
+  if (targetEmail && targetEmail === currentEmail) return true
+
+  if (normalizeRole(objetivo.rol) === 'Administrador') return false
+  return true
+}
+
 function credencialDeUsuario(usuario: Perfil): string {
   // Depender de versionCredenciales para reactividad inmediata al guardar
   void versionCredenciales.value
+  if (!puedeVerPasswordDeUsuario(usuario)) return ''
   return obtenerCredencialUsuario(usuario)
 }
 
@@ -1173,7 +1186,9 @@ async function copiarTexto(texto: string, clave: string) {
 }
 
 async function copiarFichaAcceso(usuario: Perfil) {
-  const pwd = credencialDeUsuario(usuario) || 'No registrada'
+  const pwd = puedeVerPasswordDeUsuario(usuario)
+    ? (credencialDeUsuario(usuario) || 'No registrada')
+    : 'Restringida'
   const ind = parseIndependentRole(usuario.rol)
   const lineaTelefono = usuario.telefono?.trim() ? `\nTeléfono: ${usuario.telefono.trim()}` : ''
   const lineaExtra = ind.isIndependent
@@ -2826,12 +2841,14 @@ onMounted(() => {
                   <div class="mt-1 flex items-center justify-between gap-1.5">
                     <span class="truncate font-mono text-xs font-bold text-[#0D1B3E]">
                       {{
-                        mostrarPasswordEnModal
-                          ? credencialDeUsuario(usuarioCredencial) || 'No guardada'
-                          : '••••••••••'
+                        !puedeVerPasswordDeUsuario(usuarioCredencial)
+                          ? '•••••••••• (Restringida)'
+                          : mostrarPasswordEnModal
+                            ? credencialDeUsuario(usuarioCredencial) || 'No guardada'
+                            : '••••••••••'
                       }}
                     </span>
-                    <div class="flex shrink-0 items-center gap-1">
+                    <div v-if="puedeVerPasswordDeUsuario(usuarioCredencial)" class="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
                         class="rounded-lg bg-white p-1.5 text-slate-600 shadow-xs transition hover:text-[#004B97] cursor-pointer"

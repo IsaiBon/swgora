@@ -343,6 +343,7 @@ function doesModelRangeMatchAnyFilter(anioInicio: number, anioFin: number | null
 
 // Estado para modales rápidos de creación / edición de Marca, Motor, Modelo y Año desde la barra superior
 const isQuickCreateBrandOpen = ref<boolean>(false)
+const quickBrandInputRef = ref<HTMLInputElement | null>(null)
 const editingBrandId = ref<string | null>(null)
 const quickBrandName = ref<string>('')
 const quickBrandCountry = ref<string>('Japón')
@@ -389,6 +390,7 @@ const confirmDeleteModel = ref<boolean>(false)
 const isDeletingQuickModel = ref<boolean>(false)
 
 const isQuickCreateYearOpen = ref<boolean>(false)
+const quickYearInputRef = ref<HTMLInputElement | null>(null)
 const quickYearValue = ref<string>('')
 
 // Conversor visual mm <-> milésimas de pulgada (÷ 25.4) sin alterar la base de datos
@@ -401,6 +403,9 @@ const openQuickCreateBrandModal = (initialName?: string) => {
   quickBrandCountry.value = 'Japón'
   isBrandOpen.value = false
   isQuickCreateBrandOpen.value = true
+  nextTick(() => {
+    quickBrandInputRef.value?.focus()
+  })
 }
 
 const openEditBrandModal = (fab: Fabricante, startDelete = false) => {
@@ -410,6 +415,9 @@ const openEditBrandModal = (fab: Fabricante, startDelete = false) => {
   quickBrandCountry.value = fab.pais_origen || 'Japón'
   isBrandOpen.value = false
   isQuickCreateBrandOpen.value = true
+  nextTick(() => {
+    quickBrandInputRef.value?.focus()
+  })
 }
 
 const handleDeleteQuickBrand = async () => {
@@ -895,6 +903,9 @@ const openQuickCreateYearModal = (initialYear?: string) => {
   quickYearValue.value = (initialYear || '').trim()
   isYearOpen.value = false
   isQuickCreateYearOpen.value = true
+  nextTick(() => {
+    quickYearInputRef.value?.focus()
+  })
 }
 
 const handleSaveQuickYear = (directValue?: string) => {
@@ -6942,6 +6953,9 @@ onUnmounted(() => {
                 <th rowspan="2" class="py-1.5 px-2.5 w-40 min-w-[140px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Código OEM
                 </th>
+                <th rowspan="2" class="py-1.5 px-2.5 w-40 min-w-[140px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                  Catálogos Alternos
+                </th>
                 
                 <!-- Columnas Padre / Standalone de la Familia -->
                 <template v-for="item in groupSubcolumnsHeaders.tier1" :key="item.id">
@@ -6999,6 +7013,9 @@ onUnmounted(() => {
                 </th>
                 <th class="py-1.5 px-2.5 w-40 min-w-[140px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
                   Código OEM
+                </th>
+                <th class="py-1.5 px-2.5 w-40 min-w-[140px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
+                  Catálogos Alternos
                 </th>
                 
                 <th v-if="isCurrentGroupTableView" class="py-1.5 px-3 min-w-[260px] whitespace-nowrap align-middle border-b border-r border-slate-200 bg-slate-100/95">
@@ -7210,24 +7227,27 @@ onUnmounted(() => {
                         {{ part.codigo_oem || '—' }}
                       </span>
                     </div>
-
-                    <!-- Códigos Alternos / Catálogos agrupados en Código OEM -->
-                    <div v-if="getPartEquivalencias(part).length > 0" class="flex flex-wrap gap-1 pt-0.5">
-                      <span
-                        v-for="eq in getPartEquivalencias(part)"
-                        :key="eq.id"
-                        @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
-                        :class="[
-                          'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-mono cursor-pointer transition hover:opacity-80',
-                          getBrandBadgeClass(eq.marca_alterna)
-                        ]"
-                        :title="`Clic para copiar código ${eq.marca_alterna}`"
-                      >
-                        <span class="font-sans text-[9px] uppercase opacity-90">{{ eq.marca_alterna }}:</span>
-                        <strong>{{ eq.codigo_alterno }}</strong>
-                      </span>
-                    </div>
                   </div>
+                </td>
+
+                <!-- 3. Códigos Alternos / Catálogos -->
+                <td class="py-2 px-2.5 align-middle border-b border-slate-100">
+                  <div v-if="getPartEquivalencias(part).length > 0" class="flex flex-wrap gap-1">
+                    <span
+                      v-for="eq in getPartEquivalencias(part)"
+                      :key="eq.id"
+                      @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
+                      :class="[
+                        'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-mono cursor-pointer transition hover:opacity-80',
+                        getBrandBadgeClass(eq.marca_alterna)
+                      ]"
+                      :title="`Clic para copiar código ${eq.marca_alterna}`"
+                    >
+                      <span class="font-sans text-[9px] uppercase opacity-90">{{ eq.marca_alterna }}:</span>
+                      <strong>{{ eq.codigo_alterno }}</strong>
+                    </span>
+                  </div>
+                  <span v-else class="text-xs text-slate-300 font-mono italic">—</span>
                 </td>
 
                 <!-- 4. MEDIDAS Y COTAS (Vista Normal con sub-columnas, Vista Normal estándar o Vista en Tabla incrustada) -->
@@ -8814,6 +8834,7 @@ onUnmounted(() => {
                 Nombre de la Marca / Fabricante *
               </label>
               <input
+                ref="quickBrandInputRef"
                 v-model="quickBrandName"
                 type="text"
                 required
@@ -9398,6 +9419,7 @@ onUnmounted(() => {
                 Año, varios años o rango *
               </label>
               <input
+                ref="quickYearInputRef"
                 v-model="quickYearValue"
                 type="text"
                 required
