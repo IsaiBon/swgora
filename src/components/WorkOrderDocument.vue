@@ -200,10 +200,77 @@ const orderMaterials = computed(() => {
   return (props.order?.materials || []).filter(m => m.name && m.name.trim().length > 0)
 })
 
+/**
+ * Evalúa analíticamente si el conjunto de operaciones de trabajo y repuestos de la orden
+ * cabe en 1 sola sección (columna completa) dentro del alto útil de 1 hoja tamaño Carta,
+ * o si por el volumen de ítems requiere dividirse en 2 secciones paralelas.
+ */
+const estimateOperationsFitInSingleSection = (): boolean => {
+  if (!props.order) return true
+  const sections = groupedSections.value
+  if (sections.length === 0) return true
+
+  // 1. Contar categorías y operaciones reales con peso visual según cotas técnicas
+  const totalCategories = sections.length
+  let weightedItemsHeight = 0
+
+  for (const sec of sections) {
+    for (const item of sec.items) {
+      // Altura base de fila de operación: ~24px
+      let itemHeight = 24
+      if (item.detail && item.detail.trim().length > 0) {
+        // Cota de maquinado o detalle técnico (ej: Banco: STD | Biela: 0.25)
+        itemHeight += 8
+      }
+      if (item.description && item.description.length > 42) {
+        // Descripción larga con salto de línea
+        itemHeight += 12
+      }
+      weightedItemsHeight += itemHeight
+    }
+  }
+
+  // Cabecera thead (26px) + cabeceras de categorías (~24px cada una con subtotal)
+  const tableContentHeight = 26 + (totalCategories * 24) + weightedItemsHeight
+
+  // 2. Altura de encabezado del documento (Logo, empresa, dirección, teléfonos, orden y fecha)
+  let headerHeight = 150
+  if (tallerStore.tallerInfo.celular1 && tallerStore.tallerInfo.celular2) {
+    headerHeight += 10
+  }
+
+  // 3. Altura de bloque de cliente y vehículo
+  let clientHeight = 78
+  if (props.order.observations && props.order.observations.trim().length > 0) {
+    clientHeight += 22
+  }
+  if (props.order.customerAddress && props.order.customerAddress.length > 45) {
+    clientHeight += 12
+  }
+
+  // 4. Altura de pie de página (Materiales, slogan, firma de conformidad y recuadro de totales)
+  let footerHeight = 125
+  const materials = orderMaterials.value
+  if (materials.length > 0) {
+    footerHeight += Math.min(32, Math.ceil(materials.length / 3) * 12)
+  }
+  if (hasIva.value) {
+    footerHeight += 24
+  }
+
+  // Padding y separaciones verticales del contenedor
+  const paddingAndGaps = 46
+
+  const totalCalculatedHeight = headerHeight + clientHeight + tableContentHeight + footerHeight + paddingAndGaps
+
+  // Límite útil de 1 hoja Carta (215.9 x 279.4 mm) a escala 760px con márgenes seguros (990px)
+  return totalCalculatedHeight <= 990
+}
+
 // Decisión de layout adaptable real al espacio de 1 hoja Carta:
 // - Si layoutMode === 'single': fuerza 1 columna (ancho completo).
 // - Si layoutMode === 'double': fuerza 2 columnas paralelas.
-// - Si layoutMode === 'auto': mide la altura renderizada real en 1 columna y solo cambia a 2 columnas cuando excede el alto útil de 1 hoja Carta.
+// - Si layoutMode === 'auto': evalúa según las operaciones si caben en 1 página (1 sección) o si requieren 2 secciones.
 const isDoubleSection = computed(() => {
   if (props.layoutMode === 'single') return false
   if (props.layoutMode === 'double') return true
@@ -214,18 +281,38 @@ const evaluateAutoLayout = async () => {
   const currentSeq = ++layoutEvalSeq
   if (props.layoutMode !== 'auto') return
 
-  autoUseDouble.value = false
+  // 1. Evaluación analítica según las operaciones reales de trabajo
+  const fitsByOperations = estimateOperationsFitInSingleSection()
+  autoUseDouble.value = !fitsByOperations
+
   await nextTick()
   if (currentSeq !== layoutEvalSeq) return
 
+  // 2. Verificación precisa en DOM si el elemento está montado y visible
   const el = docRootRef.value
   if (!el) return
 
-  const w = Math.max(el.offsetWidth || 760, 700)
-  const maxSinglePageHeightPx = Math.floor(w * (265.4 / 201.9)) - 18
-  if (el.scrollHeight > maxSinglePageHeightPx) {
-    autoUseDouble.value = true
-    await nextTick()
+  const headerBlock = el.querySelector('.border-b-2.border-slate-900') as HTMLElement | null
+  const clientBlock = el.querySelector('.border-2.border-slate-900.rounded') as HTMLElement | null
+  const footerBlock = el.querySelector('table.no-break') as HTMLElement | null
+  const singleTable = el.querySelector('.single-section-table') as HTMLElement | null
+
+  if (headerBlock && clientBlock && footerBlock && singleTable) {
+    // Si estamos evaluando en 1 sección, medimos la altura real de las filas de operaciones (excluyendo la fila de relleno)
+    const rows = Array.from(singleTable.querySelectorAll('tbody tr'))
+    const contentRows = rows.filter(tr => !tr.classList.contains('single-table-filler-row'))
+    const rowsHeight = contentRows.reduce((sum, tr) => sum + (tr as HTMLElement).offsetHeight, 0)
+    const theadHeight = (singleTable.querySelector('thead') as HTMLElement | null)?.offsetHeight || 26
+    const tableRealHeight = theadHeight + rowsHeight
+
+    const totalRealHeight = headerBlock.offsetHeight + clientBlock.offsetHeight + tableRealHeight + footerBlock.offsetHeight + 46
+
+    // Si la altura real de las operaciones en 1 sección excede el alto imprimible de 1 hoja Carta (~1005px)
+    if (totalRealHeight > 1005) {
+      autoUseDouble.value = true
+    } else {
+      autoUseDouble.value = false
+    }
   }
 }
 
@@ -254,7 +341,7 @@ watch(
   async () => {
     await evaluateAutoLayout()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 
 const balancedColumns = computed<{ left: DisplaySection[]; right: DisplaySection[] }>(() => {
@@ -535,7 +622,7 @@ const orderGrandTotal = computed(() => {
     
     <!-- CASO A: 1 SECCIÓN (COLUMNA ÚNICA COMPLETA) - Si cabe en 1 hoja -->
     <div v-if="!isDoubleSection" class="border-2 border-slate-900 rounded overflow-hidden bg-white mb-2 flex-1 flex flex-col">
-      <table class="w-full h-full text-[10px] border-collapse flex-1" style="table-layout: fixed;">
+      <table class="single-section-table w-full h-full text-[10px] border-collapse flex-1" style="table-layout: fixed;">
         <thead class="bg-slate-100 border-b-2 border-slate-900 font-bold uppercase text-slate-900 text-[8.5px]">
           <tr>
             <th class="py-1 px-1.5 text-center w-12 border-r border-slate-400">CANT.</th>
@@ -579,7 +666,7 @@ const orderGrandTotal = computed(() => {
               </tr>
             </template>
             <!-- Fila de relleno para extender las líneas de la tabla hasta el pie de página -->
-            <tr style="height: 100%;" class="bg-white">
+            <tr style="height: 100%;" class="bg-white single-table-filler-row">
               <td class="border-r border-slate-200">&nbsp;</td>
               <td class="border-r border-slate-200">&nbsp;</td>
               <td class="border-r border-slate-200">&nbsp;</td>

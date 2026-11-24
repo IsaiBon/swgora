@@ -75,11 +75,14 @@ const showSubtotalsOverride = ref<boolean>(true)
 
 watch(
   () => [props.isOpen, props.order?.id, props.order?.showSubtotals] as const,
-  ([open, _id, showSubs]) => {
+  async ([open, _id, showSubs]) => {
     if (open && props.order) {
+      selectedLayout.value = 'auto'
       showSubtotalsOverride.value = typeof showSubs === 'boolean'
         ? showSubs
         : (typeof props.order.showSubtotals === 'boolean' ? props.order.showSubtotals : true)
+      await nextTick()
+      await workOrderDocRef.value?.evaluateAutoLayout()
     }
   },
   { immediate: true }
@@ -168,9 +171,9 @@ const handleShareWhatsApp = async () => {
                 @click="selectedLayout = 'auto'"
                 :class="selectedLayout === 'auto' ? 'bg-white text-[#0D1B3E] shadow-xs font-bold' : 'hover:text-white'"
                 class="px-2 py-1 rounded-lg transition text-xs cursor-pointer"
-                title="Adaptable automáticamente según el espacio de la hoja Carta"
+                title="Adaptable automáticamente según las operaciones de trabajo y el espacio de la hoja Carta"
               >
-                {{ selectedLayout === 'auto' ? (workOrderDocRef?.isDoubleSection ? 'Auto (2 col)' : 'Auto (1 col)') : 'Auto (Adaptable)' }}
+                {{ selectedLayout === 'auto' ? (workOrderDocRef?.isDoubleSection ? 'Auto (2 secciones)' : 'Auto (1 sección)') : 'Auto (Adaptable)' }}
               </button>
               <button
                 type="button"
