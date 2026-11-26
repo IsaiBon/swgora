@@ -5375,6 +5375,7 @@ onUnmounted(() => {
           </button>
 
           <button
+            v-if="authStore.isAdmin"
             type="button"
             @click="isOemColorModalOpen = true"
             class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
@@ -10621,9 +10622,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Modal de Colores de Etiqueta OEM por Catálogo -->
+    <!-- Modal de Colores de Etiqueta OEM por Catálogo (Solo Admin) -->
     <div
-      v-if="isOemColorModalOpen"
+      v-if="authStore.isAdmin && isOemColorModalOpen"
       class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
       @click.self="isOemColorModalOpen = false"
     >
