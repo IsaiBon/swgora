@@ -50,7 +50,9 @@ const shareOrder = async (
   sharingOrderId.value = order.id
 
   try {
-    await tallerStore.loadTallerInfo()
+    if (!tallerStore.tallerInfo?.nombre) {
+      await tallerStore.loadTallerInfo()
+    }
 
     let targetElement = options?.sourceElement || null
     if (!targetElement) {
@@ -59,7 +61,6 @@ const shareOrder = async (
       await nextTick()
       await offscreenDocRef.value?.evaluateAutoLayout()
       await nextTick()
-      await new Promise((resolve) => setTimeout(resolve, 60))
 
       const container = offscreenContainerRef.value
       targetElement =
@@ -85,13 +86,59 @@ const shareOrder = async (
       includeTallerContact: true,
     })
 
-    await navigator.share({
-      title: `${docTitle} ${order.orderNumber}`,
-      text,
-      files: [generated.file],
-    })
+    // Intentar compartir nativamente (con texto + archivo, y si falla por compatibilidad, solo archivo)
+    try {
+      await navigator.share({
+        title: `${docTitle} ${order.orderNumber}`,
+        text,
+        files: [generated.file],
+      })
+      return { status: 'shared' }
+    } catch (shareErr: unknown) {
+      if (
+        shareErr &&
+        typeof shareErr === 'object' &&
+        'name' in shareErr &&
+        (shareErr as { name?: string }).name === 'AbortError'
+      ) {
+        return { status: 'cancelled' }
+      }
 
-    return { status: 'shared' }
+      // Segundo intento: solo archivo PDF (algunos navegadores móviles rechazan text + files)
+      try {
+        await navigator.share({
+          files: [generated.file],
+        })
+        return { status: 'shared' }
+      } catch (secondErr: unknown) {
+        if (
+          secondErr &&
+          typeof secondErr === 'object' &&
+          'name' in secondErr &&
+          (secondErr as { name?: string }).name === 'AbortError'
+        ) {
+          return { status: 'cancelled' }
+        }
+
+        // Respaldo automático en móvil cuando expira el gesto de usuario:
+        // descargar el PDF y abrir WhatsApp con el mensaje listo
+        const blobUrl = URL.createObjectURL(generated.blob)
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = generated.filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000)
+
+        const digits = (order.customerPhone || '').replace(/\D/g, '')
+        const waUrl = digits
+          ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+          : `https://wa.me/?text=${encodeURIComponent(text)}`
+        window.open(waUrl, '_blank', 'noopener,noreferrer')
+        return { status: 'shared' }
+      }
+    }
   } catch (err: unknown) {
     if (
       err &&

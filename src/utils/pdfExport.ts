@@ -112,7 +112,7 @@ async function createOrderPdfDocument(
     logging: false,
     backgroundColor: '#ffffff',
     width: 760,
-    windowWidth: 860,
+    windowWidth: 1024,
     windowHeight: baseWindowHeight,
     scrollX: 0,
     scrollY: 0,
@@ -140,14 +140,14 @@ async function createOrderPdfDocument(
       clonedDoc.documentElement.style.color = '#0f172a'
       clonedDoc.documentElement.style.margin = '0'
       clonedDoc.documentElement.style.padding = '0'
-      clonedDoc.documentElement.style.width = '860px'
+      clonedDoc.documentElement.style.width = '1024px'
 
       clonedDoc.body.classList.remove('printing-modal-active')
       clonedDoc.body.style.backgroundColor = '#ffffff'
       clonedDoc.body.style.color = '#0f172a'
       clonedDoc.body.style.margin = '0'
       clonedDoc.body.style.padding = '0'
-      clonedDoc.body.style.width = '860px'
+      clonedDoc.body.style.width = '1024px'
 
       const targetEl =
         clonedElement ||
@@ -164,10 +164,12 @@ async function createOrderPdfDocument(
           ancestor.style.maxHeight = 'none'
           ancestor.style.height = 'auto'
           ancestor.style.transform = 'none'
+          ;(ancestor.style as any).zoom = '1'
           ancestor.style.width = 'auto'
           ancestor = ancestor.parentElement
         }
 
+        ;(targetEl.style as any).zoom = '1'
         targetEl.style.boxShadow = 'none'
         targetEl.style.border = 'none'
         targetEl.style.borderRadius = '0'

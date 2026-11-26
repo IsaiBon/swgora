@@ -3330,7 +3330,11 @@ const brandMotorsList = computed<Motor[]>(() => {
   const q = motorInput.value.trim().toLowerCase()
 
   if (q && isMotorSearchActive.value) {
-    const matched = list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
+    const matched = list.filter(m => {
+      const raw = (m.codigo || '').toLowerCase().trim()
+      const withoutBrandPrefix = raw.replace(/^[^-]+\s*-\s*/, '').trim()
+      return raw.startsWith(q) || withoutBrandPrefix.startsWith(q)
+    })
     const byRelevance = sortMotorsByRelevance(matched, q)
     return [...byRelevance].sort((a, b) => {
       const pa = getMotorPopularityScore(a)

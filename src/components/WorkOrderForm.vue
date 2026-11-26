@@ -21,6 +21,15 @@ import {
   type ClientType,
 } from '@/services/clientesService'
 import { catalogService, type CatalogProduct, sortMotorsByRelevance } from '@/services/catalogService'
+import {
+  buildMotorSearchKey,
+  incrementBrandSearchCount,
+  incrementMotorSearchCount,
+  readLocalBrandSearchCounts,
+  readLocalMotorSearchCounts,
+  type BrandSearchCountsMap,
+  type MotorSearchCountsMap,
+} from '@/services/catalogPreferencesService'
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useCatalogStore } from '@/stores/catalog'
 import { useAuthStore } from '@/stores/auth'
@@ -175,14 +184,35 @@ const brandContainerRef = ref<HTMLElement | null>(null)
 const engineContainerRef = ref<HTMLElement | null>(null)
 const isBrandSuggestionsOpen = ref(false)
 const isEngineSuggestionsOpen = ref(false)
+const brandSearchCounts = ref<BrandSearchCountsMap>(readLocalBrandSearchCounts())
+const motorSearchCounts = ref<MotorSearchCountsMap>(readLocalMotorSearchCounts())
+
+const sortBrandsByPopularity = (list: typeof catalogStore.fabricantes) => {
+  const counts = brandSearchCounts.value
+  return [...list].sort((a, b) => {
+    const ca = counts[a.nombre.toLowerCase()] || 0
+    const cb = counts[b.nombre.toLowerCase()] || 0
+    if (cb !== ca) return cb - ca
+    return a.nombre.localeCompare(b.nombre)
+  })
+}
+
+const getMotorPopularityForOrder = (mot: (typeof catalogStore.motores)[number]) => {
+  const fab =
+    (mot.fabricante_id ? catalogStore.fabricantes.find(f => f.id === mot.fabricante_id) : null) ||
+    mot.fabricante
+  const brandKey = String(fab?.nombre || vehicleBrand.value || mot.fabricante_id || 'global').trim().toLowerCase() || 'global'
+  const key = buildMotorSearchKey(brandKey, mot.codigo)
+  return key ? (motorSearchCounts.value[key] || 0) : 0
+}
 
 const filteredBrandSuggestions = computed(() => {
   const q = vehicleBrand.value.trim().toLowerCase()
-  const list = catalogStore.fabricantes || []
-  if (!q) return list.slice(0, 10).map(f => f.nombre)
+  const list = sortBrandsByPopularity(catalogStore.fabricantes || [])
+  if (!q) return list.slice(0, 15).map(f => f.nombre)
   return list
-    .filter(f => f.nombre.toLowerCase().includes(q))
-    .slice(0, 10)
+    .filter(f => f.nombre.toLowerCase().startsWith(q) || (f.pais_origen && f.pais_origen.toLowerCase().startsWith(q)))
+    .slice(0, 15)
     .map(f => f.nombre)
 })
 
@@ -199,9 +229,30 @@ const filteredEngineSuggestions = computed(() => {
     }
   }
   
-  if (!q) return engines.slice(0, 12).map(m => m.codigo)
-  const matched = engines.filter(m => m.codigo.toLowerCase().includes(q) || (m.nombre_comercial && m.nombre_comercial.toLowerCase().includes(q)))
-  return sortMotorsByRelevance(matched, q)
+  if (!q) {
+    return [...engines]
+      .sort((a, b) => {
+        const pa = getMotorPopularityForOrder(a)
+        const pb = getMotorPopularityForOrder(b)
+        if (pb !== pa) return pb - pa
+        return String(a.codigo || '').localeCompare(String(b.codigo || ''))
+      })
+      .slice(0, 15)
+      .map(m => m.codigo)
+  }
+  const matched = engines.filter(m => {
+    const raw = (m.codigo || '').toLowerCase().trim()
+    const withoutBrandPrefix = raw.replace(/^[^-]+\s*-\s*/, '').trim()
+    return raw.startsWith(q) || withoutBrandPrefix.startsWith(q)
+  })
+  const byRelevance = sortMotorsByRelevance(matched, q)
+  return [...byRelevance]
+    .sort((a, b) => {
+      const pa = getMotorPopularityForOrder(a)
+      const pb = getMotorPopularityForOrder(b)
+      if (pb !== pa) return pb - pa
+      return 0
+    })
     .slice(0, 15)
     .map(m => m.codigo)
 })
@@ -210,12 +261,19 @@ const selectBrandSuggestion = (brand: string) => {
   vehicleBrand.value = brand
   formErrors.value.vehicleBrand = false
   isBrandSuggestionsOpen.value = false
+  void incrementBrandSearchCount(brandSearchCounts.value, brand).then(updated => {
+    brandSearchCounts.value = updated
+  })
 }
 
 const selectEngineSuggestion = (engine: string) => {
   vehicleEngine.value = engine
   formErrors.value.vehicleEngine = false
   isEngineSuggestionsOpen.value = false
+  const brandKey = vehicleBrand.value.trim().toLowerCase() || 'global'
+  void incrementMotorSearchCount(motorSearchCounts.value, brandKey, engine).then(updated => {
+    motorSearchCounts.value = updated
+  })
   if (!vehicleBrand.value.trim()) {
     const matchedMot = (catalogStore.motores || []).find(
       m => m.codigo.toLowerCase() === engine.trim().toLowerCase()

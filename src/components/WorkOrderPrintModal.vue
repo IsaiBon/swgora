@@ -297,7 +297,7 @@ const handleShareWhatsApp = async () => {
           class="flex-1 overflow-auto p-2 sm:p-6 bg-slate-100/80 print:p-0 print:bg-white print:overflow-visible"
         >
           <!-- Hoja física de la orden limpia (con auto-zoom en móvil para que quepa completa) -->
-          <div :style="isDownloading ? undefined : { zoom: previewZoom }">
+          <div :style="isDownloading || isSharingWhatsApp ? undefined : { zoom: previewZoom }">
             <WorkOrderDocument
               ref="workOrderDocRef"
               :order="order"
