@@ -10,6 +10,28 @@ import {
   canActorModifyRepuesto,
   extractRepuestoOwner
 } from '@/utils/catalogPermissions'
+import {
+  OEM_COLOR_PRESETS,
+  buildMotorSearchKey,
+  fetchBrandSearchCounts,
+  fetchCatalogOemColors,
+  fetchMotorSearchCounts,
+  fetchUserFamilyRestrictions,
+  getOemBadgeInlineStyle,
+  incrementBrandSearchCount,
+  incrementMotorSearchCount,
+  normalizeCatalogBrandKey,
+  readLocalBrandSearchCounts,
+  readLocalCatalogOemColors,
+  readLocalMotorSearchCounts,
+  readLocalUserFamilyRestrictions,
+  resolveUserFamilyRestriction,
+  saveCatalogOemColors,
+  type BrandSearchCountsMap,
+  type CatalogOemColorMap,
+  type MotorSearchCountsMap,
+  type UserFamilyRestrictionsMap
+} from '@/services/catalogPreferencesService'
 import { 
   type Motor, 
   type Modelo,
@@ -78,6 +100,20 @@ import {
   Download,
   ExternalLink,
   Upload,
+  Palette,
+  Cog,
+  Disc,
+  Gauge,
+  Cpu,
+  Box,
+  Shield,
+  Zap,
+  Flame,
+  Hexagon,
+  Settings,
+  Package,
+  Columns,
+  Table,
   ClipboardList,
   FileJson,
 } from 'lucide-vue-next'
@@ -1313,25 +1349,202 @@ const baseComponentGroups: ComponentGroup[] = [
   }
 ]
 
+// Permiso para crear/editar familias (solo Administrador principal)
+const canManageFamilies = computed(() => authStore.isAdmin)
+
+// Restricciones de familias visibles por usuario (solo aplica a quienes no pueden agregar familias)
+const userFamilyRestrictions = ref<UserFamilyRestrictionsMap>(readLocalUserFamilyRestrictions())
+
+const currentUserAllowedFamilySet = computed<Set<string> | null>(() => {
+  if (canManageFamilies.value) return null
+  const restriction = resolveUserFamilyRestriction(userFamilyRestrictions.value, authStore.user)
+  if (!restriction || !restriction.restricted) return null
+  return new Set(restriction.allowedFamilies.map(f => f.trim().toLowerCase()))
+})
+
+const isGroupAllowedForCurrentUser = (grp: {
+  id?: string
+  codigo?: string
+  categoria?: string
+  nombre?: string
+}): boolean => {
+  const allowed = currentUserAllowedFamilySet.value
+  if (!allowed) return true
+  const candidates = [grp.codigo, grp.id, grp.categoria, grp.nombre]
+    .map(v => String(v || '').trim().toLowerCase())
+    .filter(Boolean)
+  return candidates.some(c => allowed.has(c))
+}
+
+// Estadísticas de fabricantes y motores más buscados (por fabricante)
+const brandSearchCounts = ref<BrandSearchCountsMap>(readLocalBrandSearchCounts())
+const motorSearchCounts = ref<MotorSearchCountsMap>(readLocalMotorSearchCounts())
+
+const resolveMotorBrandKey = (mot: Motor): string => {
+  const fab =
+    (mot.fabricante_id ? catalogStore.fabricantes.find(f => f.id === mot.fabricante_id) : null) ||
+    mot.fabricante ||
+    selectedBrand.value
+  return String(fab?.nombre || mot.fabricante_id || 'global').trim().toLowerCase() || 'global'
+}
+
+const getMotorPopularityScore = (mot: Motor): number => {
+  const key = buildMotorSearchKey(resolveMotorBrandKey(mot), mot.codigo)
+  return key ? (motorSearchCounts.value[key] || 0) : 0
+}
+
+// Estado de expansión "Ver más / Ver menos" para textos largos de motores compatibles en tabla
+const MOTOR_APPS_CHAR_LIMIT = 75
+const expandedMotorApps = ref<Record<string, boolean>>({})
+
+const getPartMotorAppsText = (part: RepuestoTecnico): string => {
+  if (part.motor?.codigo) return String(part.motor.codigo).trim()
+  const list = (part.especificaciones_tecnicas as any)?.motores_compatibles
+  if (Array.isArray(list) && list.length > 0) {
+    return list.map((m: unknown) => String(m || '').trim()).filter(Boolean).join('/')
+  }
+  return ''
+}
+
+const isMotorAppsTruncatable = (part: RepuestoTecnico): boolean => {
+  return getPartMotorAppsText(part).length > MOTOR_APPS_CHAR_LIMIT
+}
+
+const getDisplayedMotorAppsText = (part: RepuestoTecnico): string => {
+  const full = getPartMotorAppsText(part)
+  if (!full) return ''
+  if (expandedMotorApps.value[part.id] || full.length <= MOTOR_APPS_CHAR_LIMIT) {
+    return full
+  }
+  return `${full.slice(0, MOTOR_APPS_CHAR_LIMIT).trimEnd()}…`
+}
+
+const toggleMotorAppsExpanded = (partId: string) => {
+  expandedMotorApps.value = {
+    ...expandedMotorApps.value,
+    [partId]: !expandedMotorApps.value[partId],
+  }
+}
+
+// Mapa de íconos personalizables por familia para el buscador de componentes
+const FAMILY_ICON_COMPONENTS: Record<string, any> = {
+  Layers,
+  CircleDot,
+  Wrench,
+  FileText,
+  SlidersHorizontal,
+  Columns,
+  Table,
+  Ruler,
+  Cog,
+  Disc,
+  Gauge,
+  Cpu,
+  Box,
+  Shield,
+  Zap,
+  Flame,
+  Hexagon,
+  Settings,
+  Package,
+}
+
+const getFamilyIconComponent = (iconName?: string, grpId?: string, category?: string) => {
+  if (iconName && FAMILY_ICON_COMPONENTS[iconName]) {
+    return FAMILY_ICON_COMPONENTS[iconName]
+  }
+  if (grpId === 'ajuste_valvula' || category === 'Sellos') return CircleDot
+  if (grpId === 'valvula' || category === 'Válvulas') return Wrench
+  if (grpId === 'anillos_motor' || category === 'Anillos') return Layers
+  if (grpId === 'tornillos_culata' || category === 'Pernos') return FileText
+  if (grpId === 'casqueteria' || category === 'Casquetería') return CircleDot
+  return Layers
+}
+
+// Colores personalizados de etiqueta OEM por catálogo
+const catalogOemColors = ref<CatalogOemColorMap>(readLocalCatalogOemColors())
+const isOemColorModalOpen = ref(false)
+const savingOemColors = ref(false)
+
+const oemColorEditableCatalogs = computed<string[]>(() => {
+  const defaults = ['OEM', 'DOKURO', 'RIK', 'NPR', 'MRK', 'AJUSA', 'NDC', 'PIONEER', 'TAIHO']
+  const set = new Set<string>(defaults)
+  for (const brand of availableCatalogBrands.value) {
+    const clean = normalizeCatalogBrandKey(brand)
+    if (clean) set.add(clean)
+  }
+  for (const key of Object.keys(catalogOemColors.value)) {
+    const clean = normalizeCatalogBrandKey(key)
+    if (clean) set.add(clean)
+  }
+  return Array.from(set).sort((a, b) => (a === 'OEM' ? -1 : b === 'OEM' ? 1 : a.localeCompare(b)))
+})
+
+const getCatalogOemColorValue = (brand: string): string => {
+  return catalogOemColors.value[normalizeCatalogBrandKey(brand)] || 'slate'
+}
+
+const setCatalogOemColor = async (brand: string, colorValue: string) => {
+  const key = normalizeCatalogBrandKey(brand)
+  const next: CatalogOemColorMap = { ...catalogOemColors.value }
+  if (!colorValue || colorValue === 'slate') {
+    delete next[key]
+  } else {
+    next[key] = colorValue
+  }
+  catalogOemColors.value = next
+  savingOemColors.value = true
+  try {
+    await saveCatalogOemColors(next)
+  } finally {
+    savingOemColors.value = false
+  }
+}
+
+const resetAllCatalogOemColors = async () => {
+  catalogOemColors.value = {}
+  savingOemColors.value = true
+  try {
+    await saveCatalogOemColors({})
+    showToast('Colores de etiquetas OEM restaurados al predeterminado')
+  } finally {
+    savingOemColors.value = false
+  }
+}
+
+const getPartResolvedCatalogKey = (part: RepuestoTecnico | null | undefined): string => {
+  if (!part) return 'OEM'
+  const brand = getPartCatalogBrand(part)
+  if (brand) return normalizeCatalogBrandKey(brand)
+  return normalizeCatalogBrandKey(part.catalogo_origen || 'OEM')
+}
+
+const getPartOemBadgeStyle = (part: RepuestoTecnico | null | undefined): Record<string, string> | undefined => {
+  if (!part) return undefined
+  return getOemBadgeInlineStyle(getPartResolvedCatalogKey(part), catalogOemColors.value)
+}
+
 // Mapeo 100% dinámico de los grupos de Supabase con fallback a definiciones base
 const componentGroups = computed<ComponentGroup[]>(() => {
-  if (catalogStore.grupos && catalogStore.grupos.length > 0) {
-    return catalogStore.grupos.map(g => {
-      const base = baseComponentGroups.find(b => b.id === g.codigo || b.category.toLowerCase() === g.categoria.toLowerCase())
-      return {
-        id: g.codigo,
-        title: g.nombre,
-        shortTitle: g.categoria || g.nombre,
-        category: g.categoria,
-        icon: g.icono || (base ? base.icon : 'Layers'),
-        description: g.descripcion || (base ? base.description : `Familia de ${g.nombre}`),
-        sampleMeasurements: (g.parametros && g.parametros.length > 0)
-          ? g.parametros.map(p => `${p.etiqueta}${p.unidad ? ` (${p.unidad})` : ''}`).slice(0, 3).join(', ')
-          : (base ? base.sampleMeasurements : 'Medidas requeridas configuradas')
-      }
-    })
-  }
-  return baseComponentGroups
+  const rawList: ComponentGroup[] =
+    catalogStore.grupos && catalogStore.grupos.length > 0
+      ? catalogStore.grupos.map(g => {
+          const base = baseComponentGroups.find(b => b.id === g.codigo || b.category.toLowerCase() === g.categoria.toLowerCase())
+          return {
+            id: g.codigo,
+            title: g.nombre,
+            shortTitle: g.categoria || g.nombre,
+            category: g.categoria,
+            icon: g.icono || (base ? base.icon : 'Layers'),
+            description: g.descripcion || (base ? base.description : `Familia de ${g.nombre}`),
+            sampleMeasurements: (g.parametros && g.parametros.length > 0)
+              ? g.parametros.map(p => `${p.etiqueta}${p.unidad ? ` (${p.unidad})` : ''}`).slice(0, 3).join(', ')
+              : (base ? base.sampleMeasurements : 'Medidas requeridas configuradas')
+          }
+        })
+      : baseComponentGroups
+
+  return rawList.filter(g => isGroupAllowedForCurrentUser({ id: g.id, codigo: g.id, categoria: g.category, nombre: g.title }))
 })
 
 // =============================================================================
@@ -1682,18 +1895,82 @@ const currentTableOrientation = computed<'vertical' | 'horizontal'>(() => {
   const key = currentOrientationKey.value
   const saved = tableOrientations.value[key]
   if (saved) return saved
+  const grpOri = currentGroupDefinition.value?.orientacion_vista
+  if (grpOri === 'vertical' || grpOri === 'horizontal') return grpOri
   return 'vertical'
 })
+
+const getPartOrientationKey = (part?: RepuestoTecnico | null): string => {
+  const grp = resolveGroupDefinitionForPart(part)
+  const raw = grp?.codigo || part?.categoria || currentOrientationKey.value || 'global'
+  return String(raw).trim().toLowerCase() || 'global'
+}
+
+const getPartTableOrientation = (part?: RepuestoTecnico | null): 'vertical' | 'horizontal' => {
+  if (!part) return currentTableOrientation.value
+  const key = getPartOrientationKey(part)
+  const saved = tableOrientations.value[key]
+  if (saved) return saved
+  const grp = resolveGroupDefinitionForPart(part)
+  if (grp?.orientacion_vista === 'vertical' || grp?.orientacion_vista === 'horizontal') {
+    return grp.orientacion_vista
+  }
+  return currentTableOrientation.value
+}
+
+const persistGroupOrientation = async (
+  key: string,
+  next: 'vertical' | 'horizontal',
+  targetGroup?: GrupoRepuesto | null
+) => {
+  const cleanKey = String(key || '').trim().toLowerCase()
+  const nextMap: Record<string, 'vertical' | 'horizontal'> = {
+    ...tableOrientations.value,
+    [cleanKey]: next,
+  }
+  const grp =
+    targetGroup ||
+    catalogStore.grupos.find(
+      g =>
+        g.codigo.toLowerCase() === cleanKey ||
+        g.id.toLowerCase() === cleanKey ||
+        g.categoria.toLowerCase() === cleanKey
+    ) ||
+    null
+
+  if (grp) {
+    nextMap[grp.codigo.toLowerCase()] = next
+    if (grp.categoria) nextMap[grp.categoria.toLowerCase()] = next
+    grp.orientacion_vista = next
+  }
+
+  tableOrientations.value = nextMap
+  saveTableOrientations(nextMap)
+
+  if (grp) {
+    try {
+      await catalogService.updateGrupo(grp.id || grp.codigo, { orientacion_vista: next })
+    } catch (err) {
+      console.warn('[CatalogoView] No se pudo guardar la orientación de familia en Supabase:', err)
+    }
+  }
+}
 
 const toggleCurrentTableOrientation = () => {
   const key = currentOrientationKey.value
   const next: 'vertical' | 'horizontal' =
     currentTableOrientation.value === 'vertical' ? 'horizontal' : 'vertical'
-  tableOrientations.value = {
-    ...tableOrientations.value,
-    [key]: next,
-  }
-  saveTableOrientations(tableOrientations.value)
+  void persistGroupOrientation(key, next, currentGroupDefinition.value)
+}
+
+const togglePartFamilyOrientation = (part: RepuestoTecnico) => {
+  const grp = resolveGroupDefinitionForPart(part)
+  const key = getPartOrientationKey(part)
+  const current = getPartTableOrientation(part)
+  const next: 'vertical' | 'horizontal' = current === 'vertical' ? 'horizontal' : 'vertical'
+  void persistGroupOrientation(key, next, grp)
+  const familyLabel = grp?.nombre || part.categoria || 'Familia'
+  showToast(`Vista de "${familyLabel}" guardada en modo ${next === 'vertical' ? 'Vertical' : 'Horizontal'}`)
 }
 
 const toggleModalTableOrientation = () => {
@@ -1701,12 +1978,39 @@ const toggleModalTableOrientation = () => {
     modalTableOrientation.value === 'vertical' ? 'horizontal' : 'vertical'
   modalTableOrientation.value = next
   const key = modalOrientationKey.value || currentOrientationKey.value
-  tableOrientations.value = {
-    ...tableOrientations.value,
-    [key]: next,
-  }
-  saveTableOrientations(tableOrientations.value)
+  const grp = resolveGroupDefinitionForPart(modalPart.value) || currentGroupDefinition.value
+  void persistGroupOrientation(key, next, grp)
 }
+
+watch(
+  () => catalogStore.grupos,
+  (grupos) => {
+    if (!Array.isArray(grupos) || grupos.length === 0) return
+    let changed = false
+    const merged: Record<string, 'vertical' | 'horizontal'> = { ...tableOrientations.value }
+    for (const g of grupos) {
+      if (g.orientacion_vista === 'vertical' || g.orientacion_vista === 'horizontal') {
+        const codeKey = g.codigo.toLowerCase()
+        if (merged[codeKey] !== g.orientacion_vista) {
+          merged[codeKey] = g.orientacion_vista
+          changed = true
+        }
+        if (g.categoria) {
+          const catKey = g.categoria.toLowerCase()
+          if (merged[catKey] !== g.orientacion_vista) {
+            merged[catKey] = g.orientacion_vista
+            changed = true
+          }
+        }
+      }
+    }
+    if (changed) {
+      tableOrientations.value = merged
+      saveTableOrientations(merged)
+    }
+  },
+  { immediate: true }
+)
 
 const isTechnicalOrientationAvailable = computed<boolean>(() => {
   return Boolean(
@@ -2418,12 +2722,24 @@ const filteredBrands = computed(() => {
     list = list.filter(f => f.id === selectedModel.value!.fabricante_id)
   }
 
-  if (!q || (selectedBrand.value && q === selectedBrand.value.nombre.toLowerCase().trim())) {
-    return list
+  const sortByPopularity = (arr: Fabricante[]) => {
+    const counts = brandSearchCounts.value
+    return [...arr].sort((a, b) => {
+      const ca = counts[a.nombre.toLowerCase()] || 0
+      const cb = counts[b.nombre.toLowerCase()] || 0
+      if (cb !== ca) return cb - ca
+      return a.nombre.localeCompare(b.nombre)
+    })
   }
-  return list.filter(f =>
-    f.nombre.toLowerCase().startsWith(q) ||
-    (f.pais_origen && f.pais_origen.toLowerCase().startsWith(q))
+
+  if (!q || (selectedBrand.value && q === selectedBrand.value.nombre.toLowerCase().trim())) {
+    return sortByPopularity(list)
+  }
+  return sortByPopularity(
+    list.filter(f =>
+      f.nombre.toLowerCase().startsWith(q) ||
+      (f.pais_origen && f.pais_origen.toLowerCase().startsWith(q))
+    )
   )
 })
 
@@ -2455,6 +2771,9 @@ const onInputBrand = async () => {
 }
 
 const handleSelectBrand = async (fab: Fabricante) => {
+  void incrementBrandSearchCount(brandSearchCounts.value, fab.nombre).then(updated => {
+    brandSearchCounts.value = updated
+  })
   const keepModel = selectedModel.value?.fabricante_id === fab.id ? selectedModel.value : null
   const keepMotor = selectedMotor.value?.fabricante_id === fab.id ? selectedMotor.value : null
   const prevMotorModelIds = [...catalogStore.modeloIdsDelMotor]
@@ -2697,6 +3016,13 @@ const availableMotors = computed(() => {
 })
 
 const handleSelectMotor = async (mot: Motor) => {
+  void incrementMotorSearchCount(
+    motorSearchCounts.value,
+    resolveMotorBrandKey(mot),
+    mot.codigo
+  ).then(updated => {
+    motorSearchCounts.value = updated
+  })
   selectedMotor.value = mot
   motorInput.value = mot.codigo
   isMotorOpen.value = false
@@ -2963,10 +3289,19 @@ const brandMotorsList = computed<Motor[]>(() => {
 
   if (q && isMotorSearchActive.value) {
     const matched = list.filter(m => m.codigo.toLowerCase().trim().startsWith(q))
-    return sortMotorsByRelevance(matched, q)
+    const byRelevance = sortMotorsByRelevance(matched, q)
+    return [...byRelevance].sort((a, b) => {
+      const pa = getMotorPopularityScore(a)
+      const pb = getMotorPopularityScore(b)
+      if (pb !== pa) return pb - pa
+      return 0
+    })
   }
 
   return [...list].sort((a, b) => {
+    const pa = getMotorPopularityScore(a)
+    const pb = getMotorPopularityScore(b)
+    if (pb !== pa) return pb - pa
     const ta = a.created_at ? Date.parse(a.created_at) : 0
     const tb = b.created_at ? Date.parse(b.created_at) : 0
     if (tb !== ta) return tb - ta
@@ -3656,6 +3991,17 @@ function getMiniTableCellMatchClass(
 const displayedParts = computed<RepuestoTecnico[]>(() => {
   let list = catalogStore.repuestos
 
+  // 0. Aplicar restricción de familias visibles del usuario (si aplica)
+  if (currentUserAllowedFamilySet.value) {
+    list = list.filter(part => {
+      const grp = resolveGroupDefinitionForPart(part)
+      if (grp) {
+        return isGroupAllowedForCurrentUser(grp)
+      }
+      return isGroupAllowedForCurrentUser({ categoria: part.categoria, nombre: part.categoria })
+    })
+  }
+
   // 1. Filtrar por tipo de componente si está seleccionado
   if (selectedComponent.value) {
     const compId = selectedComponent.value.id
@@ -4334,6 +4680,10 @@ const resolveGroupIdFromPart = (part?: RepuestoTecnico | null): string | null =>
 }
 
 const handleCreateNewGroup = () => {
+  if (!canManageFamilies.value) {
+    showToast('Solo el Administrador puede crear o editar familias')
+    return
+  }
   adminModalTab.value = 'grupo'
   adminModalEditGroupId.value = null
   adminModalEditPart.value = null
@@ -4806,7 +5156,19 @@ const handleDocumentClick = (e: MouseEvent) => {
 onMounted(async () => {
   document.addEventListener('click', handleDocumentClick)
   // Inicialización de datos reales desde Supabase
-  await catalogStore.initCatalog()
+  const [, loadedColors, loadedRestrictions, loadedBrandCounts, loadedMotorCounts] = await Promise.all([
+    catalogStore.initCatalog(),
+    fetchCatalogOemColors(),
+    fetchUserFamilyRestrictions(),
+    fetchBrandSearchCounts(),
+    fetchMotorSearchCounts(),
+  ])
+  if (Object.keys(loadedColors).length > 0) {
+    catalogOemColors.value = { ...catalogOemColors.value, ...loadedColors }
+  }
+  userFamilyRestrictions.value = loadedRestrictions
+  brandSearchCounts.value = loadedBrandCounts
+  motorSearchCounts.value = loadedMotorCounts
 })
 
 onUnmounted(() => {
@@ -4890,6 +5252,7 @@ onUnmounted(() => {
           </button>
 
           <button
+            v-if="canManageFamilies"
             type="button"
             @click="handleCreateNewGroup"
             class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
@@ -5593,6 +5956,7 @@ onUnmounted(() => {
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
+                v-if="canManageFamilies"
                 type="button"
                 @click="handleCreateNewGroup"
                 class="p-1 text-[#038391] hover:text-[#04C4D9] rounded transition cursor-pointer"
@@ -5632,17 +5996,15 @@ onUnmounted(() => {
               ]"
             >
               <div class="flex items-center gap-2.5 min-w-0">
-                <CircleDot v-if="grp.id === 'ajuste_valvula' || grp.category === 'Sellos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <Wrench v-else-if="grp.id === 'valvula' || grp.category === 'Válvulas'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <Layers v-else-if="grp.id === 'anillos_motor' || grp.category === 'Anillos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <FileText v-else-if="grp.id === 'tornillos_culata' || grp.category === 'Pernos'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <CircleDot v-else-if="grp.id === 'casqueteria' || grp.category === 'Casquetería'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <Layers v-else-if="grp.id === 'empaques_juntas' || grp.category === 'Empaques'" class="w-4 h-4 text-[#04C4D9] shrink-0" />
-                <Layers v-else class="w-4 h-4 text-[#04C4D9] shrink-0" />
+                <component
+                  :is="getFamilyIconComponent(grp.icon, grp.id, grp.category)"
+                  class="w-4 h-4 text-[#04C4D9] shrink-0"
+                />
                 <span class="font-bold text-slate-900 text-xs truncate">{{ grp.title }}</span>
               </div>
               <div class="flex items-center gap-1.5 shrink-0 ml-2">
                 <button
+                  v-if="canManageFamilies"
                   type="button"
                   @click.stop="handleEditGroup(grp.id)"
                   class="p-1 text-slate-400 hover:text-[#004B97] hover:bg-blue-50 rounded transition cursor-pointer"
@@ -5658,6 +6020,7 @@ onUnmounted(() => {
             </div>
             <!-- Botón de acción para crear nueva familia técnica dentro del dropdown -->
             <button
+              v-if="canManageFamilies"
               type="button"
               @click="handleCreateNewGroup(); isComponentOpen = false"
               class="w-full px-3 py-2 text-xs font-bold text-[#038391] bg-cyan-50/70 hover:bg-cyan-100 flex items-center justify-between border-t border-cyan-100 transition sticky bottom-0"
@@ -6200,6 +6563,7 @@ onUnmounted(() => {
 
           <div class="flex items-center gap-2 flex-wrap">
             <button
+              v-if="canManageFamilies"
               type="button"
               @click="handleCreateNewGroup"
               class="px-2.5 py-1 text-xs font-semibold text-[#038391] bg-cyan-50 hover:bg-cyan-100 rounded-lg flex items-center gap-1 transition cursor-pointer"
@@ -6210,6 +6574,7 @@ onUnmounted(() => {
             </button>
 
             <button
+              v-if="canManageFamilies"
               type="button"
               @click="handleEditGroup(selectedComponent.id)"
               class="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1 transition cursor-pointer"
@@ -6323,7 +6688,7 @@ onUnmounted(() => {
               <input
                 v-model.number="filterToleranciaMm"
                 type="number"
-                step="0.1"
+                step="0.25"
                 min="0"
                 max="100"
                 class="w-14 px-1.5 py-0.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded text-center focus:outline-none focus:border-[#04C4D9]"
@@ -6386,7 +6751,7 @@ onUnmounted(() => {
                 <div v-if="isTableParamInFilter('anillo1_h1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.02" :unit="getTableParamUnit('anillo1_h1', 'mm')" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor1']" :fallback="filterToleranciaMm" :step="0.25" :unit="getTableParamUnit('anillo1_h1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosor1"
@@ -6399,7 +6764,7 @@ onUnmounted(() => {
                 <div v-if="isTableParamInFilter('anillo1_a1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.05" :unit="getTableParamUnit('anillo1_a1', 'mm')" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial1']" :fallback="filterToleranciaMm" :step="0.25" :unit="getTableParamUnit('anillo1_a1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadial1"
@@ -6422,7 +6787,7 @@ onUnmounted(() => {
                 <div v-if="isTableParamInFilter('anillo2_h1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.02" :unit="getTableParamUnit('anillo2_h1', 'mm')" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor2']" :fallback="filterToleranciaMm" :step="0.25" :unit="getTableParamUnit('anillo2_h1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosor2"
@@ -6435,7 +6800,7 @@ onUnmounted(() => {
                 <div v-if="isTableParamInFilter('anillo2_a1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.05" :unit="getTableParamUnit('anillo2_a1', 'mm')" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial2']" :fallback="filterToleranciaMm" :step="0.25" :unit="getTableParamUnit('anillo2_a1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadial2"
@@ -6458,7 +6823,7 @@ onUnmounted(() => {
                 <div>
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor3']" :fallback="filterToleranciaMm" :step="0.02" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosor3']" :fallback="filterToleranciaMm" :step="0.25" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosor3"
@@ -6471,7 +6836,7 @@ onUnmounted(() => {
                 <div>
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadial3']" :fallback="filterToleranciaMm" :step="0.05" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadial3']" :fallback="filterToleranciaMm" :step="0.25" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadial3"
@@ -6505,7 +6870,7 @@ onUnmounted(() => {
                 <div>
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias[`anilloGrosor${sIdx + 4}`]" :fallback="filterToleranciaMm" :step="0.02" />
+                    <ToleranceBadge v-model="filterTolerancias[`anilloGrosor${sIdx + 4}`]" :fallback="filterToleranciaMm" :step="0.25" />
                   </div>
                   <input
                     v-model.number="slot.grosor"
@@ -6518,7 +6883,7 @@ onUnmounted(() => {
                 <div>
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias[`anilloRadial${sIdx + 4}`]" :fallback="filterToleranciaMm" :step="0.05" />
+                    <ToleranceBadge v-model="filterTolerancias[`anilloRadial${sIdx + 4}`]" :fallback="filterToleranciaMm" :step="0.25" />
                   </div>
                   <input
                     v-model.number="slot.altura"
@@ -6544,7 +6909,7 @@ onUnmounted(() => {
                 <div v-if="isTableParamInFilter('aceite_h1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Grosor</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.02" :unit="getTableParamUnit('aceite_h1', 'mm')" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloGrosorAceite']" :fallback="filterToleranciaMm" :step="0.25" :unit="getTableParamUnit('aceite_h1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloGrosorAceite"
@@ -6557,7 +6922,7 @@ onUnmounted(() => {
                 <div v-if="isTableParamInFilter('aceite_a1')">
                   <div class="flex items-center justify-between mb-0.5">
                     <label class="block text-[9px] font-bold uppercase text-slate-600 truncate">Altura</label>
-                    <ToleranceBadge v-model="filterTolerancias['anilloRadialAceite']" :fallback="filterToleranciaMm" :step="0.05" :unit="getTableParamUnit('aceite_a1', 'mm')" />
+                    <ToleranceBadge v-model="filterTolerancias['anilloRadialAceite']" :fallback="filterToleranciaMm" :step="0.25" :unit="getTableParamUnit('aceite_a1', 'mm')" />
                   </div>
                   <input
                     v-model.number="filterAnilloRadialAceite"
@@ -6887,6 +7252,15 @@ onUnmounted(() => {
                   {{ marca }}
                 </option>
               </select>
+              <button
+                type="button"
+                @click="isOemColorModalOpen = true"
+                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-white hover:bg-blue-50 border border-slate-200 hover:border-[#004B97]/40 rounded-lg text-[#004B97] transition cursor-pointer shadow-2xs"
+                title="Elegir color de la etiqueta del código OEM por catálogo"
+              >
+                <Palette class="w-3.5 h-3.5 text-[#04C4D9]" />
+                <span>Colores OEM</span>
+              </button>
             </div>
           </div>
         </div>
@@ -7185,11 +7559,19 @@ onUnmounted(() => {
                           {{ getPartVehicleModelsLabel(part) }}
                         </span>
                         <span 
-                          v-if="part.motor?.codigo || ((part.especificaciones_tecnicas as any)?.motores_compatibles && (part.especificaciones_tecnicas as any).motores_compatibles.length > 0)"
-                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 text-[#038391] font-mono font-bold border border-cyan-200"
-                          title="Código de motor"
+                          v-if="getPartMotorAppsText(part)"
+                          class="inline-flex flex-wrap items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 text-[#038391] font-mono font-bold border border-cyan-200 max-w-[260px] whitespace-normal break-all leading-snug"
+                          :title="getPartMotorAppsText(part)"
                         >
-                          {{ part.motor?.codigo || (part.especificaciones_tecnicas as any).motores_compatibles.join('/') }}
+                          <span>{{ getDisplayedMotorAppsText(part) }}</span>
+                          <button
+                            v-if="isMotorAppsTruncatable(part)"
+                            type="button"
+                            @click.stop="toggleMotorAppsExpanded(part.id)"
+                            class="text-[10px] font-sans font-extrabold text-[#004B97] hover:underline cursor-pointer ml-0.5 whitespace-nowrap"
+                          >
+                            {{ expandedMotorApps[part.id] ? 'Ver menos' : 'Ver más' }}
+                          </button>
                         </span>
                         <span 
                           v-if="(part.especificaciones_tecnicas as any)?.ano && (part.especificaciones_tecnicas as any)?.ano !== '—'"
@@ -7215,58 +7597,50 @@ onUnmounted(() => {
                   <div class="flex flex-col gap-1">
                     <!-- Código Principal -->
                     <div class="flex items-center gap-1 flex-wrap">
-                      <span 
-                        v-if="getPartCatalogBrand(part) === 'DOKURO' || part.catalogo_origen?.toLowerCase() === 'dokuro' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'DOKURO'"
-                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300"
-                        title="Código oficial del catálogo Dokuro"
+                      <span
+                        v-if="getPartCatalogBrand(part) && getPartCatalogBrand(part) !== 'OEM'"
+                        :style="getPartOemBadgeStyle(part)"
+                        :class="[
+                          'px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border',
+                          getPartOemBadgeStyle(part)
+                            ? ''
+                            : getPartCatalogBrand(part) === 'DOKURO'
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : getPartCatalogBrand(part) === 'MRK'
+                                ? 'bg-sky-100 text-sky-800 border-sky-300'
+                                : getPartCatalogBrand(part) === 'RIK'
+                                  ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                                  : getPartCatalogBrand(part) === 'NPR'
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : getPartCatalogBrand(part) === 'AJUSA'
+                                      ? 'bg-[#0f2d59] text-white border-blue-950'
+                                      : 'bg-slate-200 text-slate-800 border-slate-300'
+                        ]"
+                        :title="`Código oficial del catálogo ${getPartCatalogBrand(part)}`"
                       >
-                        DOKURO
+                        {{ getPartCatalogBrand(part) }}
                       </span>
-                      <span 
-                        v-else-if="getPartCatalogBrand(part) === 'MRK' || part.catalogo_origen?.toLowerCase() === 'mrk' || (part.especificaciones_tecnicas as any)?.marca_catalogo === 'MRK' || (part.especificaciones_tecnicas as any)?.codigo_mrk"
-                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-300"
-                        title="Código oficial del catálogo MRK"
-                      >
-                        MRK
-                      </span>
-                      <span 
-                        v-else-if="getPartCatalogBrand(part) === 'RIK' || part.catalogo_origen?.toLowerCase() === 'rik' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'RIK' || (part.especificaciones_tecnicas as any)?.codigo_rik || part.codigo_oem?.startsWith('RIK-') || part.nombre?.includes('RIK')"
-                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-300"
-                        title="Código oficial del catálogo RIK"
-                      >
-                        RIK
-                      </span>
-                      <span 
-                        v-else-if="getPartCatalogBrand(part) === 'NPR' || part.catalogo_origen?.toLowerCase() === 'npr' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'NPR' || (part.especificaciones_tecnicas as any)?.codigo_npr || part.codigo_oem?.startsWith('NPR-') || part.nombre?.includes('NPR')"
-                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300"
-                        title="Código oficial del catálogo NPR"
-                      >
-                        NPR
-                      </span>
-                      <span 
-                        v-else-if="getPartCatalogBrand(part) === 'AJUSA' || part.catalogo_origen?.toLowerCase() === 'ajusa' || (part.especificaciones_tecnicas as any)?.marca_catalogo?.toUpperCase() === 'AJUSA' || (part.especificaciones_tecnicas as any)?.codigo_ajusa"
-                        class="px-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-[#0f2d59] text-white border border-blue-950"
-                        title="Código oficial del catálogo Ajusa"
-                      >
-                        AJUSA
-                      </span>
-                      <!-- Cuadritos independientes para cada código OEM (mismo color para todos) -->
+                      <!-- Cuadritos independientes para cada código OEM (color personalizable por catálogo) -->
                       <div v-if="getPartDisplayOemCodes(part).length > 0" class="flex flex-wrap items-center gap-1.5">
                         <div
                           v-for="oemCode in getPartDisplayOemCodes(part)"
                           :key="`table-oem-${part.id}-${oemCode}`"
-                          class="inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200/80 hover:border-slate-300 transition shadow-2xs"
-                          :title="`Código OEM: ${oemCode}`"
+                          :style="getPartOemBadgeStyle(part)"
+                          :class="[
+                            'inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border hover:brightness-95 transition shadow-2xs',
+                            getPartOemBadgeStyle(part) ? '' : 'border-slate-200 bg-slate-100 text-slate-900'
+                          ]"
+                          :title="`Código OEM (${getPartResolvedCatalogKey(part)}): ${oemCode}`"
                         >
                           <span>{{ oemCode }}</span>
                           <button
                             type="button"
                             @click.stop="copyToClipboard(oemCode, 'OEM')"
-                            class="p-0.5 text-slate-400 hover:text-slate-800 rounded transition"
+                            class="p-0.5 opacity-70 hover:opacity-100 rounded transition"
                             :title="`Copiar código ${oemCode}`"
                           >
-                            <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5 text-[#038391]" />
-                            <Copy v-else class="w-3.5 h-3.5 hover:text-slate-700" />
+                            <Check v-if="copiedCode === oemCode" class="w-3.5 h-3.5" />
+                            <Copy v-else class="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -7334,11 +7708,11 @@ onUnmounted(() => {
 
                 <td v-else class="py-2 px-3 align-middle border-b border-slate-100">
                   
-                  <!-- VISTA EN TABLA: Sub-tabla incrustada dentro de la columna (con orientación Vertical u Horizontal) -->
+                  <!-- VISTA EN TABLA: Sub-tabla incrustada dentro de la columna (con orientación Vertical u Horizontal por familia) -->
                   <div v-if="isPartEmbeddedTableFormat(part)" class="py-1">
-                    <!-- ORIENTACIÓN VERTICAL (Por defecto en Casquetería / Cojinetes, conmutable) -->
+                    <!-- ORIENTACIÓN VERTICAL (Por defecto en Casquetería / Cojinetes, conmutable y persistente por familia) -->
                     <div
-                      v-if="currentTableOrientation === 'vertical'"
+                      v-if="getPartTableOrientation(part) === 'vertical'"
                       class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono select-text"
                     >
                       <table class="border-collapse text-center text-xs">
@@ -7591,7 +7965,7 @@ onUnmounted(() => {
 
                   <!-- Caso Dinámico General: Vertical (tabla atributo-valor) u Horizontal (badges) -->
                   <div
-                    v-else-if="(resolveGroupDefinitionForPart(part)?.parametros?.length || 0) > 0 && currentTableOrientation === 'vertical'"
+                    v-else-if="(resolveGroupDefinitionForPart(part)?.parametros?.length || 0) > 0 && getPartTableOrientation(part) === 'vertical'"
                     class="py-1"
                   >
                     <div class="inline-block border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs font-mono text-[11px] select-text">
@@ -7804,7 +8178,18 @@ onUnmounted(() => {
 
                 <!-- 5. Acciones Rápidas -->
                 <td class="py-2 px-3 align-middle text-right border-b border-slate-100">
-                  <div class="flex items-center justify-end gap-1">
+                  <div class="flex items-center justify-end gap-1 flex-wrap">
+                    <button
+                      v-if="isPartEmbeddedTableFormat(part) || Boolean(resolveGroupDefinitionForPart(part)?.parametros?.length)"
+                      type="button"
+                      @click.stop="togglePartFamilyOrientation(part)"
+                      class="px-2 py-1 rounded-md border border-slate-200 hover:bg-blue-50 hover:border-blue-300 text-slate-700 hover:text-[#004B97] text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                      :title="`Cambiar vista de toda la familia a ${getPartTableOrientation(part) === 'vertical' ? 'Horizontal' : 'Vertical'} (se guarda automáticamente)`"
+                    >
+                      <ArrowUpDown class="w-3 h-3 text-[#004B97]" />
+                      <span>{{ getPartTableOrientation(part) === 'vertical' ? 'Vertical' : 'Horizontal' }}</span>
+                    </button>
+
                     <button
                       type="button"
                       @click="openTechnicalSheet(part)"
@@ -9720,6 +10105,108 @@ onUnmounted(() => {
                   : `Sí, eliminar ${catalogSelectionStore.count} ${catalogSelectionStore.count === 1 ? 'repuesto' : 'repuestos'}`
               }}
             </span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Colores de Etiqueta OEM por Catálogo -->
+    <div
+      v-if="isOemColorModalOpen"
+      class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
+      @click.self="isOemColorModalOpen = false"
+    >
+      <div class="studio-card bg-white max-w-2xl w-full rounded-2xl shadow-2xl border border-slate-200 overflow-hidden max-h-[88vh] flex flex-col">
+        <div class="px-5 py-4 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+              <Palette class="w-4 h-4 text-[#BFEBF2]" />
+            </div>
+            <div>
+              <h3 class="font-display font-extrabold text-sm sm:text-base text-white">
+                Color de Etiqueta del Código OEM por Catálogo
+              </h3>
+              <p class="text-[11px] text-sky-100/80">
+                Elige un color diferente para identificar rápidamente los códigos OEM de cada catálogo.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="isOemColorModalOpen = false"
+            class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
+          <div
+            v-for="brand in oemColorEditableCatalogs"
+            :key="`oem-color-${brand}`"
+            class="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          >
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-[#0D1B3E] text-white shrink-0">
+                {{ brand }}
+              </span>
+              <span
+                :style="getOemBadgeInlineStyle(brand, catalogOemColors)"
+                class="inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-900"
+              >
+                OEM-12345
+              </span>
+            </div>
+
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <button
+                v-for="preset in OEM_COLOR_PRESETS"
+                :key="`${brand}-${preset.id}`"
+                type="button"
+                @click="setCatalogOemColor(brand, preset.id)"
+                :title="preset.label"
+                :style="{ backgroundColor: preset.swatch }"
+                :class="[
+                  'w-6 h-6 rounded-full border-2 transition cursor-pointer flex items-center justify-center',
+                  getCatalogOemColorValue(brand) === preset.id
+                    ? 'border-[#0D1B3E] ring-2 ring-[#04C4D9] scale-110'
+                    : 'border-white shadow-xs hover:scale-105'
+                ]"
+              >
+                <Check v-if="getCatalogOemColorValue(brand) === preset.id" class="w-3 h-3 text-white stroke-[3]" />
+              </button>
+
+              <label
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-[10px] font-bold text-slate-600 hover:border-[#004B97] cursor-pointer ml-1"
+                title="Elegir color personalizado"
+              >
+                <span>Otro</span>
+                <input
+                  type="color"
+                  :value="getCatalogOemColorValue(brand).startsWith('#') ? getCatalogOemColorValue(brand) : '#2563eb'"
+                  @input="setCatalogOemColor(brand, ($event.target as HTMLInputElement).value)"
+                  class="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            :disabled="savingOemColors"
+            @click="resetAllCatalogOemColors"
+            class="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+          >
+            Restaurar predeterminados
+          </button>
+          <button
+            type="button"
+            @click="isOemColorModalOpen = false"
+            class="studio-cta-primary px-4 py-1.5 rounded-xl text-xs font-bold cursor-pointer"
+          >
+            Listo
           </button>
         </div>
       </div>

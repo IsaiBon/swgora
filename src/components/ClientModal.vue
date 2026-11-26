@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { clientesService, type Cliente, type ClientType, type ClientStatus } from '@/services/clientesService'
+import {
+  clientesService,
+  getClientEncargadoName,
+  getClientWorkshopName,
+  type Cliente,
+  type ClientType,
+  type ClientStatus,
+} from '@/services/clientesService'
 import {
   X,
   User,
@@ -30,6 +37,7 @@ const statusList: ClientStatus[] = ['Activo', 'Inactivo']
 // Form fields
 const nombre = ref('')
 const taller = ref('')
+const encargado = ref('')
 const telefono = ref('')
 const direccion = ref('')
 const tipo = ref<ClientType>('Cliente')
@@ -44,26 +52,36 @@ const previewCode = computed(() => {
 // Validation states
 const errors = ref({
   nombre: '',
+  taller: '',
   telefono: '',
 })
 const isSubmitting = ref(false)
 
 // Reset or populate fields
 watch(
-  () => props.clientToEdit,
-  (edit) => {
-    errors.value = { nombre: '', telefono: '' }
+  [() => props.clientToEdit, () => props.isOpen],
+  ([edit, open]) => {
+    if (!open && !edit) return
+    errors.value = { nombre: '', taller: '', telefono: '' }
     if (edit) {
-      nombre.value = edit.nombre || ''
-      taller.value = edit.especificaciones_tecnicas?.taller || edit.especificaciones_tecnicas?.empresa || ''
+      tipo.value = edit.tipo || 'Cliente'
+      if (tipo.value === 'Tallerista') {
+        taller.value = getClientWorkshopName(edit) || edit.nombre || ''
+        encargado.value = getClientEncargadoName(edit)
+        nombre.value = ''
+      } else {
+        nombre.value = edit.nombre || ''
+        taller.value = edit.especificaciones_tecnicas?.taller || edit.especificaciones_tecnicas?.empresa || ''
+        encargado.value = ''
+      }
       telefono.value = edit.telefono || ''
       direccion.value = edit.direccion || ''
-      tipo.value = edit.tipo || 'Cliente'
       estado.value = edit.estado || 'Activo'
       notas.value = edit.especificaciones_tecnicas?.notas || edit.especificaciones_tecnicas?.servicios || ''
     } else {
       nombre.value = ''
       taller.value = ''
+      encargado.value = ''
       telefono.value = ''
       direccion.value = ''
       tipo.value = 'Cliente'
@@ -76,22 +94,31 @@ watch(
 
 // Reglas de validación de entrada
 const validateForm = async (): Promise<boolean> => {
-  errors.value = { nombre: '', telefono: '' }
+  errors.value = { nombre: '', taller: '', telefono: '' }
   let isValid = true
 
-  // 1. Nombre mínimo 3 caracteres
-  const cleanNombre = nombre.value.trim()
-  if (!cleanNombre || cleanNombre.length < 3) {
-    errors.value.nombre = 'El nombre es obligatorio y debe tener al menos 3 caracteres.'
-    isValid = false
+  if (tipo.value === 'Tallerista') {
+    const cleanTaller = taller.value.trim()
+    if (!cleanTaller || cleanTaller.length < 2) {
+      errors.value.taller = 'El nombre del taller es obligatorio.'
+      isValid = false
+    }
+  } else {
+    const cleanNombre = nombre.value.trim()
+    if (!cleanNombre || cleanNombre.length < 3) {
+      errors.value.nombre = 'El nombre es obligatorio y debe tener al menos 3 caracteres.'
+      isValid = false
+    }
   }
 
-  // 2. Teléfono con formato válido (mínimo 8 dígitos)
+  // Teléfono opcional, pero si se ingresa debe tener al menos 8 dígitos
   const cleanPhone = telefono.value.trim()
-  const digitsOnly = cleanPhone.replace(/\D/g, '')
-  if (!cleanPhone || digitsOnly.length < 8) {
-    errors.value.telefono = 'Ingresa un número telefónico válido (mínimo 8 dígitos).'
-    isValid = false
+  if (cleanPhone) {
+    const digitsOnly = cleanPhone.replace(/\D/g, '')
+    if (digitsOnly.length < 8) {
+      errors.value.telefono = 'Ingresa un número telefónico válido (mínimo 8 dígitos).'
+      isValid = false
+    }
   }
 
   return isValid
@@ -103,17 +130,23 @@ const handleSubmit = async () => {
     const isValid = await validateForm()
     if (!isValid) return
 
+    const isTaller = tipo.value === 'Tallerista'
+    const cleanTaller = taller.value.trim()
+    const cleanEncargado = encargado.value.trim()
+    const cleanNombre = isTaller ? cleanTaller : nombre.value.trim()
+
     emit('save', {
       id: props.clientToEdit ? props.clientToEdit.id : undefined,
       codigo: props.clientToEdit ? props.clientToEdit.codigo : undefined,
-      nombre: nombre.value.trim(),
-      telefono: telefono.value.trim(),
+      nombre: cleanNombre,
+      telefono: telefono.value.trim() || undefined,
       direccion: direccion.value.trim() || undefined,
       tipo: tipo.value,
       estado: props.clientToEdit ? estado.value : 'Activo',
       especificaciones_tecnicas: {
         ...(props.clientToEdit?.especificaciones_tecnicas || {}),
-        taller: taller.value.trim() || undefined,
+        taller: cleanTaller || undefined,
+        encargado: isTaller ? (cleanEncargado || undefined) : undefined,
         notas: notas.value.trim() || undefined,
       },
     })
@@ -199,7 +232,7 @@ const handleToggleStatus = () => {
             >
               <User v-if="t === 'Cliente'" :class="['w-4 h-4', tipo === t ? 'text-[#BFEBF2]' : 'text-[#1B4978]']" />
               <Wrench v-else :class="['w-4 h-4', tipo === t ? 'text-[#F6EBD8]' : 'text-[#6E5835]']" />
-              <span>{{ t }}</span>
+              <span>{{ t === 'Tallerista' ? 'Taller' : 'Cliente' }}</span>
             </button>
           </div>
         </div>
@@ -217,58 +250,106 @@ const handleToggleStatus = () => {
           </span>
         </div>
 
-        <!-- Nombre Completo o Razón Social -->
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
-            Nombre Completo o Titular *
-          </label>
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-              <User class="w-5 h-5" />
+        <!-- CAMPOS PARA TALLER: Nombre del Taller (obligatorio) + Nombre del encargado (opcional) -->
+        <template v-if="tipo === 'Tallerista'">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
+              Nombre del Taller *
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                <Wrench class="w-5 h-5" />
+              </div>
+              <input
+                v-model="taller"
+                type="text"
+                required
+                placeholder="Ej. Taller Mecánico Especializado Ramos"
+                :class="[
+                  'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
+                  errors.taller
+                    ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
+                    : 'border-slate-200 focus:border-[#04C4D9] focus:ring-[#04C4D9]/30'
+                ]"
+              />
             </div>
-            <input
-              v-model="nombre"
-              type="text"
-              required
-              placeholder="Ej. Roberto Sánchez o Carlos Mendoza"
-              :class="[
-                'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
-                errors.nombre
-                  ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
-                  : 'border-slate-200 focus:border-[#04C4D9] focus:ring-[#04C4D9]/30'
-              ]"
-            />
+            <p v-if="errors.taller" class="mt-1 pl-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
+              <AlertCircle class="w-3.5 h-3.5" />
+              <span>{{ errors.taller }}</span>
+            </p>
           </div>
-          <p v-if="errors.nombre" class="mt-1 pl-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
-            <AlertCircle class="w-3.5 h-3.5" />
-            <span>{{ errors.nombre }}</span>
-          </p>
-        </div>
 
-        <!-- Taller o Empresa -->
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
-            Nombre del Taller o Empresa {{ tipo === 'Tallerista' ? '*' : '(Opcional)' }}
-          </label>
-          <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-              <Wrench class="w-5 h-5" />
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
+              Nombre del encargado (Opcional)
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                <User class="w-5 h-5" />
+              </div>
+              <input
+                v-model="encargado"
+                type="text"
+                placeholder="Ej. Maestro Jorge Ramos (opcional)"
+                class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
+              />
             </div>
-            <input
-              v-model="taller"
-              type="text"
-              :placeholder="tipo === 'Tallerista' ? 'Ej. Taller Mecánico Especializado Ramos' : 'Ej. Transportes del Norte (si aplica)'"
-              class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
-            />
           </div>
-        </div>
+        </template>
+
+        <!-- CAMPOS PARA CLIENTE: Nombre Completo (obligatorio) + Empresa/Taller (opcional) -->
+        <template v-else>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
+              Nombre Completo o Titular *
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                <User class="w-5 h-5" />
+              </div>
+              <input
+                v-model="nombre"
+                type="text"
+                required
+                placeholder="Ej. Roberto Sánchez o Carlos Mendoza"
+                :class="[
+                  'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
+                  errors.nombre
+                    ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-200'
+                    : 'border-slate-200 focus:border-[#04C4D9] focus:ring-[#04C4D9]/30'
+                ]"
+              />
+            </div>
+            <p v-if="errors.nombre" class="mt-1 pl-1 text-[11px] font-semibold text-rose-600 flex items-center gap-1">
+              <AlertCircle class="w-3.5 h-3.5" />
+              <span>{{ errors.nombre }}</span>
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
+              Nombre de Empresa o Taller (Opcional)
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                <Wrench class="w-5 h-5" />
+              </div>
+              <input
+                v-model="taller"
+                type="text"
+                placeholder="Ej. Transportes del Norte (si aplica)"
+                class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
+              />
+            </div>
+          </div>
+        </template>
 
         <!-- Teléfono y Dirección -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <!-- Teléfono -->
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1.5 pl-1">
-              Teléfono Directo (Llamadas / WhatsApp) *
+              Teléfono Directo (Opcional)
             </label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
@@ -277,7 +358,6 @@ const handleToggleStatus = () => {
               <input
                 v-model="telefono"
                 type="tel"
-                required
                 placeholder="Ej. 81 1234 5678"
                 :class="[
                   'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm font-mono text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',

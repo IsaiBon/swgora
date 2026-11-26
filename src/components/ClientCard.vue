@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Cliente, ClientStatus } from '@/services/clientesService'
+import {
+  getClientEncargadoName,
+  getClientPrimaryLabel,
+  getClientWorkshopName,
+  type Cliente,
+  type ClientStatus,
+} from '@/services/clientesService'
 import {
   PhoneCall,
   MapPin,
@@ -42,9 +48,11 @@ const cleanPhoneForWa = computed(() => {
   return props.client.telefono ? props.client.telefono.replace(/\D/g, '') : ''
 })
 
-const workshopName = computed(() => {
-  return props.client.especificaciones_tecnicas?.taller || props.client.especificaciones_tecnicas?.empresa || ''
-})
+const primaryTitle = computed(() => getClientPrimaryLabel(props.client))
+
+const workshopName = computed(() => getClientWorkshopName(props.client))
+
+const encargadoName = computed(() => getClientEncargadoName(props.client))
 
 const technicalNotes = computed(() => {
   return props.client.especificaciones_tecnicas?.notas || props.client.especificaciones_tecnicas?.servicios || props.client.especificaciones_tecnicas?.flotilla || ''
@@ -125,9 +133,13 @@ const handleToggleStatus = () => {
         </div>
         <div class="min-w-0 flex-1">
           <h4 class="font-display text-base font-extrabold text-[#162436] leading-tight group-hover:text-[#1B4978] transition-colors truncate">
-            {{ client.nombre }}
+            {{ primaryTitle }}
           </h4>
-          <div v-if="workshopName" class="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
+          <div v-if="isTallerista && encargadoName" class="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
+            <User class="w-3 h-3 text-[#147488] shrink-0" />
+            <span class="truncate">Encargado: {{ encargadoName }}</span>
+          </div>
+          <div v-else-if="!isTallerista && workshopName" class="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
             <Wrench class="w-3 h-3 text-[#147488] shrink-0" />
             <span class="truncate">{{ workshopName }}</span>
           </div>

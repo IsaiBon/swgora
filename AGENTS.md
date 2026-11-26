@@ -78,12 +78,15 @@ Diseñado para agilizar el registro en el mostrador del taller y la emisión for
 - **Repuestos Facturados:**
   - Selección de repuestos desde el catálogo con cantidad, precio unitario y total.
   - **Cálculo de Totales:** Suma automática de mano de obra y repuestos.
-- **Generación de Documentos y Salida de Impresión:**
+- **Generación de Documentos, PDF, WhatsApp y Salida de Impresión:**
   - **Cotización:** Formato económico en blanco y negro con marca de agua destacada `"COTIZACIÓN"`.
   - **Orden de Trabajo / Taller:** Formato formal con diseño, logotipo e identidad visual corporativa (azul).
-  - **Impresión limpia (Clean Print):** En la impresión y exportación (PDF) únicamente deben figurar las operaciones y repuestos efectivamente facturados; los campos y componentes vacíos deben ocultarse.
-- **Historial y Estadísticas:**
-  - Reportes y filtros por rango de fechas (día/mes/año) y por tallerista para medir volumen de trabajo (ej. número de motores o culatas rectificadas por cliente/taller).
+  - **Auto-adaptación Carta (1 o 2 columnas):** `WorkOrderDocument.vue` evalúa dinámicamente la altura (`evaluateAutoLayout`) para mantener 1 columna cuando cabe en 1 página Carta o pasar a 2 columnas balanceadas cuando la excede.
+  - **Impresión limpia (Clean Print) y Exportación PDF:** En la impresión y exportación (`src/utils/pdfExport.ts`) únicamente figuran las operaciones y repuestos efectivamente facturados; los campos sin valor (ej. `Marca`, `Motor`, `Tel`) se muestran vacíos sin textos de relleno (`N/A`) y los componentes vacíos se ocultan.
+  - **Compartir por WhatsApp:** Generación de mensajes y envío directo de PDF (`src/utils/whatsappShare.ts`, `DirectOrderPdfShare.vue`).
+- **Historial, Dashboard y Estadísticas:**
+  - Reportes y filtros globales por rango de fechas, ruta/sucursal y tallerista.
+  - En la tabla del Dashboard (`DashboardView.vue`), filtros por estado (`Global` por defecto, `Pendientes`, `En Proceso`, `Terminados`) y selector desplegable `Tipos de orden` (`Todas`, `Órdenes de trabajo`, `Cotizaciones`).
 
 ---
 
@@ -111,22 +114,29 @@ Diseñado para agilizar el registro en el mostrador del taller y la emisión for
 ```text
 SWGORA/
 ├── .agents/                    # Configuraciones y reglas del agente
+├── docs/                       # Manual de usuario (manual-usuario-swgora.html)
 ├── public/                     # Recursos estáticos
 ├── src/
 │   ├── assets/                 # Imágenes, estilos globales
-│   ├── components/             # Componentes Vue reutilizables (Navbar, Sidebar, Modales, etc.)
+│   ├── components/             # Componentes Vue reutilizables (Navbar, Sidebar, WorkOrderForm, WorkOrderDocument, Modales, etc.)
 │   ├── composables/            # Lógica reactiva reutilizable (useOrders, useCatalog, usePrint, etc.)
 │   ├── layouts/                # Layouts de vistas (DashboardLayout, etc.)
 │   ├── router/                 # Configuración de rutas (Vue Router)
 │   ├── services/               # Servicios de datos y conexión a Supabase
 │   │   ├── supabase.ts         # Cliente Supabase inicializado
 │   │   ├── authService.ts      # Autenticación y gestión de sesiones
-│   │   ├── clientesService.ts  # CRUD de clientes y talleres
+│   │   ├── catalogImportService.ts # Importación y exportación masiva de catálogo
 │   │   ├── catalogService.ts   # Catálogo, repuestos, equivalencias y búsqueda dimensional
+│   │   ├── clientesService.ts  # CRUD de clientes y talleres
 │   │   ├── ordersService.ts    # Gestión de órdenes de rectificación y cotizaciones
-│   │   └── perfilesService.ts  # Perfiles de usuario y roles
-│   ├── stores/                 # Stores de Pinia (auth, catálogo, etc.)
-│   ├── views/                  # Vistas principales (Dashboard, Catalogo, Ordenes, Clientes, Login)
+│   │   ├── perfilesService.ts  # Perfiles de usuario y roles
+│   │   ├── rutasService.ts     # Gestión de rutas / sucursales
+│   │   ├── storageService.ts   # Almacenamiento de archivos/imágenes
+│   │   ├── tallerService.ts    # Configuración del taller
+│   │   └── usuariosService.ts  # Gestión de usuarios
+│   ├── stores/                 # Stores de Pinia (auth, catalog, etc.)
+│   ├── utils/                  # Utilidades (pdfExport.ts, whatsappShare.ts, catalogPermissions.ts)
+│   ├── views/                  # Vistas principales (Dashboard, Catalogo, Ordenes, Clientes, Rutas, Taller, Usuarios, Login)
 │   ├── App.vue                 # Componente raíz
 │   ├── main.ts                 # Punto de entrada de la aplicación
 │   └── style.css               # Estilos globales y utilidades de Tailwind

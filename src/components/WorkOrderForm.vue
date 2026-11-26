@@ -11,7 +11,15 @@ import {
   type OrderStatus,
   type DocumentType
 } from '@/services/ordersService'
-import { clientesService, type Cliente, type ClientType } from '@/services/clientesService'
+import {
+  clientesService,
+  getClientEncargadoName,
+  getClientPrimaryLabel,
+  getClientSecondaryLabel,
+  getClientWorkshopName,
+  type Cliente,
+  type ClientType,
+} from '@/services/clientesService'
 import { catalogService, type CatalogProduct, sortMotorsByRelevance } from '@/services/catalogService'
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useCatalogStore } from '@/stores/catalog'
@@ -19,6 +27,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTallerStore } from '@/stores/taller'
 import { useOrderCartStore } from '@/stores/orderCart'
 import WorkOrderPrintModal from './WorkOrderPrintModal.vue'
+import ClientModal from './ClientModal.vue'
 import { 
   Search, 
   Plus, 
@@ -1049,10 +1058,15 @@ const selectCustomer = (client: Cliente) => {
   selectedCustomerId.value = client.id
   selectedCustomerCode.value = client.codigo
   selectedCustomerType.value = client.tipo
-  clientName.value = client.nombre
+  if (client.tipo === 'Tallerista') {
+    clientWorkshop.value = getClientWorkshopName(client) || client.nombre || ''
+    clientName.value = ''
+  } else {
+    clientName.value = client.nombre || ''
+    clientWorkshop.value = getClientWorkshopName(client)
+  }
   clientPhone.value = client.telefono || ''
   clientAddress.value = client.direccion || ''
-  clientWorkshop.value = getClientWorkshopLabel(client)
   clientSearchQuery.value = ''
   showClientDropdown.value = false
   isClientNameSuggestionsOpen.value = false
@@ -1076,9 +1090,13 @@ const selectClientWorkshopSuggestion = (client: Cliente, workshopLabel: string) 
   if (client.direccion) {
     clientAddress.value = client.direccion
   }
-  const trimmedNombre = (client.nombre || '').trim()
-  if (trimmedNombre && trimmedNombre.toLowerCase() !== workshopLabel.trim().toLowerCase()) {
-    clientName.value = trimmedNombre
+  if (client.tipo === 'Tallerista') {
+    clientName.value = ''
+  } else {
+    const trimmedNombre = (client.nombre || '').trim()
+    if (trimmedNombre && trimmedNombre.toLowerCase() !== workshopLabel.trim().toLowerCase()) {
+      clientName.value = trimmedNombre
+    }
   }
   isClientWorkshopSuggestionsOpen.value = false
   formErrors.value.clientName = false
@@ -1158,24 +1176,27 @@ const removeMaterial = (id: string) => {
   materials.value = materials.value.filter(m => m.id !== id)
 }
 
-// Crear cliente rápido
-const handleQuickCreateClient = async () => {
-  if (!newClientForm.value.nombre.trim()) return
+// Crear cliente / taller rápido (unificado con ClientModal)
+const handleQuickCreateClient = async (payload?: Partial<Cliente>) => {
+  const tipo: ClientType = payload?.tipo || (newClientForm.value.taller.trim() ? 'Tallerista' : 'Cliente')
+  const nombreFinal = String(payload?.nombre ?? newClientForm.value.nombre ?? '').trim()
+  const tallerFinal = String(payload?.especificaciones_tecnicas?.taller ?? newClientForm.value.taller ?? '').trim()
+  if (tipo === 'Tallerista' && !tallerFinal) return
+  if (tipo === 'Cliente' && !nombreFinal) return
 
   try {
-    const isTaller = !!newClientForm.value.taller.trim()
-    const tipo: ClientType = isTaller ? 'Tallerista' : 'Cliente'
-    const autoCode = clientesService.getNextClientCode(tipo)
+    const autoCode = payload?.codigo || clientesService.getNextClientCode(tipo)
 
     const created = await clientesService.createCliente({
       codigo: autoCode,
-      nombre: newClientForm.value.nombre.trim(),
-      telefono: newClientForm.value.telefono.trim(),
-      direccion: newClientForm.value.direccion.trim(),
+      nombre: tipo === 'Tallerista' ? tallerFinal : nombreFinal,
+      telefono: String(payload?.telefono ?? newClientForm.value.telefono ?? '').trim() || undefined,
+      direccion: String(payload?.direccion ?? newClientForm.value.direccion ?? '').trim() || undefined,
       tipo,
       estado: 'Activo',
       especificaciones_tecnicas: {
-        taller: newClientForm.value.taller.trim()
+        ...(payload?.especificaciones_tecnicas || {}),
+        taller: tallerFinal || undefined,
       }
     })
 
@@ -1625,12 +1646,12 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                     </span>
                     <div class="truncate">
                       <div class="text-xs font-bold text-slate-900 group-hover:text-[#004B97] transition truncate">
-                        {{ c.nombre }}
+                        {{ getClientPrimaryLabel(c) }}
                       </div>
                       <div class="text-[11px] text-slate-500 truncate">
-                        <span class="font-medium text-slate-600">{{ c.tipo }}</span>
-                        <span v-if="c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa">
-                          • Taller: {{ c.especificaciones_tecnicas?.taller || c.especificaciones_tecnicas?.empresa }}
+                        <span class="font-medium text-slate-600">{{ c.tipo === 'Tallerista' ? 'Taller' : 'Cliente' }}</span>
+                        <span v-if="getClientSecondaryLabel(c)">
+                          • {{ getClientSecondaryLabel(c) }}
                         </span>
                         <span v-else-if="c.direccion">
                           • {{ c.direccion }}
@@ -1714,9 +1735,9 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   class="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-[#004B97] transition flex items-center justify-between gap-2 cursor-pointer"
                 >
                   <div class="min-w-0 truncate">
-                    <div class="font-bold text-slate-900 truncate">{{ c.nombre }}</div>
-                    <div v-if="getClientWorkshopLabel(c) || c.telefono" class="text-[10px] text-slate-500 truncate">
-                      {{ [getClientWorkshopLabel(c), c.telefono].filter(Boolean).join(' · ') }}
+                    <div class="font-bold text-slate-900 truncate">{{ getClientPrimaryLabel(c) }}</div>
+                    <div v-if="getClientSecondaryLabel(c) || c.telefono" class="text-[10px] text-slate-500 truncate">
+                      {{ [getClientSecondaryLabel(c), c.telefono].filter(Boolean).join(' · ') }}
                     </div>
                   </div>
                   <span class="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
@@ -1764,11 +1785,11 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   <div class="min-w-0 truncate">
                     <div class="font-bold text-slate-900 truncate">{{ item.label }}</div>
                     <div
-                      v-if="(item.client.nombre && item.client.nombre.trim().toLowerCase() !== item.label.toLowerCase()) || item.client.telefono"
+                      v-if="getClientEncargadoName(item.client) || item.client.telefono"
                       class="text-[10px] text-slate-500 truncate"
                     >
                       {{ [
-                        item.client.nombre && item.client.nombre.trim().toLowerCase() !== item.label.toLowerCase() ? item.client.nombre : '',
+                        getClientEncargadoName(item.client) ? `Encargado: ${getClientEncargadoName(item.client)}` : '',
                         item.client.telefono
                       ].filter(Boolean).join(' · ') }}
                     </div>
@@ -2708,73 +2729,13 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
       </div>
     </div>
 
-    <!-- Modal para Nuevo Cliente Rápido -->
-    <div v-if="showNewClientModal" class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="studio-card max-w-md w-full overflow-hidden shadow-2xl">
-        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white px-6 py-4 flex justify-between items-center">
-          <h3 class="font-display font-extrabold text-base text-white">Registrar Cliente / Taller</h3>
-          <button @click="showNewClientModal = false" class="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer">✕</button>
-        </div>
-
-        <div class="p-6 space-y-3">
-          <div>
-            <label class="text-xs font-semibold text-slate-600">Nombre Completo *</label>
-            <input
-              v-model="newClientForm.nombre"
-              type="text"
-              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-              placeholder="Ej. Ing. Carlos Mendoza"
-            />
-          </div>
-          <div>
-            <label class="text-xs font-semibold text-slate-600">Taller o Empresa</label>
-            <input
-              v-model="newClientForm.taller"
-              type="text"
-              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-              placeholder="Ej. Rectificadora del Norte"
-            />
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="text-xs font-semibold text-slate-600">Teléfono</label>
-              <input
-                v-model="newClientForm.telefono"
-                type="text"
-                class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-                placeholder="+52 81 8345 9912"
-              />
-            </div>
-          </div>
-          <div>
-            <label class="text-xs font-semibold text-slate-600">Dirección</label>
-            <input
-              v-model="newClientForm.direccion"
-              type="text"
-              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mt-1 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
-              placeholder="Calle, número, colonia..."
-            />
-          </div>
-        </div>
-
-        <div class="px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex justify-end gap-2">
-          <button
-            type="button"
-            @click="showNewClientModal = false"
-            class="px-3.5 py-2 border border-slate-200 bg-white rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            @click="handleQuickCreateClient"
-            class="studio-cta-primary px-4 py-2 rounded-xl text-xs font-bold cursor-pointer"
-          >
-            Guardar y Seleccionar
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Modal Unificado para Nuevo Cliente / Taller (idéntico al módulo de Clientes) -->
+    <ClientModal
+      :isOpen="showNewClientModal"
+      :clientToEdit="null"
+      @close="showNewClientModal = false"
+      @save="handleQuickCreateClient"
+    />
 
     <!-- Modal de Impresión Limpia (Clean Print) -->
     <WorkOrderPrintModal

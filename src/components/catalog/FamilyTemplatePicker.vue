@@ -10,6 +10,7 @@ import {
 } from './FamilyTemplates'
 import {
   buildNextAutoRowLabel,
+  renumberAutoNormalRowNames,
   buildNormalRowSegmentMeta,
   buildRowClusters,
   buildRowSpanMeta,
@@ -33,6 +34,18 @@ import {
   Eye,
   RefreshCw,
   FilePlus,
+  FileText,
+  Cog,
+  Disc,
+  Gauge,
+  Cpu,
+  Box,
+  Shield,
+  Zap,
+  Flame,
+  Hexagon,
+  Settings,
+  Package,
   Split,
   Binary,
   Hash,
@@ -183,6 +196,28 @@ const handleCloneExisting = () => {
   }
 }
 
+const FAMILY_ICON_OPTIONS = [
+  { id: 'Layers', label: 'Capas / Anillos' },
+  { id: 'CircleDot', label: 'Sello / Aro' },
+  { id: 'Wrench', label: 'Válvula / Llave' },
+  { id: 'FileText', label: 'Pernos / Ficha' },
+  { id: 'Cog', label: 'Engranaje' },
+  { id: 'Disc', label: 'Disco / Retén' },
+  { id: 'Gauge', label: 'Medidor' },
+  { id: 'Cpu', label: 'Block / Sensor' },
+  { id: 'SlidersHorizontal', label: 'Calibración' },
+  { id: 'Columns', label: 'Columnas' },
+  { id: 'Table', label: 'Tabla' },
+  { id: 'Ruler', label: 'Regla / Cotas' },
+  { id: 'Box', label: 'Componente' },
+  { id: 'Package', label: 'Kit / Juego' },
+  { id: 'Shield', label: 'Protección' },
+  { id: 'Zap', label: 'Eléctrico' },
+  { id: 'Flame', label: 'Combustión' },
+  { id: 'Hexagon', label: 'Tuerca / Hex' },
+  { id: 'Settings', label: 'Ajuste' },
+]
+
 // Icono según string
 const getIconComponent = (iconName: string) => {
   switch (iconName) {
@@ -193,6 +228,18 @@ const getIconComponent = (iconName: string) => {
     case 'Columns': return Columns
     case 'Table': return Table
     case 'Ruler': return Ruler
+    case 'FileText': return FileText
+    case 'Cog': return Cog
+    case 'Disc': return Disc
+    case 'Gauge': return Gauge
+    case 'Cpu': return Cpu
+    case 'Box': return Box
+    case 'Shield': return Shield
+    case 'Zap': return Zap
+    case 'Flame': return Flame
+    case 'Hexagon': return Hexagon
+    case 'Settings': return Settings
+    case 'Package': return Package
     default: return Layers
   }
 }
@@ -407,14 +454,37 @@ const updateUnifiedRowName = (idx: number, val: string) => {
   arr[idx] = val
 }
 
+const renumberUnifiedNormalRows = () => {
+  const arr = ensureTablaSubfilas()
+  const tipos = ensureTablaSubfilaTipos()
+  const nextNames = renumberAutoNormalRowNames(
+    arr.map((nombre, idx) => ({ nombre, isCentral: tipos[idx] === 'central' })),
+    currentTemplate.value.tabla_config?.titulo_primera_columna
+  )
+  nextNames.forEach((name, idx) => {
+    arr[idx] = name
+  })
+}
+
 const addUnifiedRow = () => {
   const arr = ensureTablaSubfilas()
   const padres = ensureTablaSubfilaPadres()
   const tipos = ensureTablaSubfilaTipos()
-  const nextLabel = buildNextAutoRowLabel(arr, currentTemplate.value.tabla_config?.titulo_primera_columna, true)
+  const normalNames = arr.filter((_, idx) => tipos[idx] !== 'central')
+  const nextLabel = buildNextAutoRowLabel(normalNames, currentTemplate.value.tabla_config?.titulo_primera_columna, true)
   arr.push(nextLabel)
   padres.push('')
   tipos.push('normal')
+}
+
+const addCentralRowAtStart = () => {
+  const arr = ensureTablaSubfilas()
+  const padres = ensureTablaSubfilaPadres()
+  const tipos = ensureTablaSubfilaTipos()
+  arr.unshift('Encabezado / Aplicación')
+  padres.unshift('')
+  tipos.unshift('central')
+  renumberUnifiedNormalRows()
 }
 
 const addCentralRow = () => {
@@ -427,15 +497,21 @@ const addCentralRow = () => {
 }
 
 const toggleRowCentralType = (idx: number) => {
+  const arr = ensureTablaSubfilas()
   const padres = ensureTablaSubfilaPadres()
   const tipos = ensureTablaSubfilaTipos()
   if (idx < 0 || idx >= tipos.length) return
   if (tipos[idx] === 'central') {
     tipos[idx] = 'normal'
+    const base = (currentTemplate.value.tabla_config?.titulo_primera_columna || '').trim() || 'Componente'
+    if (!arr[idx] || arr[idx] === 'Encabezado / Aplicación') {
+      arr[idx] = `${base} 1`
+    }
   } else {
     tipos[idx] = 'central'
     padres[idx] = ''
   }
+  renumberUnifiedNormalRows()
 }
 
 const removeUnifiedRow = (index: number) => {
@@ -448,6 +524,7 @@ const removeUnifiedRow = (index: number) => {
   if (Array.isArray(currentTemplate.value.tabla_config?.subfila_tipos)) {
     currentTemplate.value.tabla_config!.subfila_tipos.splice(index, 1)
   }
+  renumberUnifiedNormalRows()
 }
 
 // --- AGRUPACIÓN DE FILAS EN BLOQUES UNIDOS ("CENTRAR" + COLUMNA CENTRAL DE FILAS) ---
@@ -1066,6 +1143,29 @@ const handleSave = () => {
 
         <div class="md:col-span-3">
           <label class="block text-xs font-black text-slate-800 mb-1">
+            Icono en el buscador
+          </label>
+          <div class="flex items-center gap-1.5 flex-wrap p-1.5 rounded-xl bg-slate-50 border border-slate-300 max-h-[84px] overflow-y-auto">
+            <button
+              v-for="opt in FAMILY_ICON_OPTIONS"
+              :key="opt.id"
+              type="button"
+              @click="currentTemplate.icono = opt.id"
+              :title="opt.label"
+              :class="[
+                'w-7 h-7 rounded-lg flex items-center justify-center transition cursor-pointer border',
+                (currentTemplate.icono || 'Layers') === opt.id
+                  ? 'bg-[#004B97] text-white border-[#004B97] shadow-2xs scale-105'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-[#04C4D9] hover:text-[#004B97]'
+              ]"
+            >
+              <component :is="getIconComponent(opt.id)" class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div class="md:col-span-3">
+          <label class="block text-xs font-black text-slate-800 mb-1">
             Formato de Visualización
           </label>
           <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -1109,7 +1209,17 @@ const handleSave = () => {
             </p>
           </div>
 
-          <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          <div class="flex items-center gap-2 flex-wrap self-start sm:self-auto shrink-0">
+            <button
+              type="button"
+              @click="addCentralRowAtStart"
+              class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#004B97] border border-blue-200 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs cursor-pointer active:scale-95"
+              title="Insertar una fila central al inicio de la tabla y renumerar filas desde 1"
+            >
+              <Columns class="w-3.5 h-3.5 text-[#004B97]" />
+              <span>+ Central al inicio</span>
+            </button>
+
             <button
               type="button"
               @click="addCentralRow"

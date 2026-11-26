@@ -25,7 +25,21 @@ import {
   Plus,
   Minus,
   Phone,
+  Layers,
 } from 'lucide-vue-next'
+import { catalogService, type GrupoRepuesto } from '@/services/catalogService'
+import {
+  canAdminRevokeTargetAdmin,
+  fetchAdminRoleGrants,
+  fetchUserFamilyRestrictions,
+  readLocalAdminRoleGrants,
+  readLocalUserFamilyRestrictions,
+  recordAdminRoleGrant,
+  resolveUserFamilyRestriction,
+  saveUserFamilyRestriction,
+  type AdminRoleGrantsMap,
+  type UserFamilyRestrictionsMap,
+} from '@/services/catalogPreferencesService'
 import {
   crearUsuario,
   desactivarUsuario,
@@ -235,6 +249,15 @@ async function guardarUsuario() {
       rol: rolParaCrear,
       telefono: datos.telefono?.trim() || null,
     })
+
+    if (datos.rol === 'admin' && !esTallerIndependiente.value && auth.user) {
+      adminRoleGrants.value = await recordAdminRoleGrant({
+        targetUserId: creado.id,
+        targetEmail: datos.email.trim().toLowerCase(),
+        grantedById: auth.user.id,
+        grantedByEmail: auth.user.email,
+      })
+    }
 
     if (rutaObjetivo) {
       await rutasService.updateRuta(rutaObjetivo.id, {
@@ -894,12 +917,24 @@ function puedeCambiarRol(perfil: Perfil): boolean {
     email: perfil.email,
     rawRole: perfil.rol,
   })
-  return (
+  const baseAllowed =
     !esUsuarioSoloRuta(perfil) &&
     esAdministrador.value &&
     perfil.id !== auth.user?.id &&
     !(esTallerIndependiente.value && membership.isTenantOwner)
-  )
+
+  if (!baseAllowed) return false
+
+  // Un administrador NO puede quitar/modificar el rango de otro Administrador si él no le otorgó ese rango
+  if (normalizeRole(perfil.rol) === 'Administrador') {
+    return canAdminRevokeTargetAdmin(
+      adminRoleGrants.value,
+      { id: perfil.id, email: perfil.email },
+      auth.user
+    )
+  }
+
+  return true
 }
 
 async function abrirCambioRol(perfil: Perfil, evento: MouseEvent) {
@@ -1066,6 +1101,14 @@ async function guardarCambioRol() {
           )
         : nuevoRol
       await cambiarRolUsuario(perfil.id, rolFinal, perfil.email)
+      if (nuevoRol === 'admin' && !tenantIdActivo && auth.user) {
+        adminRoleGrants.value = await recordAdminRoleGrant({
+          targetUserId: perfil.id,
+          targetEmail: perfil.email,
+          grantedById: auth.user.id,
+          grantedByEmail: auth.user.email,
+        })
+      }
       if (tenantIdActivo) {
         registerIndependentTenantUser({
           userId: perfil.id,
@@ -1518,14 +1561,103 @@ async function guardarCredencialVisible() {
   }
 }
 
+// Registro de quién otorgó el rango de Administrador
+const adminRoleGrants = ref<AdminRoleGrantsMap>(readLocalAdminRoleGrants())
+
+// Restricción de familias visibles del catálogo para usuarios sin permiso de agregar familias
+const familiasCatalogo = ref<GrupoRepuesto[]>([])
+const restriccionesFamilias = ref<UserFamilyRestrictionsMap>(readLocalUserFamilyRestrictions())
+const usuarioFamilias = ref<Perfil | null>(null)
+const familiasRestringidasActivo = ref(false)
+const familiasPermitidasSeleccion = ref<string[]>([])
+const guardandoFamilias = ref(false)
+
+function puedeLimitarFamilias(perfil: Perfil): boolean {
+  if (!esAdministrador.value) return false
+  return normalizeRole(perfil.rol) !== 'Administrador'
+}
+
+function resumenFamiliasUsuario(perfil: Perfil): string {
+  if (!puedeLimitarFamilias(perfil)) return ''
+  const entry = resolveUserFamilyRestriction(restriccionesFamilias.value, {
+    id: perfil.id,
+    email: perfil.email,
+  })
+  if (!entry || !entry.restricted) return ''
+  return `${entry.allowedFamilies.length}`
+}
+
+async function cargarFamiliasYRestricciones() {
+  const [grupos, restricciones, grants] = await Promise.all([
+    catalogService.getGrupos().catch(() => [] as GrupoRepuesto[]),
+    fetchUserFamilyRestrictions().catch(() => readLocalUserFamilyRestrictions()),
+    fetchAdminRoleGrants().catch(() => readLocalAdminRoleGrants()),
+  ])
+  familiasCatalogo.value = grupos
+  restriccionesFamilias.value = restricciones
+  adminRoleGrants.value = grants
+}
+
+async function abrirModalFamilias(perfil: Perfil) {
+  if (!puedeLimitarFamilias(perfil)) return
+  if (familiasCatalogo.value.length === 0) {
+    await cargarFamiliasYRestricciones()
+  }
+  const entry = resolveUserFamilyRestriction(restriccionesFamilias.value, {
+    id: perfil.id,
+    email: perfil.email,
+  })
+  usuarioFamilias.value = perfil
+  familiasRestringidasActivo.value = Boolean(entry?.restricted)
+  familiasPermitidasSeleccion.value = entry?.restricted
+    ? [...entry.allowedFamilies]
+    : familiasCatalogo.value.map((g) => g.codigo.toLowerCase())
+}
+
+function cerrarModalFamilias() {
+  if (guardandoFamilias.value) return
+  usuarioFamilias.value = null
+}
+
+function toggleFamiliaPermitida(codigo: string) {
+  const key = codigo.trim().toLowerCase()
+  const idx = familiasPermitidasSeleccion.value.indexOf(key)
+  if (idx >= 0) {
+    familiasPermitidasSeleccion.value.splice(idx, 1)
+  } else {
+    familiasPermitidasSeleccion.value.push(key)
+  }
+}
+
+async function guardarFamiliasUsuario() {
+  const target = usuarioFamilias.value
+  if (!target || guardandoFamilias.value) return
+  guardandoFamilias.value = true
+  try {
+    restriccionesFamilias.value = await saveUserFamilyRestriction({
+      userId: target.id,
+      email: target.email,
+      restricted: familiasRestringidasActivo.value,
+      allowedFamilies: familiasRestringidasActivo.value ? familiasPermitidasSeleccion.value : [],
+    })
+    mensajeExito.value = familiasRestringidasActivo.value
+      ? `Familias visibles de ${target.nombre} actualizadas (${familiasPermitidasSeleccion.value.length} permitidas).`
+      : `${target.nombre} ahora puede ver todas las familias del catálogo.`
+    usuarioFamilias.value = null
+  } finally {
+    guardandoFamilias.value = false
+  }
+}
+
 onMounted(() => {
   void cargarUsuarios()
+  void cargarFamiliasYRestricciones()
 })
 
 </script>
 
 <template>
-  <section class="space-y-6" :inert="modalAbierto || !!seleccionado || !!usuarioRol || !!usuarioCredencial">
+  <section class="space-y-6" :inert="modalAbierto || !!seleccionado || !!usuarioRol || !!usuarioCredencial || !!usuarioFamilias">
     <div class="studio-hero-banner p-6 sm:p-7 text-white relative overflow-hidden">
       <div class="pointer-events-none absolute -top-16 -right-12 w-56 h-56 rounded-full bg-[#04C4D9]/25 blur-3xl"></div>
       <div class="relative z-10 flex flex-wrap items-center justify-between gap-4">
@@ -2007,6 +2139,27 @@ onMounted(() => {
                     @click="abrirCambioRol(usuario, $event)"
                   >
                     Rol
+                  </button>
+                  <button
+                    v-if="puedeLimitarFamilias(usuario)"
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer"
+                    :class="
+                      resumenFamiliasUsuario(usuario)
+                        ? 'border-cyan-300 bg-cyan-50 text-[#038391] hover:bg-cyan-100'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-[#04C4D9] hover:text-[#038391]'
+                    "
+                    title="Limitar familias visibles en el Catálogo para este usuario"
+                    @click="abrirModalFamilias(usuario)"
+                  >
+                    <Layers class="h-3 w-3" />
+                    <span>Familias</span>
+                    <span
+                      v-if="resumenFamiliasUsuario(usuario)"
+                      class="rounded-full bg-[#038391] px-1.5 py-0.2 text-[9px] font-black text-white"
+                    >
+                      {{ resumenFamiliasUsuario(usuario) }}
+                    </span>
                   </button>
                   <button
                     v-if="puedeDesactivar(usuario)"
@@ -2951,6 +3104,139 @@ onMounted(() => {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de Restricción de Familias Visibles en Catálogo -->
+      <div
+        v-if="usuarioFamilias"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-[#09132B]/70 backdrop-blur-sm p-4"
+        @click.self="cerrarModalFamilias"
+      >
+        <div class="studio-card max-h-[90vh] w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl flex flex-col popover-pop-in">
+          <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] px-6 py-4 text-white flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
+                <Layers class="h-4 w-4 text-[#BFEBF2]" />
+              </div>
+              <div class="min-w-0">
+                <h2 class="text-base font-extrabold font-display text-white truncate">
+                  Familias visibles en Catálogo
+                </h2>
+                <p class="text-[11px] text-sky-100/80 truncate">
+                  {{ usuarioFamilias.nombre }} · {{ nombreRol(usuarioFamilias.rol) }}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              :disabled="guardandoFamilias"
+              class="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+              @click="cerrarModalFamilias"
+            >
+              <X class="h-4 w-4" />
+            </button>
+          </div>
+
+          <div class="p-5 overflow-y-auto flex-1 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                @click="familiasRestringidasActivo = false"
+                :class="[
+                  'p-3 rounded-2xl border text-left transition cursor-pointer',
+                  !familiasRestringidasActivo
+                    ? 'border-[#004B97] bg-blue-50/70 ring-1 ring-[#004B97]/30'
+                    : 'border-slate-200 bg-slate-50 hover:bg-white'
+                ]"
+              >
+                <div class="text-xs font-extrabold text-[#0D1B3E]">Todas las familias</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Sin restricciones en el catálogo</div>
+              </button>
+
+              <button
+                type="button"
+                @click="familiasRestringidasActivo = true"
+                :class="[
+                  'p-3 rounded-2xl border text-left transition cursor-pointer',
+                  familiasRestringidasActivo
+                    ? 'border-[#038391] bg-cyan-50/70 ring-1 ring-[#04C4D9]/40'
+                    : 'border-slate-200 bg-slate-50 hover:bg-white'
+                ]"
+              >
+                <div class="text-xs font-extrabold text-[#0D1B3E]">Limitar familias</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Solo verá las familias marcadas</div>
+              </button>
+            </div>
+
+            <div v-if="familiasRestringidasActivo" class="space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-[#0D1B3E]">
+                  Selecciona las familias permitidas ({{ familiasPermitidasSeleccion.length }}/{{ familiasCatalogo.length }})
+                </span>
+                <div class="flex items-center gap-2 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    class="text-[#004B97] hover:underline cursor-pointer"
+                    @click="familiasPermitidasSeleccion = familiasCatalogo.map(g => g.codigo.toLowerCase())"
+                  >
+                    Todas
+                  </button>
+                  <span class="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    class="text-rose-600 hover:underline cursor-pointer"
+                    @click="familiasPermitidasSeleccion = []"
+                  >
+                    Ninguna
+                  </button>
+                </div>
+              </div>
+
+              <div class="max-h-60 overflow-y-auto rounded-2xl border border-slate-200 divide-y divide-slate-100 bg-white">
+                <label
+                  v-for="fam in familiasCatalogo"
+                  :key="fam.id"
+                  class="flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-slate-50 cursor-pointer transition"
+                >
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <input
+                      type="checkbox"
+                      :checked="familiasPermitidasSeleccion.includes(fam.codigo.toLowerCase())"
+                      @change="toggleFamiliaPermitida(fam.codigo)"
+                      class="h-4 w-4 rounded border-slate-300 text-[#004B97] focus:ring-[#04C4D9]"
+                    />
+                    <div class="min-w-0">
+                      <div class="text-xs font-bold text-[#0D1B3E] truncate">{{ fam.nombre }}</div>
+                      <div class="text-[10px] font-mono text-slate-500 truncate">{{ fam.categoria }} · {{ fam.codigo }}</div>
+                    </div>
+                  </div>
+                </label>
+                <div v-if="familiasCatalogo.length === 0" class="p-4 text-center text-xs text-slate-400">
+                  No se encontraron familias cargadas.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2.5">
+            <button
+              type="button"
+              :disabled="guardandoFamilias"
+              class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+              @click="cerrarModalFamilias"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              :disabled="guardandoFamilias"
+              class="studio-cta-primary rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer disabled:opacity-50"
+              @click="guardarFamiliasUsuario"
+            >
+              {{ guardandoFamilias ? 'Guardando…' : 'Guardar permisos' }}
+            </button>
           </div>
         </div>
       </div>

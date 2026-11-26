@@ -396,6 +396,31 @@ export function buildNextAutoRowLabel(existingNames: string[], firstColTitle?: s
   return `${base} ${num}`
 }
 
+/**
+ * Renumera desde 1 todas las filas normales con patrón "<Base> <N>" (ej. "Anillo 2", "Anillo 3" -> "Anillo 1", "Anillo 2")
+ * sin alterar filas centrales ni filas especiales sin número (ej. "Anillo de aceite", "Admisión").
+ */
+export function renumberAutoNormalRowNames(
+  rows: Array<{ nombre: string; isCentral: boolean }>,
+  firstColTitle?: string
+): string[] {
+  const counters = new Map<string, number>()
+  const fallbackBase = (firstColTitle || '').trim()
+
+  return rows.map((row) => {
+    const raw = (row.nombre || '').trim()
+    if (row.isCentral || !raw) return row.nombre
+    const match = raw.match(/^(.+?)\s+(\d+)$/)
+    if (!match) return row.nombre
+
+    const base = match[1]!.trim() || fallbackBase || 'Fila'
+    const baseKey = base.toLowerCase()
+    const nextNum = (counters.get(baseKey) || 0) + 1
+    counters.set(baseKey, nextNum)
+    return `${base} ${nextNum}`
+  })
+}
+
 export interface RowClusterItem<T = string> {
   rowIdx: number
   name: T
@@ -611,6 +636,7 @@ export interface GrupoRepuesto {
   descripcion?: string
   icono?: string
   tipo_vista?: GrupoTipoVista
+  orientacion_vista?: 'vertical' | 'horizontal'
   tabla_config?: TablaConfiguracion
   parametros: ParametroTecnicoDefinicion[]
   activo: boolean
@@ -627,6 +653,7 @@ export interface GrupoRepuestoInsert {
   descripcion?: string
   icono?: string
   tipo_vista?: GrupoTipoVista
+  orientacion_vista?: 'vertical' | 'horizontal'
   tabla_config?: TablaConfiguracion
   parametros: ParametroTecnicoDefinicion[]
   activo?: boolean
@@ -4087,6 +4114,7 @@ export const catalogService = {
         return data.map((row: Record<string, unknown>) => {
           const params = Array.isArray(row.parametros) ? (row.parametros as ParametroTecnicoDefinicion[]) : []
           const metaTipoVista = (params[0] as any)?._tipo_vista as GrupoTipoVista | undefined
+          const metaOrientacion = (params[0] as any)?._orientacion_vista as 'vertical' | 'horizontal' | undefined
           const metaTablaConfig = (params[0] as any)?._tabla_config as TablaConfiguracion | undefined
           const codigoStr = String(row.codigo)
           const resolvedTipoVista: GrupoTipoVista =
@@ -4103,6 +4131,7 @@ export const catalogService = {
             descripcion: row.descripcion ? String(row.descripcion) : undefined,
             icono: row.icono ? String(row.icono) : 'Layers',
             tipo_vista: resolvedTipoVista,
+            orientacion_vista: metaOrientacion === 'horizontal' || metaOrientacion === 'vertical' ? metaOrientacion : undefined,
             tabla_config: (row.tabla_config as TablaConfiguracion | undefined) || metaTablaConfig,
             parametros: params,
             activo: Boolean(row.activo),
@@ -4228,9 +4257,21 @@ export const catalogService = {
         ? (grupoData.tabla_config !== undefined ? grupoData.tabla_config : existing.tabla_config)
         : undefined
 
+    const resolvedOrientacion: 'vertical' | 'horizontal' | undefined =
+      grupoData.orientacion_vista !== undefined
+        ? grupoData.orientacion_vista
+        : existing.orientacion_vista
+
     const rawParams = grupoData.parametros !== undefined ? grupoData.parametros : existing.parametros
     const paramsWithMeta = rawParams.map((p, idx) =>
-      idx === 0 ? ({ ...p, _tipo_vista: resolvedTipoVista, _tabla_config: resolvedTablaConfig } as ParametroTecnicoDefinicion) : p
+      idx === 0
+        ? ({
+            ...p,
+            _tipo_vista: resolvedTipoVista,
+            _tabla_config: resolvedTablaConfig,
+            ...(resolvedOrientacion ? { _orientacion_vista: resolvedOrientacion } : {})
+          } as ParametroTecnicoDefinicion)
+        : p
     )
 
     const updated: GrupoRepuesto = {
@@ -4241,6 +4282,7 @@ export const catalogService = {
       descripcion: grupoData.descripcion !== undefined ? grupoData.descripcion.trim() : existing.descripcion,
       icono: grupoData.icono !== undefined ? grupoData.icono : existing.icono,
       tipo_vista: resolvedTipoVista,
+      orientacion_vista: resolvedOrientacion,
       tabla_config: resolvedTablaConfig,
       parametros: paramsWithMeta,
       activo: grupoData.activo !== undefined ? grupoData.activo : existing.activo,

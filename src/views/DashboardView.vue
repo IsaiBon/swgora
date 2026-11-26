@@ -3,7 +3,12 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ordersService, type Order, type OrderStatus } from '@/services/ordersService'
-import { clientesService, type Cliente } from '@/services/clientesService'
+import {
+  clientesService,
+  getClientPrimaryLabel,
+  getClientSecondaryLabel,
+  type Cliente,
+} from '@/services/clientesService'
 import { rutasService, type RutaSucursal } from '@/services/rutasService'
 import { useAnimatedNumber } from '@/composables/useAnimatedNumber'
 import DirectOrderPdfShare from '@/components/DirectOrderPdfShare.vue'
@@ -1664,9 +1669,9 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                       {{ selectedClient.codigo || (selectedClient.tipo === 'Tallerista' ? 'TAL' : 'CLI') }}
                     </span>
                     <div class="truncate">
-                      <span class="font-bold text-[#0D1B3E] block truncate">{{ selectedClient.nombre }}</span>
-                      <span v-if="selectedClient.especificaciones_tecnicas?.taller" class="text-[10px] text-[#004B97] font-medium block truncate">
-                        Taller: {{ selectedClient.especificaciones_tecnicas.taller }}
+                      <span class="font-bold text-[#0D1B3E] block truncate">{{ getClientPrimaryLabel(selectedClient) }}</span>
+                      <span v-if="getClientSecondaryLabel(selectedClient)" class="text-[10px] text-[#004B97] font-medium block truncate">
+                        {{ getClientSecondaryLabel(selectedClient) }}
                       </span>
                     </div>
                   </div>
@@ -1739,10 +1744,10 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                         </span>
                         <div class="flex-1 min-w-0">
                           <div class="font-bold text-[#0D1B3E] group-hover:text-[#004B97] truncate">
-                            {{ c.nombre }}
+                            {{ getClientPrimaryLabel(c) }}
                           </div>
-                          <div v-if="c.especificaciones_tecnicas?.taller" class="text-[11px] text-[#12697A] font-semibold truncate">
-                            Taller: {{ c.especificaciones_tecnicas.taller }}
+                          <div v-if="getClientSecondaryLabel(c)" class="text-[11px] text-[#12697A] font-semibold truncate">
+                            {{ getClientSecondaryLabel(c) }}
                           </div>
                           <div v-else-if="c.telefono" class="text-[10px] font-mono text-slate-400 truncate">
                             Tel: {{ c.telefono }}

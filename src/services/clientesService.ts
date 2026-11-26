@@ -18,6 +18,51 @@ export interface Cliente {
   updated_at?: string
 }
 
+/** Obtiene el nombre del taller/empresa asociado al registro. */
+export function getClientWorkshopName(client?: Partial<Cliente> | null): string {
+  if (!client) return ''
+  const spec = client.especificaciones_tecnicas || {}
+  const explicit = String(spec.taller || spec.empresa || '').trim()
+  if (explicit) return explicit
+  return client.tipo === 'Tallerista' ? String(client.nombre || '').trim() : ''
+}
+
+/** Obtiene el nombre del encargado (opcional) cuando el registro es un Taller. */
+export function getClientEncargadoName(client?: Partial<Cliente> | null): string {
+  if (!client) return ''
+  const spec = client.especificaciones_tecnicas || {}
+  const explicit = String(spec.encargado || '').trim()
+  if (explicit) return explicit
+  if (client.tipo === 'Tallerista') {
+    const workshop = String(spec.taller || spec.empresa || '').trim()
+    const rawNombre = String(client.nombre || '').trim()
+    if (workshop && rawNombre && rawNombre.toLowerCase() !== workshop.toLowerCase()) {
+      return rawNombre
+    }
+  }
+  return ''
+}
+
+/** Etiqueta principal para menús, tarjetas y encabezados: en Taller siempre sale primero el nombre del taller. */
+export function getClientPrimaryLabel(client?: Partial<Cliente> | null): string {
+  if (!client) return ''
+  if (client.tipo === 'Tallerista') {
+    return getClientWorkshopName(client) || String(client.nombre || '').trim()
+  }
+  return String(client.nombre || '').trim() || getClientWorkshopName(client)
+}
+
+/** Etiqueta secundaria complementaria (Encargado para Taller, Taller/Empresa para Cliente). */
+export function getClientSecondaryLabel(client?: Partial<Cliente> | null): string {
+  if (!client) return ''
+  if (client.tipo === 'Tallerista') {
+    const encargado = getClientEncargadoName(client)
+    return encargado ? `Encargado: ${encargado}` : ''
+  }
+  const workshop = getClientWorkshopName(client)
+  return workshop ? `Taller / Empresa: ${workshop}` : ''
+}
+
 export type ClienteInsert = Omit<Cliente, 'id' | 'codigo' | 'created_at' | 'updated_at'> & {
   id?: string
   codigo?: string

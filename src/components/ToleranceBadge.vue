@@ -12,7 +12,7 @@ const props = withDefaults(
     modelValue: undefined,
     fallback: 1.0,
     unit: 'mm',
-    step: 0.05
+    step: 0.25
   }
 )
 

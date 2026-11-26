@@ -18,6 +18,7 @@ import {
   type Motor,
   type DocumentoPdf,
   buildNextAutoRowLabel,
+  renumberAutoNormalRowNames,
   buildNestedTableHeaders,
   buildNormalRowSegmentMeta,
   buildRowSpanMeta,
@@ -2035,6 +2036,31 @@ const addFormSubfila = () => {
   subfilasRows.value.push(newRow)
 }
 
+const renumberFormNormalSubfilas = () => {
+  const nextNames = renumberAutoNormalRowNames(
+    subfilasRows.value.map((r) => ({ nombre: r.nombre, isCentral: Boolean(r.es_fila_central) })),
+    isAnillosActiveGroup.value ? 'Anillo' : activeTablaConfig.value.titulo_primera_columna
+  )
+  nextNames.forEach((name, idx) => {
+    if (subfilasRows.value[idx] && !subfilasRows.value[idx].es_fila_central) {
+      subfilasRows.value[idx].nombre = name
+    }
+  })
+}
+
+const addFormCentralSubfilaAtStart = () => {
+  subfilasRows.value.unshift({
+    id: `sf-c-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    tipo: 'central',
+    nombre: '',
+    codigo: '',
+    grupo: '',
+    es_fila_central: true,
+    medidas: {}
+  })
+  renumberFormNormalSubfilas()
+}
+
 const addFormCentralSubfila = () => {
   subfilasRows.value.push({
     id: `sf-c-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
@@ -2058,6 +2084,12 @@ const toggleFormSubfilaCentral = (idx: number) => {
     row.medidas = {}
   } else {
     row.tipo = `fila_${idx + 1}`
+    if (!row.nombre.trim()) {
+      const base = isAnillosActiveGroup.value
+        ? 'Anillo'
+        : ((activeTablaConfig.value.titulo_primera_columna || '').trim() || 'Componente')
+      row.nombre = `${base} 1`
+    }
     if (activeGroup.value?.parametros) {
       const firstNormalRow = subfilasRows.value.find((r, i) => i !== idx && !r.es_fila_central)
       if (firstNormalRow) {
@@ -2069,11 +2101,13 @@ const toggleFormSubfilaCentral = (idx: number) => {
       }
     }
   }
+  renumberFormNormalSubfilas()
 }
 
 const removeFormSubfila = (idx: number) => {
   if (subfilasRows.value.length <= 1) return
   subfilasRows.value.splice(idx, 1)
+  renumberFormNormalSubfilas()
 }
 
 const getEffectiveSubfilaGroup = (idx: number): string => {
@@ -3156,7 +3190,16 @@ onUnmounted(() => {
                       Filas y Medidas de la Tabla
                     </span>
                   </div>
-                  <div class="flex items-center gap-1.5">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      @click="addFormCentralSubfilaAtStart"
+                      class="text-[11px] font-extrabold text-[#004B97] hover:bg-blue-100 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                      title="Insertar fila central al inicio y renumerar filas desde 1"
+                    >
+                      <Columns class="w-3.5 h-3.5 text-[#004B97]" />
+                      <span>+ Central al inicio</span>
+                    </button>
                     <button
                       type="button"
                       @click="addFormCentralSubfila"
