@@ -809,6 +809,14 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                     :class="{ 'animate-pulse text-[#25D366]': sharingWhatsAppOrderId === order.id }"
                   />
                 </button>
+                <button
+                  type="button"
+                  @click="handleDeleteOrder(order.id)"
+                  class="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 transition"
+                  title="Eliminar orden"
+                >
+                  <Trash2 class="w-4 h-4" />
+                </button>
               </div>
             </div>
           </div>
