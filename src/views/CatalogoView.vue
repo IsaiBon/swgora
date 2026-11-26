@@ -6067,11 +6067,11 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 5. COMPONENTE -->
+        <!-- 5. FAMILIA -->
         <div class="relative combobox-component">
           <div class="flex items-center justify-between mb-0.5 min-h-[18px] gap-1">
             <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Componente
+              Familia
             </label>
             <button
               type="button"
@@ -6102,7 +6102,7 @@ onUnmounted(() => {
               @input="isComponentOpen = true; highlightedComponentIdx = 0"
               @keydown="handleComponentKeydown"
               type="text"
-              placeholder="Componente...."
+              placeholder="Familia...."
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
@@ -6131,10 +6131,10 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Dropdown Tipos de Componente -->
+          <!-- Dropdown Familias -->
           <div
             v-if="isComponentOpen"
-            class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
+            class="fixed left-3 right-3 sm:absolute sm:left-0 sm:right-0 top-auto sm:top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-slate-50"
           >
             <div
               v-for="(grp, cIdx) in filteredComponentGroups"
@@ -7676,12 +7676,142 @@ onUnmounted(() => {
                 </span>
               </div>
 
-              <!-- Fila 3: Precio + Acciones compactas -->
-              <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 flex-wrap">
-                <span class="text-xs font-extrabold text-[#004B97]">
+              <!-- Fila 3: Datos técnicos / Medidas (respeta orientación Vertical u Horizontal con escala compacta para móvil) -->
+              <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-2 space-y-1.5">
+                <!-- Caso A: Repuesto en formato tabla/subfilas -->
+                <div v-if="isPartEmbeddedTableFormat(part)" class="overflow-x-auto" style="zoom: 0.86;">
+                  <!-- Orientación Vertical -->
+                  <table v-if="getPartTableOrientation(part) === 'vertical'" class="w-full border-collapse text-center text-[10px]">
+                    <thead>
+                      <tr class="bg-slate-100 text-slate-700 text-[9px] font-bold uppercase border-b border-slate-200">
+                        <th class="px-1.5 py-1 text-left border-r border-slate-200 whitespace-nowrap">Parámetro</th>
+                        <th
+                          v-for="(sf, sfIdx) in getPartSubfilas(part).filter(s => !s.es_fila_central)"
+                          :key="`mob-sfh-${part.id}-${sfIdx}`"
+                          class="px-1.5 py-1 whitespace-nowrap"
+                          :class="sfIdx < getPartSubfilas(part).filter(s => !s.es_fila_central).length - 1 ? 'border-r border-slate-200' : ''"
+                        >
+                          {{ sf.nombre || `Item ${sfIdx + 1}` }}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                      <tr
+                        v-for="(csf, csfIdx) in getPartSubfilas(part).filter(s => s.es_fila_central)"
+                        :key="`mob-sfc-${part.id}-${csfIdx}`"
+                        class="bg-slate-50"
+                      >
+                        <td :colspan="1 + Math.max(1, getPartSubfilas(part).filter(s => !s.es_fila_central).length)" class="px-1.5 py-0.5 font-bold text-slate-800 text-center">
+                          {{ csf.nombre || '—' }}
+                        </td>
+                      </tr>
+                      <tr
+                        v-for="(vRow, vIdx) in getVerticalSpecRowsForColumns(getPartTableColumns(part))"
+                        :key="`mob-vrow-${part.id}-${vIdx}`"
+                      >
+                        <td class="px-1.5 py-0.5 text-left font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap bg-slate-50/60">
+                          {{ vRow.label }}
+                          <span v-if="vRow.col.unidad && vRow.col.tipo_dato !== 'booleano' && vRow.col.tipo_dato !== 'seleccion'" class="text-[8px] font-normal text-slate-500">({{ unitMode === 'milesimas' && vRow.col.unidad === 'mm' ? 'pulg' : vRow.col.unidad }})</span>
+                        </td>
+                        <td
+                          v-for="(sf, sfValIdx) in getPartSubfilas(part).filter(s => !s.es_fila_central)"
+                          :key="`mob-vcell-${part.id}-${vIdx}-${sfValIdx}`"
+                          class="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap"
+                          :class="[
+                            sfValIdx < getPartSubfilas(part).filter(s => !s.es_fila_central).length - 1 ? 'border-r border-slate-200' : '',
+                            getMiniTableCellMatchClass(part, sf, sfValIdx, vRow.col)
+                          ]"
+                        >
+                          {{ getPartMiniTableCellRawValue(part, sf, vRow.col) ?? '—' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <!-- Orientación Horizontal -->
+                  <table v-else class="w-full border-collapse text-center text-[10px]">
+                    <thead>
+                      <tr class="bg-slate-100 text-slate-700 text-[9px] font-bold uppercase border-b border-slate-200">
+                        <th class="px-1.5 py-1 text-left border-r border-slate-200 whitespace-nowrap">
+                          {{ resolveGroupDefinitionForPart(part)?.tabla_config?.titulo_primera_columna || 'Componente' }}
+                        </th>
+                        <th
+                          v-for="(col, cIdx) in getPartTableColumns(part)"
+                          :key="`mob-hh-${part.id}-${col.id || cIdx}`"
+                          class="px-1.5 py-1 whitespace-nowrap"
+                          :class="cIdx < getPartTableColumns(part).length - 1 ? 'border-r border-slate-200' : ''"
+                        >
+                          {{ col.etiqueta_corta || col.etiqueta }}
+                          <span v-if="col.unidad && col.tipo_dato !== 'booleano' && col.tipo_dato !== 'seleccion'" class="block text-[8px] font-normal text-slate-500 lowercase">({{ unitMode === 'milesimas' && col.unidad === 'mm' ? 'pulg' : col.unidad }})</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                      <tr
+                        v-for="(sf, sfIdx) in getPartSubfilas(part)"
+                        :key="`mob-hr-${part.id}-${sfIdx}`"
+                        :class="sf.es_fila_central ? 'bg-slate-50' : ''"
+                      >
+                        <td
+                          v-if="sf.es_fila_central"
+                          :colspan="1 + Math.max(1, getPartTableColumns(part).length)"
+                          class="px-1.5 py-0.5 font-bold text-slate-800 text-center"
+                        >
+                          {{ sf.nombre || '—' }}
+                        </td>
+                        <template v-else>
+                          <td class="px-1.5 py-0.5 text-left font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap bg-slate-50/60">
+                            {{ sf.nombre || `Item ${sfIdx + 1}` }}
+                          </td>
+                          <td
+                            v-for="(col, cIdx) in getPartTableColumns(part)"
+                            :key="`mob-hc-${part.id}-${sfIdx}-${cIdx}`"
+                            class="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap"
+                            :class="[
+                              cIdx < getPartTableColumns(part).length - 1 ? 'border-r border-slate-200' : '',
+                              getMiniTableCellMatchClass(part, sf, sfIdx, col)
+                            ]"
+                          >
+                            {{ getPartMiniTableCellRawValue(part, sf, col) ?? '—' }}
+                          </td>
+                        </template>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Caso B: Repuesto estándar con parámetros técnicos -->
+                <div
+                  v-else-if="(resolveGroupDefinitionForPart(part)?.parametros?.length || 0) > 0"
+                  class="grid grid-cols-2 gap-1.5"
+                >
+                  <div
+                    v-for="param in resolveGroupDefinitionForPart(part)?.parametros"
+                    :key="`mob-param-${part.id}-${param.clave}`"
+                    class="flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg bg-white border border-slate-200/80 text-[11px]"
+                  >
+                    <span class="text-slate-500 font-semibold truncate">{{ param.etiqueta_corta || param.etiqueta }}</span>
+                    <span class="font-bold text-slate-900 shrink-0">
+                      {{ getPartParamValue(part, param.clave) ?? '—' }} <span v-if="param.unidad && getPartParamValue(part, param.clave) !== undefined && getPartParamValue(part, param.clave) !== null && getPartParamValue(part, param.clave) !== ''" class="text-[9px] font-normal text-slate-500">{{ param.unidad }}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div v-else class="text-[11px] text-slate-400 italic">
+                  Sin especificaciones técnicas registradas
+                </div>
+              </div>
+
+              <!-- Fila 4: Precio -->
+              <div class="flex items-center justify-between px-1">
+                <span class="text-[11px] font-bold text-slate-500 uppercase">Precio</span>
+                <span class="text-sm font-extrabold text-[#004B97]">
                   {{ Number(part.precio) > 0 ? formatCatalogPrice(part.precio) : 'Sin precio' }}
                 </span>
-                <div class="flex items-center gap-1.5 flex-wrap">
+              </div>
+
+              <!-- Fila 5: Acciones -->
+              <div class="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-100">
                   <button
                     type="button"
                     @click="openTechnicalSheet(part)"
@@ -7703,7 +7833,7 @@ onUnmounted(() => {
                     type="button"
                     @click="addToWorkOrder(part)"
                     :class="[
-                      'px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 text-white shadow-xs',
+                      'px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 text-white shadow-xs ml-auto',
                       orderCartStore.isInCart(part.id) ? 'bg-rose-600' : 'bg-[#147488]'
                     ]"
                   >
@@ -7711,7 +7841,6 @@ onUnmounted(() => {
                     <Plus v-else class="w-3.5 h-3.5" />
                     <span>{{ orderCartStore.isInCart(part.id) ? 'Quitar' : 'A la orden' }}</span>
                   </button>
-                </div>
               </div>
             </div>
             <div v-if="displayedParts.length === 0" class="py-8 px-4 text-center text-xs text-slate-400">

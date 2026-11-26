@@ -21,6 +21,22 @@ const directShareRef = ref<InstanceType<typeof DirectOrderPdfShare> | null>(null
 const isSharingWhatsApp = ref(false)
 const shareFeedback = ref<{ text: string; type: 'success' | 'error' } | null>(null)
 let shareFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
+
+const updateViewportWidth = () => {
+  if (typeof window !== 'undefined') {
+    viewportWidth.value = window.innerWidth
+  }
+}
+
+const previewZoom = computed(() => {
+  if (viewportWidth.value >= 800) return 1
+  return Math.min(1, Math.max(0.38, (viewportWidth.value - 28) / 760))
+})
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', updateViewportWidth)
+}
 
 const showShareFeedback = (text: string, type: 'success' | 'error') => {
   if (shareFeedbackTimer) clearTimeout(shareFeedbackTimer)
@@ -278,15 +294,17 @@ const handleShareWhatsApp = async () => {
         <!-- 2. Contenedor scrollable interno para adaptar el documento -->
         <div
           id="printable-work-order-scroll"
-          class="flex-1 overflow-auto p-3 sm:p-6 bg-slate-100/80 print:p-0 print:bg-white print:overflow-visible"
+          class="flex-1 overflow-auto p-2 sm:p-6 bg-slate-100/80 print:p-0 print:bg-white print:overflow-visible"
         >
-          <!-- Hoja física de la orden limpia -->
-          <WorkOrderDocument
-            ref="workOrderDocRef"
-            :order="order"
-            :layoutMode="selectedLayout"
-            :showSubtotals="showSubtotalsOverride"
-          />
+          <!-- Hoja física de la orden limpia (con auto-zoom en móvil para que quepa completa) -->
+          <div :style="isDownloading ? undefined : { zoom: previewZoom }">
+            <WorkOrderDocument
+              ref="workOrderDocRef"
+              :order="order"
+              :layoutMode="selectedLayout"
+              :showSubtotals="showSubtotalsOverride"
+            />
+          </div>
         </div>
 
         <!-- 3. Barra de pie informativa y salida rápida (oculta en impresión) -->
