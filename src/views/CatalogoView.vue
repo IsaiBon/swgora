@@ -5346,8 +5346,8 @@ onUnmounted(() => {
           </p>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+        <!-- Action Buttons (doble fila para mayor legibilidad) -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 shrink-0">
           <button
             type="button"
             @click="isCartDrawerOpen = true"
@@ -5362,6 +5362,16 @@ onUnmounted(() => {
             >
               {{ orderCartStore.totalUnits }}
             </span>
+          </button>
+
+          <button
+            type="button"
+            @click="isOemColorModalOpen = true"
+            class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm text-xs font-bold transition-all duration-150 flex items-center gap-1.5 active:scale-[0.97] cursor-pointer"
+            title="Elegir color de la etiqueta del código OEM por catálogo"
+          >
+            <Palette class="w-4 h-4 text-[#BFEBF2]" />
+            <span>Colores OEM</span>
           </button>
 
           <button
@@ -7398,15 +7408,6 @@ onUnmounted(() => {
                   {{ marca }}
                 </option>
               </select>
-              <button
-                type="button"
-                @click="isOemColorModalOpen = true"
-                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-white hover:bg-blue-50 border border-slate-200 hover:border-[#004B97]/40 rounded-lg text-[#004B97] transition cursor-pointer shadow-2xs"
-                title="Elegir color de la etiqueta del código OEM por catálogo"
-              >
-                <Palette class="w-3.5 h-3.5 text-[#04C4D9]" />
-                <span>Colores OEM</span>
-              </button>
             </div>
           </div>
         </div>
