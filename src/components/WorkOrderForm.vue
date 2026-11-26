@@ -1589,7 +1589,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 @input="handleClientSearchInput"
                 @keydown.esc="showClientDropdown = false"
                 type="text"
-                placeholder="Buscar por código (ej. CLI-001, TAL-001), nombre o taller (clic para ver todos)..."
+                placeholder="Buscar por código, nombre o taller..."
                 class="w-full pl-9 pr-9 py-2.5 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
               <button
@@ -1709,7 +1709,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   @input="isClientNameSuggestionsOpen = true"
                   @keydown.esc="isClientNameSuggestionsOpen = false"
                   type="text"
-                  placeholder="Ej. Juan Pérez"
+                  placeholder="Nombre completo"
                   class="w-full px-3 py-2 pr-8 rounded-xl text-xs font-medium transition bg-slate-50/90 border border-slate-300 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
                 />
                 <button
@@ -1757,7 +1757,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   @input="isClientWorkshopSuggestionsOpen = true"
                   @keydown.esc="isClientWorkshopSuggestionsOpen = false"
                   type="text"
-                  placeholder="Ej. Taller Mecánico Gómez"
+                  placeholder="Taller o empresa"
                   class="w-full px-3 py-2 pr-8 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
                 />
                 <button
@@ -1806,7 +1806,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <input
                 v-model="clientPhone"
                 type="text"
-                placeholder="Ej. +52 81 1234 5678"
+                placeholder="Teléfono"
                 class="w-full px-3 py-2 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
@@ -1815,7 +1815,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
               <input
                 v-model="clientAddress"
                 type="text"
-                placeholder="Ej. Av. Madero 123"
+                placeholder="Dirección"
                 class="w-full px-3 py-2 bg-slate-50/90 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9] transition"
               />
             </div>
@@ -1846,7 +1846,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   @input="formErrors.vehicleBrand = false; isBrandSuggestionsOpen = true"
                   @focus="isBrandSuggestionsOpen = true"
                   type="text"
-                  placeholder="Ej. Toyota, Nissan, Cummins"
+                  placeholder="Marca"
                   :class="[
                     'w-full px-3 py-2 pr-8 rounded-xl text-xs font-medium transition',
                     formErrors.vehicleBrand
@@ -1899,7 +1899,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                   @input="formErrors.vehicleEngine = false; isEngineSuggestionsOpen = true"
                   @focus="isEngineSuggestionsOpen = true"
                   type="text"
-                  placeholder="Ej. 3L, 22R, Z24, 1KD, ISX15"
+                  placeholder="Motor"
                   :class="[
                     'w-full px-3 py-2 pr-8 rounded-xl text-xs font-medium transition',
                     formErrors.vehicleEngine
@@ -2359,7 +2359,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 <input
                   v-model="customOpName"
                   type="text"
-                  placeholder="Ej. Rectificar o adaptar pieza..."
+                  placeholder="Descripción de la operación"
                   class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-[#0D1B3E] focus:outline-none focus:border-[#04C4D9]"
                   @keyup.enter="addCustomOperation"
                 />
@@ -2451,7 +2451,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             <input
               v-model="customMaterialName"
               type="text"
-              placeholder="Nombre del material (ej. Desengrasante, sellador, lija...)"
+              placeholder="Nombre del material"
               class="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/20"
               @keyup.enter="addMaterial"
             />

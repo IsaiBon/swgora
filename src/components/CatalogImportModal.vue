@@ -1137,7 +1137,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
               <textarea
                 v-model="rawJsonText"
                 rows="5"
-                placeholder='Pega aquí tu JSON, por ejemplo: { "repuestos": [ { "codigo_oem": "13011-35041", "nombre": "Anillos 22R", ... } ] }'
+                placeholder='Pega aquí tu JSON'
                 class="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
               ></textarea>
               <div class="flex justify-end gap-2">
@@ -1926,7 +1926,7 @@ const formatDimsSummary = (dims: Record<string, unknown>): string => {
                       <input
                         v-model="m.anios"
                         type="text"
-                        placeholder="ej. 1998-2005"
+                        placeholder="Año o rango"
                         class="w-24 px-2 py-1 rounded border border-slate-200 bg-white font-mono text-[11px] text-slate-700 focus:outline-none focus:border-[#04C4D9]"
                       />
                     </td>

@@ -573,7 +573,7 @@ const handleSubmit = async () => {
                   v-model="form.nombre"
                   type="text"
                   required
-                  placeholder="Ej. TALLER INDUSTRIAL Y RECTIFICADO DE MOTORES"
+                  placeholder="Nombre del taller"
                   class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -592,7 +592,7 @@ const handleSubmit = async () => {
                   v-model="form.direccion"
                   rows="2"
                   required
-                  placeholder="Ej. Col. Milagro de la Paz, Av. San Luis y Calle Oriente #12 San Miguel, El Salvador"
+                  placeholder="Dirección del taller"
                   class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
                 ></textarea>
               </div>
@@ -612,7 +612,7 @@ const handleSubmit = async () => {
                   v-model="form.celular1"
                   type="text"
                   required
-                  placeholder="Ej. 7831-2641"
+                  placeholder="Teléfono 1"
                   class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-mono font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -625,7 +625,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.celular2"
                   type="text"
-                  placeholder="Ej. 7142-0401"
+                  placeholder="Teléfono 2"
                   class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-mono font-medium focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -640,7 +640,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.eslogan"
                   type="text"
-                  placeholder="Ej. APOYARTE ES NUESTRO COMPROMISO"
+                  placeholder="Eslogan"
                   class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 italic focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
                 <p class="text-[10.5px] text-slate-400 mt-1">
@@ -820,7 +820,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.login_header_marca"
                   type="text"
-                  placeholder="Ej. SWGORA"
+                  placeholder="Marca en cabecera"
                   class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -831,7 +831,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.login_header_descripcion"
                   type="text"
-                  placeholder="Ej. Sistema de Gestión Operativa y Rectificación"
+                  placeholder="Descripción en cabecera"
                   class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -846,7 +846,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.login_header_derecha"
                   type="text"
-                  placeholder="Ej. JR Blanco"
+                  placeholder="Nombre del taller"
                   class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -857,7 +857,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.login_header_badge"
                   type="text"
-                  placeholder="Ej. Acceso Seguro"
+                  placeholder="Etiqueta de seguridad"
                   class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -872,7 +872,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.login_footer_izquierda"
                   type="text"
-                  placeholder="Ej. © 2026 JR Blanco — Taller Industrial..."
+                  placeholder="Texto pie izquierdo"
                   class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -883,7 +883,7 @@ const handleSubmit = async () => {
                 <input
                   v-model="form.login_footer_derecha"
                   type="text"
-                  placeholder="Ej. Apoyarte es nuestro compromiso"
+                  placeholder="Texto pie derecho"
                   class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
                 />
               </div>
@@ -903,7 +903,7 @@ const handleSubmit = async () => {
               <input
                 v-model="form.login_titulo"
                 type="text"
-                placeholder="Ej. JR Blanco"
+                placeholder="Nombre del taller"
                 class="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-bold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
               />
             </div>
@@ -915,7 +915,7 @@ const handleSubmit = async () => {
               <input
                 v-model="form.login_subtitulo"
                 type="text"
-                placeholder="Ej. Taller Industrial y Rectificado de Motores"
+                placeholder="Subtítulo"
                 class="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
               />
             </div>
@@ -927,7 +927,7 @@ const handleSubmit = async () => {
               <input
                 v-model="form.login_mensaje"
                 type="text"
-                placeholder="Ej. Ingresa tus credenciales para acceder al sistema"
+                placeholder="Mensaje de bienvenida"
                 class="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04c4d9] transition"
               />
             </div>

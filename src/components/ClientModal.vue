@@ -264,7 +264,7 @@ const handleToggleStatus = () => {
                 v-model="taller"
                 type="text"
                 required
-                placeholder="Ej. Taller Mecánico Especializado Ramos"
+                placeholder="Nombre del taller"
                 :class="[
                   'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                   errors.taller
@@ -290,7 +290,7 @@ const handleToggleStatus = () => {
               <input
                 v-model="encargado"
                 type="text"
-                placeholder="Ej. Maestro Jorge Ramos (opcional)"
+                placeholder="Nombre del encargado (opcional)"
                 class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
               />
             </div>
@@ -311,7 +311,7 @@ const handleToggleStatus = () => {
                 v-model="nombre"
                 type="text"
                 required
-                placeholder="Ej. Roberto Sánchez o Carlos Mendoza"
+                placeholder="Nombre completo"
                 :class="[
                   'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                   errors.nombre
@@ -337,7 +337,7 @@ const handleToggleStatus = () => {
               <input
                 v-model="taller"
                 type="text"
-                placeholder="Ej. Transportes del Norte (si aplica)"
+                placeholder="Empresa o taller (opcional)"
                 class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
               />
             </div>
@@ -358,7 +358,7 @@ const handleToggleStatus = () => {
               <input
                 v-model="telefono"
                 type="tel"
-                placeholder="Ej. 81 1234 5678"
+                placeholder="Teléfono"
                 :class="[
                   'w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border rounded-2xl text-sm font-mono text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:ring-2',
                   errors.telefono
@@ -385,7 +385,7 @@ const handleToggleStatus = () => {
               <input
                 v-model="direccion"
                 type="text"
-                placeholder="Ej. Av. Hidalgo 123, Col. Centro"
+                placeholder="Dirección"
                 class="w-full min-h-[48px] pl-11 pr-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
               />
             </div>
@@ -427,7 +427,7 @@ const handleToggleStatus = () => {
           <textarea
             v-model="notas"
             rows="2"
-            placeholder="Ej. Motores diésel Cummins, rectificación de culatas, especificaciones de apriete..."
+            placeholder="Notas técnicas"
             class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/30"
           ></textarea>
         </div>

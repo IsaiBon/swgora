@@ -268,7 +268,7 @@ const showToast = (msg: string) => {
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="Buscar por código (ej. CLI-001, TAL-001), nombre, teléfono o taller..."
+              placeholder="Buscar por código, nombre, teléfono o taller..."
               class="w-full min-h-[40px] pl-10 pr-4 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm text-[#162436] placeholder-slate-400 focus:bg-white focus:outline-none focus:border-[#147488] focus:ring-2 focus:ring-[#147488]/20 transition-all"
             />
           </div>

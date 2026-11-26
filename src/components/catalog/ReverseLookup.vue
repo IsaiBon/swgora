@@ -73,7 +73,7 @@ const copyText = async (text: string) => {
               v-model="searchCode"
               type="text"
               @keyup.enter="handleSearch"
-              placeholder="Ej. 28006, 21-2856, MS-1140A, 13711-54020, 10074200..."
+              placeholder="Código OEM o alterno"
               class="w-full pl-4 pr-10 py-3 text-sm bg-white/15 backdrop-blur-md border border-white/25 rounded-xl text-white placeholder-sky-100/65 focus:outline-none focus:bg-white focus:text-[#0D1B3E] focus:ring-2 focus:ring-[#04C4D9] font-mono font-bold transition"
             />
           </div>

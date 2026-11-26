@@ -332,7 +332,7 @@ const removePdfAt = (idx: number) => {
         <input
           v-model="manualUrl"
           type="url"
-          placeholder="https://ejemplo.com/repuestos/valvula_13711.jpg"
+          placeholder="https://..."
           class="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
           @keydown.enter.prevent="applyManualUrl"
         />
@@ -523,7 +523,7 @@ const removePdfAt = (idx: number) => {
           <input
             v-model="manualPdfName"
             type="text"
-            placeholder="Nombre (ej. Hoja Técnica NPR.pdf)"
+            placeholder="Nombre del archivo PDF"
             class="px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
           />
           <div class="flex gap-1">

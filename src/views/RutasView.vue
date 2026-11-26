@@ -1147,7 +1147,7 @@ function formatMoney(amount: number): string {
                       v-model="form.nombre"
                       type="text"
                       required
-                      placeholder="Ej. Ruta Norte / Sucursal Centro"
+                      placeholder="Nombre de la ruta"
                       @blur="!modoEdicion && form.modoSubAdmin === 'nuevo' && !form.subAdminEmail && !rutaNombreDuplicado ? autocompletarDatosSubAdmin() : null"
                       :aria-invalid="Boolean(rutaNombreDuplicado)"
                       :class="[
@@ -1210,7 +1210,7 @@ function formatMoney(amount: number): string {
                   <input
                     v-model="form.zona"
                     type="text"
-                    placeholder="Ej. Zona Oriental, talleres afiliados"
+                    placeholder="Descripción o zona"
                     class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder:text-slate-400 focus:border-[#04C4D9] focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25 transition"
                   />
                 </div>
@@ -1286,7 +1286,7 @@ function formatMoney(amount: number): string {
                     <input
                       v-model="form.subAdminNombre"
                       type="text"
-                      placeholder="Ej. Carlos Méndez"
+                      placeholder="Nombre del encargado"
                       class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder:text-slate-400 focus:border-[#04C4D9] focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25 transition"
                     />
                   </div>

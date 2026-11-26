@@ -1121,7 +1121,7 @@ const handleSave = () => {
           <input
             v-model="editNombre"
             type="text"
-            placeholder="Ej. Retenes de válvulas, Camisas de cilindro, Cojinetes..."
+            placeholder="Nombre de la familia"
             class="w-full px-3.5 py-2.5 text-xs font-black bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:border-[#04C4D9] transition shadow-2xs"
           />
         </div>
@@ -1250,7 +1250,7 @@ const handleSave = () => {
             <input
               v-model="firstColumnTitle"
               type="text"
-              placeholder="Ej. Componente, Posición, Sección, Anillo..."
+              placeholder="Título de primera columna"
               class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
             />
           </div>
@@ -1262,7 +1262,7 @@ const handleSave = () => {
             <input
               v-model="rowGroupColumnTitle"
               type="text"
-              placeholder="Ej. Grupo, Bloque, Sección..."
+              placeholder="Título de grupo"
               class="flex-1 px-2.5 py-1 text-xs font-black text-slate-900 bg-white border border-cyan-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
             />
           </div>
@@ -1296,7 +1296,7 @@ const handleSave = () => {
                       @input="renameRowCluster(rCluster.startIdx, rCluster.endIdx, ($event.target as HTMLInputElement).value)"
                       @blur="ensureRowClusterNameOnBlur(rCluster.startIdx, rCluster.endIdx)"
                       type="text"
-                      placeholder="Nombre central (ej. Parte Superior...)"
+                      placeholder="Nombre central"
                       class="flex-1 min-w-[130px] text-xs font-black text-slate-900 bg-cyan-50/40 px-2 py-0.5 rounded-lg border border-cyan-200 focus:outline-none focus:border-[#04C4D9]"
                     />
                   </div>
@@ -1461,7 +1461,7 @@ const handleSave = () => {
                       @input="renameColumnCluster(cluster.startIdx, cluster.endIdx, ($event.target as HTMLInputElement).value)"
                       @blur="ensureClusterNameOnBlur(cluster.startIdx, cluster.endIdx)"
                       type="text"
-                      placeholder="Nombre columna central (ej. STD, 0.25, Luz...)"
+                      placeholder="Nombre columna central"
                       class="flex-1 min-w-[160px] text-xs font-black text-slate-900 bg-cyan-50/40 px-2.5 py-1 rounded-lg border border-cyan-200 focus:outline-none focus:border-[#04C4D9]"
                     />
                   </div>

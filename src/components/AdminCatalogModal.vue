@@ -2619,7 +2619,7 @@ onUnmounted(() => {
                       @input="onPrimaryOemInput"
                       @blur="normalizeOemInputs"
                       type="text"
-                      placeholder="Ej. 13011-13040, 11044-AA000..."
+                      placeholder="Códigos OEM separados por coma"
                       class="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                       :class="formErrors.partCodigoOem ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                     />
@@ -2697,7 +2697,7 @@ onUnmounted(() => {
                     v-model="partMarca"
                     list="modal-fabricantes-list"
                     type="text"
-                    placeholder="Ej. TOYOTA, NISSAN..."
+                    placeholder="Marca"
                     class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                     :class="formErrors.partMarca ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                   />
@@ -2729,7 +2729,7 @@ onUnmounted(() => {
                     @blur="normalizeModeloInputs"
                     list="modal-modelos-list"
                     type="text"
-                    placeholder="Ej. HILUX, COROLLA..."
+                    placeholder="Modelo"
                     class="w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                     :class="formErrors.partModelo ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                   />
@@ -2773,7 +2773,7 @@ onUnmounted(() => {
                     v-model="partAno"
                     list="modal-anos-list"
                     type="text"
-                    placeholder="Ej. 2015, 2005-2012..."
+                    placeholder="Año o rango"
                     class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border rounded-xl focus:outline-none focus:border-[#04C4D9] focus:ring-1 focus:ring-[#04C4D9]"
                     :class="formErrors.partAno ? 'border-rose-400 bg-rose-50/50' : 'border-slate-300'"
                   />
@@ -3162,7 +3162,7 @@ onUnmounted(() => {
                     <input
                       v-model="subfilasMarcaBanner"
                       type="text"
-                      placeholder="Ej. TOYOTA, NISSAN, UNIVERSAL..."
+                      placeholder="Marca"
                       class="w-full px-3 py-1.5 text-center text-xs font-black tracking-wider uppercase bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-900 shadow-2xs"
                     />
                   </div>
@@ -3174,7 +3174,7 @@ onUnmounted(() => {
                     <input
                       v-model="subfilasAplicacionBanner"
                       type="text"
-                      placeholder="Ej. Hilux 2.4 / 2.8, Motor 2L / 3L..."
+                      placeholder="Vehículo o motor"
                       class="w-full px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9] text-slate-800 shadow-2xs"
                     />
                   </div>
@@ -3600,7 +3600,7 @@ onUnmounted(() => {
                   <input
                     v-model="customRingDesignInput"
                     type="text"
-                    placeholder="Otro diseño (ej. Fosfatado)..."
+                    placeholder="Otro diseño"
                     class="flex-1 px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-[#04C4D9]"
                     @keydown.enter.prevent="addCustomRingDesignChip"
                   />
@@ -3621,7 +3621,7 @@ onUnmounted(() => {
                 <textarea
                   v-model="partDescripcionTecnica"
                   rows="2"
-                  placeholder="Ej. Juego de anillos para pistón diésel turbo, ranura 1ra keystone, holguras o notas de montaje en taller..."
+                  placeholder="Notas técnicas o de montaje"
                   class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/30 focus:border-[#04C4D9] resize-y"
                 ></textarea>
               </div>

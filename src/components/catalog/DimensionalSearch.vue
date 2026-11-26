@@ -194,7 +194,7 @@ const applyPreset = (type: string) => {
             v-model.number="valveHead"
             type="number"
             step="0.1"
-            placeholder="Ej. 42.5"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Tolerancia de diámetro ±{{ tolerance }}mm</span>
@@ -208,7 +208,7 @@ const applyPreset = (type: string) => {
             v-model.number="valveStem"
             type="number"
             step="0.05"
-            placeholder="Ej. 8.0 o 6.0"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Medida crítica del vástago</span>
@@ -222,7 +222,7 @@ const applyPreset = (type: string) => {
             v-model.number="valveLength"
             type="number"
             step="0.1"
-            placeholder="Ej. 103.5 o 116.5"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Desde asiento a punta de vástago</span>
@@ -239,7 +239,7 @@ const applyPreset = (type: string) => {
             v-model.number="ringBore"
             type="number"
             step="0.1"
-            placeholder="Ej. 96.0 o 89.0"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Calibre nominal estándar</span>
@@ -253,7 +253,7 @@ const applyPreset = (type: string) => {
             v-model.number="ring1"
             type="number"
             step="0.05"
-            placeholder="Ej. 2.0 o 1.5"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Anillo de fuego / compresión</span>
@@ -267,7 +267,7 @@ const applyPreset = (type: string) => {
             v-model.number="ring2"
             type="number"
             step="0.05"
-            placeholder="Ej. 1.5"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Anillo rascador</span>
@@ -281,7 +281,7 @@ const applyPreset = (type: string) => {
             v-model.number="ringOil"
             type="number"
             step="0.05"
-            placeholder="Ej. 4.0 o 2.8"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Anillo de control de aceite</span>
@@ -315,7 +315,7 @@ const applyPreset = (type: string) => {
             v-model.number="bearingJournal"
             type="number"
             step="0.1"
-            placeholder="Ej. 62.0 o 53.0"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Diámetro exterior de muñón cigüeñal</span>
@@ -329,7 +329,7 @@ const applyPreset = (type: string) => {
             v-model.number="bearingWidth"
             type="number"
             step="0.1"
-            placeholder="Ej. 23.0 o 24.0"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
           <span class="text-[10px] text-slate-400 mt-1 block">Ancho axial del cojinete</span>
@@ -346,7 +346,7 @@ const applyPreset = (type: string) => {
             v-model.number="sealStem"
             type="number"
             step="0.1"
-            placeholder="Ej. 8.0 o 6.0"
+            placeholder=""
             class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#04c4d9] focus:outline-none"
           />
         </div>

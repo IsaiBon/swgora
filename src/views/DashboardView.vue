@@ -1571,7 +1571,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
                         type="text"
                         inputmode="numeric"
                         maxlength="4"
-                        placeholder="Ej. 2027"
+                        placeholder="Año"
                         class="flex-1 min-w-0 px-2.5 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg text-[#0D1B3E] placeholder-slate-400 focus:outline-none focus:border-[#04C4D9]"
                       />
                       <button

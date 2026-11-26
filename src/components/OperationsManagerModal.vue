@@ -345,7 +345,7 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
                 <input
                   v-model="formState.operation"
                   type="text"
-                  placeholder="Ej. Rectificar Asientos de Culata"
+                  placeholder="Nombre de la operación"
                   class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9] focus:border-[#04C4D9]"
                 />
               </div>

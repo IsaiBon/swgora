@@ -1742,7 +1742,7 @@ onMounted(() => {
               required
               autocomplete="email"
               :disabled="reautenticando"
-              placeholder="correo@ejemplo.com"
+              placeholder="Correo electrónico"
               class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-[#0D1B3E] outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
             />
           </div>
@@ -2297,7 +2297,7 @@ onMounted(() => {
                   autocomplete="email"
                   :disabled="guardando"
                   class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
-                  placeholder="usuario@ejemplo.com"
+                  placeholder="Correo electrónico"
                 />
               </div>
 
@@ -2320,7 +2320,7 @@ onMounted(() => {
                     autocomplete="tel"
                     :disabled="guardando"
                     class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
-                    placeholder="Ej. +503 7000-0000"
+                    placeholder="Teléfono"
                   />
                 </div>
               </div>
@@ -2436,7 +2436,7 @@ onMounted(() => {
                     maxlength="120"
                     :disabled="guardando"
                     class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
-                    placeholder="Ej. Taller Mecánico El Rayo (opcional)"
+                    placeholder="Nombre del taller (opcional)"
                   />
                 </div>
 
@@ -2593,7 +2593,7 @@ onMounted(() => {
                 type="text"
                 maxlength="120"
                 :disabled="guardandoRol"
-                placeholder="Ej. Taller Mecánico El Rayo"
+                placeholder="Nombre del taller"
                 class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:bg-white focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
               />
             </div>
@@ -2892,7 +2892,7 @@ onMounted(() => {
                     type="tel"
                     maxlength="30"
                     :disabled="guardandoTelefonoFicha"
-                    placeholder="Teléfono (opcional, ej. +503 7000-0000)"
+                    placeholder="Teléfono (opcional)"
                     class="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3.5 py-2 text-xs font-semibold text-[#0D1B3E] placeholder-slate-400 outline-none transition focus:border-[#04C4D9] focus:ring-2 focus:ring-[#04C4D9]/25"
                   />
                 </div>

@@ -1484,6 +1484,17 @@ const getCatalogOemColorValue = (brand: string): string => {
   return catalogOemColors.value[normalizeCatalogBrandKey(brand)] || 'slate'
 }
 
+const previewCatalogOemColor = (brand: string, colorValue: string) => {
+  const key = normalizeCatalogBrandKey(brand)
+  const next: CatalogOemColorMap = { ...catalogOemColors.value }
+  if (!colorValue || colorValue === 'slate') {
+    delete next[key]
+  } else {
+    next[key] = colorValue
+  }
+  catalogOemColors.value = next
+}
+
 const setCatalogOemColor = async (brand: string, colorValue: string) => {
   const key = normalizeCatalogBrandKey(brand)
   const next: CatalogOemColorMap = { ...catalogOemColors.value }
@@ -2707,18 +2718,18 @@ const handleTopEditComponent = () => {
   showToast('Seleccione o busque un componente y presione su ícono de editar')
 }
 
-// 1. Filtrado de MARCAS / FABRICANTES (reacciona a Motor / Modelo activos)
+// 1. Filtrado de MARCAS / FABRICANTES (muestra todas las marcas disponibles)
 const filteredBrands = computed(() => {
   const q = brandInput.value.toLowerCase().trim()
   let list = catalogStore.fabricantes
 
-  if (selectedMotor.value?.fabricante_id) {
-    list = list.filter(f => f.id === selectedMotor.value!.fabricante_id)
-  } else if (motorInput.value.trim()) {
+  if (motorInput.value.trim() && !selectedMotor.value) {
     const motorPool = brandMotorsList.value.length > 0 ? brandMotorsList.value : recommendedMotorsList.value
     const matchingBrandIds = new Set(motorPool.map(m => m.fabricante_id).filter(Boolean))
-    list = list.filter(f => matchingBrandIds.has(f.id))
-  } else if (selectedModel.value?.fabricante_id && !selectedBrand.value) {
+    if (matchingBrandIds.size > 0) {
+      list = list.filter(f => matchingBrandIds.has(f.id))
+    }
+  } else if (selectedModel.value?.fabricante_id && !selectedBrand.value && !selectedMotor.value) {
     list = list.filter(f => f.id === selectedModel.value!.fabricante_id)
   }
 
@@ -2790,6 +2801,11 @@ const handleSelectBrand = async (fab: Fabricante) => {
     modelInput.value = ''
   }
   selectedMotor.value = keepMotor
+  if (keepMotor && !keepModel) {
+    nextTick(() => {
+      isModelOpen.value = true
+    })
+  }
 
   // Limpiar filtros dimensionales para garantizar catálogo limpio en la nueva marca
   resetMeasurementsFilters()
@@ -3004,6 +3020,13 @@ const onInputMotor = () => {
     catalogStore.selectedMotorId = null
     catalogStore.modeloIdsDelMotor = []
   }
+  if (!motorInput.value.trim()) {
+    selectedModel.value = null
+    modelInput.value = ''
+    catalogStore.selectedModeloId = null
+    selectedYear.value = ''
+    yearInput.value = ''
+  }
   activeViewTab.value = 'motores'
   if (motorInput.value.trim().length > 0 || !selectedBrand.value) {
     showAllMotors.value = true
@@ -3068,6 +3091,14 @@ const handleSelectMotor = async (mot: Motor) => {
   // Al seleccionar un motor: cargar siempre sus repuestos (displayedParts filtra por selectedComponent automáticamente)
   activeViewTab.value = 'repuestos'
   await catalogStore.fetchRepuestosByMotor(mot.id)
+
+  // Abrir de un solo el selector de todas las marcas (y después modelos)
+  await nextTick()
+  if (!selectedBrand.value) {
+    isBrandOpen.value = true
+  } else if (!selectedModel.value) {
+    isModelOpen.value = true
+  }
 }
 
 const handleClearSelectedMotor = async () => {
@@ -3076,11 +3107,16 @@ const handleClearSelectedMotor = async () => {
   isMotorOpen.value = false
   catalogStore.selectedMotorId = null
   catalogStore.modeloIdsDelMotor = []
-  if (selectedBrand.value || selectedModel.value) {
-    await catalogStore.fetchMotores(selectedBrand.value?.id, selectedModel.value?.id)
+  selectedModel.value = null
+  modelInput.value = ''
+  catalogStore.selectedModeloId = null
+  selectedYear.value = ''
+  yearInput.value = ''
+  if (selectedBrand.value) {
+    await catalogStore.fetchMotores(selectedBrand.value.id, undefined)
   }
   activeViewTab.value = 'motores'
-  if (selectedBrand.value || selectedModel.value || effectiveYearFilter.value || showAllMotors.value) {
+  if (selectedBrand.value || showAllMotors.value) {
     catalogStore.repuestos = []
   } else if (selectedComponent.value) {
     activeViewTab.value = 'repuestos'
@@ -5153,6 +5189,93 @@ const handleDocumentClick = (e: MouseEvent) => {
   if (!target.closest('.dropdown-export-family')) isExportMenuOpen.value = false
 }
 
+// Modal rápido dedicado para agregar solo Motor o solo Modelo (según contexto)
+const quickCreateMode = ref<'motor' | 'modelo' | null>(null)
+const quickCreateSaving = ref(false)
+const quickCreateError = ref('')
+const quickCreateForm = ref({
+  fabricanteId: '',
+  codigoMotor: '',
+  denominacionVenta: '',
+  cilindros: '',
+  cilindradaCc: '',
+  combustible: 'Gasolina',
+  nombreModelo: '',
+  anioInicio: '',
+  anioFin: '',
+})
+
+const openQuickCreateModal = (mode: 'motor' | 'modelo') => {
+  quickCreateMode.value = mode
+  quickCreateError.value = ''
+  quickCreateForm.value = {
+    fabricanteId: selectedBrand.value?.id || catalogStore.fabricantes[0]?.id || '',
+    codigoMotor: mode === 'motor' ? motorInput.value.trim().toUpperCase() : '',
+    denominacionVenta: '',
+    cilindros: '',
+    cilindradaCc: '',
+    combustible: 'Gasolina',
+    nombreModelo: mode === 'modelo' ? modelInput.value.trim().toUpperCase() : '',
+    anioInicio: '',
+    anioFin: '',
+  }
+  isModelOpen.value = false
+}
+
+const closeQuickCreateModal = () => {
+  if (quickCreateSaving.value) return
+  quickCreateMode.value = null
+  quickCreateError.value = ''
+}
+
+const submitQuickCreate = async () => {
+  if (!quickCreateMode.value || quickCreateSaving.value) return
+  const fabId = quickCreateForm.value.fabricanteId
+  if (!fabId) {
+    quickCreateError.value = 'Selecciona un fabricante.'
+    return
+  }
+
+  quickCreateSaving.value = true
+  quickCreateError.value = ''
+  try {
+    if (quickCreateMode.value === 'motor') {
+      const code = quickCreateForm.value.codigoMotor.trim().toUpperCase()
+      if (!code) {
+        quickCreateError.value = 'Ingresa el código del motor.'
+        return
+      }
+      const created = await catalogStore.createMotor({
+        fabricante_id: fabId,
+        codigo: code,
+        denominacion_venta: quickCreateForm.value.denominacionVenta.trim() || undefined,
+        cilindros: quickCreateForm.value.cilindros ? Number(quickCreateForm.value.cilindros) : undefined,
+        cilindrada_cc: quickCreateForm.value.cilindradaCc ? Number(quickCreateForm.value.cilindradaCc) : undefined,
+        combustible: (quickCreateForm.value.combustible as Motor['combustible']) || 'Gasolina',
+      })
+      quickCreateMode.value = null
+      if (created) {
+        showToast(`✓ Motor ${created.codigo} agregado al catálogo`)
+      }
+    } else {
+      const nombreMod = quickCreateForm.value.nombreModelo.trim().toUpperCase()
+      if (!nombreMod) {
+        quickCreateError.value = 'Ingresa el nombre del modelo.'
+        return
+      }
+      const anioInicio = quickCreateForm.value.anioInicio ? Number(quickCreateForm.value.anioInicio) : undefined
+      const anioFin = quickCreateForm.value.anioFin ? Number(quickCreateForm.value.anioFin) : undefined
+      const created = await catalogStore.createModelo(fabId, nombreMod, anioInicio, anioFin)
+      quickCreateMode.value = null
+      showToast(`✓ Modelo ${created.nombre} agregado al catálogo`)
+    }
+  } catch (err: unknown) {
+    quickCreateError.value = err instanceof Error ? err.message : 'No se pudo guardar el registro.'
+  } finally {
+    quickCreateSaving.value = false
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', handleDocumentClick)
   // Inicialización de datos reales desde Supabase
@@ -5507,7 +5630,7 @@ onUnmounted(() => {
               @input="onInputBrand()"
               @keydown="handleBrandKeydown"
               type="text"
-              placeholder="Fabricante..."
+              placeholder="Fabricante...."
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
@@ -5639,8 +5762,8 @@ onUnmounted(() => {
               @input="onInputMotor"
               @keydown="handleMotorKeydown"
               type="text"
-              placeholder="Motor..."
-              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-mono font-bold bg-transparent focus:outline-none"
+              placeholder="Motor...."
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] placeholder:font-sans font-mono font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
@@ -5703,7 +5826,7 @@ onUnmounted(() => {
               @input="onInputModel(); highlightedModelIdx = 0"
               @keydown="handleModelKeydown"
               type="text"
-              :placeholder="selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '...') : 'Modelo...'"
+              :placeholder="selectedMotor ? ('Modelos con ' + selectedMotor.codigo + '....') : 'Modelo....'"
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
@@ -5770,6 +5893,18 @@ onUnmounted(() => {
                 <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
+            <button
+              type="button"
+              @mousedown.prevent="openQuickCreateModal('modelo')"
+              class="w-full px-3 py-2 text-xs font-bold text-[#038391] bg-cyan-50/70 hover:bg-cyan-100 flex items-center justify-between border-t border-cyan-100 transition sticky bottom-0 cursor-pointer"
+              title="Agregar un nuevo modelo de vehículo"
+            >
+              <span class="flex items-center gap-1.5">
+                <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
+                <span>+ Agregar modelo</span>
+              </span>
+              <span class="text-[9px] font-mono uppercase opacity-80">Nuevo</span>
+            </button>
             <div v-if="filteredModels.length === 0" class="p-2.5 text-center text-xs text-slate-400">
               No hay modelos coincidentes
             </div>
@@ -5812,8 +5947,8 @@ onUnmounted(() => {
               @input="onInputYear"
               @keydown.enter.prevent="filteredYears[0] ? handleSelectYear(filteredYears[0]) : (yearInput.trim() ? handleSaveQuickYear(yearInput) : null)"
               type="text"
-              placeholder="Todos (ej. 2015, 2020)..."
-              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-mono font-bold bg-transparent focus:outline-none"
+              placeholder="Año...."
+              class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] placeholder:font-sans font-mono font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
               <button
@@ -5951,7 +6086,7 @@ onUnmounted(() => {
               @input="isComponentOpen = true; highlightedComponentIdx = 0"
               @keydown="handleComponentKeydown"
               type="text"
-              placeholder="Componente..."
+              placeholder="Componente...."
               class="flex-1 min-w-0 h-full pl-2.5 pr-1 text-[11px] placeholder:text-[11px] font-bold bg-transparent focus:outline-none"
             />
             <div class="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200/80 shrink-0">
@@ -6193,11 +6328,22 @@ onUnmounted(() => {
       <div class="studio-card rounded-2xl shadow-2xs overflow-hidden">
         
         <!-- Barra de Estado / Paginación Resumen -->
-        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white py-2 px-4 flex items-center justify-between text-xs font-medium">
+        <div class="bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white py-2 px-4 flex items-center justify-between gap-2 flex-wrap text-xs font-medium">
           <span class="text-sky-100 font-mono text-[11px]">
             Mostrando {{ brandMotorsList.length > 0 ? `${motorStartIndex + 1}-${motorEndIndex} de ${brandMotorsList.length}` : 0 }} motores
           </span>
-          <span class="text-[11px] text-[#BFEBF2] font-semibold font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
+          <div class="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              @click="openQuickCreateModal('motor')"
+              class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#04C4D9] hover:bg-[#038391] text-[#0D1B3E] hover:text-white text-[11px] font-extrabold transition cursor-pointer shadow-2xs"
+              title="Agregar un nuevo motor al catálogo"
+            >
+              <Plus class="w-3 h-3 stroke-[2.5]" />
+              <span>Agregar motor</span>
+            </button>
+            <span class="text-[11px] text-[#BFEBF2] font-semibold font-sans">Página {{ motorCurrentPage }} / {{ motorTotalPages }}</span>
+          </div>
         </div>
 
         <!-- Barra contextual de eliminación masiva de motores (Solo Administradores) -->
@@ -6735,7 +6881,7 @@ onUnmounted(() => {
                 v-model.number="filterAnilloDiametro"
                 type="number"
                 step="0.1"
-                placeholder="ej. 88.0"
+                placeholder=""
                 class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
               <span class="text-[9px] text-slate-500 mt-1 block">Diámetro ({{ getTableParamUnit('diametro_cilindro_mm', 'mm') || 'mm' }})</span>
@@ -6984,7 +7130,7 @@ onUnmounted(() => {
                   v-model.number="dynamicParamFilters[param.clave]"
                   type="number"
                   step="0.1"
-                  :placeholder="`ej. 50 ${param.unidad || ''}`"
+                  placeholder=""
                   class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </template>
@@ -7036,7 +7182,7 @@ onUnmounted(() => {
                 <input
                   v-model="filterCodigoPart"
                   type="text"
-                  placeholder="ej. 4-4160, 7367..."
+                  placeholder=""
                   class="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
                 />
                 <button
@@ -7160,7 +7306,7 @@ onUnmounted(() => {
                   v-model.number="dynamicParamFilters[param.clave]"
                   type="number"
                   step="0.1"
-                  :placeholder="`ej. 50 ${param.unidad || ''}`"
+                  placeholder=""
                   class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </template>
@@ -9271,7 +9417,7 @@ onUnmounted(() => {
                 v-model="quickBrandName"
                 type="text"
                 required
-                placeholder="ej. CUMMINS, HINO, SUBARU, VOLVO..."
+                placeholder="Nombre del fabricante"
                 class="w-full px-3 py-2 text-xs font-bold uppercase bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
               />
             </div>
@@ -9406,7 +9552,7 @@ onUnmounted(() => {
                   v-model="quickMotorCode"
                   type="text"
                   required
-                  placeholder="ej. 7L, 1GD-FTV, 4JJ3..."
+                  placeholder="Código de motor"
                   class="w-full px-2.5 py-2 text-xs font-mono font-black uppercase bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </div>
@@ -9485,7 +9631,7 @@ onUnmounted(() => {
                 <input
                   v-model="quickMotorSeries"
                   type="text"
-                  placeholder="ej. Serie L / Hilux / Dyna"
+                  placeholder="Serie o línea comercial"
                   class="w-full px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </div>
@@ -9497,7 +9643,7 @@ onUnmounted(() => {
                 <input
                   v-model="quickMotorYears"
                   type="text"
-                  placeholder="ej. 1978-1980, 1981-1990"
+                  placeholder="Rango de años"
                   class="w-full px-2.5 py-1.5 text-xs font-mono font-semibold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </div>
@@ -9520,7 +9666,7 @@ onUnmounted(() => {
                 <input
                   v-model.number="quickMotorCc"
                   type="number"
-                  placeholder="ej. 2977"
+                  placeholder="Cilindrada en cc"
                   class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                 />
               </div>
@@ -9648,7 +9794,7 @@ onUnmounted(() => {
                 v-model="quickModelName"
                 type="text"
                 required
-                placeholder="ej. HILUX, NP300, L200, H100, COROLLA..."
+                placeholder="Nombre del modelo"
                 class="w-full px-3 py-2 text-xs font-bold uppercase bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
               />
             </div>
@@ -9659,7 +9805,7 @@ onUnmounted(() => {
                 <input
                   v-model.number="quickModelYearStart"
                   type="number"
-                  placeholder="ej. 1998"
+                  placeholder="Año inicio"
                   class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                 />
               </div>
@@ -9668,7 +9814,7 @@ onUnmounted(() => {
                 <input
                   v-model.number="quickModelYearEnd"
                   type="number"
-                  placeholder="ej. 2026"
+                  placeholder="Año fin"
                   class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                 />
               </div>
@@ -9856,7 +10002,7 @@ onUnmounted(() => {
                 v-model="quickYearValue"
                 type="text"
                 required
-                placeholder="ej. 2027, 2028 o 1960-1964..."
+                placeholder="Año o rango"
                 class="w-full px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
               />
               <p class="mt-1 text-[10px] text-slate-500">
@@ -10184,7 +10330,8 @@ onUnmounted(() => {
                 <input
                   type="color"
                   :value="getCatalogOemColorValue(brand).startsWith('#') ? getCatalogOemColorValue(brand) : '#2563eb'"
-                  @input="setCatalogOemColor(brand, ($event.target as HTMLInputElement).value)"
+                  @input="previewCatalogOemColor(brand, ($event.target as HTMLInputElement).value)"
+                  @change="setCatalogOemColor(brand, ($event.target as HTMLInputElement).value)"
                   class="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer"
                 />
               </label>
@@ -10210,6 +10357,167 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- Modal Rápido para Agregar Motor o Modelo -->
+    <div
+      v-if="quickCreateMode"
+      class="fixed inset-0 z-50 bg-[#09132B]/65 backdrop-blur-sm flex items-center justify-center p-4"
+      @click.self="closeQuickCreateModal"
+    >
+      <form
+        @submit.prevent="submitQuickCreate"
+        class="studio-card bg-white max-w-md w-full rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+      >
+        <div class="px-5 py-4 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white flex items-center justify-between gap-3">
+          <div>
+            <h3 class="font-display font-extrabold text-sm sm:text-base text-white">
+              {{ quickCreateMode === 'motor' ? 'Agregar nuevo motor' : 'Agregar nuevo modelo' }}
+            </h3>
+            <p class="text-[11px] text-sky-100/80">
+              {{ quickCreateMode === 'motor' ? 'Registro rápido de motor en el catálogo' : 'Registro rápido de modelo vehicular' }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="closeQuickCreateModal"
+            class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="p-5 space-y-3.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Fabricante *</label>
+            <select
+              v-model="quickCreateForm.fabricanteId"
+              required
+              class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+            >
+              <option value="" disabled>Selecciona fabricante...</option>
+              <option v-for="fab in catalogStore.fabricantes" :key="fab.id" :value="fab.id">
+                {{ fab.nombre }}
+              </option>
+            </select>
+          </div>
+
+          <template v-if="quickCreateMode === 'motor'">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Código de motor *</label>
+              <input
+                v-model="quickCreateForm.codigoMotor"
+                type="text"
+                required
+                placeholder="Código de motor"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Denominación / Serie (Opcional)</label>
+              <input
+                v-model="quickCreateForm.denominacionVenta"
+                type="text"
+                placeholder="Serie o línea"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+            <div class="grid grid-cols-3 gap-2.5">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Cilindros</label>
+                <input
+                  v-model="quickCreateForm.cilindros"
+                  type="number"
+                  min="1"
+                  max="16"
+                  placeholder="4"
+                  class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Cilindrada (cc)</label>
+                <input
+                  v-model="quickCreateForm.cilindradaCc"
+                  type="number"
+                  min="100"
+                  placeholder="2982"
+                  class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Combustible</label>
+                <select
+                  v-model="quickCreateForm.combustible"
+                  class="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                >
+                  <option value="Gasolina">Gasolina</option>
+                  <option value="Diesel">Diésel</option>
+                  <option value="Híbrido">Híbrido</option>
+                </select>
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Nombre del modelo *</label>
+              <input
+                v-model="quickCreateForm.nombreModelo"
+                type="text"
+                required
+                placeholder="Nombre del modelo"
+                class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold uppercase text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+              />
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Año inicio (Opcional)</label>
+                <input
+                  v-model="quickCreateForm.anioInicio"
+                  type="number"
+                  min="1950"
+                  max="2035"
+                  placeholder="2005"
+                  class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Año fin (Opcional)</label>
+                <input
+                  v-model="quickCreateForm.anioFin"
+                  type="number"
+                  min="1950"
+                  max="2035"
+                  placeholder="2015"
+                  class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-[#04C4D9]"
+                />
+              </div>
+            </div>
+          </template>
+
+          <p v-if="quickCreateError" class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            {{ quickCreateError }}
+          </p>
+        </div>
+
+        <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button
+            type="button"
+            :disabled="quickCreateSaving"
+            @click="closeQuickCreateModal"
+            class="px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold cursor-pointer disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            :disabled="quickCreateSaving"
+            class="studio-cta-primary px-4 py-1.5 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+          >
+            {{ quickCreateSaving ? 'Guardando...' : (quickCreateMode === 'motor' ? 'Guardar motor' : 'Guardar modelo') }}
+          </button>
+        </div>
+      </form>
     </div>
 
     <OrderCartDrawer
