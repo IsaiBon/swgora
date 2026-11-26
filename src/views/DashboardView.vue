@@ -2400,7 +2400,65 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
       </div>
 
       <!-- Tabla de Órdenes -->
-      <div class="overflow-x-auto">
+      <!-- Vista Móvil de Tabla de Órdenes (sin scroll horizontal) -->
+      <div class="md:hidden divide-y divide-slate-200 bg-white">
+        <div
+          v-for="order in tableFilteredOrders"
+          :key="`mob-dash-${order.id}`"
+          class="p-3.5 space-y-2"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="font-bold text-xs text-[#004B97] bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-lg shrink-0">
+                {{ order.orderNumber }}
+              </span>
+              <span
+                v-if="order.type === 'cotizacion'"
+                class="px-1.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200 shrink-0"
+              >
+                Cotización
+              </span>
+            </div>
+            <span class="font-extrabold text-xs text-[#0D1B3E] shrink-0">
+              ${{ Number(order.total || 0).toFixed(2) }}
+            </span>
+          </div>
+
+          <div class="space-y-0.5">
+            <div class="text-xs font-bold text-[#0D1B3E] truncate">
+              {{ order.customer || order.workshop || '— Sin Asignar —' }}
+            </div>
+            <div class="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+              <span class="truncate">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Sin motor' }}</span>
+              <span class="shrink-0">{{ order.date }}</span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100">
+            <select
+              :value="order.status"
+              @change="handleQuickStatusChange(order, ($event.target as HTMLSelectElement).value as any)"
+              class="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-bold text-[#0D1B3E]"
+            >
+              <option value="Pendiente">Pendiente</option>
+              <option value="En Proceso">En Proceso</option>
+              <option value="Terminado">Terminado</option>
+            </select>
+            <button
+              type="button"
+              @click="router.push(`/ordenes?edit=${order.id}`)"
+              class="px-3 py-1 rounded-lg bg-[#004B97] text-white text-[11px] font-bold"
+            >
+              Abrir
+            </button>
+          </div>
+        </div>
+        <div v-if="tableFilteredOrders.length === 0" class="py-8 px-4 text-center text-xs text-slate-400">
+          No hay órdenes que coincidan con los filtros.
+        </div>
+      </div>
+
+      <div class="hidden md:block overflow-x-auto">
         <table class="w-full text-left border-collapse min-w-[760px]">
           <thead>
             <tr class="studio-table-head font-mono text-[10px] font-bold uppercase tracking-wider">

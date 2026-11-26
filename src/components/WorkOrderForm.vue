@@ -2063,8 +2063,180 @@ const getCategoryBadgeClass = (cat: RectificationBlock) => {
             </div>
           </div>
 
-          <!-- Tabla Unificada de Todas las Operaciones de Rectificación -->
-          <div class="overflow-x-auto max-h-[520px]">
+          <!-- Vista Móvil sin scroll horizontal para Operaciones de Rectificación -->
+          <div class="md:hidden divide-y divide-slate-200 max-h-[540px] overflow-y-auto">
+            <div
+              v-for="op in displayedOperations"
+              :key="`mob-${op.id}`"
+              :class="[
+                'p-3 space-y-2.5 transition',
+                op.selected && op.quantity !== null && Number(op.quantity) > 0 && ((op.unitPrice !== null && Number(op.unitPrice) > 0) || (op.subtotal !== null && Number(op.subtotal) > 0))
+                  ? 'bg-blue-50/60'
+                  : 'bg-white'
+              ]"
+            >
+              <!-- Fila 1: Checkbox + Categoría + Reset/Eliminar -->
+              <div class="flex items-center justify-between gap-2">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    v-model="op.selected"
+                    @change="handleRowToggle(op)"
+                    type="checkbox"
+                    class="w-4 h-4 accent-[#004B97] text-[#004B97] rounded border-slate-300 focus:ring-[#04C4D9] cursor-pointer"
+                  />
+                  <span :class="['inline-block px-2 py-0.5 rounded-lg text-[10px] font-bold border', getCategoryBadgeClass(op.category)]">
+                    {{ op.category }}
+                  </span>
+                  <span v-if="op.isCustom" class="px-1.5 py-0.5 rounded-md text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    Especial
+                  </span>
+                </label>
+                <div class="flex items-center gap-1">
+                  <button
+                    v-if="op.isCustom"
+                    type="button"
+                    @click="removeCustomOperation(op.id)"
+                    class="p-1 text-slate-400 hover:text-rose-600 transition"
+                    title="Eliminar operación personalizada"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                  <button
+                    v-else-if="op.selected"
+                    type="button"
+                    @click="resetRow(op)"
+                    class="p-1 text-slate-400 hover:text-amber-600 transition"
+                    title="Restablecer fila"
+                  >
+                    <RotateCcw class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- Fila 2: Descripción editable + selectores de medida -->
+              <div class="space-y-1.5">
+                <input
+                  v-model="op.operation"
+                  type="text"
+                  placeholder="Descripción de la operación..."
+                  class="w-full px-2.5 py-1.5 text-xs rounded-lg border transition placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#04C4D9]/25"
+                  :class="[
+                    op.selected
+                      ? 'bg-blue-50/70 border-blue-300 font-bold text-[#0D1B3E] focus:bg-white'
+                      : 'bg-slate-50/80 border-slate-200 font-medium text-slate-900 focus:bg-white focus:border-[#04C4D9]'
+                  ]"
+                />
+                <div v-if="isDualMeasureOperation(op)" class="grid grid-cols-2 gap-2">
+                  <div class="flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-1">
+                    <span class="text-[10px] font-bold text-slate-600 uppercase shrink-0">Banco:</span>
+                    <select
+                      v-model="op.measureBanco"
+                      @change="handleMeasureChange(op)"
+                      class="w-full bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1 py-0.5 focus:outline-none"
+                    >
+                      <option value="">Medida</option>
+                      <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-1">
+                    <span class="text-[10px] font-bold text-slate-600 uppercase shrink-0">Biela:</span>
+                    <select
+                      v-model="op.measureBiela"
+                      @change="handleMeasureChange(op)"
+                      class="w-full bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1 py-0.5 focus:outline-none"
+                    >
+                      <option value="">Medida</option>
+                      <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                  </div>
+                </div>
+                <div v-else-if="isValveTypeOperation(op)" class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-1">
+                  <span class="text-[10px] font-bold text-slate-600 uppercase">Tipo:</span>
+                  <select
+                    v-model="op.measure"
+                    @change="handleMeasureChange(op)"
+                    class="bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1.5 py-0.5 focus:outline-none"
+                  >
+                    <option value="">Tipo</option>
+                    <option v-for="t in VALVE_TYPE_OPTIONS" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
+                <div v-else-if="isSingleMeasureOperation(op)" class="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200 rounded-lg px-2 py-1">
+                  <span class="text-[10px] font-bold text-slate-600 uppercase">Medida:</span>
+                  <select
+                    v-model="op.measure"
+                    @change="handleMeasureChange(op)"
+                    class="bg-white border border-slate-200 text-xs font-semibold text-[#0D1B3E] rounded-md px-1.5 py-0.5 focus:outline-none"
+                  >
+                    <option value="">Medida</option>
+                    <option v-for="m in MEASURE_OPTIONS" :key="m" :value="m">{{ m }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Fila 3: Cantidad, Precio Unitario y Subtotal en 3 columnas compactas -->
+              <div class="grid grid-cols-3 gap-2">
+                <div>
+                  <label class="block text-[9.5px] font-bold uppercase text-slate-500 mb-0.5">Cant.</label>
+                  <input
+                    v-model.number="op.quantity"
+                    @input="handleRowQuantityChange(op); formErrors.noItems = false"
+                    type="number"
+                    min="0"
+                    placeholder="-"
+                    class="w-full text-center border border-slate-200 rounded-lg py-1.5 text-xs font-bold text-[#0D1B3E] bg-white focus:outline-none focus:border-[#04C4D9]"
+                  />
+                </div>
+                <div>
+                  <label class="block text-[9.5px] font-bold uppercase text-slate-500 mb-0.5">Precio U.</label>
+                  <div class="relative">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">$</span>
+                    <input
+                      v-model.number="op.unitPrice"
+                      @input="handleRowPriceChange(op); formErrors.noItems = false"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      :class="[
+                        'w-full no-spin text-right rounded-lg py-1.5 pl-5 pr-2 font-bold text-xs focus:outline-none focus:border-[#04C4D9]',
+                        op.selected && (!op.unitPrice || op.unitPrice <= 0)
+                          ? 'border-2 border-amber-400 bg-amber-50/60 text-amber-900'
+                          : 'border border-slate-200 bg-white text-[#0D1B3E]'
+                      ]"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-[9.5px] font-bold uppercase text-slate-500 mb-0.5">Sub Total</label>
+                  <div class="relative">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 pointer-events-none">$</span>
+                    <input
+                      v-model.number="op.subtotal"
+                      @input="handleRowSubtotalChange(op); formErrors.noItems = false"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      :class="[
+                        'w-full no-spin text-right rounded-lg py-1.5 pl-5 pr-2 font-bold text-xs focus:outline-none focus:border-[#04C4D9]',
+                        op.selected && op.subtotal && op.subtotal > 0
+                          ? 'border border-blue-300 bg-blue-50/60 text-[#004B97] font-black'
+                          : 'border border-slate-200 bg-white text-[#0D1B3E]'
+                      ]"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="displayedOperations.length === 0" class="px-5 py-8 text-center text-xs text-slate-400">
+              No se encontraron operaciones con el filtro aplicado.
+            </div>
+          </div>
+
+          <!-- Tabla Unificada de Todas las Operaciones de Rectificación (Escritorio) -->
+          <div class="hidden md:block overflow-x-auto max-h-[520px]">
             <table class="w-full text-xs">
               <thead class="studio-table-head font-mono text-[10px] font-bold uppercase tracking-wider sticky top-0 z-10">
                 <tr>

@@ -712,7 +712,95 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
           </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <!-- Vista Móvil de Órdenes (sin scroll horizontal) -->
+        <div class="md:hidden divide-y divide-slate-200 bg-white">
+          <div
+            v-for="order in filteredOrders"
+            :key="`mob-ord-${order.id}`"
+            class="p-3.5 space-y-2.5 active:bg-blue-50/40 transition"
+            @click="openEditOrder(order.id)"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="font-mono tabular-nums font-bold text-xs text-[#004B97] bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-lg shrink-0">
+                  {{ order.orderNumber }}
+                </span>
+                <span
+                  :class="[
+                    'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0',
+                    order.type === 'cotizacion'
+                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                      : 'bg-cyan-50 text-[#004B97] border border-cyan-200'
+                  ]"
+                >
+                  {{ order.type === 'cotizacion' ? 'Cotización' : 'Orden' }}
+                </span>
+              </div>
+              <span :class="['px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0', getStatusBadge(order.status)]">
+                {{ order.status }}
+              </span>
+            </div>
+
+            <div class="space-y-0.5">
+              <div class="text-xs font-bold text-[#0D1B3E] truncate">
+                {{ order.customer || order.workshop || '— Sin Asignar —' }}
+              </div>
+              <div v-if="order.customer && order.workshop" class="text-[11px] text-[#004B97] font-medium truncate">
+                {{ order.workshop }}
+              </div>
+              <div class="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                <span class="truncate">{{ [order.vehicleBrand, order.vehicleModel || order.engine].filter(Boolean).join(' ') || 'Motor de banco' }}</span>
+                <span class="font-mono text-[10px] text-slate-400 shrink-0">{{ order.date }}</span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100" @click.stop>
+              <span v-if="authStore.isGlobalAdmin || authStore.isSubAdmin" class="font-mono tabular-nums font-extrabold text-sm text-[#0D1B3E]">
+                ${{ order.total.toFixed(2) }}
+              </span>
+              <span v-else class="text-[11px] font-semibold text-slate-500">Operativa</span>
+
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  @click="openEditOrder(order.id)"
+                  class="p-2 text-slate-600 bg-slate-50 hover:text-[#004B97] hover:bg-blue-50 rounded-xl border border-slate-200 transition"
+                  title="Editar orden"
+                >
+                  <Eye class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  @click="handleDuplicateOrder(order)"
+                  :disabled="isDuplicating === order.id"
+                  class="p-2 text-slate-600 bg-slate-50 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl border border-slate-200 transition disabled:opacity-50"
+                  title="Duplicar orden"
+                >
+                  <Copy class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  @click="openPrintOrder(order)"
+                  class="p-2 text-slate-600 bg-slate-50 hover:text-[#0D1B3E] hover:bg-slate-100 rounded-xl border border-slate-200 transition"
+                  title="Imprimir"
+                >
+                  <Printer class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  @click="handleDownloadOrder(order)"
+                  :disabled="downloadingOrderId === order.id"
+                  class="p-2 text-[#038391] bg-cyan-50 hover:bg-cyan-100 rounded-xl border border-cyan-200 transition disabled:opacity-50"
+                  title="Descargar PDF"
+                >
+                  <Download class="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden md:block overflow-x-auto">
           <table class="w-full text-left text-xs min-w-[760px]">
             <thead class="studio-table-head font-mono text-[10px] font-bold uppercase tracking-wider">
               <tr>

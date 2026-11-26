@@ -1473,6 +1473,12 @@ const oemColorEditableCatalogs = computed<string[]>(() => {
     const clean = normalizeCatalogBrandKey(brand)
     if (clean) set.add(clean)
   }
+  for (const part of catalogStore.repuestos) {
+    for (const eq of getPartEquivalencias(part)) {
+      const clean = normalizeCatalogBrandKey(eq.marca_alterna)
+      if (clean) set.add(clean)
+    }
+  }
   for (const key of Object.keys(catalogOemColors.value)) {
     const clean = normalizeCatalogBrandKey(key)
     if (clean) set.add(clean)
@@ -6423,8 +6429,76 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Contenedor con scroll interno -->
-        <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
+        <!-- Vista Móvil de Motores (sin scroll horizontal) -->
+        <div class="md:hidden divide-y divide-slate-200 max-h-[540px] overflow-y-auto bg-white">
+          <template v-for="section in motorTableSections" :key="`mob-sec-${section.id}`">
+            <div
+              v-if="section.id === 'recommended' && section.motors.length > 0"
+              class="px-3.5 py-1.5 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-y border-slate-200"
+            >
+              Motores recomendados ({{ section.motors.length }})
+            </div>
+            <div
+              v-for="mot in section.motors"
+              :key="`mob-mot-${section.id}-${mot.id}`"
+              @click="handleSelectMotor(mot)"
+              class="p-3.5 active:bg-cyan-50/70 transition cursor-pointer space-y-2"
+              :class="authStore.isAdmin && selectedMotorIds.includes(mot.id) ? 'bg-rose-50/60' : 'hover:bg-slate-50'"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-start gap-2.5 min-w-0">
+                  <input
+                    v-if="authStore.isAdmin"
+                    type="checkbox"
+                    :checked="selectedMotorIds.includes(mot.id)"
+                    @click.stop
+                    @change="toggleSelectMotorRow(mot.id)"
+                    class="mt-0.5 w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer shrink-0"
+                  />
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="px-1.5 py-0.5 rounded bg-[#E8F1FA] text-[#004B97] text-[10px] font-extrabold uppercase">
+                        {{ getBrandName(mot.fabricante_id) || 'MOTOR' }}
+                      </span>
+                      <span class="font-bold text-sm text-slate-900">{{ mot.codigo }}</span>
+                    </div>
+                    <p v-if="mot.denominacion_venta" class="text-xs text-slate-600 mt-0.5 truncate">
+                      {{ mot.denominacion_venta }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  @click.stop="openMotorInfo(mot, $event)"
+                  class="p-1.5 rounded-lg border border-slate-200 bg-slate-50 text-[#004B97] hover:bg-blue-50 shrink-0"
+                  title="Ver especificaciones del motor"
+                >
+                  <Info class="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span v-if="mot.cilindros" class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold">
+                  {{ mot.cilindros }} cil.
+                </span>
+                <span v-if="mot.cilindrada_texto || mot.cilindrada_cc" class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold">
+                  {{ mot.cilindrada_texto || `${mot.cilindrada_cc} cc` }}
+                </span>
+                <span v-if="mot.combustible" class="px-2 py-0.5 rounded-md bg-cyan-50 text-[#038391] font-semibold">
+                  {{ mot.combustible }}
+                </span>
+                <span v-if="mot.modelo?.anio_inicio || mot.modelo?.anio_fin" class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-semibold">
+                  {{ mot.modelo?.anio_inicio || '' }}{{ mot.modelo?.anio_fin ? `-${mot.modelo.anio_fin}` : '' }}
+                </span>
+              </div>
+            </div>
+          </template>
+          <div v-if="paginatedMotors.length === 0 && recommendedMotorsList.length === 0" class="py-8 px-4 text-center text-xs text-slate-400">
+            No se encontraron motores coincidentes.
+          </div>
+        </div>
+
+        <!-- Contenedor con scroll interno (Escritorio) -->
+        <div class="hidden md:block overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-separate border-spacing-0">
             <thead class="sticky top-0 z-10 bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
               <tr>
@@ -7496,7 +7570,157 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div class="overflow-x-auto overflow-y-auto max-h-[500px]">
+        <!-- Vista Móvil de Repuestos (tarjetas compactas sin scroll horizontal de página) -->
+        <div class="md:hidden divide-y divide-slate-200 bg-white">
+          <div v-if="catalogStore.loadingRepuestos || catalogStore.isSearching" class="p-4 space-y-3">
+            <div v-for="n in 3" :key="`mob-skel-${n}`" class="animate-pulse p-3 rounded-xl border border-slate-100 bg-slate-50/70 space-y-2">
+              <div class="h-4 w-2/3 bg-slate-200 rounded"></div>
+              <div class="h-3 w-1/2 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+          <template v-else>
+            <div
+              v-for="part in paginatedParts"
+              :key="`mob-part-${part.id}`"
+              :class="authStore.isAdmin && catalogSelectionStore.isSelected(part.id) ? 'bg-rose-50/60' : 'bg-white'"
+              class="p-3.5 space-y-2.5"
+            >
+              <!-- Fila 1: Checkbox + Miniatura + Nombre + Motores -->
+              <div class="flex items-start gap-2.5">
+                <input
+                  v-if="authStore.isAdmin"
+                  type="checkbox"
+                  :checked="catalogSelectionStore.isSelected(part.id)"
+                  @change="toggleSelectPart(part)"
+                  class="mt-1 w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer accent-rose-600 shrink-0"
+                />
+                <div
+                  class="relative w-11 h-11 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center shrink-0"
+                  @click="getPartImagesList(part).length > 0 && openLightbox(part)"
+                >
+                  <img
+                    v-if="getPartImagesList(part).length > 0"
+                    :src="getPartImagesList(part)[0]"
+                    :alt="part.nombre"
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <CircleDot v-else class="w-4 h-4 text-slate-400" />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="font-bold text-slate-900 text-xs leading-snug">
+                    {{ part.nombre }}
+                  </div>
+                  <div class="flex flex-wrap items-center gap-1 mt-1 text-[10px]">
+                    <span
+                      v-if="getPartVehicleModelsLabel(part)"
+                      class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200"
+                    >
+                      {{ getPartVehicleModelsLabel(part) }}
+                    </span>
+                    <span
+                      v-if="getPartMotorAppsText(part)"
+                      class="inline-flex flex-wrap items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-50 text-[#038391] font-bold border border-cyan-200 max-w-full break-all"
+                    >
+                      <span>{{ getDisplayedMotorAppsText(part) }}</span>
+                      <button
+                        v-if="isMotorAppsTruncatable(part)"
+                        type="button"
+                        @click.stop="toggleMotorAppsExpanded(part.id)"
+                        class="text-[10px] font-extrabold text-[#004B97] hover:underline cursor-pointer"
+                      >
+                        {{ expandedMotorApps[part.id] ? 'Ver menos' : 'Ver más' }}
+                      </button>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Fila 2: Códigos OEM + Catálogos Alternos (con paleta personalizada) -->
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span
+                  v-if="getPartCatalogBrand(part) && getPartCatalogBrand(part) !== 'OEM'"
+                  :style="getPartOemBadgeStyle(part)"
+                  :class="[
+                    'px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border',
+                    getPartOemBadgeStyle(part) ? '' : 'bg-slate-200 text-slate-800 border-slate-300'
+                  ]"
+                >
+                  {{ getPartCatalogBrand(part) }}
+                </span>
+                <div
+                  v-for="oemCode in getPartDisplayOemCodes(part)"
+                  :key="`mob-oem-${part.id}-${oemCode}`"
+                  :style="getPartOemBadgeStyle(part)"
+                  :class="[
+                    'inline-flex items-center gap-1 font-bold text-[11px] px-2 py-0.5 rounded border',
+                    getPartOemBadgeStyle(part) ? '' : 'border-slate-200 bg-slate-100 text-slate-900'
+                  ]"
+                  @click="copyToClipboard(oemCode, 'OEM')"
+                >
+                  <span>{{ oemCode }}</span>
+                  <Copy class="w-3 h-3 opacity-70" />
+                </div>
+                <span
+                  v-for="eq in getPartEquivalencias(part)"
+                  :key="`mob-eq-${eq.id}`"
+                  @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
+                  :style="getOemBadgeInlineStyle(eq.marca_alterna, catalogOemColors)"
+                  :class="[
+                    'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] cursor-pointer',
+                    getOemBadgeInlineStyle(eq.marca_alterna, catalogOemColors) ? '' : getBrandBadgeClass(eq.marca_alterna)
+                  ]"
+                >
+                  <span class="text-[9px] uppercase opacity-90">{{ eq.marca_alterna }}:</span>
+                  <strong>{{ eq.codigo_alterno }}</strong>
+                </span>
+              </div>
+
+              <!-- Fila 3: Precio + Acciones compactas -->
+              <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 flex-wrap">
+                <span class="text-xs font-extrabold text-[#004B97]">
+                  {{ Number(part.precio) > 0 ? formatCatalogPrice(part.precio) : 'Sin precio' }}
+                </span>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    @click="openTechnicalSheet(part)"
+                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-[11px] font-bold flex items-center gap-1"
+                  >
+                    <Eye class="w-3.5 h-3.5 text-[#004B97]" />
+                    <span>Ficha / Medidas</span>
+                  </button>
+                  <button
+                    v-if="canModifyPart(part)"
+                    type="button"
+                    @click="handleEditPart(part)"
+                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[11px] font-bold flex items-center gap-1"
+                  >
+                    <Edit3 class="w-3.5 h-3.5 text-[#04C4D9]" />
+                    <span>Editar</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="addToWorkOrder(part)"
+                    :class="[
+                      'px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 text-white shadow-xs',
+                      orderCartStore.isInCart(part.id) ? 'bg-rose-600' : 'bg-[#147488]'
+                    ]"
+                  >
+                    <Trash2 v-if="orderCartStore.isInCart(part.id)" class="w-3.5 h-3.5" />
+                    <Plus v-else class="w-3.5 h-3.5" />
+                    <span>{{ orderCartStore.isInCart(part.id) ? 'Quitar' : 'A la orden' }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-if="displayedParts.length === 0" class="py-8 px-4 text-center text-xs text-slate-400">
+              No hay repuestos coincidentes.
+            </div>
+          </template>
+        </div>
+
+        <div class="hidden md:block overflow-x-auto overflow-y-auto max-h-[500px]">
           <table class="w-full text-left text-xs border-separate border-spacing-0">
             <!-- Caso A: Cabecera con Sub-columnas Anidadas de 2 Niveles (Solo Vista Normal Horizontal con sub-columnas) -->
             <thead v-if="hasGroupSubcolumns && !isCurrentGroupTableView && currentTableOrientation === 'horizontal'" class="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs text-slate-600 font-bold uppercase tracking-wider text-[10px]">
@@ -7806,9 +8030,10 @@ onUnmounted(() => {
                       v-for="eq in getPartEquivalencias(part)"
                       :key="eq.id"
                       @click="copyToClipboard(eq.codigo_alterno, eq.marca_alterna)"
+                      :style="getOemBadgeInlineStyle(eq.marca_alterna, catalogOemColors)"
                       :class="[
                         'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-mono cursor-pointer transition hover:opacity-80',
-                        getBrandBadgeClass(eq.marca_alterna)
+                        getOemBadgeInlineStyle(eq.marca_alterna, catalogOemColors) ? '' : getBrandBadgeClass(eq.marca_alterna)
                       ]"
                       :title="`Clic para copiar código ${eq.marca_alterna}`"
                     >
@@ -8894,7 +9119,13 @@ onUnmounted(() => {
                   class="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-white"
                 >
                   <div class="flex items-center gap-1.5">
-                    <span :class="['px-1.5 py-0.2 rounded text-[9px] uppercase font-bold', getBrandBadgeClass(eq.marca_alterna)]">
+                    <span
+                      :style="getOemBadgeInlineStyle(eq.marca_alterna, catalogOemColors)"
+                      :class="[
+                        'px-1.5 py-0.2 rounded text-[9px] uppercase font-bold border',
+                        getOemBadgeInlineStyle(eq.marca_alterna, catalogOemColors) ? '' : getBrandBadgeClass(eq.marca_alterna)
+                      ]"
+                    >
                       {{ eq.marca_alterna }}
                     </span>
                     <strong class="font-mono text-xs text-slate-900">{{ eq.codigo_alterno }}</strong>
