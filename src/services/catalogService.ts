@@ -606,6 +606,7 @@ export interface RepuestoSubfilaItem {
   codigo: string
   grupo?: string
   es_fila_central?: boolean
+  color_fondo?: string
   medidas: Record<string, any>
   extra?: Record<string, any>
 }

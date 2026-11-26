@@ -579,8 +579,7 @@ function getStoredOrders(): Order[] {
     if (activeTenantId) {
       return parsed.filter((o: Order) => o.tenantId === activeTenantId)
     }
-    const ownOrders = parsed.filter((o: Order) => !o.tenantId)
-    return ownOrders.length > 0 ? ownOrders : [...initialMockOrders]
+    return parsed.filter((o: Order) => !o.tenantId)
   } catch (e) {
     console.warn('[OrdersService] Error leyendo localStorage, usando memoria:', e)
     return activeTenantId ? [] : [...initialMockOrders]
@@ -695,45 +694,12 @@ export const ordersService = {
       if (data) {
         const activeTenantId = getActiveTenantContext().tenantId
         const allRemoteOrders = data.map(mapDbToOrder)
-        let remoteOrders = allRemoteOrders.filter((o) =>
+        const remoteOrders = allRemoteOrders.filter((o) =>
           activeTenantId ? o.tenantId === activeTenantId : !o.tenantId
         )
 
-        // Sincronizar cualquier orden o cotización local pendiente hacia Supabase antes de reemplazar caché
-        const localOrders = getStoredOrders()
-        const remoteIds = new Set(remoteOrders.map(o => o.id))
-        const MOCK_IDS = new Set(['ord-001', 'ord-002', 'ord-003'])
-        const pendingSync = localOrders.filter(
-          lo => !remoteIds.has(lo.id) && lo.id.startsWith('ord-') && !MOCK_IDS.has(lo.id)
-        )
-
-        if (pendingSync.length > 0) {
-          const syncedOrders: Order[] = []
-          for (const pending of pendingSync) {
-            try {
-              const { data: upData, error: upErr } = await supabase
-                .from('ordenes_trabajo')
-                .upsert(mapOrderToDb(pending))
-                .select()
-                .single()
-
-              if (!upErr && upData) {
-                syncedOrders.push(mapDbToOrder(upData))
-              } else {
-                console.warn('[OrdersService] No se pudo sincronizar orden/cotización pendiente:', upErr)
-                syncedOrders.push(pending)
-              }
-            } catch (syncErr) {
-              console.warn('[OrdersService] Error sincronizando orden/cotización pendiente hacia Supabase:', syncErr)
-              syncedOrders.push(pending)
-            }
-          }
-          remoteOrders = [...syncedOrders, ...remoteOrders]
-        }
-
-        if (remoteOrders.length > 0 || activeTenantId) {
-          saveStoredOrders(remoteOrders)
-        }
+        // Supabase es la fuente de verdad: reemplazar la caché local sin re-subir órdenes borradas en otros dispositivos
+        saveStoredOrders(remoteOrders)
         return remoteOrders
       }
     } catch (err) {
@@ -1012,10 +978,6 @@ export const ordersService = {
    * Elimina una orden en Supabase y en la caché local
    */
   async deleteOrder(id: string): Promise<boolean> {
-    let currentOrders = getStoredOrders()
-    currentOrders = currentOrders.filter(o => o.id !== id)
-    saveStoredOrders(currentOrders)
-
     try {
       const { data, error } = await supabase
         .from('ordenes_trabajo')
@@ -1027,10 +989,27 @@ export const ordersService = {
         console.error('[OrdersService] Error eliminando orden de Supabase:', error)
         return false
       }
+
       if (!data || data.length === 0) {
-        console.warn('[OrdersService] Supabase no eliminó ninguna fila (posible restricción RLS o ID inexistente):', id)
-        return false
+        // Verificar si la orden sigue existiendo en Supabase (RLS) o si ya había sido eliminada
+        const { data: existing, error: checkError } = await supabase
+          .from('ordenes_trabajo')
+          .select('id')
+          .eq('id', id)
+          .maybeSingle()
+
+        if (checkError) {
+          console.error('[OrdersService] Error verificando eliminación en Supabase:', checkError)
+          return false
+        }
+        if (existing) {
+          console.warn('[OrdersService] Supabase no eliminó la fila (posible restricción RLS):', id)
+          return false
+        }
       }
+
+      const currentOrders = getStoredOrders().filter(o => o.id !== id)
+      saveStoredOrders(currentOrders)
       return true
     } catch (err) {
       console.error('[OrdersService] Excepción eliminando orden de Supabase:', err)

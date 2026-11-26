@@ -459,17 +459,31 @@ const handleSubmit = async () => {
           <span>Personalización del Login</span>
         </button>
 
-        <a
-          v-if="authStore.canCustomizeLogin"
-          href="/login"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="ml-auto hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-sky-200 hover:text-white underline underline-offset-4 cursor-pointer"
-          title="Abrir pantalla de login en nueva pestaña"
-        >
-          <ExternalLink class="w-3.5 h-3.5" />
-          <span>Ver Login en vivo</span>
-        </a>
+        <div class="ml-auto flex items-center gap-3">
+          <a
+            href="/manual-usuario-swgora.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs sm:text-sm font-bold transition-all cursor-pointer"
+            title="Abrir Manual de Usuario completo de SWGORA (con opción de exportar a PDF)"
+          >
+            <FileText class="w-4 h-4 text-[#BFEBF2]" />
+            <span>Manual de Usuario</span>
+            <ExternalLink class="w-3.5 h-3.5 opacity-80" />
+          </a>
+
+          <a
+            v-if="authStore.canCustomizeLogin"
+            href="/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-sky-200 hover:text-white underline underline-offset-4 cursor-pointer"
+            title="Abrir pantalla de login en nueva pestaña"
+          >
+            <ExternalLink class="w-3.5 h-3.5" />
+            <span>Ver Login en vivo</span>
+          </a>
+        </div>
       </div>
     </div>
 

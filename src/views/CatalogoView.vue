@@ -1541,6 +1541,72 @@ const getPartOemBadgeStyle = (part: RepuestoTecnico | null | undefined): Record<
   return getOemBadgeInlineStyle(getPartResolvedCatalogKey(part), catalogOemColors.value)
 }
 
+const resolveCentralRowEffectiveColor = (
+  color?: string | null,
+  nombre?: string | null,
+  sincronizarColor?: boolean
+): string => {
+  if (sincronizarColor === false) {
+    return String(color || '').trim()
+  }
+  const text = String(nombre || '').trim()
+  if (text) {
+    const tokens = text
+      .toUpperCase()
+      .split(/[^A-Z0-9]+/)
+      .filter(Boolean)
+    for (const token of tokens) {
+      const key = normalizeCatalogBrandKey(token)
+      if (Object.prototype.hasOwnProperty.call(catalogOemColors.value, key)) {
+        return catalogOemColors.value[key] || ''
+      }
+    }
+  }
+  return String(color || '').trim()
+}
+
+const getCentralRowStyle = (
+  color?: string | null,
+  nombre?: string | null,
+  sincronizarColor?: boolean
+): Record<string, string> | undefined => {
+  const clean = resolveCentralRowEffectiveColor(color, nombre, sincronizarColor)
+  if (!clean || clean === 'slate') return undefined
+  const preset = OEM_COLOR_PRESETS.find(p => p.id === clean)
+  if (preset) {
+    return {
+      backgroundColor: preset.bg,
+      color: preset.text,
+    }
+  }
+  if (!/^#[0-9a-fA-F]{6}$/.test(clean)) return undefined
+  const hex = clean.slice(1)
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return {
+    backgroundColor: clean,
+    color: lum > 0.62 ? '#0F172A' : '#FFFFFF',
+  }
+}
+
+const getSubfilaDotColor = (part: RepuestoTecnico, sfIdx: number): string | null => {
+  const rows = getPartSubfilas(part)
+  for (let i = sfIdx - 1; i >= 0; i--) {
+    const row = rows[i]
+    if (row?.es_fila_central) {
+      const clean = resolveCentralRowEffectiveColor(row.color_fondo, row.nombre, row.sincronizar_color)
+      if (!clean || clean === 'slate') return null
+      const preset = OEM_COLOR_PRESETS.find(p => p.id === clean)
+      if (preset) return preset.swatch
+      if (/^#[0-9a-fA-F]{6}$/.test(clean)) return clean
+      return null
+    }
+  }
+  return null
+}
+
 // Mapeo 100% dinámico de los grupos de Supabase con fallback a definiciones base
 const componentGroups = computed<ComponentGroup[]>(() => {
   const rawList: ComponentGroup[] =
@@ -1731,6 +1797,8 @@ export interface PartSubfilaDisplay {
   codigo: string
   grupo?: string
   es_fila_central?: boolean
+  color_fondo?: string
+  sincronizar_color?: boolean
   medidas: Record<string, any>
 }
 
@@ -4411,17 +4479,8 @@ watch([
   currentPartsPage.value = 1
 }, { deep: true })
 
-// Badges de marcas y catálogos
-const getBrandBadgeClass = (brand?: string | null): string => {
-  const b = String(brand || '').toLowerCase().trim()
-  if (b.includes('dokuro')) return 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
-  if (b.includes('rik')) return 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold'
-  if (b.includes('ndc')) return 'bg-cyan-100 text-cyan-800 border-cyan-300 font-bold'
-  if (b.includes('taiho')) return 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
-  if (b.includes('ajusa')) return 'bg-[#0f2d59] text-white border-blue-950 font-bold'
-  if (b.includes('mrk') || b.includes('mkr')) return 'bg-sky-100 text-sky-800 border-sky-300 font-bold'
-  if (b.includes('npr')) return 'bg-amber-100 text-amber-800 border-amber-300 font-bold'
-  if (b === 'oem' || b.includes('oem')) return 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+// Badges de marcas y catálogos (por defecto gris neutro igual que marcas sin color personalizado)
+const getBrandBadgeClass = (_brand?: string | null): string => {
   return 'bg-slate-100 text-slate-700 border-slate-200 font-bold'
 }
 
@@ -7692,9 +7751,15 @@ onUnmounted(() => {
                       <tr
                         v-for="(csf, csfIdx) in getPartSubfilas(part).filter(s => s.es_fila_central)"
                         :key="`mob-sfc-${part.id}-${csfIdx}`"
-                        class="bg-slate-50"
+                        :style="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color)"
+                        :class="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color) ? '' : 'bg-slate-50'"
                       >
-                        <td :colspan="1 + Math.max(1, getPartSubfilas(part).filter(s => !s.es_fila_central).length)" class="px-1.5 py-0.5 font-bold text-slate-800 text-center">
+                        <td
+                          :colspan="1 + Math.max(1, getPartSubfilas(part).filter(s => !s.es_fila_central).length)"
+                          :style="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color)"
+                          class="px-1.5 py-0.5 font-bold text-center"
+                          :class="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color) ? '' : 'text-slate-800'"
+                        >
                           {{ csf.nombre || '—' }}
                         </td>
                       </tr>
@@ -7748,13 +7813,22 @@ onUnmounted(() => {
                         <td
                           v-if="sf.es_fila_central"
                           :colspan="1 + Math.max(1, getPartTableColumns(part).length)"
-                          class="px-1.5 py-0.5 font-bold text-slate-800 text-center"
+                          :style="getCentralRowStyle(sf.color_fondo, sf.nombre, sf.sincronizar_color)"
+                          class="px-1.5 py-0.5 font-bold text-center"
+                          :class="getCentralRowStyle(sf.color_fondo, sf.nombre, sf.sincronizar_color) ? '' : 'text-slate-800'"
                         >
                           {{ sf.nombre || '—' }}
                         </td>
                         <template v-else>
                           <td class="px-1.5 py-0.5 text-left font-bold text-slate-700 border-r border-slate-200 whitespace-nowrap bg-slate-50/60">
-                            {{ sf.nombre || `Item ${sfIdx + 1}` }}
+                            <div class="flex items-center gap-1">
+                              <span
+                                class="w-1.5 h-1.5 rounded-full shrink-0"
+                                :class="getSubfilaDotColor(part, sfIdx) ? '' : 'bg-slate-400'"
+                                :style="getSubfilaDotColor(part, sfIdx) ? { backgroundColor: getSubfilaDotColor(part, sfIdx)! } : undefined"
+                              ></span>
+                              <span>{{ sf.nombre || `Item ${sfIdx + 1}` }}</span>
+                            </div>
                           </td>
                           <td
                             v-for="(col, cIdx) in getPartTableColumns(part)"
@@ -8244,11 +8318,14 @@ onUnmounted(() => {
                           <tr
                             v-for="(csf, csfIdx) in getPartSubfilas(part).filter(s => s.es_fila_central)"
                             :key="`mt-vcent-${part.id}-${csfIdx}`"
-                            class="bg-slate-50/80"
+                            :style="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color)"
+                            :class="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color) ? '' : 'bg-slate-50/80'"
                           >
                             <td
                               :colspan="(getPartHasGroupSubcolumns(part) ? 2 : 1) + Math.max(1, getPartSubfilas(part).filter(s => !s.es_fila_central).length)"
-                              class="px-2.5 py-1 font-bold text-slate-800 text-center"
+                              :style="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color)"
+                              class="px-2.5 py-1 font-bold text-center"
+                              :class="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color) ? '' : 'text-slate-800'"
                             >
                               {{ csf.nombre || '—' }}
                             </td>
@@ -8384,7 +8461,9 @@ onUnmounted(() => {
                             <td
                               v-if="sf.es_fila_central"
                               :colspan="getPartMiniTableColspan(part)"
-                              class="px-2.5 py-1.5 bg-slate-50/70 font-bold text-slate-800 text-center whitespace-nowrap"
+                              :style="getCentralRowStyle(sf.color_fondo, sf.nombre, sf.sincronizar_color)"
+                              class="px-2.5 py-1.5 font-bold text-center whitespace-nowrap"
+                              :class="getCentralRowStyle(sf.color_fondo, sf.nombre, sf.sincronizar_color) ? '' : 'bg-slate-50/70 text-slate-800'"
                             >
                               {{ sf.nombre || '—' }}
                             </td>
@@ -8404,7 +8483,8 @@ onUnmounted(() => {
                               <div class="flex items-center gap-1.5">
                                 <span
                                   class="w-1.5 h-1.5 rounded-full shrink-0"
-                                  :class="sfIdx === 0 ? 'bg-[#004B97]' : (sfIdx === 1 ? 'bg-[#04C4D9]' : 'bg-slate-400')"
+                                  :class="getSubfilaDotColor(part, sfIdx) ? '' : 'bg-slate-400'"
+                                  :style="getSubfilaDotColor(part, sfIdx) ? { backgroundColor: getSubfilaDotColor(part, sfIdx)! } : undefined"
                                 ></span>
                                 <span>{{ sf.nombre }}</span>
                               </div>
@@ -9431,11 +9511,14 @@ onUnmounted(() => {
                     <tr
                       v-for="(csf, csfIdx) in getPartSubfilas(modalPart).filter(s => s.es_fila_central)"
                       :key="`modal-vc-${csfIdx}`"
-                      class="bg-slate-50/80"
+                      :style="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color)"
+                      :class="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color) ? '' : 'bg-slate-50/80'"
                     >
                       <td
                         :colspan="(getPartHasGroupSubcolumns(modalPart) ? 2 : 1) + Math.max(1, getPartSubfilas(modalPart).filter(s => !s.es_fila_central).length)"
-                        class="px-3 py-1.5 font-bold text-slate-800 text-center"
+                        :style="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color)"
+                        class="px-3 py-1.5 font-bold text-center"
+                        :class="getCentralRowStyle(csf.color_fondo, csf.nombre, csf.sincronizar_color) ? '' : 'text-slate-800'"
                       >
                         {{ csf.nombre || '—' }}
                       </td>
@@ -9511,7 +9594,9 @@ onUnmounted(() => {
                       <td
                         v-if="sf.es_fila_central"
                         :colspan="getPartMiniTableColspan(modalPart)"
-                        class="px-3 py-1.5 bg-slate-50/70 font-bold text-slate-800 text-center"
+                        :style="getCentralRowStyle(sf.color_fondo, sf.nombre, sf.sincronizar_color)"
+                        class="px-3 py-1.5 font-bold text-center"
+                        :class="getCentralRowStyle(sf.color_fondo, sf.nombre, sf.sincronizar_color) ? '' : 'bg-slate-50/70 text-slate-800'"
                       >
                         {{ sf.nombre || '—' }}
                       </td>
@@ -9523,7 +9608,16 @@ onUnmounted(() => {
                         >
                           {{ getPartSubfilaRowSpans(modalPart)[sfIdx]?.label || '—' }}
                         </td>
-                        <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200 text-left">{{ sf.nombre }}</td>
+                        <td class="px-3 py-1.5 bg-slate-50 font-bold text-slate-700 border-r border-slate-200 text-left">
+                          <div class="flex items-center gap-1.5">
+                            <span
+                              class="w-1.5 h-1.5 rounded-full shrink-0"
+                              :class="getSubfilaDotColor(modalPart, sfIdx) ? '' : 'bg-slate-400'"
+                              :style="getSubfilaDotColor(modalPart, sfIdx) ? { backgroundColor: getSubfilaDotColor(modalPart, sfIdx)! } : undefined"
+                            ></span>
+                            <span>{{ sf.nombre }}</span>
+                          </div>
+                        </td>
                         <td
                           v-for="col in getPartTableColumns(modalPart)"
                           :key="`m-sfv-${sfIdx}-${col.id}`"

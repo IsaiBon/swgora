@@ -7,6 +7,13 @@ import {
   canActorModifyRepuesto,
   extractRepuestoOwner
 } from '@/utils/catalogPermissions'
+import {
+  OEM_COLOR_PRESETS,
+  fetchCatalogOemColors,
+  normalizeCatalogBrandKey,
+  readLocalCatalogOemColors,
+  type CatalogOemColorMap
+} from '@/services/catalogPreferencesService'
 import PartImageUploader from '@/components/catalog/PartImageUploader.vue'
 import FamilyTemplatePicker from '@/components/catalog/FamilyTemplatePicker.vue'
 import { 
@@ -146,6 +153,8 @@ export interface SubfilaFormRow {
   codigo: string
   grupo?: string
   es_fila_central?: boolean
+  color_fondo?: string
+  sincronizar_color?: boolean
   medidas: Record<string, any>
 }
 
@@ -156,6 +165,96 @@ const subfilasRows = ref<SubfilaFormRow[]>([
 ])
 const subfilasMarcaBanner = ref<string>('')
 const subfilasAplicacionBanner = ref<string>('')
+const catalogOemColors = ref<CatalogOemColorMap>(readLocalCatalogOemColors())
+
+const resolvePresetOrHexColor = (val?: string | null): { bg: string; text: string } | null => {
+  const clean = String(val || '').trim()
+  if (!clean || clean === 'slate') return null
+  const preset = OEM_COLOR_PRESETS.find(p => p.id === clean)
+  if (preset) return { bg: preset.bg, text: preset.text }
+  if (/^#[0-9a-fA-F]{6}$/.test(clean)) {
+    const hex = clean.slice(1)
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return { bg: clean, text: lum > 0.62 ? '#0F172A' : '#FFFFFF' }
+  }
+  return null
+}
+
+const onCentralRowNameInput = (sf: SubfilaFormRow) => {
+  if (sf.sincronizar_color === false) return
+  const text = String(sf.nombre || '').trim()
+  if (!text) return
+  const tokens = text
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean)
+  for (const token of tokens) {
+    const mapped = catalogOemColors.value[normalizeCatalogBrandKey(token)]
+    if (mapped && mapped !== 'slate') {
+      sf.color_fondo = mapped
+      return
+    }
+  }
+}
+
+const centralRowOemLabels = computed<string[]>(() => {
+  const defaults = ['OEM', 'DOKURO', 'RIK', 'NPR', 'MRK', 'AJUSA', 'NDC', 'PIONEER', 'TAIHO']
+  const set = new Set<string>(defaults)
+  for (const key of Object.keys(catalogOemColors.value)) {
+    const clean = normalizeCatalogBrandKey(key)
+    if (clean) set.add(clean)
+  }
+  for (const part of catalogStore.repuestos || []) {
+    if (part.catalogo_origen) {
+      const clean = normalizeCatalogBrandKey(part.catalogo_origen)
+      if (clean) set.add(clean)
+    }
+    if (Array.isArray(part.equivalencias)) {
+      for (const eq of part.equivalencias) {
+        if (eq?.marca_alterna) {
+          const clean = normalizeCatalogBrandKey(eq.marca_alterna)
+          if (clean) set.add(clean)
+        }
+      }
+    }
+  }
+  return Array.from(set).sort((a, b) => (a === 'OEM' ? -1 : b === 'OEM' ? 1 : a.localeCompare(b)))
+})
+
+const getCentralRowSelectedLabel = (sf: SubfilaFormRow): string => {
+  const key = normalizeCatalogBrandKey(sf.nombre)
+  if (!String(sf.nombre || '').trim()) return ''
+  return centralRowOemLabels.value.includes(key) ? key : ''
+}
+
+const applyCentralRowOemLabel = (sf: SubfilaFormRow, rawLabel: string) => {
+  if (!rawLabel) return
+  const upper = normalizeCatalogBrandKey(rawLabel)
+  sf.nombre = upper
+  if (sf.sincronizar_color !== false) {
+    const mapped = catalogOemColors.value[upper]
+    sf.color_fondo = mapped && mapped !== 'slate' ? mapped : ''
+  }
+}
+
+void fetchCatalogOemColors().then(colors => {
+  if (Object.keys(colors).length > 0) {
+    catalogOemColors.value = { ...catalogOemColors.value, ...colors }
+  }
+})
+
+watch(() => props.isOpen, (open) => {
+  if (!open) return
+  catalogOemColors.value = { ...catalogOemColors.value, ...readLocalCatalogOemColors() }
+  void fetchCatalogOemColors().then(colors => {
+    if (Object.keys(colors).length > 0) {
+      catalogOemColors.value = { ...catalogOemColors.value, ...colors }
+    }
+  })
+})
 
 const resolveGroupByTarget = (target?: string | null): GrupoRepuesto | null => {
   if (!target) return null
@@ -1430,6 +1529,8 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
         codigo: esCentral ? '' : (sf.codigo || ''),
         grupo: esCentral ? '' : ((sf.grupo && String(sf.grupo).trim()) ? String(sf.grupo).trim() : (padres[idx] || '')),
         es_fila_central: esCentral,
+        color_fondo: esCentral ? (sf.color_fondo || '') : '',
+        sincronizar_color: esCentral ? (sf.sincronizar_color !== false) : undefined,
         medidas: esCentral ? {} : hydrateSubfilaMedidas(sf.medidas || {})
       }
     })
@@ -1574,6 +1675,8 @@ const handleSavePart = async () => {
         codigo: sf.es_fila_central ? '' : (sf.codigo?.trim() || ''),
         grupo: sf.es_fila_central ? '' : (sf.grupo ?? activeTablaConfig.value.subfila_padres?.[idx] ?? '').trim(),
         ...(sf.es_fila_central ? { es_fila_central: true } : {}),
+        ...(sf.es_fila_central && sf.color_fondo ? { color_fondo: sf.color_fondo } : {}),
+        ...(sf.es_fila_central && sf.sincronizar_color === false ? { sincronizar_color: false } : {}),
         medidas: sf.es_fila_central ? {} : { ...sf.medidas }
       }))
       dimensionesPayload.marca_banner = subfilasMarcaBanner.value.trim() || (selectedMotor.value ? getBrandName(selectedMotor.value.fabricante_id) : '')
@@ -2940,7 +3043,7 @@ onUnmounted(() => {
 
             <!-- A. MATRIZ ANILLOS (ESPECIAL DE FABRICACIÓN DE AROS) -->
             <div v-if="isGeneralTableGroup" class="space-y-3">
-              <div class="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs font-mono select-text">
+              <div class="border border-slate-200 rounded-xl overflow-x-auto bg-white shadow-2xs font-mono select-text" style="zoom: 0.82;">
                 <table class="border-collapse text-center text-xs w-full">
                   <thead>
                     <tr class="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider border-b border-slate-200">
@@ -3220,7 +3323,7 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto" style="zoom: 0.82;">
                   <table class="w-full text-center border-collapse text-xs font-mono">
                     <!-- Cabecera de 2 niveles si hay sub-columnas -->
                     <thead v-if="subfilasActiveHeaders.hasSubcolumns">
@@ -3298,14 +3401,77 @@ onUnmounted(() => {
                         <template v-if="sf.es_fila_central">
                           <td
                             :colspan="subfilasCentralColspan"
-                            class="px-3 py-1.5 border-r border-slate-200 bg-slate-50/70"
+                            :style="resolvePresetOrHexColor(sf.color_fondo) ? { backgroundColor: resolvePresetOrHexColor(sf.color_fondo)!.bg } : undefined"
+                            class="px-3 py-2 border-r border-slate-200 bg-slate-50/70"
                           >
-                            <input
-                              v-model="sf.nombre"
-                              type="text"
-                              placeholder="Contenido de la fila central (cubre todos los campos)..."
-                              class="w-full px-2.5 py-1 text-center font-bold text-xs text-slate-900 bg-white/80 hover:bg-white focus:bg-white border border-slate-200 focus:border-[#04C4D9] rounded-lg focus:outline-none transition font-sans"
-                            />
+                            <div class="space-y-2">
+                              <input
+                                v-model="sf.nombre"
+                                @input="onCentralRowNameInput(sf)"
+                                type="text"
+                                placeholder="Contenido de la fila central (cubre todos los campos)..."
+                                class="w-full px-2.5 py-1 text-center font-bold text-xs text-slate-900 bg-white/95 hover:bg-white focus:bg-white border border-slate-200 focus:border-[#04C4D9] rounded-lg focus:outline-none transition font-sans"
+                              />
+                              <!-- Paleta idéntica a Colores OEM + Selector de Etiqueta -->
+                              <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                                <select
+                                  :value="getCentralRowSelectedLabel(sf)"
+                                  @change="applyCentralRowOemLabel(sf, ($event.target as HTMLSelectElement).value)"
+                                  class="px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-[10px] font-bold text-slate-700 hover:border-[#004B97] focus:border-[#04C4D9] focus:outline-none cursor-pointer uppercase mr-1"
+                                  title="Seleccionar etiqueta de catálogo (aplica nombre en mayúsculas y su color OEM)"
+                                >
+                                  <option value="">Etiqueta...</option>
+                                  <option
+                                    v-for="lbl in centralRowOemLabels"
+                                    :key="`${sf.id}-lbl-${lbl}`"
+                                    :value="lbl"
+                                  >
+                                    {{ lbl }}
+                                  </option>
+                                </select>
+                                <button
+                                  v-for="preset in OEM_COLOR_PRESETS"
+                                  :key="`${sf.id}-${preset.id}`"
+                                  type="button"
+                                  @click="sf.color_fondo = preset.id === 'slate' ? '' : preset.id"
+                                  :title="preset.label"
+                                  :style="{ backgroundColor: preset.swatch }"
+                                  :class="[
+                                    'w-5 h-5 rounded-full border-2 transition cursor-pointer flex items-center justify-center',
+                                    (sf.color_fondo || 'slate') === preset.id
+                                      ? 'border-[#0D1B3E] ring-2 ring-[#04C4D9] scale-110'
+                                      : 'border-white shadow-xs hover:scale-105'
+                                  ]"
+                                >
+                                  <Check v-if="(sf.color_fondo || 'slate') === preset.id" class="w-2.5 h-2.5 text-white stroke-[3]" />
+                                </button>
+                                <label
+                                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-[10px] font-bold text-slate-600 hover:border-[#004B97] cursor-pointer ml-1"
+                                  title="Elegir color personalizado"
+                                >
+                                  <span>Otro</span>
+                                  <input
+                                    type="color"
+                                    :value="sf.color_fondo && sf.color_fondo.startsWith('#') ? sf.color_fondo : '#2563eb'"
+                                    @input="sf.color_fondo = ($event.target as HTMLInputElement).value"
+                                    class="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer"
+                                  />
+                                </label>
+                                <label
+                                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold cursor-pointer ml-1 transition"
+                                  :class="sf.sincronizar_color === false ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-cyan-200 bg-cyan-50 text-[#038391]'"
+                                  title="Si se desactiva, esta tabla usará su propio color sin sincronizarse con Colores OEM"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    :checked="sf.sincronizar_color !== false"
+                                    @change="sf.sincronizar_color = ($event.target as HTMLInputElement).checked"
+                                    class="w-3 h-3 accent-[#004B97] cursor-pointer"
+                                  />
+                                  <span>Sincronizar OEM</span>
+                                </label>
+                              </div>
+                            </div>
                           </td>
                         </template>
 

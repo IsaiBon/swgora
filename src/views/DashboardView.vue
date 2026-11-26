@@ -708,7 +708,7 @@ const chartAnalytics = computed(() => {
   let closedLegend = 'Otros períodos'
   let summaryRevenueLabel = 'Facturación del período'
   let avgLabel = 'Promedio por bloque activo'
-  let activeCountLabel = 'Bloques con actividad'
+  let activeCountLabel = 'Promedio de ganancias'
   let topListTitle = 'Períodos de mayor facturación'
   let emptyMessage = 'Sin órdenes activas en este período.'
   let unitTotalLabel = 'Total período'
@@ -728,11 +728,8 @@ const chartAnalytics = computed(() => {
       { start: 1, end: 7 },
       { start: 8, end: 14 },
       { start: 15, end: 21 },
-      { start: 22, end: Math.min(28, daysInMonth) },
+      { start: 22, end: daysInMonth },
     ]
-    if (daysInMonth > 28) {
-      weekRanges.push({ start: 29, end: daysInMonth })
-    }
 
     weekRanges.forEach((wr, idx) => {
       const startDt = new Date(targetYear, targetMonth, wr.start)
@@ -768,7 +765,7 @@ const chartAnalytics = computed(() => {
     closedLegend = 'Otras semanas'
     summaryRevenueLabel = `Facturación ${monthName}`
     avgLabel = 'Promedio por semana activa'
-    activeCountLabel = 'Semanas con actividad'
+    activeCountLabel = 'Promedio de ganancias'
     topListTitle = `Semanas de mayor facturación (${monthName})`
     emptyMessage = `Sin órdenes registradas en ${monthName} ${targetYear}.`
     unitTotalLabel = `Total ${monthShort}`
@@ -806,7 +803,7 @@ const chartAnalytics = computed(() => {
     closedLegend = 'Días previos'
     summaryRevenueLabel = 'Facturación últimos 7 días'
     avgLabel = 'Promedio por día activo'
-    activeCountLabel = 'Días con actividad'
+    activeCountLabel = 'Promedio de ganancias'
     topListTitle = 'Días de mayor facturación'
     emptyMessage = 'Sin órdenes registradas en los últimos 7 días.'
     unitTotalLabel = 'Total 7 días'
@@ -854,7 +851,7 @@ const chartAnalytics = computed(() => {
     closedLegend = 'Otras franjas'
     summaryRevenueLabel = 'Facturación de hoy'
     avgLabel = 'Promedio por franja activa'
-    activeCountLabel = 'Franjas con actividad'
+    activeCountLabel = 'Promedio de ganancias'
     topListTitle = 'Franjas de mayor facturación hoy'
     emptyMessage = 'Sin órdenes registradas hoy con los filtros actuales.'
     unitTotalLabel = 'Total hoy'
@@ -966,7 +963,7 @@ const chartAnalytics = computed(() => {
     closedLegend = 'Otros bloques'
     summaryRevenueLabel = 'Facturación del rango'
     avgLabel = 'Promedio por bloque activo'
-    activeCountLabel = 'Bloques con actividad'
+    activeCountLabel = 'Promedio de ganancias'
     topListTitle = 'Bloques de mayor facturación en el rango'
     emptyMessage = 'Sin órdenes activas en el rango seleccionado.'
     unitTotalLabel = 'Total rango'
@@ -1008,7 +1005,7 @@ const chartAnalytics = computed(() => {
       closedLegend = 'Años previos'
       summaryRevenueLabel = 'Facturación histórica'
       avgLabel = 'Promedio por año activo'
-      activeCountLabel = 'Años con actividad'
+      activeCountLabel = 'Promedio de ganancias'
       topListTitle = 'Años de mayor facturación'
       emptyMessage = 'Sin órdenes registradas.'
       unitTotalLabel = 'Total histórico'
@@ -1042,7 +1039,7 @@ const chartAnalytics = computed(() => {
       closedLegend = 'Meses cerrados'
       summaryRevenueLabel = 'Facturación histórica'
       avgLabel = 'Promedio por mes activo'
-      activeCountLabel = 'Meses con actividad'
+      activeCountLabel = 'Promedio de ganancias'
       topListTitle = 'Meses de mayor facturación'
       emptyMessage = 'Sin órdenes registradas.'
       unitTotalLabel = 'Total histórico'
@@ -1078,7 +1075,7 @@ const chartAnalytics = computed(() => {
     closedLegend = 'Meses cerrados'
     summaryRevenueLabel = `Facturación ${targetYear}`
     avgLabel = 'Promedio por mes activo'
-    activeCountLabel = 'Meses con actividad'
+    activeCountLabel = 'Promedio de ganancias'
     topListTitle = `Meses de mayor facturación en ${targetYear}`
     emptyMessage = `Sin órdenes registradas en ${targetYear}.`
     unitTotalLabel = `Total ${targetYear}`
@@ -1120,6 +1117,7 @@ const chartAnalytics = computed(() => {
     totalOrders,
     totalRevenue,
     avgPerActiveBucket: activeBuckets.length > 0 ? totalOrders / activeBuckets.length : 0,
+    avgRevenuePerActiveBucket: activeBuckets.length > 0 ? totalRevenue / activeBuckets.length : 0,
     topBuckets,
   }
 })
@@ -2269,7 +2267,7 @@ const animatedAccountsCount = useAnimatedNumber(() => activeAccountsInPeriodCoun
               <div class="rounded-xl border border-[#C1E8EF] bg-[#E3F5F8]/60 px-3.5 py-2.5">
                 <div class="text-[11px] font-semibold text-[#12697A]">{{ chartAnalytics.activeCountLabel }}</div>
                 <div class="font-mono tabular-nums text-base font-extrabold text-[#0F1E2E] mt-0.5">
-                  {{ chartAnalytics.activeBucketsCount }} / {{ chartAnalytics.totalBucketsCount }}
+                  ${{ chartAnalytics.avgRevenuePerActiveBucket.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}
                 </div>
               </div>
             </div>
