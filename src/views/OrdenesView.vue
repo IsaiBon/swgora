@@ -333,21 +333,23 @@ const handleDeleteOrder = async (id: string) => {
   }
 }
 
+const cleanOrdenesUrlWithoutReload = () => {
+  if (Object.keys(route.query).length > 0 && typeof window !== 'undefined') {
+    window.history.replaceState(window.history.state, '', '/ordenes')
+  }
+}
+
 const handleOrderSaved = async () => {
   await loadOrders()
   currentView.value = 'list'
   selectedOrderId.value = null
-  if (route.query.nueva || route.query.clienteId || route.query.cliente || route.query.fromCart || route.query.tipo) {
-    router.replace({ path: '/ordenes' })
-  }
+  cleanOrdenesUrlWithoutReload()
 }
 
 const handleCloseForm = () => {
   currentView.value = 'list'
   selectedOrderId.value = null
-  if (route.query.nueva || route.query.clienteId || route.query.cliente || route.query.fromCart || route.query.tipo) {
-    router.replace({ path: '/ordenes' })
-  }
+  cleanOrdenesUrlWithoutReload()
 }
 
 const getStatusBadge = (status: Order['status']) => {
@@ -794,6 +796,18 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
                   title="Descargar PDF"
                 >
                   <Download class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  @click="handleShareWhatsAppOrder(order)"
+                  :disabled="sharingWhatsAppOrderId === order.id"
+                  class="p-2 text-[#16A34A] bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-200 transition disabled:opacity-50"
+                  title="Compartir por WhatsApp"
+                >
+                  <WhatsAppIcon
+                    class="w-4 h-4"
+                    :class="{ 'animate-pulse text-[#25D366]': sharingWhatsAppOrderId === order.id }"
+                  />
                 </button>
               </div>
             </div>
