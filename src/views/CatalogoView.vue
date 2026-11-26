@@ -6881,7 +6881,7 @@ onUnmounted(() => {
                 v-model.number="filterAnilloDiametro"
                 type="number"
                 step="0.1"
-                placeholder=""
+                placeholder="0"
                 class="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
               />
               <span class="text-[9px] text-slate-500 mt-1 block">Diámetro ({{ getTableParamUnit('diametro_cilindro_mm', 'mm') || 'mm' }})</span>
@@ -7130,7 +7130,7 @@ onUnmounted(() => {
                   v-model.number="dynamicParamFilters[param.clave]"
                   type="number"
                   step="0.1"
-                  placeholder=""
+                  placeholder="0"
                   class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </template>
@@ -7182,7 +7182,7 @@ onUnmounted(() => {
                 <input
                   v-model="filterCodigoPart"
                   type="text"
-                  placeholder=""
+                  placeholder="0"
                   class="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
                 />
                 <button
@@ -7306,7 +7306,7 @@ onUnmounted(() => {
                   v-model.number="dynamicParamFilters[param.clave]"
                   type="number"
                   step="0.1"
-                  placeholder=""
+                  placeholder="0"
                   class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-[#04C4D9]"
                 />
               </template>
