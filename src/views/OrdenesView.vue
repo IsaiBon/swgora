@@ -326,13 +326,36 @@ const handleDuplicateOrder = async (order: Order) => {
   }
 }
 
-const handleDeleteOrder = async (id: string) => {
-  if (confirm('¿Estás seguro de que deseas eliminar esta orden de trabajo?')) {
-    const deleted = await ordersService.deleteOrder(id)
-    await loadOrders()
-    if (!deleted) {
-      alert('No se pudo eliminar la orden en la nube (Supabase). Verifica tu sesión o permisos.')
+const orderPendingDelete = ref<Order | null>(null)
+const isDeletingOrder = ref(false)
+const deleteErrorMessage = ref<string | null>(null)
+
+const handleDeleteOrder = (orderOrId: Order | string) => {
+  const target =
+    typeof orderOrId === 'string'
+      ? orders.value.find(o => o.id === orderOrId) || null
+      : orderOrId
+  if (!target) return
+  deleteErrorMessage.value = null
+  orderPendingDelete.value = target
+}
+
+const confirmDeleteOrder = async () => {
+  const target = orderPendingDelete.value
+  if (!target || isDeletingOrder.value) return
+  isDeletingOrder.value = true
+  deleteErrorMessage.value = null
+  try {
+    const deleted = await ordersService.deleteOrder(target.id)
+    if (deleted) {
+      orders.value = orders.value.filter(o => o.id !== target.id)
+      orderPendingDelete.value = null
+    } else {
+      deleteErrorMessage.value = 'No se pudo eliminar la orden en Supabase. Verifica tu sesión o permisos.'
+      await loadOrders()
     }
+  } finally {
+    isDeletingOrder.value = false
   }
 }
 
@@ -1049,6 +1072,47 @@ const animatedTotalBilled = useAnimatedNumber(() => totalBilled.value, 520)
           :showSubtotals="typeof orderForDownload.showSubtotals === 'boolean' ? orderForDownload.showSubtotals : true"
           variant="pdf"
         />
+      </div>
+    </div>
+
+    <!-- Modal de confirmación para eliminar orden (funciona en móvil y escritorio) -->
+    <div
+      v-if="orderPendingDelete"
+      class="fixed inset-0 z-[110] bg-[#09132B]/70 backdrop-blur-sm flex items-center justify-center p-4"
+      @click.self="!isDeletingOrder && (orderPendingDelete = null)"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full overflow-hidden">
+        <div class="px-5 py-4 bg-gradient-to-r from-[#0D1B3E] to-[#004B97] text-white">
+          <h3 class="font-display font-extrabold text-sm text-white">Eliminar orden</h3>
+          <p class="text-[11px] text-sky-100/80 mt-0.5">{{ orderPendingDelete.orderNumber }}</p>
+        </div>
+        <div class="p-5 space-y-3">
+          <p class="text-xs text-slate-600 leading-relaxed">
+            ¿Estás seguro de que deseas eliminar la {{ orderPendingDelete.type === 'cotizacion' ? 'cotización' : 'orden' }}
+            <strong class="text-[#0D1B3E]">{{ orderPendingDelete.orderNumber }}</strong>? Esta acción no se puede deshacer.
+          </p>
+          <p v-if="deleteErrorMessage" class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            {{ deleteErrorMessage }}
+          </p>
+          <div class="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              :disabled="isDeletingOrder"
+              @click="orderPendingDelete = null"
+              class="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold cursor-pointer disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              :disabled="isDeletingOrder"
+              @click="confirmDeleteOrder"
+              class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+            >
+              {{ isDeletingOrder ? 'Eliminando...' : 'Sí, eliminar' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
