@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: true,
     watch: {
       ignored: ['**/.agent/**', '**/.agents/**', '**/.gemini/**', '**/.impeccable/**'],
     },

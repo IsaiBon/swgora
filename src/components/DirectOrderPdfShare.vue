@@ -46,6 +46,9 @@ const handleConfirmPendingNativeShare = async () => {
   const payload = pendingShare.value
   if (!payload) return
   try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(payload.text).catch(() => undefined)
+    }
     // Llamada síncrona dentro del toque del usuario (0 ms) para garantizar PDF + texto juntos
     await navigator.share({
       title: payload.title,
@@ -155,6 +158,11 @@ const shareOrder = async (
       includeObservations: Boolean(order.observations?.trim()),
       includeTallerContact: true,
     })
+
+    // Copiar mensaje al portapapeles como respaldo (WhatsApp móvil a veces omite el texto al adjuntar PDF)
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => undefined)
+    }
 
     // Intentar compartir nativamente (con texto + archivo)
     try {

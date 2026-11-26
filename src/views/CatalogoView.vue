@@ -7502,7 +7502,7 @@ onUnmounted(() => {
           </span>
           <div class="flex items-center gap-2 ml-auto">
             <button
-              v-if="isTechnicalOrientationAvailable"
+              v-if="selectedComponent && isTechnicalOrientationAvailable"
               type="button"
               @click="toggleCurrentTableOrientation"
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-700 bg-slate-800 hover:bg-slate-700 text-[#04C4D9] text-[11px] font-bold transition cursor-pointer"
