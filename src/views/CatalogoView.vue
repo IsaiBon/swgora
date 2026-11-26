@@ -5914,18 +5914,6 @@ onUnmounted(() => {
                 <Check v-if="selectedModel?.id === mod.id" class="w-3.5 h-3.5 text-[#04C4D9]" />
               </div>
             </div>
-            <button
-              type="button"
-              @mousedown.prevent="openQuickCreateModal('modelo')"
-              class="w-full px-3 py-2 text-xs font-bold text-[#038391] bg-cyan-50/70 hover:bg-cyan-100 flex items-center justify-between border-t border-cyan-100 transition sticky bottom-0 cursor-pointer"
-              title="Agregar un nuevo modelo de vehículo"
-            >
-              <span class="flex items-center gap-1.5">
-                <Plus class="w-3.5 h-3.5 text-[#04C4D9]" />
-                <span>+ Agregar modelo</span>
-              </span>
-              <span class="text-[9px] font-mono uppercase opacity-80">Nuevo</span>
-            </button>
             <div v-if="filteredModels.length === 0" class="p-2.5 text-center text-xs text-slate-400">
               No hay modelos coincidentes
             </div>
