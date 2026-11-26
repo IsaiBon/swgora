@@ -328,8 +328,11 @@ const handleDuplicateOrder = async (order: Order) => {
 
 const handleDeleteOrder = async (id: string) => {
   if (confirm('¿Estás seguro de que deseas eliminar esta orden de trabajo?')) {
-    await ordersService.deleteOrder(id)
+    const deleted = await ordersService.deleteOrder(id)
     await loadOrders()
+    if (!deleted) {
+      alert('No se pudo eliminar la orden en la nube (Supabase). Verifica tu sesión o permisos.')
+    }
   }
 }
 

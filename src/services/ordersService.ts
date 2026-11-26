@@ -1017,19 +1017,24 @@ export const ordersService = {
     saveStoredOrders(currentOrders)
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('ordenes_trabajo')
         .delete()
         .eq('id', id)
+        .select('id')
 
       if (error) {
         console.error('[OrdersService] Error eliminando orden de Supabase:', error)
         return false
       }
+      if (!data || data.length === 0) {
+        console.warn('[OrdersService] Supabase no eliminó ninguna fila (posible restricción RLS o ID inexistente):', id)
+        return false
+      }
       return true
     } catch (err) {
       console.error('[OrdersService] Excepción eliminando orden de Supabase:', err)
-      return true
+      return false
     }
   },
 
