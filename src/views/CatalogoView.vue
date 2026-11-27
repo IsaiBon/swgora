@@ -1904,13 +1904,12 @@ const getPartDisplayOemCodes = (part: RepuestoTecnico): string[] => {
   return Array.from(merged)
 }
 
-// Compatibilidad y soporte dedicado para tabla de anillos
+// Compatibilidad y soporte dedicado exclusivamente para la familia anillos_motor
 const isCurrentGroupRingsTable = computed<boolean>(() => {
   if (!selectedComponent.value) return false
   const compId = (selectedComponent.value.id || '').toLowerCase()
-  const cat = (selectedComponent.value.category || '').toLowerCase()
   const grpCode = (currentGroupDefinition.value?.codigo || '').toLowerCase()
-  return compId === 'anillos_motor' || grpCode === 'anillos_motor' || cat === 'anillos' || cat.includes('anillo')
+  return compId === 'anillos_motor' || grpCode === 'anillos_motor'
 })
 
 // Orientación de tabla (Horizontal <-> Vertical), predeterminado Vertical y persistente por familia
@@ -7302,7 +7301,7 @@ onUnmounted(() => {
           class="space-y-2.5"
         >
           <!-- Caso A: Si la familia tiene sub-columnas / etapas agrupadas (ej. Cojinetes: Código, STD: Dmin y Dmax, 1er...) -->
-          <div v-if="hasGroupedFilterBlocks" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
+          <div v-if="hasGroupedFilterBlocks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             <!-- Bloque 1: Filtro de Código / Identificador de Parte -->
             <div class="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200 hover:border-slate-300 transition space-y-1.5 shadow-2xs flex flex-col justify-between">
               <div class="flex items-center justify-between pb-1 border-b border-slate-200">
@@ -7341,23 +7340,23 @@ onUnmounted(() => {
               class="bg-blue-50/40 p-2.5 rounded-xl border border-blue-200/90 hover:border-blue-300 transition space-y-1.5 shadow-2xs"
             >
               <!-- Cabecera del Grupo (ej. STD, 1er, 2da...) -->
-              <div class="flex items-center justify-between pb-1 border-b border-blue-200/80">
-                <div class="flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-[#004B97]"></span>
-                  <span class="text-xs font-black uppercase tracking-wider text-[#004B97] font-mono">
+              <div class="flex items-center justify-between gap-2 pb-1 border-b border-blue-200/80">
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="w-2 h-2 rounded-full bg-[#004B97] shrink-0"></span>
+                  <span class="text-xs font-black uppercase tracking-wider text-[#004B97] font-mono whitespace-nowrap">
                     {{ block.parent }}
                   </span>
                 </div>
-                <span class="text-[9px] font-bold text-[#038391] bg-blue-100/80 px-1.5 py-0.2 rounded font-mono">
+                <span class="text-[9px] font-bold text-[#038391] bg-blue-100/80 px-1.5 py-0.5 rounded font-mono truncate" :title="block.params.map(p => getShortParamFilterLabel(p).replace(' (mm)', '')).join(' · ')">
                   {{ block.params.map(p => getShortParamFilterLabel(p).replace(' (mm)', '')).join(' · ') }}
                 </span>
               </div>
 
               <!-- Inputs de medidas (ej. Dmin y Dmax lado a lado) -->
-              <div :class="block.params.length === 2 ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1 gap-1.5'">
-                <div v-for="param in block.params" :key="param.clave">
-                  <div class="flex items-center justify-between mb-0.5">
-                    <label class="block text-[9px] font-extrabold uppercase text-slate-700 truncate" :title="param.etiqueta">
+              <div :class="block.params.length === 2 ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'">
+                <div v-for="param in block.params" :key="param.clave" class="min-w-0">
+                  <div class="flex flex-wrap items-center justify-between gap-1 mb-1">
+                    <label class="block text-[10px] font-extrabold uppercase text-slate-700 leading-tight" :title="param.etiqueta">
                       {{ getShortParamFilterLabel(param) }}
                     </label>
                     <ToleranceBadge v-if="param.tipo_dato === 'numero'" v-model="filterTolerancias[param.clave]" :fallback="filterToleranciaMm" :unit="param.unidad || 'mm'" />

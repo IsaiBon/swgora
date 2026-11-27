@@ -201,7 +201,7 @@ const onCentralRowNameInput = (sf: SubfilaFormRow) => {
 }
 
 const centralRowOemLabels = computed<string[]>(() => {
-  const defaults = ['OEM', 'DOKURO', 'RIK', 'NPR', 'MRK', 'AJUSA', 'NDC', 'PIONEER', 'TAIHO']
+  const defaults = ['OEM', 'DOKURO', 'RIK', 'NPR', 'MRK', 'AJUSA', 'NDC', 'PIONEER', 'TAIHO', 'TEIKIN', 'ARCO']
   const set = new Set<string>(defaults)
   for (const key of Object.keys(catalogOemColors.value)) {
     const clean = normalizeCatalogBrandKey(key)
@@ -212,6 +212,16 @@ const centralRowOemLabels = computed<string[]>(() => {
       const clean = normalizeCatalogBrandKey(part.catalogo_origen)
       if (clean) set.add(clean)
     }
+    const specBrand = (part.especificaciones_tecnicas as any)?.marca_catalogo
+    if (specBrand) {
+      const clean = normalizeCatalogBrandKey(specBrand)
+      if (clean) set.add(clean)
+    }
+    const dimBrand = (part.dimensiones as any)?.catalogo
+    if (dimBrand) {
+      const clean = normalizeCatalogBrandKey(dimBrand)
+      if (clean) set.add(clean)
+    }
     if (Array.isArray(part.equivalencias)) {
       for (const eq of part.equivalencias) {
         if (eq?.marca_alterna) {
@@ -220,6 +230,10 @@ const centralRowOemLabels = computed<string[]>(() => {
         }
       }
     }
+  }
+  if (partCatalogoOrigen.value && partCatalogoOrigen.value !== '__CUSTOM__') {
+    const clean = normalizeCatalogBrandKey(partCatalogoOrigen.value)
+    if (clean) set.add(clean)
   }
   return Array.from(set).sort((a, b) => (a === 'OEM' ? -1 : b === 'OEM' ? 1 : a.localeCompare(b)))
 })
@@ -621,8 +635,7 @@ const RING_DESIGN_CHIPS = [
 const isAnillosActiveGroup = computed<boolean>(() => {
   if (!activeGroup.value) return false
   const code = (activeGroup.value.codigo || '').toLowerCase()
-  const cat = (activeGroup.value.categoria || '').toLowerCase()
-  return code === 'anillos_motor' || cat === 'anillos' || cat.includes('anillo')
+  return code === 'anillos_motor'
 })
 
 const availableRingDesignChips = computed<string[]>(() => {
@@ -1252,7 +1265,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
   partModelosAdicionales.value = uniquePartModels.slice(1)
   partAno.value = spec.ano || spec.anios || dims.ano || (part.motor?.anios) || ''
   partSubsistema.value = part.subsistema || 'Block'
-  partCatalogoOrigen.value = part.catalogo_origen || 'OEM'
+  partCatalogoOrigen.value = normalizeCatalogBrandKey(part.catalogo_origen || 'OEM')
   const rawImgs = Array.isArray(part.imagenes) && part.imagenes.length > 0
     ? part.imagenes
     : (Array.isArray(spec.imagenes) ? spec.imagenes : (part.imagen_url ? [part.imagen_url] : []))
@@ -1514,10 +1527,7 @@ const loadPartForEditing = (part: RepuestoTecnico) => {
     return out
   }
 
-  const isRingsMatchedGroup = Boolean(
-    matchedGroup &&
-    (matchedGroup.codigo === 'anillos_motor' || (matchedGroup.categoria || '').toLowerCase().includes('anillo'))
-  )
+  const isRingsMatchedGroup = Boolean(matchedGroup && matchedGroup.codigo === 'anillos_motor')
 
   if (Array.isArray(partSubfilas) && partSubfilas.length > 0) {
     subfilasRows.value = partSubfilas.map((sf: any, idx: number) => {
@@ -1682,9 +1692,7 @@ const handleSavePart = async () => {
       dimensionesPayload.marca_banner = subfilasMarcaBanner.value.trim() || (selectedMotor.value ? getBrandName(selectedMotor.value.fabricante_id) : '')
       dimensionesPayload.aplicacion_banner = subfilasAplicacionBanner.value.trim() || (selectedMotor.value?.denominacion_venta || selectedMotor.value?.nombre_comercial || '')
 
-      const isAnillosLike =
-        activeGroup.value?.codigo === 'anillos_motor' ||
-        (activeGroup.value?.categoria || '').toLowerCase().includes('anillo')
+      const isAnillosLike = activeGroup.value?.codigo === 'anillos_motor'
       if (isAnillosLike) {
         const readRingDiam = (m: Record<string, any> | undefined) =>
           resolveSubfilaColumnValue(m, { clave: 'diametro_cilindro_mm', etiqueta: 'Diámetro' })
@@ -2734,18 +2742,26 @@ onUnmounted(() => {
                   <div>
                     <label class="block text-[11px] font-bold text-slate-700 mb-1">Catálogo / Origen</label>
                     <select
-                      v-model="partCatalogoOrigen"
+                      :value="centralRowOemLabels.includes(normalizeCatalogBrandKey(partCatalogoOrigen)) ? normalizeCatalogBrandKey(partCatalogoOrigen) : '__CUSTOM__'"
+                      @change="($event.target as HTMLSelectElement).value === '__CUSTOM__' ? (partCatalogoOrigen = '') : (partCatalogoOrigen = ($event.target as HTMLSelectElement).value)"
                       class="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#04C4D9]"
                     >
-                      <option value="OEM">OEM Original</option>
-                      <option value="Rik">Rik / Riken</option>
-                      <option value="NPR">NPR</option>
-                      <option value="Dokuro">Dokuro</option>
-                      <option value="MRK">MRK</option>
-                      <option value="Ajusa">Ajusa</option>
-                      <option value="NDC">NDC</option>
-                      <option value="Pioneer">Pioneer</option>
+                      <option
+                        v-for="cat in centralRowOemLabels"
+                        :key="`orig-cat-${cat}`"
+                        :value="cat"
+                      >
+                        {{ cat === 'OEM' ? 'OEM Original' : cat }}
+                      </option>
+                      <option value="__CUSTOM__">+ Otro catálogo...</option>
                     </select>
+                    <input
+                      v-if="!centralRowOemLabels.includes(normalizeCatalogBrandKey(partCatalogoOrigen))"
+                      v-model="partCatalogoOrigen"
+                      type="text"
+                      placeholder="Nombre del catálogo (ej. TEIKIN)"
+                      class="mt-1.5 w-full px-2.5 py-1.5 text-xs font-bold uppercase bg-white border border-[#04C4D9] rounded-xl focus:outline-none"
+                    />
                   </div>
                 </div>
 

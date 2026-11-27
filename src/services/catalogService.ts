@@ -3982,7 +3982,7 @@ export const catalogService = {
         ...(grp.tabla_config || metaTablaConfig || defaultTablaConfig)
       }
 
-      const isAnillosCategory = grp.codigo === 'anillos_motor' || (grp.categoria || '').toLowerCase().includes('anillo')
+      const isAnillosCategory = grp.codigo === 'anillos_motor'
       const hadSubfilasActivas = Boolean(resolvedTablaConfig.subfilas_activas)
 
       // Reparar grupos en tabla ya creados (ej. con `subfilas` guardadas bajo modo_filas incremental/cojinetes/libre o restos de 'Anillo de aceite')
