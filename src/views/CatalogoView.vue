@@ -7039,7 +7039,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloGrosor1"
                     type="number"
                     step="0.05"
-                    placeholder="1.2"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7052,7 +7052,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloRadial1"
                     type="number"
                     step="0.05"
-                    placeholder="2.5"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7075,7 +7075,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloGrosor2"
                     type="number"
                     step="0.05"
-                    placeholder="1.5"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7088,7 +7088,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloRadial2"
                     type="number"
                     step="0.05"
-                    placeholder="2.5"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7111,7 +7111,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloGrosor3"
                     type="number"
                     step="0.05"
-                    placeholder="2.0"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7124,7 +7124,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloRadial3"
                     type="number"
                     step="0.05"
-                    placeholder="3.0"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7158,7 +7158,7 @@ onUnmounted(() => {
                     v-model.number="slot.grosor"
                     type="number"
                     step="0.05"
-                    placeholder="2.0"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7171,7 +7171,7 @@ onUnmounted(() => {
                     v-model.number="slot.altura"
                     type="number"
                     step="0.05"
-                    placeholder="3.0"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7197,7 +7197,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloGrosorAceite"
                     type="number"
                     step="0.05"
-                    placeholder="2.8"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7210,7 +7210,7 @@ onUnmounted(() => {
                     v-model.number="filterAnilloRadialAceite"
                     type="number"
                     step="0.05"
-                    placeholder="2.8"
+                    placeholder="0"
                     class="w-full px-2 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                 </div>
@@ -7367,7 +7367,7 @@ onUnmounted(() => {
                     v-model.number="dynamicParamFilters[param.clave]"
                     type="number"
                     step="0.001"
-                    placeholder="0.00"
+                    placeholder="0"
                     class="w-full px-2 py-1 text-xs font-mono font-bold text-center bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9] shadow-2xs"
                   />
                   <input
@@ -7405,7 +7405,7 @@ onUnmounted(() => {
                     v-model.number="dynamicParamFilters[param.clave]"
                     type="number"
                     step="0.01"
-                    placeholder="0.00"
+                    placeholder="0"
                     class="w-full px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#04C4D9]"
                   />
                   <input
